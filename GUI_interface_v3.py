@@ -42,7 +42,9 @@ class App(tk.Tk):
         super().__init__()
         self.title("Data Analysis Tool")
         
-        self.vars_columnas = {} 
+        self.vars_columnas = {} #lista para almacenar las columnas de la hoja de concentraciones
+        self.figures = []  # Lista para almacenar figuras 
+        self.current_figure_index = -1  # Índice inicial para navegación de figuras
 
         # Configuración de dos columnas en la ventana principal
         self.grid_columnconfigure(0, weight=1)  # Columna izquierda para controles
@@ -153,54 +155,49 @@ class App(tk.Tk):
         basinhopping_rb.pack(anchor='w')
                 
         # Columna Derecha: Canvas para Gráficas y Prompt de Output
-        right_frame = tk.Frame(self)
-        right_frame.grid(row=0, column=1, sticky="nsew", padx=5, pady=5)
+        self.right_frame = tk.Frame(self)
+        self.right_frame.grid(row=0, column=1, sticky="nsew", padx=5, pady=5)
         # Configuración de peso para columnas y filas en right_frame
-        right_frame.grid_columnconfigure(0, weight=1)
-        right_frame.grid_rowconfigure(0, weight=1)  # Para el canvas
-        right_frame.grid_rowconfigure(1, weight=1)  # Para la consola de Python
+        self.right_frame.grid_columnconfigure(0, weight=1)
+        self.right_frame.grid_rowconfigure(0, weight=1)  # Para el canvas
+        self.right_frame.grid_rowconfigure(1, weight=1)  # Para la consola de Python
 
         # Canvas para las gráficas
         self.fig = Figure(figsize=(5, 5), dpi=100)
-        self.canvas = FigureCanvasTkAgg(self.fig, master=right_frame)
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.right_frame)
         self.canvas.draw()
         self.canvas.get_tk_widget().grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
 
         # Scrollbar para el Canvas
-        scrollbar = ttk.Scrollbar(right_frame, orient="vertical", command=self.canvas.get_tk_widget().yview)
+        scrollbar = ttk.Scrollbar(self.right_frame, orient="vertical", command=self.canvas.get_tk_widget().yview)
         scrollbar.grid(row=0, column=1, sticky="ns")
 
+        self.btn_prev_figure = tk.Button(self.right_frame, text="<< Prev", command=self.show_prev_figure)
+        self.btn_prev_figure.grid(row=1, column=0, sticky="w")
+
+        self.btn_next_figure = tk.Button(self.right_frame, text="Next >>", command=self.show_next_figure)
+        self.btn_next_figure.grid(row=1, column=0, sticky="e")
+
         # Button to process the data
-        self.btn_process_data = tk.Button(right_frame, text="Process Data", command=self.process_data)
+        self.btn_process_data = tk.Button(self.right_frame, text="Process Data", command=self.process_data)
         self.btn_process_data.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
 
         # Create a Text widget for console output with specific dimensions
-        self.output_text = tk.Text(right_frame, height=33, width=50, bg="black", fg="white")
-        self.output_text.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
+        self.output_text = tk.Text(self.right_frame, height=33, width=50, bg="black", fg="white")
+        self.output_text.grid(row=3, column=0, sticky="nsew", padx=5, pady=5)
         
         # Redirect stdout
         sys.stdout = TextRedirector(self.output_text)
 
-        # Create an instance of TkinterConsoleOutput and redirect sys.stdout
-        #self.console_output = TextRedirector(self.output_text)
-        #sys.stdout = self.console_output
-
         # Save Button (move to right_frame for better organization)
-        self.btn_save_file = tk.Button(right_frame, text="Save Results to Excel", command=self.save_results)
-        self.btn_save_file.grid(row=3, column=0, sticky="ew", padx=5, pady=5)
+        self.btn_save_file = tk.Button(self.right_frame, text="Save Results to Excel", command=self.save_results)
+        self.btn_save_file.grid(row=4, column=0, sticky="ew", padx=5, pady=5)
         
         # Configurar una función para actualizar la ventana del GUI periódicamente
         self.after(1, self.update_gui)
 
         # Crear una instancia del intérprete de Python
         self.python_interpreter = code.InteractiveConsole(locals=globals())
-
-    #def select_file(self):
-    #    file_path = filedialog.askopenfilename(initialdir="/", title="Select file",
-    #                                           filetypes=(("Excel files", "*.xlsx"), ("all files", "*.*")))
-    #    if file_path:
-    #        self.lbl_file.config(text=file_path)
-    #       self.file_path = file_path
     
     def select_file(self):
         file_path = filedialog.askopenfilename(initialdir="/", title="Select file",
@@ -219,14 +216,6 @@ class App(tk.Tk):
     def configure_canvas(self, event):
         # Configurar el área de desplazamiento del Canvas
         self.graph_canvas.configure(scrollregion=self.graph_canvas.bbox("all"))
-
-    def show_figure(self, figure):
-        # Agregar la figura al Frame interior y actualizar el Canvas
-        self.figures.append(figure)
-        canvas = FigureCanvasTkAgg(figure, master=self.graph_frame)
-        canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-        canvas.draw()
-        self.configure_canvas(None)
         
     def update_gui(self):
         # Esta función se llama periódicamente para actualizar el GUI
@@ -274,47 +263,59 @@ class App(tk.Tk):
                 self.selected_columns.remove(name)
     
     def figura(self, x, y, mark, ylabel, xlabel):
-        plt.plot(x, y, mark)
-        plt.ylabel(ylabel, size = "xx-large")
-        plt.xlabel(xlabel, size = "xx-large")
-        plt.xticks(size = "large")
-        plt.yticks(size = "large")
-        plt.show()
-    
-    def figura2(self, x, y, y2, mark1, mark2, ylabel, xlabel, alpha):
-        plt.plot(x, y, mark1, alpha)
-        plt.plot(x, y2, mark2)
-        plt.ylabel(ylabel, size = "xx-large")
-        plt.xlabel(xlabel, size = "xx-large")
-        plt.xticks(size = "large")
-        plt.yticks(size = "large")
-        plt.show()
-
-    def figura(self, x, y, mark, ylabel, xlabel):
-        fig = Figure(figsize=(5, 4), dpi=100)
+        fig = Figure(figsize=(5, 5), dpi=200)
         ax = fig.add_subplot(111)
         ax.plot(x, y, mark)
         ax.set_ylabel(ylabel, size="xx-large")
         ax.set_xlabel(xlabel, size="xx-large")
         ax.tick_params(axis='both', which='major', labelsize='large')
-
-        canvas = FigureCanvasTkAgg(fig, master=self.right_frame)  # Asumiendo que right_frame es el contenedor para tus gráficas
-        canvas.draw()
-        canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        self.figures.append(fig)
+        self.current_figure_index = len(self.figures) - 1
+        self.update_canvas_figure(fig)
 
     def figura2(self, x, y, y2, mark1, mark2, ylabel, xlabel, alpha):
-        fig = Figure(figsize=(5, 4), dpi=100)
+        fig = Figure(figsize=(5, 5), dpi=200)
         ax = fig.add_subplot(111)
         ax.plot(x, y, mark1, alpha=alpha)
         ax.plot(x, y2, mark2)
         ax.set_ylabel(ylabel, size="xx-large")
         ax.set_xlabel(xlabel, size="xx-large")
         ax.tick_params(axis='both', which='major', labelsize='large')
+        self.figures.append(fig)
+        self.current_figure_index = len(self.figures) - 1
+        self.update_canvas_figure(fig)
 
-        canvas = FigureCanvasTkAgg(fig, master=self.right_frame)
-        canvas.draw()
-        canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+    #def show_next_figure(self):
+    #    if self.figures:
+    #        self.current_figure_index = (self.current_figure_index + 1) % len(self.figures)
+    #        self.update_canvas_figure(self.figures[self.current_figure_index])
+#
+    #def show_prev_figure(self):
+    #    if self.figures:
+    #        self.current_figure_index = (self.current_figure_index - 1) % len(self.figures)
+    #        self.update_canvas_figure(self.figures[self.current_figure_index])
 
+    def show_next_figure(self):
+        # Verificar si hay figuras en la lista
+        if self.figures:
+            # Actualizar el índice para apuntar a la siguiente figura
+            self.current_figure_index = (self.current_figure_index + 1) % len(self.figures)
+            # Mostrar la figura correspondiente
+            self.update_canvas_figure(self.figures[self.current_figure_index])
+
+    def show_prev_figure(self):
+        # Verificar si hay figuras en la lista
+        if self.figures:
+            # Actualizar el índice para apuntar a la figura anterior
+            # El término + len(self.figures) asegura que el índice no sea negativo
+            self.current_figure_index = (self.current_figure_index - 1 + len(self.figures)) % len(self.figures)
+            # Mostrar la figura correspondiente
+            self.update_canvas_figure(self.figures[self.current_figure_index])
+
+    def update_canvas_figure(self, figure):
+        self.canvas.figure.clf()  # Limpiar la figura actual
+        self.canvas.figure = figure  # Establecer la nueva figura
+        self.canvas.draw()  # Redibujar el canvas
 
     def process_data(self):
         # Placeholder for the actual data processing
@@ -369,9 +370,6 @@ class App(tk.Tk):
         
         self.figura(range(0, nc), np.log10(s), "o", "log(EV)", "# de autovalores")      
         self.figura2(G, np.log10(ev_s0), np.log10(ev_s10), "k-o", "b:o", "log(EV)", "[G], M", 1)
-
-        #self.show_figure(F1)
-        #self.show_figure(F2)
             
         EV = int(self.entry_EV.get())
 
@@ -611,23 +609,15 @@ class App(tk.Tk):
         Q, R = np.linalg.qr(C)
         y_cal = Q @ Q.T @ Y.T
         #y_cal = C @ np.linalg.pinv(C, rcond=1e-20) @ Y.T
-        
-                
-        plt.plot(nm, Y, "k", alpha = 0.5)
-        plt.plot(nm, y_cal.T, "k:")
-        plt.ylabel("Y observada (u. a.)", size = "xx-large")
-        plt.xlabel("$\lambda$ (nm)", size = "xx-large")
-        plt.xticks(size = "large")
-        plt.yticks(size = "large")
-        plt.show()
-                
+                        
         ssq, r0 = f_m2(k)
         rms = f_m(k)
         
         A = np.linalg.pinv(C) @ Y.T 
         
         self.figura(nm, A.T, "-", "Epsilon (u. a.)", "$\lambda$ (nm)")
-                
+        self.figura2(nm, Y, y_cal.T, "-k", "k:", "Y observada (u. a.)", "$\lambda$ (nm)", 0.5)   
+
         lof = (((sum(sum((r0**2))) / sum(sum((Y**2)))))**0.5) * 100
         MAE = np.sqrt((sum(sum(r0**2)) / (nw - len(k))))
         dif_en_ct = round(max(100 - (np.sum(C, 1) * 100 / max(H))), 2)
@@ -721,9 +711,7 @@ class App(tk.Tk):
                 phi.to_excel(writer, sheet_name="Y_cal", index_label = "nm", index = True)
                 Y_svd.to_excel(writer, sheet_name= "Y_svd", index_label = "nm", index = True)
                 stats.to_excel(writer, sheet_name="Estadísticos")
-                
-        #save_file()
-        
+                      
         
         self.display_results()
 
