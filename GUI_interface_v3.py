@@ -153,7 +153,11 @@ class App(tk.Tk):
         differential_evolution_rb.pack(anchor='w')
         basinhopping_rb = tk.Radiobutton(optimizador_frame, text='Basinhopping', variable=self.optimizador, value='Basinhopping')
         basinhopping_rb.pack(anchor='w')
-                
+        
+        self.graficas_listbox = tk.Listbox(self.left_frame, height=10)
+        self.graficas_listbox.grid(row=9, column=0, sticky="nsew", padx=5, pady=5)
+        self.graficas_listbox.bind("<<ListboxSelect>>", self.on_grafica_selected)
+
         # Columna Derecha: Canvas para Gráficas y Prompt de Output
         self.right_frame = tk.Frame(self)
         self.right_frame.grid(row=0, column=1, sticky="nsew", padx=5, pady=5)
@@ -262,60 +266,78 @@ class App(tk.Tk):
             if name in self.selected_columns:
                 self.selected_columns.remove(name)
     
-    def figura(self, x, y, mark, ylabel, xlabel):
-        fig = Figure(figsize=(5, 5), dpi=200)
+    def figura(self, x, y, mark, ylabel, xlabel, title):
+        fig = Figure(figsize=(4, 4), dpi=200)
         ax = fig.add_subplot(111)
         ax.plot(x, y, mark)
         ax.set_ylabel(ylabel, size="xx-large")
         ax.set_xlabel(xlabel, size="xx-large")
         ax.tick_params(axis='both', which='major', labelsize='large')
-        self.figures.append(fig)
-        self.current_figure_index = len(self.figures) - 1
-        self.update_canvas_figure(fig)
+        #self.figures.append(fig)
+        self.figures.append(fig)  # Almacenar tanto fig como ax
+        self.add_figure_to_listbox(title)  # Añade título a la listbox
+        # Añadir título o descripción a la lista
+        #self.graficas_listbox.insert(tk.END, "Gráfica " + str(len(self.figures)))
+        print("Figura añadida. Total de figuras:", len(self.figures))
+        #self.current_figure_index = len(self.figures) - 1
+        #self.update_canvas_figure(fig)
 
-    def figura2(self, x, y, y2, mark1, mark2, ylabel, xlabel, alpha):
-        fig = Figure(figsize=(5, 5), dpi=200)
+    def figura2(self, x, y, y2, mark1, mark2, ylabel, xlabel, alpha, title):
+        fig = Figure(figsize=(4, 4), dpi=200)
         ax = fig.add_subplot(111)
         ax.plot(x, y, mark1, alpha=alpha)
         ax.plot(x, y2, mark2)
         ax.set_ylabel(ylabel, size="xx-large")
         ax.set_xlabel(xlabel, size="xx-large")
         ax.tick_params(axis='both', which='major', labelsize='large')
-        self.figures.append(fig)
-        self.current_figure_index = len(self.figures) - 1
-        self.update_canvas_figure(fig)
+        #self.figures.append(fig)
+        self.figures.append(fig)  # Almacenar tanto fig como ax
+        self.add_figure_to_listbox(title)  # Añade título a la listbox
+        # Añadir título o descripción a la lista
+        #self.graficas_listbox.insert(tk.END, "Gráfica " + str(len(self.figures)))
+        #self.current_figure_index = len(self.figures) - 1
+        print("Figura añadida. Total de figuras:", len(self.figures))
+        #self.update_canvas_figure(fig)
+    
+    def on_grafica_selected(self, event):
+        seleccionado = self.graficas_listbox.curselection()
+        if seleccionado:
+            index = seleccionado[0]
+            self.show_figure(index)
 
-    #def show_next_figure(self):
-    #    if self.figures:
-    #        self.current_figure_index = (self.current_figure_index + 1) % len(self.figures)
-    #        self.update_canvas_figure(self.figures[self.current_figure_index])
-#
-    #def show_prev_figure(self):
-    #    if self.figures:
-    #        self.current_figure_index = (self.current_figure_index - 1) % len(self.figures)
-    #        self.update_canvas_figure(self.figures[self.current_figure_index])
+    def add_figure_to_listbox(self, title):
+        self.graficas_listbox.insert(tk.END, title)
 
     def show_next_figure(self):
-        # Verificar si hay figuras en la lista
         if self.figures:
-            # Actualizar el índice para apuntar a la siguiente figura
             self.current_figure_index = (self.current_figure_index + 1) % len(self.figures)
-            # Mostrar la figura correspondiente
+            print("Mostrando figura:", self.current_figure_index + 1, "de", len(self.figures))
             self.update_canvas_figure(self.figures[self.current_figure_index])
 
     def show_prev_figure(self):
-        # Verificar si hay figuras en la lista
         if self.figures:
-            # Actualizar el índice para apuntar a la figura anterior
-            # El término + len(self.figures) asegura que el índice no sea negativo
-            self.current_figure_index = (self.current_figure_index - 1 + len(self.figures)) % len(self.figures)
-            # Mostrar la figura correspondiente
+            self.current_figure_index = (self.current_figure_index - 1) % len(self.figures)
+            print("Mostrando figura:", self.current_figure_index + 1, "de", len(self.figures))
             self.update_canvas_figure(self.figures[self.current_figure_index])
+
 
     def update_canvas_figure(self, figure):
         self.canvas.figure.clf()  # Limpiar la figura actual
         self.canvas.figure = figure  # Establecer la nueva figura
         self.canvas.draw()  # Redibujar el canvas
+
+    #def show_figure(self, index):
+    #    fig, ax = self.figures[index]
+    #    if hasattr(self, 'canvas'):
+    #        self.canvas.get_tk_widget().destroy()  # Destruir canvas anterior
+    #    self.canvas = FigureCanvasTkAgg(fig, master=self.right_frame)
+    #    self.canvas.draw()
+    #    self.canvas.get_tk_widget().grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+    
+    def show_figure(self, index):
+        # Obtener la figura de la lista
+        fig = self.figures[index]
+        self.update_canvas_figure(fig)
 
     def process_data(self):
         # Placeholder for the actual data processing
@@ -368,8 +390,8 @@ class App(tk.Tk):
         ev_s1 = pd.DataFrame(X2)
         ev_s10 = np.array(ev_s1) 
         
-        self.figura(range(0, nc), np.log10(s), "o", "log(EV)", "# de autovalores")      
-        self.figura2(G, np.log10(ev_s0), np.log10(ev_s10), "k-o", "b:o", "log(EV)", "[G], M", 1)
+        self.figura(range(0, nc), np.log10(s), "o", "log(EV)", "# de autovalores", "Eigenvalues")      
+        self.figura2(G, np.log10(ev_s0), np.log10(ev_s10), "k-o", "b:o", "log(EV)", "[G], M", 1, "EFA")
             
         EV = int(self.entry_EV.get())
 
@@ -604,7 +626,7 @@ class App(tk.Tk):
         
         C, Co = concentraciones(k)
         
-        self.figura(G/np.max(H), C, ":o", "[Especies], M", "[G]/[H], M")
+        self.figura(G/np.max(H), C, ":o", "[Especies], M", "[G]/[H], M", "Perfil de concentraciones")
                 
         Q, R = np.linalg.qr(C)
         y_cal = Q @ Q.T @ Y.T
@@ -615,8 +637,8 @@ class App(tk.Tk):
         
         A = np.linalg.pinv(C) @ Y.T 
         
-        self.figura(nm, A.T, "-", "Epsilon (u. a.)", "$\lambda$ (nm)")
-        self.figura2(nm, Y, y_cal.T, "-k", "k:", "Y observada (u. a.)", "$\lambda$ (nm)", 0.5)   
+        self.figura(nm, A.T, "-", "Epsilon (u. a.)", "$\lambda$ (nm)", "Absortividades molares")
+        self.figura2(nm, Y, y_cal.T, "-k", "k:", "Y observada (u. a.)", "$\lambda$ (nm)", 0.5, "Ajuste")   
 
         lof = (((sum(sum((r0**2))) / sum(sum((Y**2)))))**0.5) * 100
         MAE = np.sqrt((sum(sum(r0**2)) / (nw - len(k))))
@@ -713,7 +735,7 @@ class App(tk.Tk):
                 stats.to_excel(writer, sheet_name="Estadísticos")
                       
         
-        self.display_results()
+        #self.display_results()
 
         
 # Run the application
