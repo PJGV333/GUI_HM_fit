@@ -34,6 +34,10 @@ class App(wx.Frame):
     def __init__(self):
         wx.Frame.__init__(self, None, title="Data Analysis Tool", size=(800, 600))
         self.panel = wx.Panel(self)
+
+        self.vars_columnas = {} #lista para almacenar las columnas de la hoja de concentraciones
+        self.figures = []  # Lista para almacenar figuras 
+        self.current_figure_index = -1  # Índice inicial para navegación de figuras
                 
         # Diseño usando Sizers
         self.main_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -54,10 +58,6 @@ class App(wx.Frame):
         self.lbl_file_path = wx.StaticText(self.panel, label="No file selected")
         self.left_sizer.Add(self.lbl_file_path, 0, wx.ALL | wx.EXPAND, 5)
 
-        # Texto de salida
-        self.output_text = wx.TextCtrl(self.panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
-        self.right_sizer.Add(self.output_text, 1, wx.EXPAND | wx.ALL, 5)
-
         # Espectros 
         self.sheet_spectra_panel, self.entry_sheet_spectra = self.create_sheet_section("Spectra Sheet Name:", "datos_titulacion")
         self.left_sizer.Add(self.sheet_spectra_panel, 0, wx.EXPAND | wx.ALL, 5)
@@ -77,6 +77,10 @@ class App(wx.Frame):
         self.columns_names_sizer.Add(self.lbl_columns, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
         self.columns_names_panel.SetSizer(self.columns_names_sizer)
         self.left_sizer.Add(self.columns_names_panel, 0, wx.EXPAND | wx.ALL, 5)
+
+        # Texto de salida
+        #
+        #self.left_sizer.Add(self.output_text, 1, wx.EXPAND | wx.ALL, 5)
 
         # Autovalores
         self.sheet_EV_panel, self.entry_EV = self.create_sheet_section("Eigenvalues:", "0")
@@ -146,34 +150,65 @@ class App(wx.Frame):
         self.right_sizer.Add(self.canvas, 1, wx.LEFT | wx.TOP | wx.EXPAND)
 
         # Botones Prev y Next
+        # Botón "Prev"
+        nav_buttons_sizer = wx.BoxSizer(wx.HORIZONTAL)
+
         self.btn_prev_figure = wx.Button(self.panel, label="<< Prev")
-        self.right_sizer.Add(self.btn_prev_figure, 0, wx.ALL, 5)
+        nav_buttons_sizer.Add(self.btn_prev_figure, 0, wx.ALL, 5)
         self.btn_prev_figure.Bind(wx.EVT_BUTTON, self.show_prev_figure)
 
+        # Añade un espaciador para empujar los botones a los extremos
+        nav_buttons_sizer.AddStretchSpacer()
+
+        # Botón "Next"
         self.btn_next_figure = wx.Button(self.panel, label="Next >>")
-        self.right_sizer.Add(self.btn_next_figure, 0, wx.ALL, 5)
+        nav_buttons_sizer.Add(self.btn_next_figure, 0, wx.ALL, 5)
         self.btn_next_figure.Bind(wx.EVT_BUTTON, self.show_next_figure)
 
+        # Añade el sizer de los botones de navegación al sizer principal
+        self.right_sizer.Add(nav_buttons_sizer, 0, wx.EXPAND)
+
         # Botón para procesar datos
+        process_data_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        process_data_sizer.AddStretchSpacer()
+
+        # Botón "Process Data"
         self.btn_process_data = wx.Button(self.panel, label="Process Data")
-        self.right_sizer.Add(self.btn_process_data, 0, wx.ALL, 5)
+        process_data_sizer.Add(self.btn_process_data, 0, wx.ALL, 5)
         self.btn_process_data.Bind(wx.EVT_BUTTON, self.process_data)
 
+        process_data_sizer.AddStretchSpacer()
+
+        # Añadir el sizer de "Process Data" al sizer principal del lado derecho
+        self.right_sizer.Add(process_data_sizer, 0, wx.EXPAND)
+
         # Consola para ver información
+        #self.output_text = wx.TextCtrl(self.panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
         self.console = wx.TextCtrl(self.panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
         self.right_sizer.Add(self.console, 1, wx.EXPAND | wx.ALL, 5)
 
+        # Redirigir stdout
+        sys.stdout = TextRedirector(self.console)
+
+        # Botón guardar resultados
+        save_results_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        save_results_sizer.AddStretchSpacer()
+
+        # Botón "Save Results"
         self.btn_save_results = wx.Button(self.panel, label="Save Results")
-        self.right_sizer.Add(self.btn_save_results, 0, wx.ALL, 5)
+        save_results_sizer.Add(self.btn_save_results, 0, wx.ALL, 5)
         self.btn_save_results.Bind(wx.EVT_BUTTON, self.save_results)
+
+        save_results_sizer.AddStretchSpacer()
+
+        # Añadir el sizer al sizer principal del lado derecho
+        self.right_sizer.Add(save_results_sizer, 0, wx.EXPAND)
+
 
         # Método de controlador de eventos para el botón irá aquí     
 
         self.panel.SetSizer(self.main_sizer)
         self.main_sizer.Layout()
-
-        # Redirigir stdout
-        sys.stdout = TextRedirector(self.output_text)
 
     def create_sheet_section(self, label_text, default_value):
             # Crear un panel para esta sección
@@ -237,18 +272,20 @@ class App(wx.Frame):
             messagebox.showinfo("Information", f"Results saved to {file_path}.")
     
     def create_checkboxes(self, column_names):
-        # Convertir WindowList a una lista regular de Python
+        # Convertir WindowList a una lista regular de Python y limpiar checkboxes antiguos
         children = list(self.columns_names_panel.GetChildren())
-
-        # Destruir todos los hijos excepto la primera etiqueta (Column names:)
         for child in children[1:]:
             child.Destroy()
 
-        # Crear los checkboxes dentro del panel
+        # Asegúrate de que self.vars_columnas está vacío antes de empezar a añadir nuevos checkboxes
+        self.vars_columnas = {}
+
+        # Crear los checkboxes dentro del panel y añadirlos a self.vars_columnas
         for col in column_names:
             checkbox = wx.CheckBox(self.columns_names_panel, label=col)
             checkbox.Bind(wx.EVT_CHECKBOX, self.on_checkbox_select)
             self.columns_names_sizer.Add(checkbox, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+            self.vars_columnas[col] = checkbox  # Añadir cada checkbox al diccionario
 
         # Reorganizar los controles en el panel
         self.columns_names_panel.Layout()
@@ -295,14 +332,11 @@ class App(wx.Frame):
         ax.set_ylabel(ylabel, size="xx-large")
         ax.set_xlabel(xlabel, size="xx-large")
         ax.tick_params(axis='both', which='major', labelsize='large')
-        #self.figures.append(fig)
         self.figures.append(fig)  # Almacenar tanto fig como ax
-        self.add_figure_to_listbox(title)  # Añade título a la listbox
-        # Añadir título o descripción a la lista
-        #self.graficas_listbox.insert(tk.END, "Gráfica " + str(len(self.figures)))
+        #self.add_figure_to_listbox(title)  # Añade título a la listbox
         print("Figura añadida. Total de figuras:", len(self.figures))
-        #self.current_figure_index = len(self.figures) - 1
-        #self.update_canvas_figure(fig)
+        self.current_figure_index = len(self.figures) - 1
+        self.update_canvas_figure(fig)
 
     def figura2(self, x, y, y2, mark1, mark2, ylabel, xlabel, alpha, title):
         fig = Figure(figsize=(4, 4), dpi=200)
@@ -312,14 +346,11 @@ class App(wx.Frame):
         ax.set_ylabel(ylabel, size="xx-large")
         ax.set_xlabel(xlabel, size="xx-large")
         ax.tick_params(axis='both', which='major', labelsize='large')
-        #self.figures.append(fig)
         self.figures.append(fig)  # Almacenar tanto fig como ax
-        self.add_figure_to_listbox(title)  # Añade título a la listbox
-        # Añadir título o descripción a la lista
-        #self.graficas_listbox.insert(tk.END, "Gráfica " + str(len(self.figures)))
-        #self.current_figure_index = len(self.figures) - 1
+        #self.add_figure_to_listbox(title)  # Añade título a la listbox
+        self.current_figure_index = len(self.figures) - 1
         print("Figura añadida. Total de figuras:", len(self.figures))
-        #self.update_canvas_figure(fig)
+        self.update_canvas_figure(fig)
     
     def on_grafica_selected(self, event):
         seleccionado = self.graficas_listbox.curselection()
@@ -327,34 +358,75 @@ class App(wx.Frame):
             index = seleccionado[0]
             self.show_figure(index)
 
-    def add_figure_to_listbox(self, title):
-        self.graficas_listbox.insert(tk.END, title)
+    #def add_figure_to_listbox(self, title):
+    #    self.graficas_listbox.insert(tk.END, title)
 
-    def show_next_figure(self):
+    def show_next_figure(self, event):
         if self.figures:
             self.current_figure_index = (self.current_figure_index + 1) % len(self.figures)
             print("Mostrando figura:", self.current_figure_index + 1, "de", len(self.figures))
             self.update_canvas_figure(self.figures[self.current_figure_index])
 
-    def show_prev_figure(self):
+    def show_prev_figure(self, event):
         if self.figures:
             self.current_figure_index = (self.current_figure_index - 1) % len(self.figures)
             print("Mostrando figura:", self.current_figure_index + 1, "de", len(self.figures))
             self.update_canvas_figure(self.figures[self.current_figure_index])
 
+    def update_canvas_figure(self, new_figure):
+        # Obtener el axes actual del canvas
+        current_axes = self.canvas.figure.gca()
 
-    def update_canvas_figure(self, figure):
-        self.canvas.figure.clf()  # Limpiar la figura actual
-        self.canvas.figure = figure  # Establecer la nueva figura
-        self.canvas.draw()  # Redibujar el canvas
+        # Limpiar el axes actual
+        current_axes.clear()
+
+        # Obtener el axes de la nueva figura y copiar su contenido
+        new_axes = new_figure.gca()
+        current_axes._sharex = new_axes._sharex
+        current_axes._sharey = new_axes._sharey
+
+        # Copiar los datos del plot
+        for line in new_axes.get_lines():
+            current_axes.plot(line.get_xdata(), line.get_ydata(), marker=line.get_marker(), color=line.get_color())
+
+        # Copiar configuraciones de etiquetas, títulos, etc.
+        current_axes.set_xlabel(new_axes.get_xlabel())
+        current_axes.set_ylabel(new_axes.get_ylabel())
+        current_axes.set_title(new_axes.get_title())
+
+        # Redibujar el canvas
+        self.canvas.draw()
 
     
     def show_figure(self, index):
         # Obtener la figura de la lista
         fig = self.figures[index]
         self.update_canvas_figure(fig)
+    
+    def ask_integer(self, message):
+        dialog = wx.TextEntryDialog(self, message, "Input")
+        if dialog.ShowModal() == wx.ID_OK:
+            try:
+                return int(dialog.GetValue())
+            except ValueError:
+                wx.MessageBox("Por favor, ingrese un número entero.", "Error", wx.OK | wx.ICON_ERROR)
+        dialog.Destroy()
+        return None  # O manejar de otra manera si se cancela o ingresa un valor no vaiido
+    
+    def ask_float(self, title, message):
+        dialog = wx.TextEntryDialog(self, message, title)
+        while True:
+            if dialog.ShowModal() == wx.ID_OK:
+                try:
+                    return float(dialog.GetValue())
+                except ValueError:
+                    wx.MessageBox("Por favor, ingrese un número válido.", "Error", wx.OK | wx.ICON_ERROR)
+            else:
+                break  # Salir del bucle si el usuario cancela
+        dialog.Destroy()
+        return None
 
-    def process_data(self):
+    def process_data(self, event):
         # Placeholder for the actual data processing
         # Would call the functions from the provided script and display output
 
@@ -362,17 +434,17 @@ class App(wx.Frame):
         
         n_archivo = self.file_path
         datos = n_archivo 
-        spec_entry = self.entry_sheet_spectra.get()
-        conc_entry = self.entry_sheet_conc.get()
+        spec_entry = self.entry_sheet_spectra.GetValue()
+        conc_entry = self.entry_sheet_conc.GetValue()
         spec = pd.read_excel(datos, spec_entry, header=0, index_col=0)
         #concentracion = pd.read_excel(datos,conc_entry, header=0)
         # Extraer datos de esas columnas
         concentracion = pd.read_excel(self.file_path, conc_entry, header=0)
 
         nombres_de_columnas = concentracion.columns
-
+        
         # Obtener los nombres de las columnas seleccionadas
-        columnas_seleccionadas = [col for col, var in self.vars_columnas.items() if var.get()]
+        columnas_seleccionadas = [col for col, checkbox in self.vars_columnas.items() if checkbox.IsChecked()]
         
         C_T = concentracion[columnas_seleccionadas].to_numpy()
         G = C_T[:,1]
@@ -408,7 +480,7 @@ class App(wx.Frame):
         self.figura(range(0, nc), np.log10(s), "o", "log(EV)", "# de autovalores", "Eigenvalues")      
         self.figura2(G, np.log10(ev_s0), np.log10(ev_s10), "k-o", "b:o", "log(EV)", "[G], M", 1, "EFA")
             
-        EV = int(self.entry_EV.get())
+        EV = int(self.entry_EV.GetValue())
 
         if EV == 0:
             EV = nc
@@ -420,14 +492,12 @@ class App(wx.Frame):
         C_T = pd.DataFrame(C_T)
         
         try:
-            modelo = pd.read_excel(self.file_path, self.entry_sheet_model.get(), header=0, index_col=0)
+            modelo = pd.read_excel(self.file_path, self.entry_sheet_model.GetValue(), header=0, index_col=0)
             print(modelo)
             
         except:
-            #m = int(input("Indique el coeficiente estequiométrico para el receptor : ", ))
-            m = simpledialog.askinteger("Input", "Indique el coeficiente estequiométrico para el receptor:")
-            #n = int(input("Indique el coeficiente estequiométrico para el huesped : ", ))
-            n = simpledialog.askinteger("Input", "Indique el coeficiente estequiométrico para el huesped:")
+            m = self.ask_integer("Indique el coeficiente estequiométrico para el receptor:")
+            n = self.ask_integer("Indique el coeficiente estequiométrico para el huesped:")
             #coef = np.array([m, n])
             def combinaciones(m, n):
                 combinaciones = []
@@ -453,12 +523,12 @@ class App(wx.Frame):
         n_K = len(modelo.T) - n_comp #- 1
         
         if n_K == 1:
-            k_e = float(simpledialog.askinteger("K", "Indique un valor estimado para la constante de asociación:"))
+            k_e = self.ask_float("K", "Indique un valor estimado para la constante de asociación:")
         else:
             k_e = [] #[1., 1.]
             for i in range(n_K):
                 ks = "K" + str(i+1) 
-                i = float(simpledialog.askinteger(ks, "Indique un valor estimado para esta constante de asociación:"))
+                i = self.ask_float(ks, "Indique un valor estimado para esta constante de asociación:")
                 print(ks + ":", i)
                 k_e.append(i)
         
