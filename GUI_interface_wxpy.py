@@ -105,14 +105,12 @@ class App(wx.Frame):
         ajustes_label = wx.StaticText(ajustes_panel, label='Ajustes al modelo')
         ajustes_sizer.Add(ajustes_label, 0, wx.ALL, 5)
 
-        self.ajustes_modelo_rb = wx.RadioButton(ajustes_panel, label='Libre', style=wx.RB_GROUP)
-        ajustes_sizer.Add(self.ajustes_modelo_rb, 0, wx.ALL, 5)
-
-        libre_rb = wx.RadioButton(ajustes_panel, label='Paso a paso')
-        ajustes_sizer.Add(libre_rb, 0, wx.ALL, 5)
-
-        no_cooperativo_rb = wx.RadioButton(ajustes_panel, label='No cooperativo')
-        ajustes_sizer.Add(no_cooperativo_rb, 0, wx.ALL, 5)
+        self.libre_rb = wx.RadioButton(ajustes_panel, label='Libre', style=wx.RB_GROUP)
+        ajustes_sizer.Add(self.libre_rb, 0, wx.ALL, 5)
+        self.paso_paso_rb = wx.RadioButton(ajustes_panel, label='Paso a paso')
+        ajustes_sizer.Add(self.paso_paso_rb, 0, wx.ALL, 5)
+        self.no_cooperativo_rb = wx.RadioButton(ajustes_panel, label='No cooperativo')
+        ajustes_sizer.Add(self.no_cooperativo_rb, 0, wx.ALL, 5)
 
         # Configura el sizer en el panel y añádelo al sizer izquierdo
         ajustes_panel.SetSizer(ajustes_sizer)
@@ -126,16 +124,16 @@ class App(wx.Frame):
         optimizador_sizer.Add(optimizador_label, 0, wx.ALL, 5)
 
         # Añadir los Radio Buttons para los optimizadores
-        self.optimizador_rb = wx.RadioButton(optimizador_panel, label='powell', style=wx.RB_GROUP)
-        optimizador_sizer.Add(self.optimizador_rb, 0, wx.ALL, 5)
-        self.optimizador_rb = wx.RadioButton(optimizador_panel, label='nelder-mead')
-        optimizador_sizer.Add(self.optimizador_rb, 0, wx.ALL, 5)
-        self.optimizador_rb = wx.RadioButton(optimizador_panel, label='trust-constr')
-        optimizador_sizer.Add(self.optimizador_rb, 0, wx.ALL, 5)
-        self.optimizador_rb = wx.RadioButton(optimizador_panel, label='Differential Evolution')
-        optimizador_sizer.Add(self.optimizador_rb, 0, wx.ALL, 5)
-        self.optimizador_rb = wx.RadioButton(optimizador_panel, label='Basinhopping')
-        optimizador_sizer.Add(self.optimizador_rb, 0, wx.ALL, 5)
+        self.powell_rb = wx.RadioButton(optimizador_panel, label='powell', style=wx.RB_GROUP)
+        optimizador_sizer.Add(self.powell_rb, 0, wx.ALL, 5)
+        self.nelder_mead_rb = wx.RadioButton(optimizador_panel, label='nelder-mead')
+        optimizador_sizer.Add(self.nelder_mead_rb, 0, wx.ALL, 5)
+        self.trust_constr_rb = wx.RadioButton(optimizador_panel, label='trust-constr')
+        optimizador_sizer.Add(self.trust_constr_rb, 0, wx.ALL, 5)
+        self.differential_evolution_rb = wx.RadioButton(optimizador_panel, label='Differential Evolution')
+        optimizador_sizer.Add(self.differential_evolution_rb, 0, wx.ALL, 5)
+        self.basinhopping_rb = wx.RadioButton(optimizador_panel, label='Basinhopping')
+        optimizador_sizer.Add(self.basinhopping_rb, 0, wx.ALL, 5)
 
         # Configurar sizer y añadir al panel izquierdo
         optimizador_panel.SetSizer(optimizador_sizer)
@@ -209,6 +207,33 @@ class App(wx.Frame):
 
         self.panel.SetSizer(self.main_sizer)
         self.main_sizer.Layout()
+
+        ####################################################################################################################
+
+    def get_selected_model_mode(self):
+        if self.libre_rb.GetValue():
+            return "Paso a Paso"
+        elif self.paso_paso_rb.GetValue():
+            return "Libre"
+        elif self.no_cooperativo_rb.GetValue():
+            return "No cooperativo"
+        else:
+            return None  # O un valor predeterminado si es necesario
+        
+    def get_selected_optimizer(self):
+        if self.powell_rb.GetValue():
+            return "powell"
+        elif self.nelder_mead_rb.GetValue():
+            return "nelder-mead"
+        elif self.trust_constr_rb.GetValue():
+            return "trust-constr"
+        elif self.differential_evolution_rb.GetValue():
+            return "differentialevolution"
+        elif self.basinhopping_rb.GetValue():
+            return "basinhopping"
+        else:
+            return None  # O un valor predeterminado si es necesario
+
 
     def create_sheet_section(self, label_text, default_value):
             # Crear un panel para esta sección
@@ -334,7 +359,7 @@ class App(wx.Frame):
         ax.tick_params(axis='both', which='major', labelsize='large')
         self.figures.append(fig)  # Almacenar tanto fig como ax
         #self.add_figure_to_listbox(title)  # Añade título a la listbox
-        print("Figura añadida. Total de figuras:", len(self.figures))
+        #print("Figura añadida. Total de figuras:", len(self.figures))
         self.current_figure_index = len(self.figures) - 1
         self.update_canvas_figure(fig)
 
@@ -349,7 +374,7 @@ class App(wx.Frame):
         self.figures.append(fig)  # Almacenar tanto fig como ax
         #self.add_figure_to_listbox(title)  # Añade título a la listbox
         self.current_figure_index = len(self.figures) - 1
-        print("Figura añadida. Total de figuras:", len(self.figures))
+        #print("Figura añadida. Total de figuras:", len(self.figures))
         self.update_canvas_figure(fig)
     
     def on_grafica_selected(self, event):
@@ -364,38 +389,40 @@ class App(wx.Frame):
     def show_next_figure(self, event):
         if self.figures:
             self.current_figure_index = (self.current_figure_index + 1) % len(self.figures)
-            print("Mostrando figura:", self.current_figure_index + 1, "de", len(self.figures))
+            #print("Mostrando figura:", self.current_figure_index + 1, "de", len(self.figures))
             self.update_canvas_figure(self.figures[self.current_figure_index])
 
     def show_prev_figure(self, event):
         if self.figures:
             self.current_figure_index = (self.current_figure_index - 1) % len(self.figures)
-            print("Mostrando figura:", self.current_figure_index + 1, "de", len(self.figures))
+            #print("Mostrando figura:", self.current_figure_index + 1, "de", len(self.figures))
             self.update_canvas_figure(self.figures[self.current_figure_index])
 
     def update_canvas_figure(self, new_figure):
-        # Obtener el axes actual del canvas
         current_axes = self.canvas.figure.gca()
-
-        # Limpiar el axes actual
         current_axes.clear()
 
-        # Obtener el axes de la nueva figura y copiar su contenido
         new_axes = new_figure.gca()
         current_axes._sharex = new_axes._sharex
         current_axes._sharey = new_axes._sharey
 
-        # Copiar los datos del plot
         for line in new_axes.get_lines():
-            current_axes.plot(line.get_xdata(), line.get_ydata(), marker=line.get_marker(), color=line.get_color())
+            # Copiar datos del plot
+            new_line, = current_axes.plot(line.get_xdata(), line.get_ydata(), marker=line.get_marker(), color=line.get_color())
 
-        # Copiar configuraciones de etiquetas, títulos, etc.
+            # Copiar estilos adicionales si están disponibles
+            if line.get_linestyle() is not None:
+                new_line.set_linestyle(line.get_linestyle())
+            if line.get_alpha() is not None:
+                new_line.set_alpha(line.get_alpha())
+            # Agrega aquí más propiedades si es necesario
+
         current_axes.set_xlabel(new_axes.get_xlabel())
         current_axes.set_ylabel(new_axes.get_ylabel())
         current_axes.set_title(new_axes.get_title())
 
-        # Redibujar el canvas
         self.canvas.draw()
+
 
     
     def show_figure(self, index):
@@ -641,7 +668,8 @@ class App(wx.Frame):
         # Registrar el tiempo de inicio
         inicio = timeit.default_timer()
         
-        optimizer = "powell" 
+        optimizer = self.get_selected_optimizer()
+        print(optimizer)
         r_0 = optimize.minimize(f_m, k, method=optimizer)
         
         # Applying the callback to differential_evolution
