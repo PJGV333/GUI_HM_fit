@@ -32,7 +32,7 @@ class TextRedirector:
 
 class App(wx.Frame):
     def __init__(self):
-        wx.Frame.__init__(self, None, title="Data Analysis Tool", size=(800, 600))
+        wx.Frame.__init__(self, None, title="HM Fit", size=(800, 600))
         self.panel = wx.Panel(self)
 
         self.vars_columnas = {} #lista para almacenar las columnas de la hoja de concentraciones
@@ -47,7 +47,15 @@ class App(wx.Frame):
         # Añadir sizers al panel principal
         self.main_sizer.Add(self.left_sizer, 1, wx.EXPAND | wx.ALL, 5)
         self.main_sizer.Add(self.right_sizer, 2, wx.EXPAND | wx.ALL, 5)
+        
+        top_buttons_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.spec_rb = wx.RadioButton(self.panel, label='Spectroscopy', style=wx.RB_GROUP)
+        top_buttons_sizer.Add(self.spec_rb, 0, wx.ALL, 5)
+        self.NMR_rb = wx.RadioButton(self.panel, label='NMR')
+        top_buttons_sizer.Add(self.NMR_rb, 0, wx.ALL, 5)
+        self.left_sizer.Add(top_buttons_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
+       
         # Crear controles (botones, etiquetas, etc.) y añadirlos a left_sizer o right_sizer
         # Ejemplo:
         self.btn_select_file = wx.Button(self.panel, label="Select Excel File")
@@ -77,10 +85,6 @@ class App(wx.Frame):
         self.columns_names_sizer.Add(self.lbl_columns, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
         self.columns_names_panel.SetSizer(self.columns_names_sizer)
         self.left_sizer.Add(self.columns_names_panel, 0, wx.EXPAND | wx.ALL, 5)
-
-        # Texto de salida
-        #
-        #self.left_sizer.Add(self.output_text, 1, wx.EXPAND | wx.ALL, 5)
 
         # Autovalores
         self.sheet_EV_panel, self.entry_EV = self.create_sheet_section("Eigenvalues:", "0")
