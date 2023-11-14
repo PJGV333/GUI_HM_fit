@@ -74,11 +74,7 @@ class App(wx.Frame):
         self.sheet_conc_panel, self.entry_sheet_conc = self.create_sheet_section("Concentration Sheet Name:", "conc")
         self.left_sizer.Add(self.sheet_conc_panel, 0, wx.EXPAND | wx.ALL, 5)
 
-        # modelo
-        self.sheet_model_panel, self.entry_sheet_model = self.create_sheet_section("Model Sheet Name:", "modelo")
-        self.left_sizer.Add(self.sheet_model_panel, 0, wx.EXPAND | wx.ALL, 5)
-
-         # Sección para Checkboxes (inicialmente vacía)
+        # Sección para Checkboxes (inicialmente vacía)
         self.columns_names_panel = wx.Panel(self.panel)
         self.columns_names_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.lbl_columns = wx.StaticText(self.columns_names_panel, label="Column names: ")
@@ -86,9 +82,17 @@ class App(wx.Frame):
         self.columns_names_panel.SetSizer(self.columns_names_sizer)
         self.left_sizer.Add(self.columns_names_panel, 0, wx.EXPAND | wx.ALL, 5)
 
-        # Autovalores
-        self.sheet_EV_panel, self.entry_EV = self.create_sheet_section("Eigenvalues:", "0")
-        self.left_sizer.Add(self.sheet_EV_panel, 0, wx.EXPAND | wx.ALL, 5)
+        # modelo
+        self.sheet_model_panel, self.entry_sheet_model = self.create_sheet_section("Model Sheet Name:", "modelo")
+        self.left_sizer.Add(self.sheet_model_panel, 0, wx.EXPAND | wx.ALL, 5)
+
+        # Sección para Checkboxes (inicialmente vacía)
+        self.sp_select_panel = wx.Panel(self.panel)
+        self.sp_select_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.sp_columns = wx.StaticText(self.sp_select_panel, label="Select absorbing species: ")
+        self.sp_select_sizer.Add(self.sp_columns, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+        self.sp_select_panel.SetSizer(self.sp_select_sizer)
+        self.left_sizer.Add(self.sp_select_panel, 0, wx.EXPAND | wx.ALL, 5)
         
         # Panel y sizer para el modelo
         self.model_panel = wx.Panel(self.panel)
@@ -105,6 +109,13 @@ class App(wx.Frame):
         ajustes_panel = wx.Panel(self.panel)
         ajustes_sizer = wx.BoxSizer(wx.VERTICAL)
 
+        # Autovalores
+        self.sheet_EV_panel, self.entry_EV = self.create_sheet_section("Eigenvalues:", "0")
+        self.left_sizer.Add(self.sheet_EV_panel, 0, wx.EXPAND | wx.ALL, 5)
+
+        # Crear un sizer horizontal para contener ambos paneles
+        ajustes_optimizadores_sizer = wx.BoxSizer(wx.HORIZONTAL)
+
         "Ajustes de modelo"
         ajustes_label = wx.StaticText(ajustes_panel, label='Ajustes al modelo')
         ajustes_sizer.Add(ajustes_label, 0, wx.ALL, 5)
@@ -118,7 +129,8 @@ class App(wx.Frame):
 
         # Configura el sizer en el panel y añádelo al sizer izquierdo
         ajustes_panel.SetSizer(ajustes_sizer)
-        self.left_sizer.Add(ajustes_panel, 0, wx.EXPAND | wx.ALL, 5)
+        #self.left_sizer.Add(ajustes_panel, 0, wx.EXPAND | wx.ALL, 5)
+        ajustes_optimizadores_sizer.Add(ajustes_panel, 1, wx.EXPAND | wx.ALL, 5)
 
         #Ajustes de optimizador
         optimizador_panel = wx.Panel(self.panel)
@@ -141,7 +153,13 @@ class App(wx.Frame):
 
         # Configurar sizer y añadir al panel izquierdo
         optimizador_panel.SetSizer(optimizador_sizer)
-        self.left_sizer.Add(optimizador_panel, 0, wx.EXPAND | wx.ALL, 5)
+        #self.left_sizer.Add(optimizador_panel, 0, wx.EXPAND | wx.ALL, 5)
+
+        # Añadir el panel de optimizador al sizer horizontal
+        ajustes_optimizadores_sizer.Add(optimizador_panel, 1, wx.EXPAND | wx.ALL, 5)
+
+        # Finalmente, añadir el sizer horizontal al left_sizer
+        self.left_sizer.Add(ajustes_optimizadores_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
         ##############################################################################################################
         """ Panel derecho del gui """
