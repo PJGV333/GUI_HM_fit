@@ -35,6 +35,8 @@ class App(wx.Frame):
         wx.Frame.__init__(self, None, title="HM Fit", size=(800, 600))
         self.panel = wx.Panel(self)
 
+        #self.df = None  # Añade esto para inicializar self.df
+
         self.vars_columnas = {} #lista para almacenar las columnas de la hoja de concentraciones
         self.figures = []  # Lista para almacenar figuras 
         self.current_figure_index = -1  # Índice inicial para navegación de figuras
@@ -89,7 +91,7 @@ class App(wx.Frame):
         # Sección para Checkboxes (inicialmente vacía)
         self.sp_select_panel = wx.Panel(self.panel)
         self.sp_select_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.sp_columns = wx.StaticText(self.sp_select_panel, label="Select absorbing species: ")
+        self.sp_columns = wx.StaticText(self.sp_select_panel, label="Select non-absorbent species: ")
         self.sp_select_sizer.Add(self.sp_columns, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
         self.sp_select_panel.SetSizer(self.sp_select_sizer)
         self.left_sizer.Add(self.sp_select_panel, 0, wx.EXPAND | wx.ALL, 5)
@@ -117,14 +119,14 @@ class App(wx.Frame):
         ajustes_optimizadores_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         "Ajustes de modelo"
-        ajustes_label = wx.StaticText(ajustes_panel, label='Ajustes al modelo')
+        ajustes_label = wx.StaticText(ajustes_panel, label='Model settings')
         ajustes_sizer.Add(ajustes_label, 0, wx.ALL, 5)
 
-        self.libre_rb = wx.RadioButton(ajustes_panel, label='Libre', style=wx.RB_GROUP)
+        self.libre_rb = wx.RadioButton(ajustes_panel, label='Free', style=wx.RB_GROUP)
         ajustes_sizer.Add(self.libre_rb, 0, wx.ALL, 5)
-        self.paso_paso_rb = wx.RadioButton(ajustes_panel, label='Paso a paso')
+        self.paso_paso_rb = wx.RadioButton(ajustes_panel, label='Step by step')
         ajustes_sizer.Add(self.paso_paso_rb, 0, wx.ALL, 5)
-        self.no_cooperativo_rb = wx.RadioButton(ajustes_panel, label='No cooperativo')
+        self.no_cooperativo_rb = wx.RadioButton(ajustes_panel, label='Non-cooperative')
         ajustes_sizer.Add(self.no_cooperativo_rb, 0, wx.ALL, 5)
 
         # Configura el sizer en el panel y añádelo al sizer izquierdo
@@ -136,7 +138,7 @@ class App(wx.Frame):
         optimizador_panel = wx.Panel(self.panel)
         optimizador_sizer = wx.BoxSizer(wx.VERTICAL)
 
-        optimizador_label = wx.StaticText(optimizador_panel, label='Seleccione optimizador')
+        optimizador_label = wx.StaticText(optimizador_panel, label='Optimizer')
         optimizador_sizer.Add(optimizador_label, 0, wx.ALL, 5)
 
         # Añadir los Radio Buttons para los optimizadores
@@ -203,7 +205,6 @@ class App(wx.Frame):
         self.right_sizer.Add(process_data_sizer, 0, wx.EXPAND)
 
         # Consola para ver información
-        #self.output_text = wx.TextCtrl(self.panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
         self.console = wx.TextCtrl(self.panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
         self.right_sizer.Add(self.console, 1, wx.EXPAND | wx.ALL, 5)
 
@@ -289,13 +290,10 @@ class App(wx.Frame):
 
             # Leer el DataFrame desde el archivo seleccionado
             df = pd.read_excel(file_path, sheet_name=self.entry_sheet_conc.GetValue())
-
-            # Limpiar checkboxes anteriores si existen
-            #for child in self.columns_names_panel.GetChildren():
-            #    child.Destroy()
-
+            
             # Crear casillas de verificación para cada columna
             self.create_checkboxes(df.columns)
+            self.load_model_from_sheet(self.entry_sheet_model.GetValue())
             
     def configure_canvas(self, event):
         # Configurar el área de desplazamiento del Canvas
@@ -347,21 +345,6 @@ class App(wx.Frame):
             print(f"Deselected: {label}")
             # Eliminar de la lista de seleccionados, o realizar otra acción
 
-    def load_model(self, df_model):
-        # Añadir filas y checkboxes para el modelo
-        for i, row in df_model.iterrows():
-            # Añadir fila al ListCtrl
-            index = self.model_list_ctrl.InsertItem(self.model_list_ctrl.GetItemCount(), str(i))
-            for j, value in enumerate(row):
-                self.model_list_ctrl.SetItem(index, j, str(value))
-            
-            # Añadir un checkbox correspondiente
-            checkbox = wx.CheckBox(self.model_panel, label=str(i))
-            self.model_sizer.Add(checkbox, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
-            checkbox.Bind(wx.EVT_CHECKBOX, self.on_model_checkbox_select)
-
-        self.model_panel.Layout()
-
     def on_model_checkbox_select(self, event):
         # Este método se llama cuando se marca o desmarca un checkbox
         checkbox = event.GetEventObject()
@@ -405,9 +388,6 @@ class App(wx.Frame):
             index = seleccionado[0]
             self.show_figure(index)
 
-    #def add_figure_to_listbox(self, title):
-    #    self.graficas_listbox.insert(tk.END, title)
-
     def show_next_figure(self, event):
         if self.figures:
             self.current_figure_index = (self.current_figure_index + 1) % len(self.figures)
@@ -445,13 +425,12 @@ class App(wx.Frame):
 
         self.canvas.draw()
 
-
-    
     def show_figure(self, index):
         # Obtener la figura de la lista
         fig = self.figures[index]
         self.update_canvas_figure(fig)
     
+    #Función para añadir los valores deseados para crear el modelo. 
     def ask_integer(self, message):
         dialog = wx.TextEntryDialog(self, message, "Input")
         if dialog.ShowModal() == wx.ID_OK:
@@ -462,6 +441,7 @@ class App(wx.Frame):
         dialog.Destroy()
         return None  # O manejar de otra manera si se cancela o ingresa un valor no vaiido
     
+    #Función para añadir las constantes de asociación como floats.
     def ask_float(self, title, message):
         dialog = wx.TextEntryDialog(self, message, title)
         while True:
@@ -474,7 +454,66 @@ class App(wx.Frame):
                 break  # Salir del bucle si el usuario cancela
         dialog.Destroy()
         return None
+        
+    #Función para mostrar el modelo en el panel destinado para ello. 
+    def load_model_from_sheet(self, sheet_name):
+        df = pd.read_excel(self.file_path, sheet_name=sheet_name)
+        df_transposed = df.T  # Transponer el DataFrame
 
+        # Asegurarse de que el ListCtrl está limpio antes de añadir nuevos datos
+        self.model_list_ctrl.DeleteAllItems()
+        self.model_list_ctrl.ClearAll()
+
+        # Crear el wx.ListCtrl para mostrar el modelo sin encabezados
+        if hasattr(self, 'model_list_ctrl'):  # Verifica si el control ya existe
+            self.model_list_ctrl.Destroy()  # Si es así, destrúyelo
+
+        # Crea el ListCtrl con el estilo de no encabezado
+        self.model_list_ctrl = wx.ListCtrl(self.model_panel, style=wx.LC_REPORT | wx.LC_NO_HEADER | wx.BORDER_SUNKEN)
+        self.model_sizer.Add(self.model_list_ctrl, 1, wx.ALL | wx.EXPAND, 5)
+
+         # Vincula los manejadores de eventos después de crear el ListCtrl
+        self.model_list_ctrl.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_selection_changed)
+        self.model_list_ctrl.Bind(wx.EVT_LIST_ITEM_DESELECTED, self.on_selection_changed)
+
+        # Agregar columnas al ListCtrl
+        for col_num in range(len(df_transposed.columns)):
+            self.model_list_ctrl.InsertColumn(col_num, '')
+
+       # Agregar filas al ListCtrl
+        for i, row in df_transposed.iterrows():
+            index = self.model_list_ctrl.InsertItem(self.model_list_ctrl.GetItemCount(), '')
+            for j, value in enumerate(row):
+                self.model_list_ctrl.SetItem(index, j, str(value))
+            self.model_list_ctrl.SetColumnWidth(j, wx.LIST_AUTOSIZE)  # Ajusta el ancho de la columna
+
+        # Actualizar el layout de los sizers
+        self.model_panel.Layout()
+        self.left_sizer.Layout()
+
+
+    # Funciones para seleccionar filas del modelo y transponer sus posiciones.
+    def get_selected_rows(self):
+        selection = []
+        index = -1
+        while True:
+            index = self.model_list_ctrl.GetNextSelected(index)
+            if index == -1:
+                break
+            selection.append(index)
+        return selection
+    
+    def on_selection_changed(self, event):
+        selected_rows = self.get_selected_rows()
+        # Suponiendo que df es tu DataFrame original antes de la transposición
+        # Las filas seleccionadas en el ListCtrl transpuesto corresponden a las columnas en df
+        df2 = pd.read_excel(self.file_path, sheet_name=self.entry_sheet_model.GetValue())
+        #selected_columns = df2.columns[selected_rows]
+        # Convertir nombres de columnas seleccionados a índices numéricos
+        selected_indices = [df2.columns.get_loc(name) for name in df2.columns[selected_rows]]
+        print("Columnas seleccionadas:", selected_indices)
+        return selected_indices
+        
     def process_data(self, event):
         # Placeholder for the actual data processing
         # Would call the functions from the provided script and display output
@@ -642,7 +681,8 @@ class App(wx.Frame):
                 c_guess, c_spec = calcular_concentraciones(ctot[i], c_guess)
                 c_calculada[i] = c_spec
             
-            C = np.delete(c_calculada, [1], axis = 1)
+            nas = self.on_selection_changed(event)
+            C = np.delete(c_calculada, nas, axis = 1)
             return C, c_calculada
         
         
