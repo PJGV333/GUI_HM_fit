@@ -554,28 +554,26 @@ class App(wx.Frame):
         print("Columnas seleccionadas:", selected_indices)
         return selected_indices
     
-    def on_selection_changed2(self, event, df2):
-        # Mostrar el diálogo de mensaje para seleccionar filas en la sección de modelo
-        wx.MessageBox("Por favor, seleccione algunas filas en la sección de modelo antes de continuar.", 
-                    "Selección de Modelo", wx.OK | wx.ICON_INFORMATION)
-        
-        selected_rows = self.get_selected_rows()        
-        # Restar 1 de cada índice seleccionado para compensar el encabezado
-        adjusted_selected_rows = [row - 1 for row in selected_rows]
+    def ask_indices(self, message):
+        dialog = wx.TextEntryDialog(self, message, "Input")
+        if dialog.ShowModal() == wx.ID_OK:
+            input_text = dialog.GetValue()
+            dialog.Destroy()
+            try:
+                # Convertir el texto ingresado en una lista de enteros
+                if input_text == "":
+                    return []
+                else:
+                    indices = [int(x.strip()) for x in input_text.split(',')]
+                    return indices
+            except ValueError:
+                wx.MessageBox("Por favor, ingrese una lista válida de índices (e.g., '1, 2, 3').", "Error", wx.OK | wx.ICON_ERROR)
+                return self.reset_calculation()  # O manejar de otra manera
+        else:
+            dialog.Destroy()
+            return self.reset_calculation()  # Manejo cuando el usuario cancela
 
-        # Convertir nombres de columnas seleccionados a índices numéricos
-        selected_indices = [df2.columns.get_loc(df2.columns[row]) for row in adjusted_selected_rows]
-        print("Columnas seleccionadas:", selected_indices)
-        return selected_indices
-    
-    def on_user_finished_selection(self, event):
-        # El usuario ha terminado de hacer su selección
-        # Aquí puedes manejar lo que sucede después de la selección
-        selected_indices = self.on_selection_changed2(event, self.df)
-        if not selected_indices:
-            wx.MessageBox("No se han seleccionado filas. Por favor, realice una selección o continúe.", 
-                        "Selección de Modelo", wx.OK | wx.ICON_INFORMATION)
-    
+
     def reset_calculation(self):
         # Reiniciar la ruta del archivo y la etiqueta correspondiente
         #self.file_path = None
@@ -695,8 +693,7 @@ class App(wx.Frame):
             
             modelo = combinaciones(m, n)
             self.load_generated_model(modelo)
-            nas = self.on_selection_changed2(event, pd.DataFrame(modelo))
-            self.on_user_finished_selection(event)
+            nas = self.ask_indices("Índice de especies no absorbentes (e.g., '1, 4' o dejar en blanco para []):")
             print(modelo)
         
         modelo = np.array(modelo)
