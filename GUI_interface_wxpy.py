@@ -220,11 +220,15 @@ class App(wx.Frame):
         save_results_sizer.Add(self.btn_save_results, 0, wx.ALL, 5)
         self.btn_save_results.Bind(wx.EVT_BUTTON, self.save_results)
 
+        # Botón "Reset Calculation"
+        reset_button = wx.Button(self.panel, label="Reset Calculation")
+        reset_button.Bind(wx.EVT_BUTTON, lambda event: self.reset_calculation())
+        save_results_sizer.Add(reset_button, 0, wx.ALL, 5)
+
         save_results_sizer.AddStretchSpacer()
 
         # Añadir el sizer al sizer principal del lado derecho
         self.right_sizer.Add(save_results_sizer, 0, wx.EXPAND)
-
 
         # Método de controlador de eventos para el botón irá aquí     
 
@@ -504,15 +508,38 @@ class App(wx.Frame):
         return selection
     
     def on_selection_changed(self, event):
-        selected_rows = self.get_selected_rows()
-        # Suponiendo que df es tu DataFrame original antes de la transposición
-        # Las filas seleccionadas en el ListCtrl transpuesto corresponden a las columnas en df
+        selected_rows = self.get_selected_rows()        
         df2 = pd.read_excel(self.file_path, sheet_name=self.entry_sheet_model.GetValue())
-        #selected_columns = df2.columns[selected_rows]
+
+        # Restar 1 de cada índice seleccionado para compensar el encabezado
+        adjusted_selected_rows = [row - 1 for row in selected_rows]
+
         # Convertir nombres de columnas seleccionados a índices numéricos
-        selected_indices = [df2.columns.get_loc(name) for name in df2.columns[selected_rows]]
+        selected_indices = [df2.columns.get_loc(df2.columns[row]) for row in adjusted_selected_rows]
         print("Columnas seleccionadas:", selected_indices)
         return selected_indices
+    
+    def reset_calculation(self):
+        # Reiniciar la ruta del archivo y la etiqueta correspondiente
+        self.file_path = None
+        self.lbl_file_path.SetLabel("No file selected")
+
+        # Limpiar y reiniciar el DataFrame
+        self.df = None
+
+        # Limpiar el ListCtrl (si lo estás utilizando)
+        if hasattr(self, 'model_list_ctrl'):
+            self.model_list_ctrl.DeleteAllItems()
+            self.model_list_ctrl.ClearAll()
+
+        # Limpiar cualquier otro control que estés utilizando para mostrar resultados
+        # Por ejemplo, si tienes un control para mostrar gráficos, texto de salida, etc.
+
+        # Aquí puedes agregar cualquier otro reinicio necesario, como limpiar campos de texto,
+        # restablecer variables de estado, etc.
+
+        # Finalmente, actualiza el layout si es necesario
+        self.Layout()
         
     def process_data(self, event):
         # Placeholder for the actual data processing
