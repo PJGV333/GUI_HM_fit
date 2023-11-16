@@ -297,7 +297,12 @@ class App(wx.Frame):
             
             # Crear casillas de verificación para cada columna
             self.create_checkboxes(df.columns)
-            self.load_model_from_sheet(self.entry_sheet_model.GetValue())
+
+            try:
+                self.load_model_from_sheet(self.entry_sheet_model.GetValue())
+            except Exception as e:
+                print("The model sheet was not found or does not exist.")
+                pass
             
     def configure_canvas(self, event):
         # Configurar el área de desplazamiento del Canvas
@@ -443,7 +448,7 @@ class App(wx.Frame):
             except ValueError:
                 wx.MessageBox("Por favor, ingrese un número entero.", "Error", wx.OK | wx.ICON_ERROR)
         dialog.Destroy()
-        return None  # O manejar de otra manera si se cancela o ingresa un valor no vaiido
+        return self.reset_calculation() #None  # O manejar de otra manera si se cancela o ingresa un valor no vaiido
     
     #Función para añadir las constantes de asociación como floats.
     def ask_float(self, title, message):
@@ -457,7 +462,7 @@ class App(wx.Frame):
             else:
                 break  # Salir del bucle si el usuario cancela
         dialog.Destroy()
-        return None
+        return self.reset_calculation()
         
     #Función para mostrar el modelo en el panel destinado para ello. 
     def load_model_from_sheet(self, sheet_name):
@@ -494,7 +499,37 @@ class App(wx.Frame):
         # Actualizar el layout de los sizers
         self.model_panel.Layout()
         self.left_sizer.Layout()
+    
+    def load_generated_model(self, modelo):
+        # Asegurarse de que el ListCtrl está limpio antes de añadir nuevos datos
+        self.model_list_ctrl.DeleteAllItems()
+        self.model_list_ctrl.ClearAll()
 
+        # Crear el wx.ListCtrl para mostrar el modelo
+        if not hasattr(self, 'model_list_ctrl'):
+            self.model_list_ctrl = wx.ListCtrl(self.model_panel, style=wx.LC_REPORT | wx.LC_NO_HEADER | wx.BORDER_SUNKEN)
+            self.model_sizer.Add(self.model_list_ctrl, 1, wx.ALL | wx.EXPAND, 5)
+
+            # Vincula los manejadores de eventos después de crear el ListCtrl
+            self.model_list_ctrl.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_selection_changed2)
+            self.model_list_ctrl.Bind(wx.EVT_LIST_ITEM_DESELECTED, self.on_selection_changed2)
+
+        # Agregar columnas al ListCtrl con nombres de las columnas seleccionadas
+        selected_columns = [col for col in self.vars_columnas if self.vars_columnas[col].GetValue()]
+        for col_name in selected_columns:
+            self.model_list_ctrl.InsertColumn(selected_columns.index(col_name), col_name)
+
+        # Agregar filas al ListCtrl
+        num_rows = modelo.shape[1]
+        for row_idx in range(num_rows):
+            index = self.model_list_ctrl.InsertItem(self.model_list_ctrl.GetItemCount(), '')
+            for col_idx, col_name in enumerate(selected_columns):
+                self.model_list_ctrl.SetItem(index, col_idx, str(modelo[col_idx, row_idx]))
+            self.model_list_ctrl.SetColumnWidth(col_idx, wx.LIST_AUTOSIZE)
+
+        # Actualizar el layout de los sizers
+        self.model_panel.Layout()
+        self.left_sizer.Layout()
 
     # Funciones para seleccionar filas del modelo y transponer sus posiciones.
     def get_selected_rows(self):
@@ -519,10 +554,32 @@ class App(wx.Frame):
         print("Columnas seleccionadas:", selected_indices)
         return selected_indices
     
+    def on_selection_changed2(self, event, df2):
+        # Mostrar el diálogo de mensaje para seleccionar filas en la sección de modelo
+        wx.MessageBox("Por favor, seleccione algunas filas en la sección de modelo antes de continuar.", 
+                    "Selección de Modelo", wx.OK | wx.ICON_INFORMATION)
+        
+        selected_rows = self.get_selected_rows()        
+        # Restar 1 de cada índice seleccionado para compensar el encabezado
+        adjusted_selected_rows = [row - 1 for row in selected_rows]
+
+        # Convertir nombres de columnas seleccionados a índices numéricos
+        selected_indices = [df2.columns.get_loc(df2.columns[row]) for row in adjusted_selected_rows]
+        print("Columnas seleccionadas:", selected_indices)
+        return selected_indices
+    
+    def on_user_finished_selection(self, event):
+        # El usuario ha terminado de hacer su selección
+        # Aquí puedes manejar lo que sucede después de la selección
+        selected_indices = self.on_selection_changed2(event, self.df)
+        if not selected_indices:
+            wx.MessageBox("No se han seleccionado filas. Por favor, realice una selección o continúe.", 
+                        "Selección de Modelo", wx.OK | wx.ICON_INFORMATION)
+    
     def reset_calculation(self):
         # Reiniciar la ruta del archivo y la etiqueta correspondiente
-        self.file_path = None
-        self.lbl_file_path.SetLabel("No file selected")
+        #self.file_path = None
+        #self.lbl_file_path.SetLabel("No file selected")
 
         # Limpiar y reiniciar el DataFrame
         self.df = None
@@ -532,8 +589,13 @@ class App(wx.Frame):
             self.model_list_ctrl.DeleteAllItems()
             self.model_list_ctrl.ClearAll()
 
-        # Limpiar cualquier otro control que estés utilizando para mostrar resultados
-        # Por ejemplo, si tienes un control para mostrar gráficos, texto de salida, etc.
+        # Limpiar la lista de figuras
+        if hasattr(self, 'figures'):
+            self.figures.clear()
+            # Si estás utilizando un canvas para mostrar las figuras, también debes limpiarlo
+            if hasattr(self, 'canvas'):
+                self.canvas.figure.clear()
+                self.canvas.draw()
 
         # Aquí puedes agregar cualquier otro reinicio necesario, como limpiar campos de texto,
         # restablecer variables de estado, etc.
@@ -609,6 +671,7 @@ class App(wx.Frame):
         try:
             modelo = pd.read_excel(self.file_path, self.entry_sheet_model.GetValue(), header=0, index_col=0)
             print(modelo)
+            nas = self.on_selection_changed(event)
             
         except:
             m = self.ask_integer("Indique el coeficiente estequiométrico para el receptor:")
@@ -631,9 +694,13 @@ class App(wx.Frame):
                 return np.array(combinaciones).T
             
             modelo = combinaciones(m, n)
+            self.load_generated_model(modelo)
+            nas = self.on_selection_changed2(event, pd.DataFrame(modelo))
+            self.on_user_finished_selection(event)
             print(modelo)
         
         modelo = np.array(modelo)
+
 
         n_K = len(modelo.T) - n_comp #- 1
         
@@ -651,7 +718,7 @@ class App(wx.Frame):
         k_ini = k
         k = np.ravel(k)
                 
-        def concentraciones(K, args = (C_T, modelo)):
+        def concentraciones(K, args = (C_T, modelo, nas)):
         
             """
             Calcula las concentraciones para una serie de reacciones químicas utilizando el método de Levenberg-Marquardt.
@@ -708,7 +775,6 @@ class App(wx.Frame):
                 c_guess, c_spec = calcular_concentraciones(ctot[i], c_guess)
                 c_calculada[i] = c_spec
             
-            nas = self.on_selection_changed(event)
             C = np.delete(c_calculada, nas, axis = 1)
             return C, c_calculada
         
