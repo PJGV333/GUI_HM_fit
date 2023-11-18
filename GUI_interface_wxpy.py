@@ -7,7 +7,6 @@ import matplotlib
 matplotlib.use('WXAgg')
 from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
 from matplotlib.figure import Figure
-
 from scipy import optimize
 import matplotlib.pyplot as plt
 from scipy.optimize import differential_evolution, basinhopping
@@ -30,12 +29,13 @@ class TextRedirector:
     def flush(self):
         pass
 
+class CancelledByUserException(Exception):
+    pass
+
 class App(wx.Frame):
     def __init__(self):
         wx.Frame.__init__(self, None, title="HM Fit", size=(800, 600))
         self.panel = wx.Panel(self)
-
-        #self.df = None  # Añade esto para inicializar self.df
 
         self.vars_columnas = {} #lista para almacenar las columnas de la hoja de concentraciones
         self.figures = []  # Lista para almacenar figuras 
@@ -108,16 +108,24 @@ class App(wx.Frame):
         self.model_panel.SetSizer(self.model_sizer)
         self.left_sizer.Add(self.model_panel, 1, wx.EXPAND | wx.ALL, 5)
 
+        # Autovalores
+        self.sheet_EV_panel, self.entry_EV = self.create_sheet_section("Eigenvalues:", "0")
+        #self.left_sizer.Add(self.sheet_EV_panel, 0, wx.EXPAND | wx.ALL, 5)
+
+        # Crear el Checkbox para EFA y añadirlo al sizer de la sección "Eigenvalues"
+        self.EFA_cb = wx.CheckBox(self.sheet_EV_panel, label='EFA')
+        self.EFA_cb.SetValue(True)  # Marcar el checkbox por defecto
+        self.sheet_EV_panel.GetSizer().Insert(0, self.EFA_cb, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+
+        # Añadir la sección "Eigenvalues" con el Checkbox al left_sizer
+        self.left_sizer.Add(self.sheet_EV_panel, 0, wx.EXPAND | wx.ALL, 5)
+
         ajustes_panel = wx.Panel(self.panel)
         ajustes_sizer = wx.BoxSizer(wx.VERTICAL)
 
-        # Autovalores
-        self.sheet_EV_panel, self.entry_EV = self.create_sheet_section("Eigenvalues:", "0")
-        self.left_sizer.Add(self.sheet_EV_panel, 0, wx.EXPAND | wx.ALL, 5)
-
         # Crear un sizer horizontal para contener ambos paneles
         ajustes_optimizadores_sizer = wx.BoxSizer(wx.HORIZONTAL)
-
+        
         "Ajustes de modelo"
         ajustes_label = wx.StaticText(ajustes_panel, label='Model settings')
         ajustes_sizer.Add(ajustes_label, 0, wx.ALL, 5)
@@ -131,7 +139,6 @@ class App(wx.Frame):
 
         # Configura el sizer en el panel y añádelo al sizer izquierdo
         ajustes_panel.SetSizer(ajustes_sizer)
-        #self.left_sizer.Add(ajustes_panel, 0, wx.EXPAND | wx.ALL, 5)
         ajustes_optimizadores_sizer.Add(ajustes_panel, 1, wx.EXPAND | wx.ALL, 5)
 
         #Ajustes de optimizador
@@ -155,7 +162,6 @@ class App(wx.Frame):
 
         # Configurar sizer y añadir al panel izquierdo
         optimizador_panel.SetSizer(optimizador_sizer)
-        #self.left_sizer.Add(optimizador_panel, 0, wx.EXPAND | wx.ALL, 5)
 
         # Añadir el panel de optimizador al sizer horizontal
         ajustes_optimizadores_sizer.Add(optimizador_panel, 1, wx.EXPAND | wx.ALL, 5)
@@ -318,12 +324,44 @@ class App(wx.Frame):
         # Llamar a esta función nuevamente después de un cierto intervalo
         self.after(10, self.update_gui)
             
-    def save_results(self):
-        # Placeholder for save functionality
-        file_path = filedialog.asksaveasfilename(defaultextension=".xlsx",
-                                                 filetypes=[("Excel files", "*.xlsx")])
-        if file_path:
-            messagebox.showinfo("Information", f"Results saved to {file_path}.")
+    def save_results(self, event):
+        # Usar FileDialog de wxPython para seleccionar el archivo donde guardar
+        with wx.FileDialog(self, "Save Excel file", wildcard="Excel files (*.xlsx)|*.xlsx",
+                           style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as fileDialog:
+            if fileDialog.ShowModal() == wx.ID_CANCEL:
+                return     # El usuario canceló la selección
+
+            file_path = fileDialog.GetPath()
+
+            # Asegúrate de que el file_path tiene la extensión '.xlsx'
+            if not file_path.endswith('.xlsx'):
+                file_path += '.xlsx'
+
+            # Aquí va la lógica de guardado de tus datos
+            with pd.ExcelWriter(file_path) as writer:
+                if hasattr(self, 'modelo'):
+                    self.modelo.to_excel(writer, sheet_name="Model")
+                if hasattr(self, 'C'):
+                    self.C.to_excel(writer, sheet_name="Absorbent_species")
+                if hasattr(self, 'Co'):
+                    self.Co.to_excel(writer, sheet_name="All_species")   
+                if hasattr(self, 'concentracion'):
+                    self.concentracion.to_excel(writer, sheet_name="Tot_con_comp")  
+                if hasattr(self, 'A'):
+                    self.A.to_excel(writer, sheet_name="Molar_Absortivities", index_label = 'nm', index = True)
+                if hasattr(self, 'k'):
+                    self.k.to_excel(writer, sheet_name="K_calculated")
+                if hasattr(self, 'k_ini'):
+                    self.k_ini.to_excel(writer, sheet_name="Init_guess_K")
+                if hasattr(self, 'phi'):
+                    self.phi.to_excel(writer, sheet_name="Y_calculated", index_label = 'nm', index = True)
+                if hasattr(self, 'Y'):
+                    self.Y.to_excel(writer, sheet_name="Y_observed", index_label = 'nm', index = True)
+                if hasattr(self, 'stats'):
+                    self.stats.to_excel(writer, sheet_name="Stats")
+
+            # Mostrar un mensaje al finalizar el guardado
+            wx.MessageBox(f"Results saved to {file_path}.", "Information", wx.OK | wx.ICON_INFORMATION)
     
     def create_checkboxes(self, column_names):
         # Convertir WindowList a una lista regular de Python y limpiar checkboxes antiguos
@@ -447,22 +485,23 @@ class App(wx.Frame):
                 return int(dialog.GetValue())
             except ValueError:
                 wx.MessageBox("Por favor, ingrese un número entero.", "Error", wx.OK | wx.ICON_ERROR)
+        else:
+            raise CancelledByUserException("La entrada fue cancelada por el usuario.")
         dialog.Destroy()
-        return self.reset_calculation() #None  # O manejar de otra manera si se cancela o ingresa un valor no vaiido
+        #return self.reset_calculation() #None  # O manejar de otra manera si se cancela o ingresa un valor no vaiido
     
     #Función para añadir las constantes de asociación como floats.
     def ask_float(self, title, message):
         dialog = wx.TextEntryDialog(self, message, title)
-        while True:
-            if dialog.ShowModal() == wx.ID_OK:
-                try:
-                    return float(dialog.GetValue())
-                except ValueError:
-                    wx.MessageBox("Por favor, ingrese un número válido.", "Error", wx.OK | wx.ICON_ERROR)
-            else:
-                break  # Salir del bucle si el usuario cancela
+        if dialog.ShowModal() == wx.ID_OK:
+            try:
+                return float(dialog.GetValue())
+            except ValueError:
+                wx.MessageBox("Por favor, ingrese un número válido.", "Error", wx.OK | wx.ICON_ERROR)
+        else:
+            raise CancelledByUserException("La entrada fue cancelada por el usuario.") #break  # Salir del bucle si el usuario cancela
         dialog.Destroy()
-        return self.reset_calculation()
+        #return self.reset_calculation()
         
     #Función para mostrar el modelo en el panel destinado para ello. 
     def load_model_from_sheet(self, sheet_name):
@@ -576,8 +615,8 @@ class App(wx.Frame):
 
     def reset_calculation(self):
         # Reiniciar la ruta del archivo y la etiqueta correspondiente
-        #self.file_path = None
-        #self.lbl_file_path.SetLabel("No file selected")
+        self.file_path = None
+        self.lbl_file_path.SetLabel("No file selected")
 
         # Limpiar y reiniciar el DataFrame
         self.df = None
@@ -612,7 +651,7 @@ class App(wx.Frame):
         spec_entry = self.entry_sheet_spectra.GetValue()
         conc_entry = self.entry_sheet_conc.GetValue()
         spec = pd.read_excel(datos, spec_entry, header=0, index_col=0)
-        #concentracion = pd.read_excel(datos,conc_entry, header=0)
+    
         # Extraer datos de esas columnas
         concentracion = pd.read_excel(self.file_path, conc_entry, header=0)
 
@@ -629,72 +668,88 @@ class App(wx.Frame):
         nw = len(spec)
         nm = spec.index.to_numpy()
         
-        u, s, v = np.linalg.svd(spec, full_matrices=False)
-        
-        #EFA fijo
-         
-        L = range(1,(nc + 1), 1)
-        L2 = range(0, nc, 1)
-        
-        X = []
-        for i in L:
-            uj, sj, vj = np.linalg.svd(spec.T.iloc[:i,:], full_matrices=False)
-            X.append(sj)
-        
-        ev_s = pd.DataFrame(X)
-        ev_s0 = np.array(ev_s)
-        
-        X2 = []
-        for i in L2:
-            ui, si, vi = np.linalg.svd(spec.T.iloc[i:,:], full_matrices=False)
-            X2.append(si)
-        
-        ev_s1 = pd.DataFrame(X2)
-        ev_s10 = np.array(ev_s1) 
-        
-        self.figura(range(0, nc), np.log10(s), "o", "log(EV)", "# de autovalores", "Eigenvalues")      
-        self.figura2(G, np.log10(ev_s0), np.log10(ev_s10), "k-o", "b:o", "log(EV)", "[G], M", 1, "EFA")
+        def SVD_EFA(spec, args = (nc)):
+            u, s, v = np.linalg.svd(spec, full_matrices=False)
             
-        EV = int(self.entry_EV.GetValue())
+            #EFA fijo
+            
+            L = range(1,(nc + 1), 1)
+            L2 = range(0, nc, 1)
+            
+            X = []
+            for i in L:
+                uj, sj, vj = np.linalg.svd(spec.T.iloc[:i,:], full_matrices=False)
+                X.append(sj)
+            
+            ev_s = pd.DataFrame(X)
+            ev_s0 = np.array(ev_s)
+            
+            X2 = []
+            for i in L2:
+                ui, si, vi = np.linalg.svd(spec.T.iloc[i:,:], full_matrices=False)
+                X2.append(si)
+            
+            ev_s1 = pd.DataFrame(X2)
+            ev_s10 = np.array(ev_s1) 
+            
+            self.figura(range(0, nc), np.log10(s), "o", "log(EV)", "# de autovalores", "Eigenvalues")      
+            self.figura2(G, np.log10(ev_s0), np.log10(ev_s10), "k-o", "b:o", "log(EV)", "[G], M", 1, "EFA")
+                
+            EV = int(self.entry_EV.GetValue())
 
-        if EV == 0:
-            EV = nc
+            if EV == 0:
+                EV = nc
 
-        print(EV)      
+            print("Eigenvalues used: ", EV)      
 
-        Y = u[:,0:EV] @ np.diag(s[0:EV:]) @ v[0:EV:]
-        Y_svd = pd.DataFrame(Y, index = [list(nm)])
+            Y = u[:,0:EV] @ np.diag(s[0:EV:]) @ v[0:EV:]
+            #Y_svd = pd.DataFrame(Y, index = [list(nm)])
+            return Y, EV
+        
+        if self.EFA_cb.GetValue():
+            Y, EV = SVD_EFA(spec)
+        else:
+            Y = np.array(spec)
+        
         C_T = pd.DataFrame(C_T)
         
         try:
             modelo = pd.read_excel(self.file_path, self.entry_sheet_model.GetValue(), header=0, index_col=0)
-            print(modelo)
+            #print(modelo)
             nas = self.on_selection_changed(event)
             
         except:
-            m = self.ask_integer("Indique el coeficiente estequiométrico para el receptor:")
-            n = self.ask_integer("Indique el coeficiente estequiométrico para el huesped:")
-            #coef = np.array([m, n])
-            def combinaciones(m, n):
-                combinaciones = []
-                for i in range(0, m + 1):
-                    for j in range(0, n + 1):
-                        if i == 0 and j > 1:
-                            pass
-                        elif i > 1 and j == 0:
-                            pass
-                        elif j == 1 and i == 0:
-                            combinaciones.append([j, i])
-                        elif i == 1 and j == 0:
-                            combinaciones.append([j, i])
-                        elif i + j != 0:
-                            combinaciones.append([i, j])
-                return np.array(combinaciones).T
+            try:
+                m = self.ask_integer("Indique el coeficiente estequiométrico para el receptor:")
+                n = self.ask_integer("Indique el coeficiente estequiométrico para el huesped:")
+                # Continuar con el resto de tu lógica si las entradas son válidas
+                #coef = np.array([m, n])
+                def combinaciones(m, n):
+                    combinaciones = []
+                    for i in range(0, m + 1):
+                        for j in range(0, n + 1):
+                            if i == 0 and j > 1:
+                                pass
+                            elif i > 1 and j == 0:
+                                pass
+                            elif j == 1 and i == 0:
+                                combinaciones.append([j, i])
+                            elif i == 1 and j == 0:
+                                combinaciones.append([j, i])
+                            elif i + j != 0:
+                                combinaciones.append([i, j])
+                    return np.array(combinaciones).T
+                
+                modelo = combinaciones(m, n)
+                self.load_generated_model(modelo)
+                nas = self.ask_indices("Índice de especies no absorbentes (e.g., '1, 4' o dejar en blanco para []):")
+                #print(modelo)
+
+            except CancelledByUserException as e:
+                # Imprimir el mensaje de excepción, que será redirigido a self.console
+                print(str(e))
+                return
             
-            modelo = combinaciones(m, n)
-            self.load_generated_model(modelo)
-            nas = self.ask_indices("Índice de especies no absorbentes (e.g., '1, 4' o dejar en blanco para []):")
-            print(modelo)
         
         modelo = np.array(modelo)
 
@@ -702,35 +757,30 @@ class App(wx.Frame):
         n_K = len(modelo.T) - n_comp #- 1
         
         if n_K == 1:
-            k_e = self.ask_float("K", "Indique un valor estimado para la constante de asociación:")
+            try:
+                k_e = self.ask_float("K", "Indique un valor estimado para la constante de asociación:")
+            except CancelledByUserException as e:
+                # Imprimir el mensaje de excepción, que será redirigido a self.console
+                print(str(e))
+                return
         else:
-            k_e = [] #[1., 1.]
-            for i in range(n_K):
-                ks = "K" + str(i+1) 
-                i = self.ask_float(ks, "Indique un valor estimado para esta constante de asociación:")
-                print(ks + ":", i)
-                k_e.append(i)
-        
-        k = np.array([k_e])
-        k_ini = k
-        k = np.ravel(k)
+            try:
+                k_e = [] #[1., 1.]
+                for i in range(n_K):
+                    ks = "K" + str(i+1) 
+                    i = self.ask_float(ks, "Indique un valor estimado para esta constante de asociación:")
+                    print(ks + ":", i)
+                    k_e.append(i)
+            
+                k = np.array([k_e])
+                k_ini = k
+                k = np.ravel(k)
+            except CancelledByUserException as e:
+                # Imprimir el mensaje de excepción, que será redirigido a self.console
+                print(str(e))
+                return
                 
         def concentraciones(K, args = (C_T, modelo, nas)):
-        
-            """
-            Calcula las concentraciones para una serie de reacciones químicas utilizando el método de Levenberg-Marquardt.
-        
-            Argumentos:
-            K -- una lista de constantes de equilibrio para cada reacción química.
-            C_T -- una matriz de dimensiones (n_reacciones, n_componentes) que contiene las concentraciones totales de cada componente en cada reacción.
-            modelo -- una matriz de dimensiones (n_componentes, n_reacciones) que contiene los coeficientes estequiométricos de cada componente en cada reacción.
-            max_iter -- el número máximo de iteraciones que se permiten antes de detenerse (por defecto 2000).
-            tol -- la tolerancia para considerar que el cálculo ha convergido (por defecto 1e-15).
-            lmbda -- el parámetro de Levenberg-Marquardt (por defecto 0.01).
-        
-            Devuelve:
-            Un array de dimensiones (n_reacciones, n_componentes-2) que contiene las concentraciones de cada componente para cada reacción.
-            """
             ctot = np.array(C_T)
             n_reacciones, n_componentes = ctot.shape
             pre_ko = np.zeros(n_componentes)
@@ -776,20 +826,7 @@ class App(wx.Frame):
             return C, c_calculada
         
         
-        """
-        Y = (M, W)
-        C = (M, N)
-        A = (N, W)
-        
-        U = (M, N)
-        V = (N, W)
-        S = (N, N)
-        """    
-        
-        V = u[:,0:(EV)].T
-        S = np.diag(s[0:(EV):])
-        U = v[0:(EV):].T
-           
+             
         # Implementing the abortividades function
         def abortividades(k, Y):
             C, Co = concentraciones(k)  # Assuming the function concentraciones returns C and Co
@@ -797,9 +834,8 @@ class App(wx.Frame):
             return np.all(A >= 0)
         
         def f_m2(k):
-            C = concentraciones(k)[0]
-            y_c = U @ S
-            r = C @ np.linalg.pinv(C) @ y_c - y_c    
+            C = concentraciones(k)[0]   
+            r = C @ np.linalg.pinv(C) @ Y.T - Y.T
             rms = np.sum(np.square(r))
             print(f"f(x): {rms}")
             print(f"x: {k}")
@@ -807,9 +843,8 @@ class App(wx.Frame):
         
         # Modifying f_m to use abortividades
         def f_m(k):
-            C = concentraciones(k)[0]
-            y_c = U @ S
-            r = C @ np.linalg.pinv(C) @ y_c - y_c    
+            C = concentraciones(k)[0]    
+            r = C @ np.linalg.pinv(C) @ Y.T - Y.T
             rms = np.sqrt(np.mean(np.square(r)))
             print(f"f(x): {rms}")
             print(f"x: {k}")
@@ -862,8 +897,7 @@ class App(wx.Frame):
         # Calcular la matriz jacobiana de los residuos
         def residuals(k):
             C = concentraciones(k)[0]
-            y_c = U @ S
-            r = C @ np.linalg.pinv(C) @ y_c - y_c
+            r = C @ np.linalg.pinv(C) @ Y.T - Y.T
             return r.flatten()
         
         #epsilon = np.sqrt(np.finfo(float).eps)
@@ -902,11 +936,15 @@ class App(wx.Frame):
         
         A = np.linalg.pinv(C) @ Y.T 
         
-        self.figura(nm, A.T, "-", "Epsilon (u. a.)", "$\lambda$ (nm)", "Absortividades molares")
-        self.figura2(nm, Y, y_cal.T, "-k", "k:", "Y observada (u. a.)", "$\lambda$ (nm)", 0.5, "Ajuste")   
+        if not self.EFA_cb.GetValue():
+            self.figura2(G, Y.T, y_cal, "ko", ":", "Y observada (u. a.)", "[X], M", 1, "Ajuste")
+        else:
+            self.figura(nm, A.T, "-", "Epsilon (u. a.)", "$\lambda$ (nm)", "Absortividades molares")
+            self.figura2(nm, Y, y_cal.T, "-k", "k:", "Y observada (u. a.)", "$\lambda$ (nm)", 0.5, "Ajuste")   
 
         lof = (((sum(sum((r0**2))) / sum(sum((Y**2)))))**0.5) * 100
-        MAE = np.sqrt((sum(sum(r0**2)) / (nw - len(k))))
+        #MAE = np.sqrt((sum(sum(r0**2)) / (nw - len(k))))
+        MAE = np.mean(abs(r0))
         dif_en_ct = round(max(100 - (np.sum(C, 1) * 100 / max(H))), 2)
         
         # 1. Calcular la varianza de los residuales
@@ -935,6 +973,7 @@ class App(wx.Frame):
         
         K = np.array([k, error_percent]).T
         
+        Y = pd.DataFrame(Y, index = [list(nm)])
         modelo = pd.DataFrame(modelo)
         C = pd.DataFrame(C)
         Co = pd.DataFrame(Co)
@@ -944,6 +983,9 @@ class App(wx.Frame):
         phi = pd.DataFrame(y_cal.T, index = [list(nm)])
         cov_matrix = covfit
         
+        if not self.EFA_cb.GetValue():
+            EV = nc
+            
         stats = np.array([rms, lof, MAE, dif_en_ct, EV, cov_matrix, optimizer])
         stats = pd.DataFrame(stats, index= ["RMS", "Falta de ajuste (%)",\
                                             "Error absoluto medio", "Diferencia en C total (%)", "# Autovalores", "covfit", "optimizer"])
@@ -955,7 +997,7 @@ class App(wx.Frame):
         num_columns_Co = len(Co.columns)
         column_names_Co = [f"sp_{i}" for i in range(1, num_columns_Co + 1)]
         
-        num_columns_yobs = len(Y_svd.columns)
+        num_columns_yobs = len(Y.columns)
         column_names_yobs = [f"yobs_{i}" for i in range(1, num_columns_yobs + 1)]
         
         num_columns_ycal = len(phi.columns)
@@ -975,33 +1017,23 @@ class App(wx.Frame):
         # Asignar nombres de columnas a los DataFrames
         C.columns = column_names_C
         Co.columns = column_names_Co
-        Y_svd.columns = column_names_yobs
+        Y.columns = column_names_yobs
         phi.columns = column_names_ycal
         A.columns = column_names_A
         k.columns = column_names_k
         k_ini.columns = column_names_k_ini
         stats.columns = column_names_stats
         C_T.columns = column_names_ct
-            
-        def save_file():
-            root = Tk()
-            root.withdraw()
-            file_path = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel files", "*.xlsx")])
-            with pd.ExcelWriter(file_path) as writer:
-                modelo.to_excel(writer, sheet_name="modelo")
-                C.to_excel(writer, sheet_name="c_especies")
-                Co.to_excel(writer, sheet_name="especies_totales")
-                concentracion.to_excel(writer, sheet_name="C_totales")
-                A.to_excel(writer, sheet_name="A_calculada", index_label = "nm", index = True)
-                k.to_excel(writer, sheet_name="Constantes_de_asociación")
-                k_ini.to_excel(writer, sheet_name="Constantes_iniciales")
-                phi.to_excel(writer, sheet_name="Y_cal", index_label = "nm", index = True)
-                Y_svd.to_excel(writer, sheet_name= "Y_svd", index_label = "nm", index = True)
-                stats.to_excel(writer, sheet_name="Estadísticos")
-                      
-        
-        #self.display_results()
 
+        self.C = C
+        self.Co = Co
+        self.Y = Y
+        self.phi = phi
+        self.A = A
+        self.k = k
+        self.k_ini = k_ini
+        self.stats = stats
+        self.C_T = C_T
 
 
 # Iniciar la aplicación
