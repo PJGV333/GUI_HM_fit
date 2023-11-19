@@ -640,6 +640,11 @@ class App(wx.Frame):
         # Finalmente, actualiza el layout si es necesario
         self.Layout()
         
+    def res_consola(self, prefijo, resp):
+        # Actualiza la GUI con los resultados de r_0
+        # Por ejemplo, mostrar los resultados en un wx.TextCtrl
+        self.console.AppendText(f"{prefijo}: {resp}\n")
+
     def process_data(self, event):
         # Placeholder for the actual data processing
         # Would call the functions from the provided script and display output
@@ -837,8 +842,8 @@ class App(wx.Frame):
             C = concentraciones(k)[0]   
             r = C @ np.linalg.pinv(C) @ Y.T - Y.T
             rms = np.sum(np.square(r))
-            print(f"f(x): {rms}")
-            print(f"x: {k}")
+            #print(f"f(x): {rms}")
+            #print(f"x: {k}")
             return rms, r
         
         # Modifying f_m to use abortividades
@@ -846,8 +851,10 @@ class App(wx.Frame):
             C = concentraciones(k)[0]    
             r = C @ np.linalg.pinv(C) @ Y.T - Y.T
             rms = np.sqrt(np.mean(np.square(r)))
-            print(f"f(x): {rms}")
-            print(f"x: {k}")
+            self.res_consola("f(x)", rms)
+            self.res_consola("x", k)
+            #print(f"f(x): {rms}")
+            #print(f"x: {k}")
             return rms
         
         bounds = [(-20, 20)]*len(k.T) #Bounds(0, 1e15, keep_feasible=(True)) #
@@ -858,7 +865,7 @@ class App(wx.Frame):
         optimizer = self.get_selected_optimizer()
         print(optimizer)
         r_0 = optimize.minimize(f_m, k, method=optimizer)
-        
+               
         # Applying the callback to differential_evolution
         # =============================================================================
         # r_0 = differential_evolution(
@@ -957,16 +964,27 @@ class App(wx.Frame):
         # 3. Calcular covfit
         covfit = var_residuals / var_data_original
         
-        print("="*50)
-        print("RMS: ",rms)
-        print("Falta de ajuste (%): ",lof)
-        print("Error absoluto medio: ",MAE)
-        print("Constante de asociación :", k)
-        print("Error estándar de las constantes de asociación:", SE_k)
-        print("Error porcentual de las constantes de asociación:", error_percent)
-        print("diferencia en C total (%): ", dif_en_ct)
-        print("covfit: ", covfit)
-        print("="*50)
+        
+        # Crear un DataFrame vacío
+        resultados_df = pd.DataFrame()
+
+        # Añadir cada estadística como una nueva fila en el DataFrame
+        resultados_df = resultados_df.append({"Estadística": "RMS", "Valor": f"{rms:.5f}"}, ignore_index=True)
+        resultados_df = resultados_df.append({"Estadística": "LoF (%)", "Valor": f"{lof:.2f}"}, ignore_index=True)
+        resultados_df = resultados_df.append({"Estadística": "MAE", "Valor": f"{MAE:.5f}"}, ignore_index=True)
+
+        # Para log(K) y sus errores, es mejor manejarlos como una serie de filas
+        for i in range(len(k)):
+            resultados_df = resultados_df.append({"Estadística": f"log(K) [{i}]", "Valor": f"{k[i]:.2f}"}, ignore_index=True)
+            resultados_df = resultados_df.append({"Estadística": f"Error in log(K) [{i}]", "Valor": f"{SE_k[i]:.2f}"}, ignore_index=True)
+            resultados_df = resultados_df.append({"Estadística": f"Error % in log(K) [{i}]", "Valor": f"{error_percent[i] * 100:.2f}%"}, ignore_index=True)
+
+        # Añadir las estadísticas restantes
+        resultados_df = resultados_df.append({"Estadística": "Difference in C total (%)", "Valor": f"{dif_en_ct:.2f}%"}, ignore_index=True)
+        resultados_df = resultados_df.append({"Estadística": "Covfit", "Valor": f"{covfit:.4f}"}, ignore_index=True)
+
+        # Imprimir el DataFrame
+        print(resultados_df)
         
         nombres = [f"k{i}" for i in range(1, len(k)+1)]
         k_nombres = [f"{n}" for n in nombres]
