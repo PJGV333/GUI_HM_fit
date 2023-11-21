@@ -213,6 +213,7 @@ class App(wx.Frame):
         # Consola para ver información
         self.console = wx.TextCtrl(self.panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
         self.right_sizer.Add(self.console, 1, wx.EXPAND | wx.ALL, 5)
+        self.console.SetFont(wx.Font(10, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
 
         # Redirigir stdout
         sys.stdout = TextRedirector(self.console)
@@ -648,8 +649,6 @@ class App(wx.Frame):
     def process_data(self, event):
         # Placeholder for the actual data processing
         # Would call the functions from the provided script and display output
-
-        print("process_data iniciada")
         
         n_archivo = self.file_path
         datos = n_archivo 
@@ -664,6 +663,13 @@ class App(wx.Frame):
         
         # Obtener los nombres de las columnas seleccionadas
         columnas_seleccionadas = [col for col, checkbox in self.vars_columnas.items() if checkbox.IsChecked()]
+
+        if not columnas_seleccionadas:
+            # Si no se ha seleccionado ningún checkbox, mostrar un mensaje de advertencia
+            wx.MessageBox('Por favor, selecciona al menos una casilla para continuar.', 'Advertencia', wx.OK | wx.ICON_WARNING)
+            return  # Salir de la función para no continuar con el procesamiento
+        
+        print("process_data iniciada")
         
         C_T = concentracion[columnas_seleccionadas].to_numpy()
         G = C_T[:,1]
@@ -764,6 +770,8 @@ class App(wx.Frame):
         if n_K == 1:
             try:
                 k_e = self.ask_float("K", "Indique un valor estimado para la constante de asociación:")
+                k = np.array([k_e])
+                k_ini = k
             except CancelledByUserException as e:
                 # Imprimir el mensaje de excepción, que será redirigido a self.console
                 print(str(e))
@@ -857,7 +865,7 @@ class App(wx.Frame):
             #print(f"x: {k}")
             return rms
         
-        bounds = [(-20, 20)]*len(k.T) #Bounds(0, 1e15, keep_feasible=(True)) #
+        #bounds = [(-20, 20)]*len(k.T) #Bounds(0, 1e15, keep_feasible=(True)) #
         
         # Registrar el tiempo de inicio
         inicio = timeit.default_timer()
@@ -964,28 +972,45 @@ class App(wx.Frame):
         # 3. Calcular covfit
         covfit = var_residuals / var_data_original
         
-        
-        # Crear un DataFrame vacío
-        resultados_df = pd.DataFrame()
+        ####pasos para imprimir bonito los resultados. 
+        # Función para calcular los anchos máximos necesarios para cada columna
+        def calculate_max_column_widths(headers, data_rows):
+            column_widths = [len(header) for header in headers]
+            for row in data_rows:
+                for i, item in enumerate(row):
+                    # Considerar la longitud del item como cadena
+                    column_widths[i] = max(column_widths[i], len(str(item)))
+            return column_widths
 
-        # Añadir cada estadística como una nueva fila en el DataFrame
-        resultados_df = resultados_df.append({"Estadística": "RMS", "Valor": f"{rms:.5f}"}, ignore_index=True)
-        resultados_df = resultados_df.append({"Estadística": "LoF (%)", "Valor": f"{lof:.2f}"}, ignore_index=True)
-        resultados_df = resultados_df.append({"Estadística": "MAE", "Valor": f"{MAE:.5f}"}, ignore_index=True)
+        # Encabezados y datos de ejemplo
+        headers = ["Constant", "log10(K) ± Error", "log10(K) % Error", "LoF (%)", "RMS", "Diff C total (%)", "Covfit"]
+        data = [
+            [f"K{i+1}", f"{k[i]:.2e} ± {SE_k[i]:.2e}", f"{error_percent[i] * 100:.2f}", f"{lof:.2f}" if i == 0 else "", f"{rms:.2e}" if i == 0 else "", f"{dif_en_ct:.2f}" if i == 0 else "", f"{covfit:.2e}" if i == 0 else ""]
+            for i in range(len(k))
+        ]
 
-        # Para log(K) y sus errores, es mejor manejarlos como una serie de filas
-        for i in range(len(k)):
-            resultados_df = resultados_df.append({"Estadística": f"log(K) [{i}]", "Valor": f"{k[i]:.2f}"}, ignore_index=True)
-            resultados_df = resultados_df.append({"Estadística": f"Error in log(K) [{i}]", "Valor": f"{SE_k[i]:.2f}"}, ignore_index=True)
-            resultados_df = resultados_df.append({"Estadística": f"Error % in log(K) [{i}]", "Valor": f"{error_percent[i] * 100:.2f}%"}, ignore_index=True)
+        # Calcular los anchos máximos para las columnas
+        max_widths = calculate_max_column_widths(headers, data)
 
-        # Añadir las estadísticas restantes
-        resultados_df = resultados_df.append({"Estadística": "Difference in C total (%)", "Valor": f"{dif_en_ct:.2f}%"}, ignore_index=True)
-        resultados_df = resultados_df.append({"Estadística": "Covfit", "Valor": f"{covfit:.4f}"}, ignore_index=True)
+        # Crear la tabla con los anchos ajustados
+        table_lines = []
 
-        # Imprimir el DataFrame
-        print(resultados_df)
-        
+        # Encabezado
+        header_line = " | ".join(f"{header.ljust(max_widths[i])}" for i, header in enumerate(headers))
+        table_lines.append("-" * len(header_line))
+        table_lines.append(header_line)
+        table_lines.append("-" * len(header_line))
+
+        # Filas de datos
+        for row in data:
+            line = " | ".join(f"{item.ljust(max_widths[i])}" for i, item in enumerate(row))
+            table_lines.append(line)
+
+        # Unir las líneas para formar la tabla
+        adjusted_table = "\n".join(table_lines)
+        print(adjusted_table)
+        ###### Aqui terminan los pasos para la impresión bonita
+
         nombres = [f"k{i}" for i in range(1, len(k)+1)]
         k_nombres = [f"{n}" for n in nombres]
         
