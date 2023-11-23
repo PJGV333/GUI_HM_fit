@@ -68,12 +68,12 @@ class App(wx.Frame):
         self.lbl_file_path = wx.StaticText(self.panel, label="No file selected")
         self.left_sizer.Add(self.lbl_file_path, 0, wx.ALL | wx.EXPAND, 5)
 
-        # Espectros 
-        self.sheet_spectra_panel, self.entry_sheet_spectra = self.create_sheet_section("Spectra Sheet Name:", "datos_titulacion")
+        # Espectros
+        self.sheet_spectra_panel, self.choice_sheet_spectra = self.create_sheet_dropdown_section("Spectra Sheet Name:")
         self.left_sizer.Add(self.sheet_spectra_panel, 0, wx.EXPAND | wx.ALL, 5)
 
-        # concentraciones
-        self.sheet_conc_panel, self.entry_sheet_conc = self.create_sheet_section("Concentration Sheet Name:", "conc")
+        # Concentraciones
+        self.sheet_conc_panel, self.choice_sheet_conc = self.create_sheet_dropdown_section("Concentration Sheet Name:")
         self.left_sizer.Add(self.sheet_conc_panel, 0, wx.EXPAND | wx.ALL, 5)
 
         # Sección para Checkboxes (inicialmente vacía)
@@ -85,7 +85,7 @@ class App(wx.Frame):
         self.left_sizer.Add(self.columns_names_panel, 0, wx.EXPAND | wx.ALL, 5)
 
         # modelo
-        self.sheet_model_panel, self.entry_sheet_model = self.create_sheet_section("Model Sheet Name:", "modelo")
+        self.sheet_model_panel, self.entry_sheet_model = self.create_sheet_dropdown_section("Model Sheet Name:")
         self.left_sizer.Add(self.sheet_model_panel, 0, wx.EXPAND | wx.ALL, 5)
 
         # Sección para Checkboxes (inicialmente vacía)
@@ -287,30 +287,88 @@ class App(wx.Frame):
             panel.SetSizer(sizer)
             return panel, text_ctrl
 
+    #def select_file(self, event):
+    #    with FileDialog(self, "Select Excel file", wildcard="Excel files (*.xlsx)|*.xlsx|All files (*.*)|*.*",
+    #                    style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as fileDialog:
+#
+    #        if fileDialog.ShowModal() == wx.ID_CANCEL:
+    #            return     # El usuario canceló la selección
+#
+    #        # Procesar la selección del archivo
+    #        file_path = fileDialog.GetPath()
+    #        self.lbl_file_path.SetLabel(file_path)  # Actualizar el StaticText con la ruta del archivo
+    #        self.file_path = file_path
+#
+    #        # Leer el DataFrame desde el archivo seleccionado
+    #        df = pd.read_excel(file_path, sheet_name=self.entry_sheet_conc.GetValue())
+    #        
+    #        # Crear casillas de verificación para cada columna
+    #        self.create_checkboxes(df.columns)
+#
+    #        try:
+    #            self.load_model_from_sheet(self.entry_sheet_model.GetValue())
+    #        except Exception as e:
+    #            print("The model sheet was not found or does not exist.")
+    #            pass
+
     def select_file(self, event):
         with FileDialog(self, "Select Excel file", wildcard="Excel files (*.xlsx)|*.xlsx|All files (*.*)|*.*",
                         style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as fileDialog:
-
             if fileDialog.ShowModal() == wx.ID_CANCEL:
-                return     # El usuario canceló la selección
+                return  # El usuario canceló la selección
 
-            # Procesar la selección del archivo
             file_path = fileDialog.GetPath()
-            self.lbl_file_path.SetLabel(file_path)  # Actualizar el StaticText con la ruta del archivo
+            self.lbl_file_path.SetLabel(file_path)
             self.file_path = file_path
+            self.populate_sheet_choices(file_path)
+    
+    def create_sheet_dropdown_section(self, label_text):
+        panel = wx.Panel(self.panel)
+        sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-            # Leer el DataFrame desde el archivo seleccionado
-            df = pd.read_excel(file_path, sheet_name=self.entry_sheet_conc.GetValue())
-            
-            # Crear casillas de verificación para cada columna
+        # Crear y añadir la etiqueta
+        label = wx.StaticText(panel, label=label_text)
+        sizer.Add(label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+
+        # Crear y añadir el menú desplegable
+        choice = wx.Choice(panel)
+        sizer.Add(choice, 1, wx.ALL | wx.EXPAND, 5)
+
+        panel.SetSizer(sizer)
+        return panel, choice
+    
+    def populate_sheet_choices(self, file_path):
+        try:
+            sheet_names = pd.ExcelFile(file_path).sheet_names
+            self.choice_sheet_spectra.SetItems(sheet_names)
+            #self.choice_sheet_spectra.SetSelection(0)  # Seleccionar la primera hoja por defecto
+
+            self.choice_sheet_conc.SetItems(sheet_names)
+            #self.choice_sheet_conc.SetSelection(0)  # Seleccionar la primera hoja por defecto
+            self.choice_sheet_conc.Bind(wx.EVT_CHOICE, self.on_conc_sheet_selected)
+
+            self.entry_sheet_model.SetItems(sheet_names)
+            #self.choice_sheet_model.SetSelection(0)  # Seleccionar la primera hoja por defecto
+            self.entry_sheet_model.Bind(wx.EVT_CHOICE, self.on_model_sheet_selected)
+
+        except Exception as e:
+            wx.MessageBox(f"Error al leer el archivo de Excel: {e}", "Error en archivo de Excel", wx.OK | wx.ICON_ERROR)
+
+    def on_conc_sheet_selected(self, event):
+        selected_sheet = self.choice_sheet_conc.GetStringSelection()
+        try:
+            df = pd.read_excel(self.file_path, sheet_name=selected_sheet)
             self.create_checkboxes(df.columns)
+        except Exception as e:
+            wx.MessageBox(f"Error al leer la hoja de Excel: {e}", "Error en la hoja de Excel", wx.OK | wx.ICON_ERROR)
 
-            try:
-                self.load_model_from_sheet(self.entry_sheet_model.GetValue())
-            except Exception as e:
-                print("The model sheet was not found or does not exist.")
-                pass
-            
+    def on_model_sheet_selected(self, event):
+        selected_sheet = self.entry_sheet_model.GetStringSelection()
+        try:
+            self.load_model_from_sheet(selected_sheet)
+        except Exception as e:
+            wx.MessageBox(f"Error al leer la hoja de Excel: {e}", "Error en la hoja de Excel", wx.OK | wx.ICON_ERROR)
+
     def configure_canvas(self, event):
         # Configurar el área de desplazamiento del Canvas
         self.graph_canvas.configure(scrollregion=self.graph_canvas.bbox("all"))
@@ -584,7 +642,7 @@ class App(wx.Frame):
     
     def on_selection_changed(self, event):
         selected_rows = self.get_selected_rows()        
-        df2 = pd.read_excel(self.file_path, sheet_name=self.entry_sheet_model.GetValue())
+        df2 = pd.read_excel(self.file_path, sheet_name=self.entry_sheet_model.GetStringSelection())
 
         # Restar 1 de cada índice seleccionado para compensar el encabezado
         adjusted_selected_rows = [row - 1 for row in selected_rows]
@@ -646,16 +704,43 @@ class App(wx.Frame):
         # Por ejemplo, mostrar los resultados en un wx.TextCtrl
         self.console.AppendText(f"{prefijo}: {resp}\n")
 
+    def create_titulant_dropdown(self):
+        self.titulant_panel = wx.Panel(self.panel)
+        titulant_sizer = wx.BoxSizer(wx.HORIZONTAL)
+
+        titulant_label = wx.StaticText(self.titulant_panel, label="Select Titulant:")
+        titulant_sizer.Add(titulant_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+
+        self.choice_titulant = wx.Choice(self.titulant_panel)
+        titulant_sizer.Add(self.choice_titulant, 1, wx.ALL | wx.EXPAND, 5)
+
+        self.titulant_panel.SetSizer(titulant_sizer)
+        self.left_sizer.Add(self.titulant_panel, 0, wx.EXPAND | wx.ALL, 5)
+
+    def update_titulant_choices(self, column_names):
+        self.choice_titulant.Clear()
+        self.choice_titulant.SetItems(column_names)
+        if column_names:
+            self.choice_titulant.SetSelection(0)
+
     def process_data(self, event):
         # Placeholder for the actual data processing
         # Would call the functions from the provided script and display output
         
         n_archivo = self.file_path
         datos = n_archivo 
-        spec_entry = self.entry_sheet_spectra.GetValue()
-        conc_entry = self.entry_sheet_conc.GetValue()
+        spec_entry = self.choice_sheet_spectra.GetStringSelection()
+        conc_entry = self.choice_sheet_conc.GetStringSelection()
+
+        # Verificar si se han seleccionado hojas válidas
+        if not spec_entry or not conc_entry:
+            wx.MessageBox("Por favor, seleccione las hojas de Excel correctamente.", 
+                        "Error en selección de hojas", wx.OK | wx.ICON_ERROR)
+            return  # Detener la ejecución de la función
+
+        # Extraer espectros para trabajar
         spec = pd.read_excel(datos, spec_entry, header=0, index_col=0)
-    
+
         # Extraer datos de esas columnas
         concentracion = pd.read_excel(self.file_path, conc_entry, header=0)
 
@@ -725,7 +810,8 @@ class App(wx.Frame):
         C_T = pd.DataFrame(C_T)
         
         try:
-            modelo = pd.read_excel(self.file_path, self.entry_sheet_model.GetValue(), header=0, index_col=0)
+            modelo = pd.read_excel(self.file_path, self.entry_sheet_model.GetStringSelection(), header=0, index_col=0)
+            
             #print(modelo)
             nas = self.on_selection_changed(event)
             
