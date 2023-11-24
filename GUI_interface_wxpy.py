@@ -175,14 +175,20 @@ class App(wx.Frame):
         """ Panel derecho del gui """
 
         # Canvas para gráficas
+        #self.fig = Figure()
+        #self.canvas = FigureCanvas(self.panel, -1, self.fig)
+        #self.right_sizer.Add(self.canvas, 1, wx.LEFT | wx.TOP | wx.EXPAND)
+        #self.right_sizer.Add(self.canvas, 2, wx.LEFT | wx.TOP | wx.EXPAND)
+        
+        #self.canvas.SetMinSize(fixed_canvas_size)
+
+        # Canvas para gráficas
         self.fig = Figure()
         self.canvas = FigureCanvas(self.panel, -1, self.fig)
-        #self.right_sizer.Add(self.canvas, 1, wx.LEFT | wx.TOP | wx.EXPAND)
-        self.right_sizer.Add(self.canvas, 2, wx.LEFT | wx.TOP | wx.EXPAND)
         # Establecer un tamaño fijo para el canvas
-        #fixed_canvas_size = (200, 390)  # Cambia esto según tus necesidades
-        #self.canvas.SetMinSize(fixed_canvas_size)
-        
+        fixed_canvas_size = (200, 390)  # Cambia esto según tus necesidades
+        self.canvas.SetMinSize(fixed_canvas_size)
+        self.right_sizer.Add(self.canvas, proportion=1, flag=wx.EXPAND | wx.ALL, border=5)
 
         # Botones Prev y Next
         # Botón "Prev"
@@ -222,14 +228,18 @@ class App(wx.Frame):
         #self.right_sizer.Add(self.console, 1, wx.EXPAND | wx.ALL, 5)
         #self.console.SetFont(wx.Font(10, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
 
+        # Consola para ver información
         self.console = wx.TextCtrl(self.panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
         self.console.SetFont(wx.Font(10, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
-        self.right_sizer.Add(self.console, 1, wx.EXPAND | wx.ALL)
+         # Establecer un tamaño fijo para la consola
+        fixed_console_size = (200, 250)  # Cambia esto según tus necesidades
+        self.console.SetMinSize(fixed_console_size)
+        self.right_sizer.Add(self.console, proportion=1, flag=wx.EXPAND | wx.ALL, border=5)
 
-        # Establecer un tamaño fijo para la consola
-        #fixed_console_size = (200, 250)  # Cambia esto según tus necesidades
-        #self.console.SetMinSize(fixed_console_size)
-
+        #self.console = wx.TextCtrl(self.panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
+        #self.console.SetFont(wx.Font(10, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
+        #self.right_sizer.Add(self.console, 1, wx.EXPAND | wx.ALL)
+   
         # Redirigir stdout
         sys.stdout = TextRedirector(self.console)
 
