@@ -176,6 +176,9 @@ class App(wx.Frame):
         self.fig = Figure()
         self.canvas = FigureCanvas(self.panel, -1, self.fig)
         self.right_sizer.Add(self.canvas, 1, wx.LEFT | wx.TOP | wx.EXPAND)
+        # Establecer un tamaño fijo para el canvas
+        fixed_canvas_size = (200, 390)  # Cambia esto según tus necesidades
+        self.canvas.SetMinSize(fixed_canvas_size)
 
         # Botones Prev y Next
         # Botón "Prev"
@@ -214,6 +217,9 @@ class App(wx.Frame):
         self.console = wx.TextCtrl(self.panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
         self.right_sizer.Add(self.console, 1, wx.EXPAND | wx.ALL, 5)
         self.console.SetFont(wx.Font(10, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
+        # Establecer un tamaño fijo para la consola
+        fixed_console_size = (200, 250)  # Cambia esto según tus necesidades
+        self.console.SetMinSize(fixed_console_size)
 
         # Redirigir stdout
         sys.stdout = TextRedirector(self.console)
