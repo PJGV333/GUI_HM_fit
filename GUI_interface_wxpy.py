@@ -32,10 +32,10 @@ class TextRedirector:
 class CancelledByUserException(Exception):
     pass
 
+
 class App(wx.Frame):
     def __init__(self):
         wx.Frame.__init__(self, None, title="HM Fit", size=(800, 600))
-        #self.SetSizeHints(minSize=(800, 600), maxSize=(1080, 1080))
 
         self.panel = wx.Panel(self)
 
@@ -174,6 +174,16 @@ class App(wx.Frame):
         ##############################################################################################################
         """ Panel derecho del gui """
 
+        # Crear un SplitterWindow en el panel derecho
+        right_splitter = wx.SplitterWindow(self.panel)
+
+        # Crear dos paneles para el splitter en el panel derecho
+        canvas_panel = wx.Panel(right_splitter)
+        console_panel = wx.Panel(right_splitter)
+
+        # Sizer para el panel del canvas
+        canvas_sizer = wx.BoxSizer(wx.VERTICAL)
+
         # Canvas para gráficas
         #self.fig = Figure()
         #self.canvas = FigureCanvas(self.panel, -1, self.fig)
@@ -182,11 +192,12 @@ class App(wx.Frame):
         
         #self.canvas.SetMinSize(fixed_canvas_size)
 
+        """ Considerar esto para W11"""
         # Canvas para gráficas
         self.fig = Figure()
         self.canvas = FigureCanvas(self.panel, -1, self.fig)
         # Establecer un tamaño fijo para el canvas
-        fixed_canvas_size = (200, 390)  # Cambia esto según tus necesidades
+        fixed_canvas_size = (300, 300)  # Cambia esto según tus necesidades
         self.canvas.SetMinSize(fixed_canvas_size)
         self.right_sizer.Add(self.canvas, proportion=1, flag=wx.EXPAND | wx.ALL, border=5)
 
@@ -223,26 +234,35 @@ class App(wx.Frame):
         # Añadir el sizer de "Process Data" al sizer principal del lado derecho
         self.right_sizer.Add(process_data_sizer, 0, wx.EXPAND)
 
+        # Dividir el splitter entre los dos paneles del panel derecho
+        right_splitter.SplitHorizontally(canvas_panel, console_panel)
+        right_splitter.SetMinimumPaneSize(20)  # Tamaño mínimo de los paneles
+
+        # Añadir el splitter al sizer del panel derecho
+        self.right_sizer.Add(right_splitter, 1, wx.EXPAND)
+
+        console_sizer = wx.BoxSizer(wx.VERTICAL)
+
         # Consola para ver información
         #self.console = wx.TextCtrl(self.panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
         #self.right_sizer.Add(self.console, 1, wx.EXPAND | wx.ALL, 5)
         #self.console.SetFont(wx.Font(10, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
 
+        
+        """ Considerar esto para W11"""
         # Consola para ver información
         self.console = wx.TextCtrl(self.panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
         self.console.SetFont(wx.Font(10, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
          # Establecer un tamaño fijo para la consola
-        fixed_console_size = (200, 250)  # Cambia esto según tus necesidades
+        fixed_console_size = (200, 150)  # Cambia esto según tus necesidades
         self.console.SetMinSize(fixed_console_size)
         self.right_sizer.Add(self.console, proportion=1, flag=wx.EXPAND | wx.ALL, border=5)
 
-        #self.console = wx.TextCtrl(self.panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
-        #self.console.SetFont(wx.Font(10, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
-        #self.right_sizer.Add(self.console, 1, wx.EXPAND | wx.ALL)
-   
+        console_panel.SetSizer(console_sizer)
+    
         # Redirigir stdout
         sys.stdout = TextRedirector(self.console)
-
+        
         # Botón guardar resultados
         save_results_sizer = wx.BoxSizer(wx.HORIZONTAL)
         save_results_sizer.AddStretchSpacer()
