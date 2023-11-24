@@ -184,55 +184,53 @@ class App(wx.Frame):
         # Sizer para el panel del canvas
         canvas_sizer = wx.BoxSizer(wx.VERTICAL)
 
-        # Canvas para gráficas
-        #self.fig = Figure()
-        #self.canvas = FigureCanvas(self.panel, -1, self.fig)
-        #self.right_sizer.Add(self.canvas, 1, wx.LEFT | wx.TOP | wx.EXPAND)
-        #self.right_sizer.Add(self.canvas, 2, wx.LEFT | wx.TOP | wx.EXPAND)
-        
-        #self.canvas.SetMinSize(fixed_canvas_size)
-
-        """ Considerar esto para W11"""
-        # Canvas para gráficas
+        # Crear el canvas de gráficas en el canvas_panel
         self.fig = Figure()
-        self.canvas = FigureCanvas(self.panel, -1, self.fig)
-        # Establecer un tamaño fijo para el canvas
-        fixed_canvas_size = (300, 300)  # Cambia esto según tus necesidades
-        self.canvas.SetMinSize(fixed_canvas_size)
-        self.right_sizer.Add(self.canvas, proportion=1, flag=wx.EXPAND | wx.ALL, border=5)
+        self.canvas = FigureCanvas(canvas_panel, -1, self.fig)
+        canvas_sizer.Add(self.canvas, 1, wx.EXPAND | wx.ALL)
+        canvas_panel.SetSizer(canvas_sizer)
 
-        # Botones Prev y Next
+        # Sizer para los botones
+        buttons_sizer = wx.BoxSizer(wx.HORIZONTAL)
+
+        # Añadir un espaciador flexible al inicio
+        buttons_sizer.AddStretchSpacer()
+
         # Botón "Prev"
-        nav_buttons_sizer = wx.BoxSizer(wx.HORIZONTAL)
-
         self.btn_prev_figure = wx.Button(self.panel, label="<< Prev")
-        nav_buttons_sizer.Add(self.btn_prev_figure, 0, wx.ALL, 5)
+        buttons_sizer.Add(self.btn_prev_figure, 0, wx.ALL, 5)
         self.btn_prev_figure.Bind(wx.EVT_BUTTON, self.show_prev_figure)
 
-        # Añade un espaciador para empujar los botones a los extremos
-        nav_buttons_sizer.AddStretchSpacer()
-
-        # Botón "Next"
-        self.btn_next_figure = wx.Button(self.panel, label="Next >>")
-        nav_buttons_sizer.Add(self.btn_next_figure, 0, wx.ALL, 5)
-        self.btn_next_figure.Bind(wx.EVT_BUTTON, self.show_next_figure)
-
-        # Añade el sizer de los botones de navegación al sizer principal
-        self.right_sizer.Add(nav_buttons_sizer, 0, wx.EXPAND)
-
-        # Botón para procesar datos
-        process_data_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        process_data_sizer.AddStretchSpacer()
+        # Añadir un espaciador flexible entre los botones
+        buttons_sizer.AddStretchSpacer()
 
         # Botón "Process Data"
         self.btn_process_data = wx.Button(self.panel, label="Process Data")
-        process_data_sizer.Add(self.btn_process_data, 0, wx.ALL, 5)
+        buttons_sizer.Add(self.btn_process_data, 0, wx.ALL | wx.LEFT, 5)
         self.btn_process_data.Bind(wx.EVT_BUTTON, self.process_data)
 
-        process_data_sizer.AddStretchSpacer()
+        # Añadir un espaciador flexible entre los botones
+        buttons_sizer.AddStretchSpacer()
 
-        # Añadir el sizer de "Process Data" al sizer principal del lado derecho
-        self.right_sizer.Add(process_data_sizer, 0, wx.EXPAND)
+        # Botón "Next"
+        self.btn_next_figure = wx.Button(self.panel, label="Next >>")
+        buttons_sizer.Add(self.btn_next_figure, 0, wx.ALL | wx.LEFT, 5)
+        self.btn_next_figure.Bind(wx.EVT_BUTTON, self.show_next_figure)
+
+        # Añadir un espaciador flexible al final
+        buttons_sizer.AddStretchSpacer()
+
+        # Añadir el sizer de los botones al sizer principal del lado derecho
+        self.right_sizer.Add(buttons_sizer, 0, wx.EXPAND)
+
+        # Sizer para el panel de la consola
+        console_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        # Crear la consola en el console_panel
+        self.console = wx.TextCtrl(console_panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
+        self.console.SetFont(wx.Font(10, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
+        console_sizer.Add(self.console, 1, wx.EXPAND | wx.ALL)
+        console_panel.SetSizer(console_sizer)
 
         # Dividir el splitter entre los dos paneles del panel derecho
         right_splitter.SplitHorizontally(canvas_panel, console_panel)
@@ -240,26 +238,7 @@ class App(wx.Frame):
 
         # Añadir el splitter al sizer del panel derecho
         self.right_sizer.Add(right_splitter, 1, wx.EXPAND)
-
-        console_sizer = wx.BoxSizer(wx.VERTICAL)
-
-        # Consola para ver información
-        #self.console = wx.TextCtrl(self.panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
-        #self.right_sizer.Add(self.console, 1, wx.EXPAND | wx.ALL, 5)
-        #self.console.SetFont(wx.Font(10, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
-
-        
-        """ Considerar esto para W11"""
-        # Consola para ver información
-        self.console = wx.TextCtrl(self.panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
-        self.console.SetFont(wx.Font(10, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
-         # Establecer un tamaño fijo para la consola
-        fixed_console_size = (200, 150)  # Cambia esto según tus necesidades
-        self.console.SetMinSize(fixed_console_size)
-        self.right_sizer.Add(self.console, proportion=1, flag=wx.EXPAND | wx.ALL, border=5)
-
-        console_panel.SetSizer(console_sizer)
-    
+   
         # Redirigir stdout
         sys.stdout = TextRedirector(self.console)
         
