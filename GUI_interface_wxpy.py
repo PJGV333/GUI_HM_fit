@@ -35,12 +35,14 @@ class CancelledByUserException(Exception):
 class App(wx.Frame):
     def __init__(self):
         wx.Frame.__init__(self, None, title="HM Fit", size=(800, 600))
+        #self.SetSizeHints(minSize=(800, 600), maxSize=(1080, 1080))
+
         self.panel = wx.Panel(self)
 
         self.vars_columnas = {} #lista para almacenar las columnas de la hoja de concentraciones
         self.figures = []  # Lista para almacenar figuras 
         self.current_figure_index = -1  # Índice inicial para navegación de figuras
-                
+       
         # Diseño usando Sizers
         self.main_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.left_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -175,10 +177,12 @@ class App(wx.Frame):
         # Canvas para gráficas
         self.fig = Figure()
         self.canvas = FigureCanvas(self.panel, -1, self.fig)
-        self.right_sizer.Add(self.canvas, 1, wx.LEFT | wx.TOP | wx.EXPAND)
+        #self.right_sizer.Add(self.canvas, 1, wx.LEFT | wx.TOP | wx.EXPAND)
+        self.right_sizer.Add(self.canvas, 2, wx.LEFT | wx.TOP | wx.EXPAND)
         # Establecer un tamaño fijo para el canvas
-        fixed_canvas_size = (200, 390)  # Cambia esto según tus necesidades
-        self.canvas.SetMinSize(fixed_canvas_size)
+        #fixed_canvas_size = (200, 390)  # Cambia esto según tus necesidades
+        #self.canvas.SetMinSize(fixed_canvas_size)
+        
 
         # Botones Prev y Next
         # Botón "Prev"
@@ -214,12 +218,17 @@ class App(wx.Frame):
         self.right_sizer.Add(process_data_sizer, 0, wx.EXPAND)
 
         # Consola para ver información
+        #self.console = wx.TextCtrl(self.panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
+        #self.right_sizer.Add(self.console, 1, wx.EXPAND | wx.ALL, 5)
+        #self.console.SetFont(wx.Font(10, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
+
         self.console = wx.TextCtrl(self.panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
-        self.right_sizer.Add(self.console, 1, wx.EXPAND | wx.ALL, 5)
         self.console.SetFont(wx.Font(10, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
+        self.right_sizer.Add(self.console, 1, wx.EXPAND | wx.ALL)
+
         # Establecer un tamaño fijo para la consola
-        fixed_console_size = (200, 250)  # Cambia esto según tus necesidades
-        self.console.SetMinSize(fixed_console_size)
+        #fixed_console_size = (200, 250)  # Cambia esto según tus necesidades
+        #self.console.SetMinSize(fixed_console_size)
 
         # Redirigir stdout
         sys.stdout = TextRedirector(self.console)
@@ -946,15 +955,16 @@ class App(wx.Frame):
             #print(f"x: {k}")
             return rms, r
         
-        # Modifying f_m to use abortividades
+    
         def f_m(k):
             C = concentraciones(k)[0]    
             r = C @ np.linalg.pinv(C) @ Y.T - Y.T
             rms = np.sqrt(np.mean(np.square(r)))
             self.res_consola("f(x)", rms)
             self.res_consola("x", k)
-            #print(f"f(x): {rms}")
-            #print(f"x: {k}")
+            
+            # Procesar eventos de la GUI para actualizar la consola en tiempo real
+            wx.Yield()
             return rms
         
         #bounds = [(-20, 20)]*len(k.T) #Bounds(0, 1e15, keep_feasible=(True)) #
@@ -1006,10 +1016,7 @@ class App(wx.Frame):
             C = concentraciones(k)[0]
             r = C @ np.linalg.pinv(C) @ Y.T - Y.T
             return r.flatten()
-        
-        #epsilon = np.sqrt(np.finfo(float).eps)
-        #jacobian = np.array([approx_fprime(k, lambda ki: residuals(ki)[i], epsilon) for i in range(n)])
-        
+                
         def finite(x, fun):
             dfdx = []
             delta = np.sqrt(np.finfo(float).eps)
