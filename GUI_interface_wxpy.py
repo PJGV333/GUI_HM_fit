@@ -52,13 +52,10 @@ class App(wx.Frame):
         self.main_sizer.Add(self.left_sizer, 1, wx.EXPAND | wx.ALL, 5)
         self.main_sizer.Add(self.right_sizer, 2, wx.EXPAND | wx.ALL, 5)
         
-        top_buttons_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.spec_rb = wx.RadioButton(self.panel, label='Spectroscopy', style=wx.RB_GROUP)
-        top_buttons_sizer.Add(self.spec_rb, 0, wx.ALL, 5)
-        self.NMR_rb = wx.RadioButton(self.panel, label='NMR')
-        top_buttons_sizer.Add(self.NMR_rb, 0, wx.ALL, 5)
-        self.left_sizer.Add(top_buttons_sizer, 0, wx.EXPAND | wx.ALL, 5)
-
+        tecnicas = ["Spectroscopy", "NMR", "Spec_Simulation"]
+        self.choices_calctype = wx.Choice(self.panel, choices=tecnicas)
+        self.left_sizer.Add(self.choices_calctype, 0, wx.ALL, 5)
+        self.choices_calctype.SetSelection(0)  # Selecciona la primera opción por defect
        
         # Crear controles (botones, etiquetas, etc.) y añadirlos a left_sizer o right_sizer
         # Ejemplo:
@@ -120,56 +117,57 @@ class App(wx.Frame):
         self.sheet_EV_panel.GetSizer().Insert(0, self.EFA_cb, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         # Añadir la sección "Eigenvalues" con el Checkbox al left_sizer
-        self.left_sizer.Add(self.sheet_EV_panel, 0, wx.EXPAND | wx.ALL, 5)
+        self.left_sizer.Add(self.sheet_EV_panel, 0, wx.EXPAND | wx.ALL, 5)     
 
+        # Sizer horizontal para alinear los paneles de ajustes
+        ajustes_optimizadores_sizer = wx.BoxSizer(wx.HORIZONTAL)
+
+        # Panel y sizer para el algoritmo
+        algo_panel = wx.Panel(self.panel)
+        algo_sizer = wx.BoxSizer(wx.VERTICAL)
+        algo_label = wx.StaticText(algo_panel, label='Algorithm for C')
+        algo_sizer.Add(algo_label, 0, wx.ALL, 5)
+        algortimo = ["Newton-Raphson", "Levenberg-Marquardt"]
+        self.choice_algoritm = wx.Choice(algo_panel, choices=algortimo)
+        algo_sizer.Add(self.choice_algoritm, 0, wx.ALL, 5)
+        self.choice_algoritm.SetSelection(0)
+        algo_panel.SetSizer(algo_sizer)
+
+        # Panel y sizer para los ajustes de modelo
         ajustes_panel = wx.Panel(self.panel)
         ajustes_sizer = wx.BoxSizer(wx.VERTICAL)
-
-        # Crear un sizer horizontal para contener ambos paneles
-        ajustes_optimizadores_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        
-        "Ajustes de modelo"
         ajustes_label = wx.StaticText(ajustes_panel, label='Model settings')
         ajustes_sizer.Add(ajustes_label, 0, wx.ALL, 5)
-
-        self.libre_rb = wx.RadioButton(ajustes_panel, label='Free', style=wx.RB_GROUP)
-        ajustes_sizer.Add(self.libre_rb, 0, wx.ALL, 5)
-        self.paso_paso_rb = wx.RadioButton(ajustes_panel, label='Step by step')
-        ajustes_sizer.Add(self.paso_paso_rb, 0, wx.ALL, 5)
-        self.no_cooperativo_rb = wx.RadioButton(ajustes_panel, label='Non-cooperative')
-        ajustes_sizer.Add(self.no_cooperativo_rb, 0, wx.ALL, 5)
-
-        # Configura el sizer en el panel y añádelo al sizer izquierdo
+        ajustes_modelo_choices = ["Free", "Step by step", "Non-cooperative"]
+        self.choice_model_settings = wx.Choice(ajustes_panel, choices=ajustes_modelo_choices)
+        ajustes_sizer.Add(self.choice_model_settings, 0, wx.ALL, 5)
+        self.choice_model_settings.SetSelection(0)
         ajustes_panel.SetSizer(ajustes_sizer)
-        ajustes_optimizadores_sizer.Add(ajustes_panel, 1, wx.EXPAND | wx.ALL, 5)
 
-        #Ajustes de optimizador
+        # Panel y sizer para los ajustes del optimizador
         optimizador_panel = wx.Panel(self.panel)
         optimizador_sizer = wx.BoxSizer(wx.VERTICAL)
-
         optimizador_label = wx.StaticText(optimizador_panel, label='Optimizer')
         optimizador_sizer.Add(optimizador_label, 0, wx.ALL, 5)
-
-        # Añadir los Radio Buttons para los optimizadores
-        self.powell_rb = wx.RadioButton(optimizador_panel, label='powell', style=wx.RB_GROUP)
-        optimizador_sizer.Add(self.powell_rb, 0, wx.ALL, 5)
-        self.nelder_mead_rb = wx.RadioButton(optimizador_panel, label='nelder-mead')
-        optimizador_sizer.Add(self.nelder_mead_rb, 0, wx.ALL, 5)
-        self.trust_constr_rb = wx.RadioButton(optimizador_panel, label='trust-constr')
-        optimizador_sizer.Add(self.trust_constr_rb, 0, wx.ALL, 5)
-        self.differential_evolution_rb = wx.RadioButton(optimizador_panel, label='Differential Evolution')
-        optimizador_sizer.Add(self.differential_evolution_rb, 0, wx.ALL, 5)
-        self.basinhopping_rb = wx.RadioButton(optimizador_panel, label='Basinhopping')
-        optimizador_sizer.Add(self.basinhopping_rb, 0, wx.ALL, 5)
-
-        # Configurar sizer y añadir al panel izquierdo
+        optimizador_choices = ["powell", "nelder-mead", "trust-constr", "cg", "bfgs", "l-bfgs-b", "tnc", "cobyla", "slsqp"]
+        self.choice_optimizer_settings = wx.Choice(optimizador_panel, choices=optimizador_choices)
+        optimizador_sizer.Add(self.choice_optimizer_settings, 0, wx.ALL, 5)
+        self.choice_optimizer_settings.SetSelection(0)
         optimizador_panel.SetSizer(optimizador_sizer)
 
-        # Añadir el panel de optimizador al sizer horizontal
+        # Añadir los paneles al sizer horizontal
+        ajustes_optimizadores_sizer.Add(algo_panel, 1, wx.EXPAND | wx.ALL, 5)
+        ajustes_optimizadores_sizer.Add(ajustes_panel, 1, wx.EXPAND | wx.ALL, 5)
         ajustes_optimizadores_sizer.Add(optimizador_panel, 1, wx.EXPAND | wx.ALL, 5)
 
-        # Finalmente, añadir el sizer horizontal al left_sizer
+        # Añadir el sizer horizontal al left_sizer
         self.left_sizer.Add(ajustes_optimizadores_sizer, 0, wx.EXPAND | wx.ALL, 5)
+
+        # Enlazar eventos de selección, si es necesario
+        self.choice_model_settings.Bind(wx.EVT_CHOICE, self.on_model_settings_selected)
+        self.choice_optimizer_settings.Bind(wx.EVT_CHOICE, self.on_optimizer_settings_selected)
+        self.choices_calctype.Bind(wx.EVT_CHOICE, self.choice_type_calc)
+        self.choice_algoritm.Bind(wx.EVT_CHOICE, self.choice_algoritm_type)
 
         ##############################################################################################################
         """ Panel derecho del gui """
@@ -268,30 +266,26 @@ class App(wx.Frame):
 
         ####################################################################################################################
 
-    def get_selected_model_mode(self):
-        if self.libre_rb.GetValue():
-            return "Paso a Paso"
-        elif self.paso_paso_rb.GetValue():
-            return "Libre"
-        elif self.no_cooperativo_rb.GetValue():
-            return "No cooperativo"
-        else:
-            return None  # O un valor predeterminado si es necesario
-        
-    def get_selected_optimizer(self):
-        if self.powell_rb.GetValue():
-            return "powell"
-        elif self.nelder_mead_rb.GetValue():
-            return "nelder-mead"
-        elif self.trust_constr_rb.GetValue():
-            return "trust-constr"
-        elif self.differential_evolution_rb.GetValue():
-            return "differentialevolution"
-        elif self.basinhopping_rb.GetValue():
-            return "basinhopping"
-        else:
-            return None  # O un valor predeterminado si es necesario
+    # Definir tipo de calculo
+    def choice_type_calc(self, event):
+        select_calc = self.choices_calctype.GetStringSelection()
+        return select_calc
+    
+    # Definir tipo de calculo
+    def choice_algoritm_type(self, event):
+        select_algo = self.choice_algoritm.GetStringSelection()
+        return select_algo
+    
+    # Definir los controladores de eventos
+    def on_model_settings_selected(self, event):
+        selected_model = self.choice_model_settings.GetStringSelection()
+        # Aquí puedes agregar la lógica para manejar la selección del modelo
+        return selected_model
 
+    def on_optimizer_settings_selected(self, event):
+        selected_optimizer = self.choice_optimizer_settings.GetStringSelection()
+        # Aquí puedes agregar la lógica para manejar la selección del optimizador
+        return selected_optimizer    
 
     def create_sheet_section(self, label_text, default_value):
             # Crear un panel para esta sección
@@ -310,30 +304,6 @@ class App(wx.Frame):
             # Configurar el sizer del panel y devolver el panel y el control de texto
             panel.SetSizer(sizer)
             return panel, text_ctrl
-
-    #def select_file(self, event):
-    #    with FileDialog(self, "Select Excel file", wildcard="Excel files (*.xlsx)|*.xlsx|All files (*.*)|*.*",
-    #                    style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as fileDialog:
-#
-    #        if fileDialog.ShowModal() == wx.ID_CANCEL:
-    #            return     # El usuario canceló la selección
-#
-    #        # Procesar la selección del archivo
-    #        file_path = fileDialog.GetPath()
-    #        self.lbl_file_path.SetLabel(file_path)  # Actualizar el StaticText con la ruta del archivo
-    #        self.file_path = file_path
-#
-    #        # Leer el DataFrame desde el archivo seleccionado
-    #        df = pd.read_excel(file_path, sheet_name=self.entry_sheet_conc.GetValue())
-    #        
-    #        # Crear casillas de verificación para cada columna
-    #        self.create_checkboxes(df.columns)
-#
-    #        try:
-    #            self.load_model_from_sheet(self.entry_sheet_model.GetValue())
-    #        except Exception as e:
-    #            print("The model sheet was not found or does not exist.")
-    #            pass
 
     def select_file(self, event):
         with FileDialog(self, "Select Excel file", wildcard="Excel files (*.xlsx)|*.xlsx|All files (*.*)|*.*",
@@ -393,20 +363,7 @@ class App(wx.Frame):
         except Exception as e:
             wx.MessageBox(f"Error al leer la hoja de Excel: {e}", "Error en la hoja de Excel", wx.OK | wx.ICON_ERROR)
 
-    def configure_canvas(self, event):
-        # Configurar el área de desplazamiento del Canvas
-        self.graph_canvas.configure(scrollregion=self.graph_canvas.bbox("all"))
-        
-    def update_gui(self):
-        # Esta función se llama periódicamente para actualizar el GUI
-        # Puedes personalizar cómo deseas que se actualice la ventana aquí
 
-        # Por ejemplo, puedes hacer que se desplace automáticamente hacia la parte inferior del Text widget
-        self.output_text.see(tk.END)
-
-        # Llamar a esta función nuevamente después de un cierto intervalo
-        self.after(10, self.update_gui)
-            
     def save_results(self, event):
         # Usar FileDialog de wxPython para seleccionar el archivo donde guardar
         with wx.FileDialog(self, "Save Excel file", wildcard="Excel files (*.xlsx)|*.xlsx",
@@ -722,7 +679,7 @@ class App(wx.Frame):
 
         # Finalmente, actualiza el layout si es necesario
         self.Layout()
-        
+
     def res_consola(self, prefijo, resp):
         # Actualiza la GUI con los resultados de r_0
         # Por ejemplo, mostrar los resultados en un wx.TextCtrl
@@ -750,9 +707,13 @@ class App(wx.Frame):
     def process_data(self, event):
         # Placeholder for the actual data processing
         # Would call the functions from the provided script and display output
-        
-        n_archivo = self.file_path
-        datos = n_archivo 
+
+        # Verificar si se han seleccionado hojas válidas
+        if not hasattr(self, 'file_path'):
+            wx.MessageBox("No se ha seleccionado un archivo .xlsx", 
+                        "Seleccione un archivo .xlsx para trabajar.", wx.OK | wx.ICON_ERROR)
+            return  # Detener la ejecución de la función
+
         spec_entry = self.choice_sheet_spectra.GetStringSelection()
         conc_entry = self.choice_sheet_conc.GetStringSelection()
 
@@ -763,7 +724,7 @@ class App(wx.Frame):
             return  # Detener la ejecución de la función
 
         # Extraer espectros para trabajar
-        spec = pd.read_excel(datos, spec_entry, header=0, index_col=0)
+        spec = pd.read_excel(self.file_path, spec_entry, header=0, index_col=0)
 
         # Extraer datos de esas columnas
         concentracion = pd.read_excel(self.file_path, conc_entry, header=0)
@@ -902,19 +863,25 @@ class App(wx.Frame):
                 # Imprimir el mensaje de excepción, que será redirigido a self.console
                 print(str(e))
                 return
-                
+            
+        def non_coop(K):
+            K_0 = np.array([K[2] - np.log10(4)])
+            K_1 = np.concatenate((K, K_0))
+            K_2 = np.cumsum(K)
+            return K_2 
+
+        def ste_by_step(K, *args):
+            K_2 = np.cumsum(K)
+            return K_2
+    
+                     
         def concentraciones(K, args = (C_T, modelo, nas)):
             ctot = np.array(C_T)
             n_reacciones, n_componentes = ctot.shape
             pre_ko = np.zeros(n_componentes)
             K = np.concatenate((pre_ko, K))
-            #K_1 = np.array([K[2] - np.log10(4)])
-            #K = np.concatenate((K, K_1))
             K = np.cumsum(K)
-        
-            #K[:-1] = np.cumsum(K[:-1])
             K = 10**K
-            
             nspec = len(K)
         
             def calcular_concentraciones(ctot_i, c_guess):
@@ -934,7 +901,7 @@ class App(wx.Frame):
                     J = np.dot(np.linalg.pinv(-jacobian_mat), np.diagflat(c_guess))
                     return J
                 
-                c_guess = least_squares(residuals, c_guess, jac=jacobian, method='lm', xtol=1e-8).x
+                c_guess = least_squares(residuals, c_guess, jac=jacobian, method='lm', xtol=1e-15).x
                 
                 c_spec = np.prod(np.power(np.tile(c_guess, (nspec, 1)).T, modelo), axis=0) * K
                 return c_guess, c_spec
@@ -948,8 +915,7 @@ class App(wx.Frame):
             C = np.delete(c_calculada, nas, axis = 1)
             return C, c_calculada
         
-        
-             
+    
         # Implementing the abortividades function
         def abortividades(k, Y):
             C, Co = concentraciones(k)  # Assuming the function concentraciones returns C and Co
@@ -957,14 +923,13 @@ class App(wx.Frame):
             return np.all(A >= 0)
         
         def f_m2(k):
-            C = concentraciones(k)[0]   
+            C = concentraciones(k)[0]    
             r = C @ np.linalg.pinv(C) @ Y.T - Y.T
-            rms = np.sum(np.square(r))
+            rms = np.sqrt(np.mean(np.square(r)))
             #print(f"f(x): {rms}")
             #print(f"x: {k}")
             return rms, r
-        
-    
+            
         def f_m(k):
             C = concentraciones(k)[0]    
             r = C @ np.linalg.pinv(C) @ Y.T - Y.T
@@ -976,32 +941,16 @@ class App(wx.Frame):
             wx.Yield()
             return rms
         
+                
         #bounds = [(-20, 20)]*len(k.T) #Bounds(0, 1e15, keep_feasible=(True)) #
         
         # Registrar el tiempo de inicio
         inicio = timeit.default_timer()
         
-        optimizer = self.get_selected_optimizer()
+        optimizer = self.choice_optimizer_settings.GetStringSelection()
         print(optimizer)
         r_0 = optimize.minimize(f_m, k, method=optimizer)
-               
-        # Applying the callback to differential_evolution
-        # =============================================================================
-        # r_0 = differential_evolution(
-        #     f_m, 
-        #     bounds, 
-        #     x0=r_0.x, 
-        #     strategy='best1bin', 
-        #     maxiter=1000, 
-        #     popsize=15, 
-        #     tol=0.01,
-        #     mutation=(0.5, 1), 
-        #     recombination=0.7,
-        #     init='latinhypercube', 
-        #     #callback=abortividades_callback
-        # )
-        # =============================================================================
-        
+                      
         # Registrar el tiempo de finalización
         fin = timeit.default_timer()
         
@@ -1044,7 +993,7 @@ class App(wx.Frame):
         SE_k = np.sqrt(np.diag(cov_matrix))
         
         # Calcular el error porcentual
-        error_percent = (SE_k / np.abs(k)) * 100
+        error_percent = (SE_k / np.abs(k)) #* 100
         
         C, Co = concentraciones(k)
         
