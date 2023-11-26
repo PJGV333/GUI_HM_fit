@@ -10,8 +10,6 @@ from matplotlib.figure import Figure
 from scipy import optimize
 import matplotlib.pyplot as plt
 from scipy.optimize import differential_evolution, basinhopping
-from scipy.optimize import least_squares
-import code
 import sys
 import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning) 
@@ -52,7 +50,7 @@ class App(wx.Frame):
         self.main_sizer.Add(self.left_sizer, 1, wx.EXPAND | wx.ALL, 5)
         self.main_sizer.Add(self.right_sizer, 2, wx.EXPAND | wx.ALL, 5)
         
-        tecnicas = ["Spectroscopy", "NMR", "Spec_Simulation"]
+        tecnicas = ["Spectroscopy", "NMR", "Simulation"]
         self.choices_calctype = wx.Choice(self.panel, choices=tecnicas)
         self.left_sizer.Add(self.choices_calctype, 0, wx.ALL, 5)
         self.choices_calctype.SetSelection(0)  # Selecciona la primera opción por defect
@@ -169,7 +167,7 @@ class App(wx.Frame):
         self.choices_calctype.Bind(wx.EVT_CHOICE, self.choice_type_calc)
         self.choice_algoritm.Bind(wx.EVT_CHOICE, self.choice_algoritm_type)
 
-        ##############################################################################################################
+    ##############################################################################################################
         """ Panel derecho del gui """
 
         # Crear un SplitterWindow en el panel derecho
@@ -227,6 +225,11 @@ class App(wx.Frame):
         # Crear la consola en el console_panel
         self.console = wx.TextCtrl(console_panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
         self.console.SetFont(wx.Font(10, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
+
+        # Configuración de colores para la consola
+        self.console.SetBackgroundColour(wx.BLACK)  # Fondo negro
+        self.console.SetForegroundColour(wx.WHITE)  # Texto blanco
+
         console_sizer.Add(self.console, 1, wx.EXPAND | wx.ALL)
         console_panel.SetSizer(console_sizer)
 
@@ -236,6 +239,10 @@ class App(wx.Frame):
 
         # Añadir el splitter al sizer del panel derecho
         self.right_sizer.Add(right_splitter, 1, wx.EXPAND)
+        
+        # Establecer la posición inicial del divisor (sash)
+        # El valor específico dependerá del tamaño deseado de tus paneles
+        right_splitter.SetSashPosition(700)  # Ejemplo con 200 píxeles
    
         # Redirigir stdout
         sys.stdout = TextRedirector(self.console)
@@ -264,7 +271,7 @@ class App(wx.Frame):
         self.panel.SetSizer(self.main_sizer)
         self.main_sizer.Layout()
 
-        ####################################################################################################################
+    ####################################################################################################################
 
     # Definir tipo de calculo
     def choice_type_calc(self, event):
@@ -863,67 +870,32 @@ class App(wx.Frame):
                 # Imprimir el mensaje de excepción, que será redirigido a self.console
                 print(str(e))
                 return
-            
-        def non_coop(K):
-            K_0 = np.array([K[2] - np.log10(4)])
-            K_1 = np.concatenate((K, K_0))
-            K_2 = np.cumsum(K)
-            return K_2 
+        
+        work_algo = self.choice_algoritm.GetStringSelection()
+        model_sett = self.choice_model_settings.GetStringSelection()
 
-        def ste_by_step(K, *args):
-            K_2 = np.cumsum(K)
-            return K_2
-    
-                     
-        def concentraciones(K, args = (C_T, modelo, nas)):
-            ctot = np.array(C_T)
-            n_reacciones, n_componentes = ctot.shape
-            pre_ko = np.zeros(n_componentes)
-            K = np.concatenate((pre_ko, K))
-            K = np.cumsum(K)
-            K = 10**K
-            nspec = len(K)
-        
-            def calcular_concentraciones(ctot_i, c_guess):
-                def residuals(c):
-                    c_spec = np.prod(np.power(np.tile(c, (nspec, 1)).T, modelo), axis=0) * K
-                    c_tot_cal = np.sum(modelo * np.tile(c_spec, (n_componentes, 1)), axis=1)
-                    d = ctot_i - c_tot_cal
-                    return d
-                
-                def jacobian(c):
-                    c_spec = np.prod(np.power(np.tile(c, (nspec, 1)).T, modelo), axis=0) * K
-                    jacobian_mat = np.empty((n_componentes, n_componentes))
-                    for j in range(n_componentes):
-                        for h in range(n_componentes):
-                            jacobian_mat[j, h] = np.sum(modelo.T[:, j] * modelo.T[:, h] * c_spec) / c[j]
-                    
-                    J = np.dot(np.linalg.pinv(-jacobian_mat), np.diagflat(c_guess))
-                    return J
-                
-                c_guess = least_squares(residuals, c_guess, jac=jacobian, method='lm', xtol=1e-15).x
-                
-                c_spec = np.prod(np.power(np.tile(c_guess, (nspec, 1)).T, modelo), axis=0) * K
-                return c_guess, c_spec
-        
-            c_calculada = np.zeros((n_reacciones, nspec))
-            for i in range(n_reacciones):
-                c_guess = np.ones(n_componentes) * 1e-10
-                c_guess, c_spec = calcular_concentraciones(ctot[i], c_guess)
-                c_calculada[i] = c_spec
+
+        if work_algo == "Newton-Raphson":
             
-            C = np.delete(c_calculada, nas, axis = 1)
-            return C, c_calculada
-        
-    
+            from NR_conc_algoritm import NewtonRaphson
+
+            res = NewtonRaphson(C_T, modelo, nas, model_sett)
+
+        elif work_algo == "Levenberg-Marquardt": 
+            
+            from LM_conc_algoritm import LevenbergMarquardt
+
+            res = LevenbergMarquardt(C_T, modelo, nas, model_sett) 
+
+
         # Implementing the abortividades function
         def abortividades(k, Y):
-            C, Co = concentraciones(k)  # Assuming the function concentraciones returns C and Co
+            C, Co = res.concentraciones(k)  # Assuming the function concentraciones returns C and Co
             A = np.linalg.pinv(C) @ Y.T
             return np.all(A >= 0)
         
         def f_m2(k):
-            C = concentraciones(k)[0]    
+            C = res.concentraciones(k)[0]    
             r = C @ np.linalg.pinv(C) @ Y.T - Y.T
             rms = np.sqrt(np.mean(np.square(r)))
             #print(f"f(x): {rms}")
@@ -931,7 +903,7 @@ class App(wx.Frame):
             return rms, r
             
         def f_m(k):
-            C = concentraciones(k)[0]    
+            C = res.concentraciones(k)[0]    
             r = C @ np.linalg.pinv(C) @ Y.T - Y.T
             rms = np.sqrt(np.mean(np.square(r)))
             self.res_consola("f(x)", rms)
@@ -971,7 +943,7 @@ class App(wx.Frame):
         
         # Calcular la matriz jacobiana de los residuos
         def residuals(k):
-            C = concentraciones(k)[0]
+            C = res.concentraciones(k)[0]
             r = C @ np.linalg.pinv(C) @ Y.T - Y.T
             return r.flatten()
                 
@@ -995,7 +967,7 @@ class App(wx.Frame):
         # Calcular el error porcentual
         error_percent = (SE_k / np.abs(k)) #* 100
         
-        C, Co = concentraciones(k)
+        C, Co = res.concentraciones(k)
         
         self.figura(G/np.max(H), C, ":o", "[Especies], M", "[G]/[H], M", "Perfil de concentraciones")
                 
@@ -1040,7 +1012,7 @@ class App(wx.Frame):
             return column_widths
 
         # Encabezados y datos de ejemplo
-        headers = ["Constant", "log10(K) ± Error", "log10(K) % Error", "LoF (%)", "RMS", "Diff C total (%)", "Covfit"]
+        headers = ["Constant", "log10(K) ± Error", "% Error", "LoF (%)", "RMS", "Diff C total (%)", "Covfit"]
         data = [
             [f"K{i+1}", f"{k[i]:.2e} ± {SE_k[i]:.2e}", f"{error_percent[i] * 100:.2f}", f"{lof:.2f}" if i == 0 else "", f"{rms:.2e}" if i == 0 else "", f"{dif_en_ct:.2f}" if i == 0 else "", f"{covfit:.2e}" if i == 0 else ""]
             for i in range(len(k))
