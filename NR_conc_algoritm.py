@@ -10,7 +10,7 @@ class NewtonRaphson:
     def non_coop(self, K):
             K_0 = np.array([K[2] - np.log10(4)])
             K_1 = np.concatenate((K, K_0))
-            K_2 = np.cumsum(K)
+            K_2 = np.cumsum(K_1)
             return K_2
 
     def step_by_step(self, K):

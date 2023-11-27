@@ -224,7 +224,7 @@ class App(wx.Frame):
 
         # Crear la consola en el console_panel
         self.console = wx.TextCtrl(console_panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
-        self.console.SetFont(wx.Font(10, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
+        self.console.SetFont(wx.Font(9, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
 
         # Configuración de colores para la consola
         self.console.SetBackgroundColour(wx.BLACK)  # Fondo negro
@@ -842,8 +842,14 @@ class App(wx.Frame):
         
         modelo = np.array(modelo)
 
-
-        n_K = len(modelo.T) - n_comp #- 1
+        work_algo = self.choice_algoritm.GetStringSelection()
+        model_sett = self.choice_model_settings.GetStringSelection()
+        
+        if model_sett == "Non-cooperative":
+            n_K = len(modelo.T) - n_comp - 1
+        
+        else:
+            n_K = len(modelo.T) - n_comp
         
         if n_K == 1:
             try:
@@ -870,9 +876,7 @@ class App(wx.Frame):
                 # Imprimir el mensaje de excepción, que será redirigido a self.console
                 print(str(e))
                 return
-        
-        work_algo = self.choice_algoritm.GetStringSelection()
-        model_sett = self.choice_model_settings.GetStringSelection()
+
 
 
         if work_algo == "Newton-Raphson":
