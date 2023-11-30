@@ -1,6 +1,7 @@
 import wx
 import sys
 from wx import FileDialog
+import wx.lib.scrolledpanel as scrolled
 import pandas as pd
 import numpy as np
 import matplotlib
@@ -35,7 +36,10 @@ class App(wx.Frame):
     def __init__(self):
         wx.Frame.__init__(self, None, title="HM Fit", size=(800, 600))
 
-        self.panel = wx.Panel(self)
+        #self.panel = wx.Panel(self)
+        # Utilizar ScrolledPanel
+        self.panel = scrolled.ScrolledPanel(self)
+        self.panel.SetupScrolling(scroll_x=True, scroll_y=True)
 
         self.vars_columnas = {} #lista para almacenar las columnas de la hoja de concentraciones
         self.figures = []  # Lista para almacenar figuras 
@@ -48,7 +52,11 @@ class App(wx.Frame):
 
         # Añadir sizers al panel principal
         self.main_sizer.Add(self.left_sizer, 1, wx.EXPAND | wx.ALL, 5)
-        self.main_sizer.Add(self.right_sizer, 2, wx.EXPAND | wx.ALL, 5)
+        self.main_sizer.Add(self.right_sizer, 1, wx.EXPAND | wx.ALL, 5)
+
+        # Vincular el evento de redimensionamiento
+        self.Bind(wx.EVT_SIZE, self.on_resize)
+
         
         tecnicas = ["Spectroscopy", "NMR", "Simulation"]
         self.choices_calctype = wx.Choice(self.panel, choices=tecnicas)
@@ -98,7 +106,7 @@ class App(wx.Frame):
         self.sheet_EV_panel.GetSizer().Insert(0, self.EFA_cb, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         # Añadir la sección "Eigenvalues" con el Checkbox al left_sizer
-        self.left_sizer.Add(self.sheet_EV_panel, 0, wx.EXPAND | wx.ALL, 5)   
+        self.left_sizer.Add(self.sheet_EV_panel, 0, wx.ALL, 5)   
 
         self.sp_columns = wx.StaticText(self.sp_select_panel, label="Select non-absorbent species: ")
         self.sp_select_sizer.Add(self.sp_columns, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
@@ -194,7 +202,7 @@ class App(wx.Frame):
         self.param_limits_list_ctrl.InsertColumn(2, "Máximo", wx.LIST_FORMAT_LEFT, width=100)
 
         # Añadir el ListCtrl al sizer
-        self.left_sizer.Add(self.param_limits_list_ctrl, 1, wx.EXPAND | wx.ALL, 5)
+        self.left_sizer.Add(self.param_limits_list_ctrl, 0, wx.ALL, 5)
     ##############################################################################################################
         """ Panel derecho del gui """
 
@@ -258,7 +266,7 @@ class App(wx.Frame):
         self.console.SetBackgroundColour(wx.BLACK)  # Fondo negro
         self.console.SetForegroundColour(wx.WHITE)  # Texto blanco
 
-        console_sizer.Add(self.console, 1, wx.EXPAND | wx.ALL)
+        console_sizer.Add(self.console, 2, wx.EXPAND | wx.ALL)
         console_panel.SetSizer(console_sizer)
 
         # Dividir el splitter entre los dos paneles del panel derecho
@@ -300,6 +308,25 @@ class App(wx.Frame):
         self.main_sizer.Layout()
 
     ####################################################################################################################
+
+    #Redimensionar el tamaño de la ventana al 50% por cada panel.
+    def on_resize(self, event):
+        # Llama a este método para permitir que el evento de redimensionamiento continúe
+        event.Skip()
+
+        # Obtener el tamaño actual del frame
+        frame_size = self.GetSize()
+
+        # Calcular el nuevo ancho para los paneles
+        new_width = frame_size[0] // 2
+
+        # Ajustar los tamaños de los sizers
+        self.left_sizer.SetMinSize((new_width, -1))
+        self.right_sizer.SetMinSize((new_width, -1))
+
+        # Actualizar el layout
+        self.panel.Layout()
+
 
     # Definir tipo de calculo
     def choice_type_calc(self, event):
