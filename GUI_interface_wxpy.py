@@ -1,7 +1,7 @@
 import wx
 import sys
 from wx import FileDialog
-import wx.lib.scrolledpanel as scrolled
+import wx.grid as gridlib
 import pandas as pd
 import numpy as np
 import matplotlib
@@ -36,10 +36,7 @@ class App(wx.Frame):
     def __init__(self):
         wx.Frame.__init__(self, None, title="HM Fit", size=(800, 600))
 
-        #self.panel = wx.Panel(self)
-        # Utilizar ScrolledPanel
-        self.panel = scrolled.ScrolledPanel(self)
-        self.panel.SetupScrolling(scroll_x=True, scroll_y=True)
+        self.panel = wx.Panel(self)       
 
         self.vars_columnas = {} #lista para almacenar las columnas de la hoja de concentraciones
         self.figures = []  # Lista para almacenar figuras 
@@ -54,11 +51,7 @@ class App(wx.Frame):
         self.main_sizer.Add(self.left_sizer, 1, wx.EXPAND | wx.ALL, 5)
         self.main_sizer.Add(self.right_sizer, 1, wx.EXPAND | wx.ALL, 5)
 
-        # Vincular el evento de redimensionamiento
-        self.Bind(wx.EVT_SIZE, self.on_resize)
-
-        
-        tecnicas = ["Spectroscopy", "NMR", "Simulation"]
+        tecnicas = ["Spectroscopy", "NMR", "pKa calculation", "Simulation"]
         self.choices_calctype = wx.Choice(self.panel, choices=tecnicas)
         self.left_sizer.Add(self.choices_calctype, 0, wx.ALL, 5)
         self.choices_calctype.SetSelection(0)  # Selecciona la primera opción por defect
@@ -75,11 +68,16 @@ class App(wx.Frame):
 
         # Espectros
         self.sheet_spectra_panel, self.choice_sheet_spectra = self.create_sheet_dropdown_section("Spectra Sheet Name:")
-        self.left_sizer.Add(self.sheet_spectra_panel, 0, wx.EXPAND | wx.ALL, 5)
+        #self.left_sizer.Add(self.sheet_spectra_panel, 0, wx.EXPAND | wx.ALL, 5)
 
         # Concentraciones
         self.sheet_conc_panel, self.choice_sheet_conc = self.create_sheet_dropdown_section("Concentration Sheet Name:")
-        self.left_sizer.Add(self.sheet_conc_panel, 0, wx.EXPAND | wx.ALL, 5)
+        #self.left_sizer.Add(self.sheet_conc_panel, 0, wx.EXPAND | wx.ALL, 5)
+
+        dropdowns_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        dropdowns_sizer.Add(self.sheet_spectra_panel, 1, wx.EXPAND | wx.ALL, 5)
+        dropdowns_sizer.Add(self.sheet_conc_panel, 1, wx.EXPAND | wx.ALL, 5)
+        self.left_sizer.Add(dropdowns_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
         # Sección para Checkboxes (inicialmente vacía)
         self.columns_names_panel = wx.Panel(self.panel)
@@ -91,11 +89,6 @@ class App(wx.Frame):
 
         # modelo
         self.sheet_model_panel, self.entry_sheet_model = self.create_sheet_dropdown_section("Model Sheet Name:")
-        self.left_sizer.Add(self.sheet_model_panel, 0, wx.EXPAND | wx.ALL, 5)
-
-        # Sección para Checkboxes (inicialmente vacía)
-        self.sp_select_panel = wx.Panel(self.panel)
-        self.sp_select_sizer = wx.BoxSizer(wx.HORIZONTAL)
         
         # Autovalores
         self.sheet_EV_panel, self.entry_EV = self.create_sheet_section("Eigenvalues:", "0")
@@ -105,9 +98,17 @@ class App(wx.Frame):
         self.EFA_cb.SetValue(True)  # Marcar el checkbox por defecto
         self.sheet_EV_panel.GetSizer().Insert(0, self.EFA_cb, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
-        # Añadir la sección "Eigenvalues" con el Checkbox al left_sizer
-        self.left_sizer.Add(self.sheet_EV_panel, 0, wx.ALL, 5)   
+        #sizer para poner EV y menu desplegable de modelo
+        model_and_ev_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        model_and_ev_sizer.Add(self.sheet_model_panel, 1, wx.EXPAND | wx.ALL, 5)
+        model_and_ev_sizer.Add(self.sheet_EV_panel, 1, wx.EXPAND | wx.ALL, 5)
 
+        self.left_sizer.Add(model_and_ev_sizer, 0, wx.EXPAND | wx.ALL, 5)
+        
+        # Sección para Checkboxes (inicialmente vacía)
+        self.sp_select_panel = wx.Panel(self.panel)
+        self.sp_select_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        
         self.sp_columns = wx.StaticText(self.sp_select_panel, label="Select non-absorbent species: ")
         self.sp_select_sizer.Add(self.sp_columns, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
         self.sp_select_panel.SetSizer(self.sp_select_sizer)
@@ -128,10 +129,6 @@ class App(wx.Frame):
         model_vertical_sizer = wx.BoxSizer(wx.VERTICAL)
         model_vertical_sizer.Add(self.model_panel, 1, wx.EXPAND | wx.ALL, 5)
         
-
-        # Sizer horizontal para alinear los paneles de ajustes
-        #ajustes_optimizadores_sizer = wx.BoxSizer(wx.HORIZONTAL)
-
         # Crear un Sizer horizontal para alinear el panel del modelo y los paneles de ajustes
         main_horizontal_sizer = wx.BoxSizer(wx.HORIZONTAL)
         
@@ -151,7 +148,7 @@ class App(wx.Frame):
         algo_sizer.Add(self.choice_algoritm, 0, wx.ALL, 5)
         self.choice_algoritm.SetSelection(0)
         algo_panel.SetSizer(algo_sizer)
-
+        
         # Panel y sizer para los ajustes de modelo
         ajustes_panel = wx.Panel(self.panel)
         ajustes_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -162,7 +159,7 @@ class App(wx.Frame):
         ajustes_sizer.Add(self.choice_model_settings, 0, wx.ALL, 5)
         self.choice_model_settings.SetSelection(0)
         ajustes_panel.SetSizer(ajustes_sizer)
-
+        
         # Panel y sizer para los ajustes del optimizador
         optimizador_panel = wx.Panel(self.panel)
         optimizador_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -174,10 +171,31 @@ class App(wx.Frame):
         self.choice_optimizer_settings.SetSelection(0)
         optimizador_panel.SetSizer(optimizador_sizer)
 
+        # Crear el Grid
+        self.grid = gridlib.Grid(self.panel)
+        self.grid.CreateGrid(0, 4)  # Inicialmente sin filas, pero con 4 columnas
+        self.grid.SetRowLabelSize(0)  # Ocultar la columna de números de fila
+
+        # Configurar los encabezados de las columnas
+        self.grid.SetColLabelValue(0, "Parámetro")
+        self.grid.SetColLabelValue(1, "Valor")
+        self.grid.SetColLabelValue(2, "Mín")
+        self.grid.SetColLabelValue(3, "Máx")
+
+        # Ajustar el tamaño de las columnas
+        self.grid.AutoSizeColumns()
+        
         # Añadir paneles de algoritmo, ajustes de modelo y ajustes del optimizador
         ajustes_vertical_sizer.Add(algo_panel, 1, wx.EXPAND | wx.ALL, 5)
         ajustes_vertical_sizer.Add(ajustes_panel, 1, wx.EXPAND | wx.ALL, 5)
         ajustes_vertical_sizer.Add(optimizador_panel, 1, wx.EXPAND | wx.ALL, 5)
+        ajustes_vertical_sizer.Add(self.grid, 1, wx.ALL, 5)
+        
+        # Enlazar eventos de selección, si es necesario
+        self.choice_model_settings.Bind(wx.EVT_CHOICE, self.on_model_settings_selected)
+        self.choice_optimizer_settings.Bind(wx.EVT_CHOICE, self.on_optimizer_settings_selected)
+        self.choices_calctype.Bind(wx.EVT_CHOICE, self.choice_type_calc)
+        self.choice_algoritm.Bind(wx.EVT_CHOICE, self.choice_algoritm_type)
 
         # Añadir el Sizer vertical de ajustes al Sizer horizontal principal
         main_horizontal_sizer.Add(ajustes_vertical_sizer, 1, wx.EXPAND | wx.ALL, 5)
@@ -185,24 +203,6 @@ class App(wx.Frame):
         # Añadir el Sizer horizontal principal al left_sizer
         self.left_sizer.Add(main_horizontal_sizer, 1, wx.EXPAND | wx.ALL, 5)
 
-        # Enlazar eventos de selección, si es necesario
-        self.choice_model_settings.Bind(wx.EVT_CHOICE, self.on_model_settings_selected)
-        self.choice_optimizer_settings.Bind(wx.EVT_CHOICE, self.on_optimizer_settings_selected)
-        self.choices_calctype.Bind(wx.EVT_CHOICE, self.choice_type_calc)
-        self.choice_algoritm.Bind(wx.EVT_CHOICE, self.choice_algoritm_type)
-
-        self.bounds_panel = wx.Panel(self.panel)
-        self.bounds_sizer = wx.FlexGridSizer(0, 3, 10, 10)  # Filas, Columnas, Espacio horizontal, Espacio vertical
-        self.bounds_panel.SetSizer(self.bounds_sizer)
-
-         # Crear el ListCtrl para los límites de parámetros
-        self.param_limits_list_ctrl = wx.ListCtrl(self.panel, style=wx.LC_REPORT | wx.LC_EDIT_LABELS)
-        self.param_limits_list_ctrl.InsertColumn(0, "Parámetro", wx.LIST_FORMAT_LEFT, width=100)
-        self.param_limits_list_ctrl.InsertColumn(1, "Mínimo", wx.LIST_FORMAT_LEFT, width=100)
-        self.param_limits_list_ctrl.InsertColumn(2, "Máximo", wx.LIST_FORMAT_LEFT, width=100)
-
-        # Añadir el ListCtrl al sizer
-        self.left_sizer.Add(self.param_limits_list_ctrl, 0, wx.ALL, 5)
     ##############################################################################################################
         """ Panel derecho del gui """
 
@@ -266,12 +266,12 @@ class App(wx.Frame):
         self.console.SetBackgroundColour(wx.BLACK)  # Fondo negro
         self.console.SetForegroundColour(wx.WHITE)  # Texto blanco
 
-        console_sizer.Add(self.console, 2, wx.EXPAND | wx.ALL)
+        console_sizer.Add(self.console, 1, wx.EXPAND | wx.ALL)
         console_panel.SetSizer(console_sizer)
 
         # Dividir el splitter entre los dos paneles del panel derecho
         right_splitter.SplitHorizontally(canvas_panel, console_panel)
-        right_splitter.SetMinimumPaneSize(20)  # Tamaño mínimo de los paneles
+        right_splitter.SetMinimumPaneSize(100)  # Tamaño mínimo de los paneles
 
         # Añadir el splitter al sizer del panel derecho
         self.right_sizer.Add(right_splitter, 1, wx.EXPAND)
@@ -308,25 +308,60 @@ class App(wx.Frame):
         self.main_sizer.Layout()
 
     ####################################################################################################################
+    # añadir parametros al cuadro de las constantes. Editar los valores por defecto.
+    def add_parameter_bounds(self, num_parameters):
+        self.grid.ClearGrid()  # Limpiar el Grid antes de añadir nuevos elementos
+        self.grid.SetRowLabelSize(0)  # Ocultar la columna de números de fila
 
-    #Redimensionar el tamaño de la ventana al 50% por cada panel.
-    def on_resize(self, event):
-        # Llama a este método para permitir que el evento de redimensionamiento continúe
-        event.Skip()
+        # Asegurarse de que el Grid tiene suficientes filas
+        if self.grid.GetNumberRows() < num_parameters:
+            self.grid.AppendRows(num_parameters - self.grid.GetNumberRows())
+        elif self.grid.GetNumberRows() > num_parameters:
+            self.grid.DeleteRows(num_parameters, self.grid.GetNumberRows() - num_parameters)
 
-        # Obtener el tamaño actual del frame
-        frame_size = self.GetSize()
+        # Rellenar las filas con los datos
+        for i in range(num_parameters):
+            self.grid.SetCellValue(i, 0, f"K {i + 1}")  # Nombre del parámetro
+            self.grid.SetCellValue(i, 1, "1")  # Valor por defecto para "Valor"
+            self.grid.SetCellValue(i, 2, "min")  # Valor por defecto para "Mín"
+            self.grid.SetCellValue(i, 3, "max")  # Valor por defecto para "Máx"
+ 
 
-        # Calcular el nuevo ancho para los paneles
-        new_width = frame_size[0] // 2
+    def get_parameters_and_bounds(self):
+        parameters_and_bounds = []
+        for i in range(self.param_limits_list_ctrl.GetItemCount()):
+            parameter_name = self.param_limits_list_ctrl.GetItemText(i, 0)
+            const_value = self.param_limits_list_ctrl.GetItemText(i, 1)
+            min_value = self.param_limits_list_ctrl.GetItemText(i, 2)
+            max_value = self.param_limits_list_ctrl.GetItemText(i, 3)
 
-        # Ajustar los tamaños de los sizers
-        self.left_sizer.SetMinSize((new_width, -1))
-        self.right_sizer.SetMinSize((new_width, -1))
+            try:
+                const_value = float(const_value) if const_value else None
+                min_value = float(min_value) if min_value else None
+                max_value = float(max_value) if max_value else None
+                parameters_and_bounds.append((parameter_name, const_value, min_value, max_value))
+            except ValueError:
+                wx.MessageBox(f"Por favor, ingrese valores numéricos válidos para {parameter_name}.", "Error de Valor", wx.OK | wx.ICON_ERROR)
+                return None
 
-        # Actualizar el layout
-        self.panel.Layout()
+        return parameters_and_bounds
 
+    def on_optimizer_choice(self, event):
+        selected_optimizer = self.choice_optimizer_settings.GetStringSelection()
+        if selected_optimizer in ["optimizador_que_usa_bounds", ...]:
+            # Suponiendo que puedas determinar el número de parámetros necesarios
+            num_parameters = self.determine_number_of_parameters()
+            self.add_parameter_bounds(num_parameters)
+        else:
+            self.param_limits_list_ctrl.DeleteAllItems()  # Limpiar el ListCtrl si el optimizador no usa límites
+
+    def on_optimize_button_click(self, event):
+        parameter_bounds = self.get_parameter_bounds()
+        if parameter_bounds is not None:
+            print(parameter_bounds)  # Proceder con la optimización
+        else:
+            # Manejar el caso en que los valores no son válidos
+            wx.MessageBox("Por favor, corrija los valores de los límites antes de continuar.", "Error", wx.OK | wx.ICON_WARNING)
 
     # Definir tipo de calculo
     def choice_type_calc(self, event):
@@ -736,6 +771,17 @@ class App(wx.Frame):
                 self.canvas.figure.clear()
                 self.canvas.draw()
 
+        # Eliminar los checkboxes actuales
+        if hasattr(self, 'columns_names_panel'):
+            children = list(self.columns_names_panel.GetChildren())
+            for child in children[1:]:  # Asumiendo que el primer hijo no es un checkbox
+                child.Destroy()
+
+        # Limpiar el diccionario de checkboxes
+        self.vars_columnas = {}
+
+        # Reorganizar los controles en el panel de nombres de columnas
+        self.columns_names_panel.Layout()
         # Aquí puedes agregar cualquier otro reinicio necesario, como limpiar campos de texto,
         # restablecer variables de estado, etc.
 
@@ -902,10 +948,10 @@ class App(wx.Frame):
         
         if model_sett == "Non-cooperative":
             n_K = len(modelo.T) - n_comp - 1
-        
+            n_param = self.add_parameter_bounds(n_K)        
         else:
             n_K = len(modelo.T) - n_comp
-        
+            n_param = self.add_parameter_bounds(n_K)    
         if n_K == 1:
             try:
                 k_e = self.ask_float("K", "Indique un valor estimado para la constante de asociación:")
@@ -931,7 +977,6 @@ class App(wx.Frame):
                 # Imprimir el mensaje de excepción, que será redirigido a self.console
                 print(str(e))
                 return
-
 
 
         if work_algo == "Newton-Raphson":
@@ -971,15 +1016,15 @@ class App(wx.Frame):
             # Procesar eventos de la GUI para actualizar la consola en tiempo real
             wx.Yield()
             return rms
-        
                 
-        #bounds = [(-20, 20)]*len(k.T) #Bounds(0, 1e15, keep_feasible=(True)) #
+        bnds = [(-20, 20)]*len(k.T) #Bounds(0, 1e15, keep_feasible=(True)) #
         
         # Registrar el tiempo de inicio
         inicio = timeit.default_timer()
         
         optimizer = self.choice_optimizer_settings.GetStringSelection()
         print(optimizer)
+        
         r_0 = optimize.minimize(f_m, k, method=optimizer)
                       
         # Registrar el tiempo de finalización
