@@ -49,7 +49,7 @@ class App(wx.Frame):
 
         # Añadir sizers al panel principal
         self.main_sizer.Add(self.left_sizer, 1, wx.EXPAND | wx.ALL, 5)
-        self.main_sizer.Add(self.right_sizer, 0, wx.EXPAND | wx.ALL, 5)
+        self.main_sizer.Add(self.right_sizer, 2, wx.EXPAND | wx.ALL, 5)
 
         tecnicas = ["Spectroscopy", "NMR", "pKa calculation", "Simulation"]
         self.choices_calctype = wx.Choice(self.panel, choices=tecnicas)
@@ -68,15 +68,13 @@ class App(wx.Frame):
 
         # Espectros
         self.sheet_spectra_panel, self.choice_sheet_spectra = self.create_sheet_dropdown_section("Spectra Sheet Name:")
-        #self.left_sizer.Add(self.sheet_spectra_panel, 0, wx.EXPAND | wx.ALL, 5)
+        self.left_sizer.Add(self.sheet_spectra_panel, 0, wx.EXPAND | wx.ALL, 5)
 
         # Concentraciones
         self.sheet_conc_panel, self.choice_sheet_conc = self.create_sheet_dropdown_section("Concentration Sheet Name:")
-        #self.left_sizer.Add(self.sheet_conc_panel, 0, wx.EXPAND | wx.ALL, 5)
+        self.left_sizer.Add(self.sheet_conc_panel, 0, wx.EXPAND | wx.ALL, 5)
 
         dropdowns_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        dropdowns_sizer.Add(self.sheet_spectra_panel, 1, wx.EXPAND | wx.ALL, 5)
-        dropdowns_sizer.Add(self.sheet_conc_panel, 1, wx.EXPAND | wx.ALL, 5)
         self.left_sizer.Add(dropdowns_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
         # Sección para Checkboxes (inicialmente vacía)
@@ -87,59 +85,80 @@ class App(wx.Frame):
         self.columns_names_panel.SetSizer(self.columns_names_sizer)
         self.left_sizer.Add(self.columns_names_panel, 0, wx.EXPAND | wx.ALL, 5)
 
-        # modelo
-        self.sheet_model_panel, self.entry_sheet_model = self.create_sheet_dropdown_section("Model Sheet Name:")
-        
         # Autovalores
-        self.sheet_EV_panel, self.entry_EV = self.create_sheet_section("Eigenvalues:", "0")
+        self.sheet_EV_panel, self.entry_EV = self.create_sheet_section("Eigenvalues:", "0", parent = None)
 
         # Crear el Checkbox para EFA y añadirlo al sizer de la sección "Eigenvalues"
         self.EFA_cb = wx.CheckBox(self.sheet_EV_panel, label='EFA')
         self.EFA_cb.SetValue(True)  # Marcar el checkbox por defecto
         self.sheet_EV_panel.GetSizer().Insert(0, self.EFA_cb, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+        self.left_sizer.Add(self.sheet_EV_panel, 0, wx.ALL | wx.EXPAND, 5)
 
-        #sizer para poner EV y menu desplegable de modelo
-        model_and_ev_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        model_and_ev_sizer.Add(self.sheet_model_panel, 1, wx.EXPAND | wx.ALL, 5)
-        model_and_ev_sizer.Add(self.sheet_EV_panel, 1, wx.EXPAND | wx.ALL, 5)
+        # Creación del wx.Notebook
+        notebook = wx.Notebook(self.panel)
 
-        self.left_sizer.Add(model_and_ev_sizer, 0, wx.EXPAND | wx.ALL, 5)
+        # Creación de los paneles para las pestañas
+        tab_modelo = wx.Panel(notebook)
+        tab_optimizacion = wx.Panel(notebook)
+
+        # Añadir los paneles al notebook
+        notebook.AddPage(tab_modelo, "Modelo")
+        notebook.AddPage(tab_optimizacion, "Optimización")
+
+        # Crear los controles para la pestaña 'Modelo'
+        self.sheet_model_panel, self.entry_sheet_model = self.create_sheet_dropdown_section("Model Sheet Name:", parent=tab_modelo)
+        self.sp_select_panel = wx.Panel(tab_modelo)
+
+        # Creación del CheckBox
+        self.toggle_components = wx.CheckBox(tab_modelo, label="Define Model Dimensions")
+        self.toggle_components.Bind(wx.EVT_CHECKBOX, self.create_grid_dimensions)
+
+        # Creación de los TextCtrl para número de componentes y número de especies
+        self.num_components_text, self.entry_nc = self.create_sheet_section("Number of Components:", "0", parent = tab_modelo)
+        self.num_species_text, self.entry_nsp = self.create_sheet_section("Number of Species:", "0", parent = tab_modelo)
         
-        # Sección para Checkboxes (inicialmente vacía)
-        self.sp_select_panel = wx.Panel(self.panel)
-        self.sp_select_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        
+
         self.sp_columns = wx.StaticText(self.sp_select_panel, label="Select non-absorbent species: ")
+
+        self.sp_select_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.sp_select_sizer.Add(self.sp_columns, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
         self.sp_select_panel.SetSizer(self.sp_select_sizer)
-        self.left_sizer.Add(self.sp_select_panel, 0, wx.EXPAND | wx.ALL, 5)
 
-        # Panel y sizer para el modelo
-        self.model_panel = wx.Panel(self.panel)
+        # Reemplazar el wx.ListCtrl por un wx.grid.Grid
+        self.model_panel = wx.Panel(tab_modelo)
+        self.model_grid = wx.grid.Grid(self.model_panel)
+        self.model_grid.CreateGrid(0, 4)  # Por ejemplo, crear una cuadrícula sin filas inicialmente, pero con 4 columnas
+        self.model_grid.SetSelectionMode(wx.grid.Grid.SelectRows)  # Configurar para seleccionar filas completas
+
         self.model_sizer = wx.BoxSizer(wx.HORIZONTAL)
-
-        # Crear el wx.ListCtrl para mostrar el modelo
-        self.model_list_ctrl = wx.ListCtrl(self.model_panel, style=wx.LC_REPORT | wx.BORDER_SUNKEN)
-        self.model_sizer.Add(self.model_list_ctrl, 1, wx.ALL | wx.EXPAND, 5)
-
-        # Configurar sizer y añadir al panel principal
+        self.model_sizer.Add(self.model_grid, 1, wx.ALL | wx.EXPAND, 5)
         self.model_panel.SetSizer(self.model_sizer)
 
-        # Panel y sizer para el algoritmo
-        algo_panel = wx.Panel(self.panel)
-        algo_sizer = wx.BoxSizer(wx.VERTICAL)
+        # Configurar sizer y añadir al panel de la pestaña 'Modelo'
+        modelo_sizer = wx.BoxSizer(wx.VERTICAL)
+        modelo_sizer.Add(self.sheet_model_panel, 0, wx.EXPAND | wx.ALL, 5)
+        # Añadirlos al sizer
+        modelo_sizer.Add(self.toggle_components, 0, wx.ALL | wx.EXPAND, 5)
+        modelo_sizer.Add(self.num_components_text, 0, wx.ALL | wx.EXPAND, 5)
+        modelo_sizer.Add(self.num_species_text, 0, wx.ALL | wx.EXPAND, 5)
+        modelo_sizer.Add(self.sp_select_panel, 0, wx.EXPAND | wx.ALL, 5)
+        modelo_sizer.Add(self.model_panel, 0, wx.EXPAND | wx.ALL, 5)
+        tab_modelo.SetSizer(modelo_sizer)
+
+        # Crear los controles para la pestaña 'Optimización'
+        algo_panel = wx.Panel(tab_optimizacion)
         algo_label = wx.StaticText(algo_panel, label='Algorithm for C')
+        algo_sizer = wx.BoxSizer(wx.VERTICAL)
         algo_sizer.Add(algo_label, 0, wx.ALL, 5)
-        algortimo = ["Newton-Raphson", "Levenberg-Marquardt"]
-        self.choice_algoritm = wx.Choice(algo_panel, choices=algortimo)
+        algoritmo = ["Newton-Raphson", "Levenberg-Marquardt"]
+        self.choice_algoritm = wx.Choice(algo_panel, choices=algoritmo)
         algo_sizer.Add(self.choice_algoritm, 0, wx.ALL, 5)
         self.choice_algoritm.SetSelection(0)
         algo_panel.SetSizer(algo_sizer)
 
-        # Panel y sizer para los ajustes de modelo
-        ajustes_panel = wx.Panel(self.panel)
-        ajustes_sizer = wx.BoxSizer(wx.VERTICAL)
+        ajustes_panel = wx.Panel(tab_optimizacion)
         ajustes_label = wx.StaticText(ajustes_panel, label='Model settings')
+        ajustes_sizer = wx.BoxSizer(wx.VERTICAL)
         ajustes_sizer.Add(ajustes_label, 0, wx.ALL, 5)
         ajustes_modelo_choices = ["Free", "Step by step", "Non-cooperative"]
         self.choice_model_settings = wx.Choice(ajustes_panel, choices=ajustes_modelo_choices)
@@ -147,27 +166,9 @@ class App(wx.Frame):
         self.choice_model_settings.SetSelection(0)
         ajustes_panel.SetSizer(ajustes_sizer)
 
-        # Crear un Sizer vertical para el panel del modelo y añadirlo
-        model_vertical_sizer = wx.BoxSizer(wx.VERTICAL)
-        model_vertical_sizer.Add(self.model_panel, 0, wx.ALL, 5)
-        model_vertical_sizer.Add(algo_panel, 1, wx.EXPAND | wx.ALL, 5)
-        model_vertical_sizer.Add(ajustes_panel, 1, wx.EXPAND | wx.ALL, 5)
-        
-        # Crear un Sizer horizontal para alinear el panel del modelo y los paneles de ajustes
-        main_horizontal_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        
-        # Añadir el Sizer vertical del modelo al Sizer horizontal principal
-        main_horizontal_sizer.Add(model_vertical_sizer, 1, wx.EXPAND | wx.ALL, 5)
-
-        # Sizer vertical para los paneles de ajustes
-        ajustes_vertical_sizer = wx.BoxSizer(wx.VERTICAL)
-        
-        
-        
-        # Panel y sizer para los ajustes del optimizador
-        optimizador_panel = wx.Panel(self.panel)
-        optimizador_sizer = wx.BoxSizer(wx.VERTICAL)
+        optimizador_panel = wx.Panel(tab_optimizacion)
         optimizador_label = wx.StaticText(optimizador_panel, label='Optimizer')
+        optimizador_sizer = wx.BoxSizer(wx.VERTICAL)
         optimizador_sizer.Add(optimizador_label, 0, wx.ALL, 5)
         optimizador_choices = ["powell", "nelder-mead", "trust-constr", "cg", "bfgs", "l-bfgs-b", "tnc", "cobyla", "slsqp"]
         self.choice_optimizer_settings = wx.Choice(optimizador_panel, choices=optimizador_choices)
@@ -176,36 +177,26 @@ class App(wx.Frame):
         optimizador_panel.SetSizer(optimizador_sizer)
 
         # Crear el Grid
-        self.grid = gridlib.Grid(self.panel)
-        self.grid.CreateGrid(0, 4)  # Inicialmente sin filas, pero con 4 columnas
-        self.grid.SetRowLabelSize(0)  # Ocultar la columna de números de fila
-
-        # Configurar los encabezados de las columnas
+        self.grid = gridlib.Grid(tab_optimizacion)
+        self.grid.CreateGrid(0, 4)
+        self.grid.SetRowLabelSize(0)
         self.grid.SetColLabelValue(0, "Parameter")
         self.grid.SetColLabelValue(1, "Value")
         self.grid.SetColLabelValue(2, "Min")
         self.grid.SetColLabelValue(3, "Max")
-
-        # Ajustar el tamaño de las columnas
         self.grid.AutoSizeColumns()
-        
-        # Añadir paneles de algoritmo, ajustes de modelo y ajustes del optimizador
-        #ajustes_vertical_sizer.Add(algo_panel, 1, wx.EXPAND | wx.ALL, 5)
-        #ajustes_vertical_sizer.Add(ajustes_panel, 1, wx.EXPAND | wx.ALL, 5)
-        ajustes_vertical_sizer.Add(optimizador_panel, 1, wx.EXPAND | wx.ALL, 5)
-        ajustes_vertical_sizer.Add(self.grid, 1, wx.ALL, 5)
-        
-        # Enlazar eventos de selección, si es necesario
-        self.choice_model_settings.Bind(wx.EVT_CHOICE, self.on_model_settings_selected)
-        self.choice_optimizer_settings.Bind(wx.EVT_CHOICE, self.on_optimizer_settings_selected)
-        self.choices_calctype.Bind(wx.EVT_CHOICE, self.choice_type_calc)
-        self.choice_algoritm.Bind(wx.EVT_CHOICE, self.choice_algoritm_type)
 
-        # Añadir el Sizer vertical de ajustes al Sizer horizontal principal
-        main_horizontal_sizer.Add(ajustes_vertical_sizer, 1, wx.EXPAND | wx.ALL, 5)
+        # Configurar sizer y añadir al panel de la pestaña 'Optimización'
+        optimizacion_sizer = wx.BoxSizer(wx.VERTICAL)
+        optimizacion_sizer.Add(algo_panel, 0, wx.EXPAND | wx.ALL, 5)
+        optimizacion_sizer.Add(ajustes_panel, 0, wx.EXPAND | wx.ALL, 5)
+        optimizacion_sizer.Add(optimizador_panel, 0, wx.EXPAND | wx.ALL, 5)
+        optimizacion_sizer.Add(self.grid, 1, wx.EXPAND | wx.ALL, 5)
+        tab_optimizacion.SetSizer(optimizacion_sizer)
 
-        # Añadir el Sizer horizontal principal al left_sizer
-        self.left_sizer.Add(main_horizontal_sizer, 1, wx.EXPAND | wx.ALL, 5)
+        # Añadir el notebook al left_sizer
+        self.left_sizer.Add(notebook, 1, wx.EXPAND | wx.ALL, 5)
+
 
     ##############################################################################################################
         """ Panel derecho del gui """
@@ -310,7 +301,6 @@ class App(wx.Frame):
 
         self.panel.SetSizer(self.main_sizer)
         self.main_sizer.Layout()
-
     ####################################################################################################################
     # añadir parametros al cuadro de las constantes. Editar los valores por defecto.
     def add_parameter_bounds(self, num_parameters):
@@ -387,9 +377,14 @@ class App(wx.Frame):
         # Aquí puedes agregar la lógica para manejar la selección del optimizador
         return selected_optimizer    
 
-    def create_sheet_section(self, label_text, default_value):
+    def create_sheet_section(self, label_text, default_value, parent):
+            
+            if parent is None:
+                parent = self.panel
+
+            panel = wx.Panel(parent)
             # Crear un panel para esta sección
-            panel = wx.Panel(self.panel)
+            #panel = wx.Panel(self.panel)
             sizer = wx.BoxSizer(wx.HORIZONTAL)
 
             # Crear y añadir una etiqueta
@@ -416,21 +411,24 @@ class App(wx.Frame):
             self.file_path = file_path
             self.populate_sheet_choices(file_path)
     
-    def create_sheet_dropdown_section(self, label_text):
-        panel = wx.Panel(self.panel)
-        sizer = wx.BoxSizer(wx.HORIZONTAL)
+    def create_sheet_dropdown_section(self, label_text, parent=None):
+            if parent is None:
+                parent = self.panel
 
-        # Crear y añadir la etiqueta
-        label = wx.StaticText(panel, label=label_text)
-        sizer.Add(label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+            panel = wx.Panel(parent)
+            sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        # Crear y añadir el menú desplegable
-        choice = wx.Choice(panel)
-        sizer.Add(choice, 1, wx.ALL | wx.EXPAND, 5)
+            # Crear y añadir la etiqueta
+            label = wx.StaticText(panel, label=label_text)
+            sizer.Add(label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
-        panel.SetSizer(sizer)
-        return panel, choice
-    
+            # Crear y añadir el menú desplegable
+            choice = wx.Choice(panel)
+            sizer.Add(choice, 1, wx.ALL | wx.EXPAND, 5)
+
+            panel.SetSizer(sizer)
+            return panel, choice
+
     def populate_sheet_choices(self, file_path):
         try:
             sheet_names = pd.ExcelFile(file_path).sheet_names
@@ -532,16 +530,6 @@ class App(wx.Frame):
             print(f"Deselected: {label}")
             # Eliminar de la lista de seleccionados, o realizar otra acción
 
-    def on_model_checkbox_select(self, event):
-        # Este método se llama cuando se marca o desmarca un checkbox
-        checkbox = event.GetEventObject()
-        label = checkbox.GetLabel()
-        if checkbox.IsChecked():
-            print(f"Model row {label} está seleccionado.")
-        else:
-            print(f"Model row {label} no está seleccionado.")
-
-  
     def figura(self, x, y, mark, ylabel, xlabel, title):
         fig = Figure(figsize=(4, 4), dpi=200)
         ax = fig.add_subplot(111)
@@ -648,91 +636,115 @@ class App(wx.Frame):
         df = pd.read_excel(self.file_path, sheet_name=sheet_name)
         df_transposed = df.T  # Transponer el DataFrame
 
-        # Asegurarse de que el ListCtrl está limpio antes de añadir nuevos datos
-        self.model_list_ctrl.DeleteAllItems()
-        self.model_list_ctrl.ClearAll()
+        # Borrar las filas y columnas existentes en el Grid
+        self.model_grid.ClearGrid()
+        if self.model_grid.GetNumberRows() > 0:
+            self.model_grid.DeleteRows(0, self.model_grid.GetNumberRows())
+        if self.model_grid.GetNumberCols() > 0:
+            self.model_grid.DeleteCols(0, self.model_grid.GetNumberCols())
 
-        # Crear el wx.ListCtrl para mostrar el modelo sin encabezados
-        if hasattr(self, 'model_list_ctrl'):  # Verifica si el control ya existe
-            self.model_list_ctrl.Destroy()  # Si es así, destrúyelo
+        # Agregar nuevas filas y columnas al Grid
+        self.model_grid.AppendCols(len(df_transposed.columns))
+        self.model_grid.AppendRows(len(df_transposed.index))
 
-        # Crea el ListCtrl con el estilo de no encabezado
-        self.model_list_ctrl = wx.ListCtrl(self.model_panel, style=wx.LC_REPORT | wx.LC_NO_HEADER | wx.BORDER_SUNKEN)
-        self.model_sizer.Add(self.model_list_ctrl, 1, wx.ALL | wx.EXPAND, 5)
+        # Asegúrate de que 'i' es un índice entero, no una cadena
+        for i in range(len(df_transposed.index)):
+            # Asegúrate de que 'j' es un índice entero, no una cadena
+            for j in range(len(df_transposed.columns)):
+                # El valor convertido a cadena, ya que SetCellValue espera una cadena como tercer argumento
+                self.model_grid.SetCellValue(i, j, str(df_transposed.iloc[i, j]))
 
-         # Vincula los manejadores de eventos después de crear el ListCtrl
-        self.model_list_ctrl.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_selection_changed)
-        self.model_list_ctrl.Bind(wx.EVT_LIST_ITEM_DESELECTED, self.on_selection_changed)
-
-        # Agregar columnas al ListCtrl
-        for col_num in range(len(df_transposed.columns)):
-            self.model_list_ctrl.InsertColumn(col_num, '')
-
-       # Agregar filas al ListCtrl
-        for i, row in df_transposed.iterrows():
-            index = self.model_list_ctrl.InsertItem(self.model_list_ctrl.GetItemCount(), '')
-            for j, value in enumerate(row):
-                self.model_list_ctrl.SetItem(index, j, str(value))
-            self.model_list_ctrl.SetColumnWidth(j, wx.LIST_AUTOSIZE)  # Ajusta el ancho de la columna
+        # Ajustar el tamaño de las columnas
+        for col in range(len(df_transposed.columns)):
+            self.model_grid.AutoSizeColumn(col)
 
         # Actualizar el layout de los sizers
         self.model_panel.Layout()
         self.left_sizer.Layout()
+        self.Layout()              # Actualiza el layout del frame si 'self' es el frame
+        self.Fit()                 # Ajusta el tamaño del frame para coincidir con el tamaño de sus hijos
+        self.Refresh()             # Refresca el frame para mostrar los cambios
+        self.Update()              # Fuerza la repintura inmediata del frame
     
-    def load_generated_model(self, modelo):
-        # Asegurarse de que el ListCtrl está limpio antes de añadir nuevos datos
-        self.model_list_ctrl.DeleteAllItems()
-        self.model_list_ctrl.ClearAll()
+    # Función para obtener las filas seleccionadas en wx.grid.Grid
+    #def get_selected_rows(self):
+    #    return self.model_grid.GetSelectedRows()
 
-        # Crear el wx.ListCtrl para mostrar el modelo
-        if not hasattr(self, 'model_list_ctrl'):
-            self.model_list_ctrl = wx.ListCtrl(self.model_panel, style=wx.LC_REPORT | wx.LC_NO_HEADER | wx.BORDER_SUNKEN)
-            self.model_sizer.Add(self.model_list_ctrl, 1, wx.ALL | wx.EXPAND, 5)
-
-            # Vincula los manejadores de eventos después de crear el ListCtrl
-            self.model_list_ctrl.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_selection_changed2)
-            self.model_list_ctrl.Bind(wx.EVT_LIST_ITEM_DESELECTED, self.on_selection_changed2)
-
-        # Agregar columnas al ListCtrl con nombres de las columnas seleccionadas
-        selected_columns = [col for col in self.vars_columnas if self.vars_columnas[col].GetValue()]
-        for col_name in selected_columns:
-            self.model_list_ctrl.InsertColumn(selected_columns.index(col_name), col_name)
-
-        # Agregar filas al ListCtrl
-        num_rows = modelo.shape[1]
-        for row_idx in range(num_rows):
-            index = self.model_list_ctrl.InsertItem(self.model_list_ctrl.GetItemCount(), '')
-            for col_idx, col_name in enumerate(selected_columns):
-                self.model_list_ctrl.SetItem(index, col_idx, str(modelo[col_idx, row_idx]))
-            self.model_list_ctrl.SetColumnWidth(col_idx, wx.LIST_AUTOSIZE)
-
-        # Actualizar el layout de los sizers
-        self.model_panel.Layout()
-        self.left_sizer.Layout()
-
-    # Funciones para seleccionar filas del modelo y transponer sus posiciones.
-    def get_selected_rows(self):
-        selection = []
-        index = -1
-        while True:
-            index = self.model_list_ctrl.GetNextSelected(index)
-            if index == -1:
-                break
-            selection.append(index)
-        return selection
-    
+    # Manejador de eventos para la selección de celdas o filas
     def on_selection_changed(self, event):
-        selected_rows = self.get_selected_rows()        
-        df2 = pd.read_excel(self.file_path, sheet_name=self.entry_sheet_model.GetStringSelection())
+        selected_rows = self.model_grid.GetSelectedRows()
+        print("Filas seleccionadas en la interfaz de usuario (corresponden a columnas en el DataFrame):", selected_rows)
+        
+        # Intenta cargar los datos desde el archivo Excel si está disponible
+        try:
+            df = pd.read_excel(self.file_path, sheet_name=self.entry_sheet_model.GetStringSelection())
+        except Exception as e:  # Captura cualquier excepción para manejar el error
+            print("Error al cargar desde Excel:", e)
+            # Crea un DataFrame a partir de los datos del grid si hay un error al cargar desde Excel
+            df = pd.DataFrame(self.extract_data_from_grid())
+        
+        # Transponer el DataFrame para hacer que las filas del grid coincidan con las columnas del DataFrame
+        df_transposed = df.T
+        
+        # Asegúrate de que los índices seleccionados son válidos
+        selected_columns = [df_transposed.columns[i] for i in selected_rows if i < len(df_transposed.columns)]
+        
+        print("Columnas seleccionadas en el DataFrame:", selected_columns)
+        return selected_columns
 
-        # Restar 1 de cada índice seleccionado para compensar el encabezado
-        adjusted_selected_rows = [row - 1 for row in selected_rows]
-
-        # Convertir nombres de columnas seleccionados a índices numéricos
-        selected_indices = [df2.columns.get_loc(df2.columns[row]) for row in adjusted_selected_rows]
-        print("Columnas seleccionadas:", selected_indices)
-        return selected_indices
     
+    def create_grid_dimensions(self, event=None):
+        if self.toggle_components.GetValue():
+            num_components = int(self.entry_nc.GetValue())
+            num_species = int(self.entry_nsp.GetValue())
+
+            self.model_grid.ClearGrid()
+            if self.model_grid.GetNumberRows() > 0:
+                self.model_grid.DeleteRows(0, self.model_grid.GetNumberRows())
+            if self.model_grid.GetNumberCols() > 0:
+                self.model_grid.DeleteCols(0, self.model_grid.GetNumberCols())
+
+            self.model_grid.AppendCols(num_components)
+            self.model_grid.AppendRows(num_species)
+
+            # Inicializar las celdas del grid con valores vacíos o un valor predeterminado
+            for row in range(num_species):
+                for col in range(num_components):
+                    self.model_grid.SetCellValue(row, col, "")  # Inicializar con una cadena vacía
+
+            self.model_grid.ForceRefresh()
+
+        # Ajustar el layout y el tamaño de los controles y la ventana
+        self.model_panel.Layout()  # Actualiza el layout del panel que contiene el grid
+        self.model_panel.Fit()     # Ajusta el tamaño del panel para coincidir con el tamaño de sus hijos
+        self.Layout()              # Actualiza el layout del frame si 'self' es el frame
+        self.Fit()                 # Ajusta el tamaño del frame para coincidir con el tamaño de sus hijos
+        self.Refresh()             # Refresca el frame para mostrar los cambios
+        self.Update()              # Fuerza la repintura inmediata del frame
+
+        if event is not None:
+            event.Skip()
+
+    def extract_data_from_grid(self):
+        num_rows = self.model_grid.GetNumberRows()
+        num_cols = self.model_grid.GetNumberCols()
+        data_matrix = []
+
+        for row in range(num_rows):
+            row_data = []
+            for col in range(num_cols):
+                value_str = self.model_grid.GetCellValue(row, col)
+                # Intentar convertir el valor a float, si no es posible dejarlo como está
+                try:
+                    value = float(value_str) if value_str else None  # Convertir a float si la celda no está vacía
+                except ValueError:
+                    value = value_str  # Mantener como cadena si no puede convertirse a float
+                row_data.append(value)
+            data_matrix.append(row_data)
+
+        return data_matrix
+
+        
     def ask_indices(self, message):
         dialog = wx.TextEntryDialog(self, message, "Input")
         if dialog.ShowModal() == wx.ID_OK:
@@ -762,9 +774,14 @@ class App(wx.Frame):
         self.df = None
 
         # Limpiar el ListCtrl (si lo estás utilizando)
-        if hasattr(self, 'model_list_ctrl'):
-            self.model_list_ctrl.DeleteAllItems()
-            self.model_list_ctrl.ClearAll()
+        if hasattr(self, 'model_grid'):
+            # Verificar si el grid tiene filas; si es así, eliminarlas todas
+            if self.model_grid.GetNumberRows() > 0:
+                self.model_grid.DeleteRows(0, self.model_grid.GetNumberRows())
+
+            # Verificar si el grid tiene columnas; si es así, eliminarlas todas
+            if self.model_grid.GetNumberCols() > 0:
+                self.model_grid.DeleteCols(0, self.model_grid.GetNumberCols())
 
         # Limpiar la lista de figuras
         if hasattr(self, 'figures'):
@@ -906,43 +923,40 @@ class App(wx.Frame):
         C_T = pd.DataFrame(C_T)
         
         try:
-            modelo = pd.read_excel(self.file_path, self.entry_sheet_model.GetStringSelection(), header=0, index_col=0)
-            
-            #print(modelo)
+            # Intentar leer desde el archivo Excel
+            if self.entry_sheet_model.GetStringSelection():
+                modelo = pd.read_excel(self.file_path, self.entry_sheet_model.GetStringSelection(), header=0, index_col=0)
+            else:
+                # Si no se seleccionó una hoja de modelo, lanzar una excepción propia
+                raise ValueError("No se ha seleccionado una hoja de modelo.")
             nas = self.on_selection_changed(event)
             
-        except:
-            try:
-                m = self.ask_integer("Indique el coeficiente estequiométrico para el receptor:")
-                n = self.ask_integer("Indique el coeficiente estequiométrico para el huesped:")
-                # Continuar con el resto de tu lógica si las entradas son válidas
-                #coef = np.array([m, n])
-                def combinaciones(m, n):
-                    combinaciones = []
-                    for i in range(0, m + 1):
-                        for j in range(0, n + 1):
-                            if i == 0 and j > 1:
-                                pass
-                            elif i > 1 and j == 0:
-                                pass
-                            elif j == 1 and i == 0:
-                                combinaciones.append([j, i])
-                            elif i == 1 and j == 0:
-                                combinaciones.append([j, i])
-                            elif i + j != 0:
-                                combinaciones.append([i, j])
-                    return np.array(combinaciones).T
-                
-                modelo = combinaciones(m, n)
-                self.load_generated_model(modelo)
-                nas = self.ask_indices("Índice de especies no absorbentes (e.g., '1, 4' o dejar en blanco para []):")
-                #print(modelo)
-
-            except CancelledByUserException as e:
-                # Imprimir el mensaje de excepción, que será redirigido a self.console
-                print(str(e))
-                return
+        except ValueError as ve:
+            # Manejar la excepción si no se ha seleccionado una hoja de modelo
+            wx.MessageBox(str(ve), "Advertencia", wx.OK | wx.ICON_WARNING)
+            return
             
+        except Exception as e:
+            # Si ocurre algún otro error al intentar leer desde Excel, intentar extraer del grid
+            try:
+                grid_data = self.extract_data_from_grid()
+                if grid_data and any(any(row) for row in grid_data):  # Verificar que grid_data no esté vacío y que tenga datos
+                    modelo = np.array(grid_data).T
+                    nas = self.on_selection_changed(event)
+                else:
+                    # Si el grid también está vacío, lanzar una excepción propia
+                    raise ValueError("No se ha definido un modelo en la hoja de Excel ni en el grid.")
+                    
+            except ValueError as ve:
+                # Manejar la excepción si tanto la hoja de Excel como el grid están vacíos
+                wx.MessageBox(str(ve), "Advertencia", wx.OK | wx.ICON_WARNING)
+                return
+
+            except CancelledByUserException as cue:
+                # Manejar la excepción de cancelación por el usuario
+                print(str(cue))
+                return
+
         
         modelo = np.array(modelo)
 
