@@ -49,7 +49,7 @@ class App(wx.Frame):
 
         # Añadir sizers al panel principal
         self.main_sizer.Add(self.left_sizer, 1, wx.EXPAND | wx.ALL, 5)
-        self.main_sizer.Add(self.right_sizer, 1, wx.EXPAND | wx.ALL, 5)
+        self.main_sizer.Add(self.right_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
         tecnicas = ["Spectroscopy", "NMR", "pKa calculation", "Simulation"]
         self.choices_calctype = wx.Choice(self.panel, choices=tecnicas)
@@ -125,19 +125,6 @@ class App(wx.Frame):
         # Configurar sizer y añadir al panel principal
         self.model_panel.SetSizer(self.model_sizer)
 
-        # Crear un Sizer vertical para el panel del modelo y añadirlo
-        model_vertical_sizer = wx.BoxSizer(wx.VERTICAL)
-        model_vertical_sizer.Add(self.model_panel, 1, wx.EXPAND | wx.ALL, 5)
-        
-        # Crear un Sizer horizontal para alinear el panel del modelo y los paneles de ajustes
-        main_horizontal_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        
-        # Añadir el Sizer vertical del modelo al Sizer horizontal principal
-        main_horizontal_sizer.Add(model_vertical_sizer, 1, wx.EXPAND | wx.ALL, 5)
-
-        # Sizer vertical para los paneles de ajustes
-        ajustes_vertical_sizer = wx.BoxSizer(wx.VERTICAL)
-
         # Panel y sizer para el algoritmo
         algo_panel = wx.Panel(self.panel)
         algo_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -148,7 +135,7 @@ class App(wx.Frame):
         algo_sizer.Add(self.choice_algoritm, 0, wx.ALL, 5)
         self.choice_algoritm.SetSelection(0)
         algo_panel.SetSizer(algo_sizer)
-        
+
         # Panel y sizer para los ajustes de modelo
         ajustes_panel = wx.Panel(self.panel)
         ajustes_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -159,6 +146,23 @@ class App(wx.Frame):
         ajustes_sizer.Add(self.choice_model_settings, 0, wx.ALL, 5)
         self.choice_model_settings.SetSelection(0)
         ajustes_panel.SetSizer(ajustes_sizer)
+
+        # Crear un Sizer vertical para el panel del modelo y añadirlo
+        model_vertical_sizer = wx.BoxSizer(wx.VERTICAL)
+        model_vertical_sizer.Add(self.model_panel, 0, wx.ALL, 5)
+        model_vertical_sizer.Add(algo_panel, 1, wx.EXPAND | wx.ALL, 5)
+        model_vertical_sizer.Add(ajustes_panel, 1, wx.EXPAND | wx.ALL, 5)
+        
+        # Crear un Sizer horizontal para alinear el panel del modelo y los paneles de ajustes
+        main_horizontal_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        
+        # Añadir el Sizer vertical del modelo al Sizer horizontal principal
+        main_horizontal_sizer.Add(model_vertical_sizer, 1, wx.EXPAND | wx.ALL, 5)
+
+        # Sizer vertical para los paneles de ajustes
+        ajustes_vertical_sizer = wx.BoxSizer(wx.VERTICAL)
+        
+        
         
         # Panel y sizer para los ajustes del optimizador
         optimizador_panel = wx.Panel(self.panel)
@@ -177,17 +181,17 @@ class App(wx.Frame):
         self.grid.SetRowLabelSize(0)  # Ocultar la columna de números de fila
 
         # Configurar los encabezados de las columnas
-        self.grid.SetColLabelValue(0, "Parámetro")
-        self.grid.SetColLabelValue(1, "Valor")
-        self.grid.SetColLabelValue(2, "Mín")
-        self.grid.SetColLabelValue(3, "Máx")
+        self.grid.SetColLabelValue(0, "Parameter")
+        self.grid.SetColLabelValue(1, "Value")
+        self.grid.SetColLabelValue(2, "Min")
+        self.grid.SetColLabelValue(3, "Max")
 
         # Ajustar el tamaño de las columnas
         self.grid.AutoSizeColumns()
         
         # Añadir paneles de algoritmo, ajustes de modelo y ajustes del optimizador
-        ajustes_vertical_sizer.Add(algo_panel, 1, wx.EXPAND | wx.ALL, 5)
-        ajustes_vertical_sizer.Add(ajustes_panel, 1, wx.EXPAND | wx.ALL, 5)
+        #ajustes_vertical_sizer.Add(algo_panel, 1, wx.EXPAND | wx.ALL, 5)
+        #ajustes_vertical_sizer.Add(ajustes_panel, 1, wx.EXPAND | wx.ALL, 5)
         ajustes_vertical_sizer.Add(optimizador_panel, 1, wx.EXPAND | wx.ALL, 5)
         ajustes_vertical_sizer.Add(self.grid, 1, wx.ALL, 5)
         
@@ -271,7 +275,7 @@ class App(wx.Frame):
 
         # Dividir el splitter entre los dos paneles del panel derecho
         right_splitter.SplitHorizontally(canvas_panel, console_panel)
-        right_splitter.SetMinimumPaneSize(100)  # Tamaño mínimo de los paneles
+        right_splitter.SetMinimumPaneSize(20)  # Tamaño mínimo de los paneles
 
         # Añadir el splitter al sizer del panel derecho
         self.right_sizer.Add(right_splitter, 1, wx.EXPAND)
@@ -326,7 +330,6 @@ class App(wx.Frame):
             self.grid.SetCellValue(i, 2, "min")  # Valor por defecto para "Mín"
             self.grid.SetCellValue(i, 3, "max")  # Valor por defecto para "Máx"
  
-
     def get_parameters_and_bounds(self):
         parameters_and_bounds = []
         for i in range(self.param_limits_list_ctrl.GetItemCount()):
@@ -1116,9 +1119,9 @@ class App(wx.Frame):
             return column_widths
 
         # Encabezados y datos de ejemplo
-        headers = ["Constant", "log10(K) ± Error", "% Error", "LoF (%)", "RMS", "Diff C total (%)", "Covfit"]
+        headers = ["Constant", "log10(K) ± Error", "% Error", "LoF (%)", "RMS", "Covfit"]
         data = [
-            [f"K{i+1}", f"{k[i]:.2e} ± {SE_k[i]:.2e}", f"{error_percent[i] * 100:.2f}", f"{lof:.2f}" if i == 0 else "", f"{rms:.2e}" if i == 0 else "", f"{dif_en_ct:.2f}" if i == 0 else "", f"{covfit:.2e}" if i == 0 else ""]
+            [f"K{i+1}", f"{k[i]:.2e} ± {SE_k[i]:.2e}", f"{error_percent[i] * 100:.2f}", f"{lof:.2f}" if i == 0 else "", f"{rms:.2e}" if i == 0 else "", f"{covfit:.2e}" if i == 0 else ""]
             for i in range(len(k))
         ]
 
