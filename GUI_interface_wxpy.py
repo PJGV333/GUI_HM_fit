@@ -110,8 +110,8 @@ class App(wx.Frame):
         self.sp_select_panel = wx.Panel(tab_modelo)
 
         # Creación del CheckBox
-        self.toggle_components = wx.CheckBox(tab_modelo, label="Define Model Dimensions")
-        self.toggle_components.Bind(wx.EVT_CHECKBOX, self.create_grid_dimensions)
+        self.toggle_components = wx.Button(tab_modelo, label="Define Model Dimensions")
+        self.toggle_components.Bind(wx.EVT_BUTTON, self.on_define_model_dimensions_checked)
 
         # Creación de los TextCtrl para número de componentes y número de especies
         self.num_components_text, self.entry_nc = self.create_sheet_section("Number of Components:", "0", parent = tab_modelo)
@@ -142,7 +142,7 @@ class App(wx.Frame):
         modelo_sizer.Add(self.num_components_text, 0, wx.ALL | wx.EXPAND, 5)
         modelo_sizer.Add(self.num_species_text, 0, wx.ALL | wx.EXPAND, 5)
         modelo_sizer.Add(self.sp_select_panel, 0, wx.EXPAND | wx.ALL, 5)
-        modelo_sizer.Add(self.model_panel, 0, wx.EXPAND | wx.ALL, 5)
+        modelo_sizer.Add(self.model_panel, 1, wx.EXPAND | wx.ALL, 5)
         tab_modelo.SetSizer(modelo_sizer)
 
         # Crear los controles para la pestaña 'Optimización'
@@ -196,7 +196,6 @@ class App(wx.Frame):
 
         # Añadir el notebook al left_sizer
         self.left_sizer.Add(notebook, 1, wx.EXPAND | wx.ALL, 5)
-
 
     ##############################################################################################################
         """ Panel derecho del gui """
@@ -317,36 +316,31 @@ class App(wx.Frame):
         for i in range(num_parameters):
             self.grid.SetCellValue(i, 0, f"K {i + 1}")  # Nombre del parámetro
             self.grid.SetCellValue(i, 1, "1")  # Valor por defecto para "Valor"
-            self.grid.SetCellValue(i, 2, "min")  # Valor por defecto para "Mín"
-            self.grid.SetCellValue(i, 3, "max")  # Valor por defecto para "Máx"
+            self.grid.SetCellValue(i, 2, "")  # Valor por defecto para "Mín"
+            self.grid.SetCellValue(i, 3, "")  # Valor por defecto para "Máx"
  
-    def get_parameters_and_bounds(self):
-        parameters_and_bounds = []
-        for i in range(self.param_limits_list_ctrl.GetItemCount()):
-            parameter_name = self.param_limits_list_ctrl.GetItemText(i, 0)
-            const_value = self.param_limits_list_ctrl.GetItemText(i, 1)
-            min_value = self.param_limits_list_ctrl.GetItemText(i, 2)
-            max_value = self.param_limits_list_ctrl.GetItemText(i, 3)
-
+    # Función para extraer los datos del grid y crear x0 y bonds para el optimizador
+    def extract_constants_from_grid(self):
+        n_rows = self.grid.GetNumberRows()
+        x0 = []
+        bounds = []
+        for row in range(n_rows):
             try:
-                const_value = float(const_value) if const_value else None
-                min_value = float(min_value) if min_value else None
-                max_value = float(max_value) if max_value else None
-                parameters_and_bounds.append((parameter_name, const_value, min_value, max_value))
+                # Extraer y convertir los valores del grid
+                value = float(self.grid.GetCellValue(row, 1)) if self.grid.GetCellValue(row, 1) else None
+                min_val = float(self.grid.GetCellValue(row, 2)) if self.grid.GetCellValue(row, 2) else None
+                max_val = float(self.grid.GetCellValue(row, 3)) if self.grid.GetCellValue(row, 3) else None
+                
+                # Agregar a la lista de valores iniciales y a los límites si los valores son válidos
+                if value is not None:
+                    x0.append(value)
+                if min_val is not None and max_val is not None:
+                    bounds.append((min_val, max_val))
             except ValueError:
-                wx.MessageBox(f"Por favor, ingrese valores numéricos válidos para {parameter_name}.", "Error de Valor", wx.OK | wx.ICON_ERROR)
-                return None
-
-        return parameters_and_bounds
-
-    def on_optimizer_choice(self, event):
-        selected_optimizer = self.choice_optimizer_settings.GetStringSelection()
-        if selected_optimizer in ["optimizador_que_usa_bounds", ...]:
-            # Suponiendo que puedas determinar el número de parámetros necesarios
-            num_parameters = self.determine_number_of_parameters()
-            self.add_parameter_bounds(num_parameters)
-        else:
-            self.param_limits_list_ctrl.DeleteAllItems()  # Limpiar el ListCtrl si el optimizador no usa límites
+                # Manejar valores no numéricos o celdas vacías
+                continue
+        
+        return np.array(x0), bounds
 
     def on_optimize_button_click(self, event):
         parameter_bounds = self.get_parameter_bounds()
@@ -431,20 +425,41 @@ class App(wx.Frame):
 
     def populate_sheet_choices(self, file_path):
         try:
+            # Obtener los nombres de las hojas del archivo Excel
             sheet_names = pd.ExcelFile(file_path).sheet_names
-            self.choice_sheet_spectra.SetItems(sheet_names)
-            #self.choice_sheet_spectra.SetSelection(0)  # Seleccionar la primera hoja por defecto
-
-            self.choice_sheet_conc.SetItems(sheet_names)
-            #self.choice_sheet_conc.SetSelection(0)  # Seleccionar la primera hoja por defecto
+            
+            # Añadir una opción en blanco al principio de la lista de nombres de las hojas
+            sheet_names_with_blank = [""] + sheet_names
+            
+            # Configurar las opciones del wx.Choice para espectros, con la opción en blanco
+            self.choice_sheet_spectra.SetItems(sheet_names_with_blank)
+            self.choice_sheet_spectra.SetSelection(0)  # La opción en blanco será seleccionada por defecto
+            
+            # Configurar las opciones del wx.Choice para concentraciones, con la opción en blanco
+            self.choice_sheet_conc.SetItems(sheet_names_with_blank)
+            self.choice_sheet_conc.SetSelection(0)  # La opción en blanco será seleccionada por defecto
             self.choice_sheet_conc.Bind(wx.EVT_CHOICE, self.on_conc_sheet_selected)
 
-            self.entry_sheet_model.SetItems(sheet_names)
-            #self.choice_sheet_model.SetSelection(0)  # Seleccionar la primera hoja por defecto
+            # Configurar las opciones del wx.Choice para el modelo, con la opción en blanco
+            self.entry_sheet_model.SetItems(sheet_names_with_blank)
+            self.entry_sheet_model.SetSelection(0)  # La opción en blanco será seleccionada por defecto
             self.entry_sheet_model.Bind(wx.EVT_CHOICE, self.on_model_sheet_selected)
-
+        
         except Exception as e:
-            wx.MessageBox(f"Error al leer el archivo de Excel: {e}", "Error en archivo de Excel", wx.OK | wx.ICON_ERROR)
+            wx.MessageBox(f"Error al leer el archivo Excel: {e}", "Error", wx.OK | wx.ICON_ERROR)
+
+    def clear_model_grid(self):
+        if hasattr(self, 'model_grid'):
+            # Verificar si el grid tiene filas; si es así, eliminarlas todas
+            if self.model_grid.GetNumberRows() > 0:
+                self.model_grid.DeleteRows(0, self.model_grid.GetNumberRows())
+
+            # Verificar si el grid tiene columnas; si es así, eliminarlas todas
+            if self.model_grid.GetNumberCols() > 0:
+                self.model_grid.DeleteCols(0, self.model_grid.GetNumberCols())
+
+            self.model_grid.Refresh()  # Opcionalmente refresca el grid después de borrarlo
+
 
     def on_conc_sheet_selected(self, event):
         selected_sheet = self.choice_sheet_conc.GetStringSelection()
@@ -456,11 +471,14 @@ class App(wx.Frame):
 
     def on_model_sheet_selected(self, event):
         selected_sheet = self.entry_sheet_model.GetStringSelection()
-        try:
-            self.load_model_from_sheet(selected_sheet)
-        except Exception as e:
-            wx.MessageBox(f"Error al leer la hoja de Excel: {e}", "Error en la hoja de Excel", wx.OK | wx.ICON_ERROR)
-
+        if selected_sheet == "":  # Si la selección es la opción en blanco
+            self.clear_model_grid()  # Llama al método para limpiar el grid
+        else:
+            try:
+                self.clear_model_grid()
+                self.load_model_from_sheet(selected_sheet)  # Cargar los datos en el grid desde la hoja seleccionada
+            except Exception as e:
+                wx.MessageBox(f"Error al leer la hoja de Excel: {e}", "Error en la hoja de Excel", wx.OK | wx.ICON_ERROR)
 
     def save_results(self, event):
         # Usar FileDialog de wxPython para seleccionar el archivo donde guardar
@@ -633,7 +651,7 @@ class App(wx.Frame):
         
     #Función para mostrar el modelo en el panel destinado para ello. 
     def load_model_from_sheet(self, sheet_name):
-        df = pd.read_excel(self.file_path, sheet_name=sheet_name)
+        df = pd.read_excel(self.file_path, sheet_name=sheet_name, header=0, index_col=0)
         df_transposed = df.T  # Transponer el DataFrame
 
         # Borrar las filas y columnas existentes en el Grid
@@ -647,50 +665,57 @@ class App(wx.Frame):
         self.model_grid.AppendCols(len(df_transposed.columns))
         self.model_grid.AppendRows(len(df_transposed.index))
 
-        # Asegúrate de que 'i' es un índice entero, no una cadena
+        # Establecer los nombres de las columnas y las etiquetas de las filas
+        for col in range(len(df_transposed.columns)):
+            self.model_grid.SetColLabelValue(col, f"C{col + 1}")
+        for row in range(len(df_transposed.index)):
+            self.model_grid.SetRowLabelValue(row, f"sp{row + 1}")
+
+        # Rellenar la cuadrícula con datos
         for i in range(len(df_transposed.index)):
-            # Asegúrate de que 'j' es un índice entero, no una cadena
             for j in range(len(df_transposed.columns)):
-                # El valor convertido a cadena, ya que SetCellValue espera una cadena como tercer argumento
                 self.model_grid.SetCellValue(i, j, str(df_transposed.iloc[i, j]))
 
-        # Ajustar el tamaño de las columnas
-        for col in range(len(df_transposed.columns)):
-            self.model_grid.AutoSizeColumn(col)
+        # Ajustar el tamaño de las columnas y filas
+        self.model_grid.AutoSizeColumns()
+        self.model_grid.AutoSizeRows()
 
         # Actualizar el layout de los sizers
         self.model_panel.Layout()
         self.left_sizer.Layout()
-        self.Layout()              # Actualiza el layout del frame si 'self' es el frame
-        self.Fit()                 # Ajusta el tamaño del frame para coincidir con el tamaño de sus hijos
-        self.Refresh()             # Refresca el frame para mostrar los cambios
-        self.Update()              # Fuerza la repintura inmediata del frame
-    
-    # Función para obtener las filas seleccionadas en wx.grid.Grid
-    #def get_selected_rows(self):
-    #    return self.model_grid.GetSelectedRows()
+        self.Layout()  # Actualiza el layout del frame si 'self' es el frame
+        self.Fit()  # Ajusta el tamaño del frame para coincidir con el tamaño de sus hijos
+        self.Refresh()  # Refresca el frame para mostrar los cambios
+        self.Update()  # Fuerza la repintura inmediata del frame
 
+    
+    
     # Manejador de eventos para la selección de celdas o filas
     def on_selection_changed(self, event):
-        selected_rows = self.model_grid.GetSelectedRows()
-        print("Filas seleccionadas en la interfaz de usuario (corresponden a columnas en el DataFrame):", selected_rows)
+        
         
         # Intenta cargar los datos desde el archivo Excel si está disponible
         try:
+            selected_rows = self.model_grid.GetSelectedRows() - 1
+            #print("Filas seleccionadas en la interfaz de usuario (corresponden a columnas en el DataFrame):", selected_rows)
+
             df = pd.read_excel(self.file_path, sheet_name=self.entry_sheet_model.GetStringSelection())
         except Exception as e:  # Captura cualquier excepción para manejar el error
             print("Error al cargar desde Excel:", e)
+
+            selected_rows = self.model_grid.GetSelectedRows()
+            #print("Filas seleccionadas en la interfaz de usuario (corresponden a columnas en el DataFrame):", selected_rows)
             # Crea un DataFrame a partir de los datos del grid si hay un error al cargar desde Excel
             df = pd.DataFrame(self.extract_data_from_grid())
         
         # Transponer el DataFrame para hacer que las filas del grid coincidan con las columnas del DataFrame
-        df_transposed = df.T
+        #df_transposed = df.T
         
         # Asegúrate de que los índices seleccionados son válidos
-        selected_columns = [df_transposed.columns[i] for i in selected_rows if i < len(df_transposed.columns)]
+        #selected_columns = #[df_transposed.columns[i] for i in selected_rows if i < len(df_transposed.columns)]
         
-        print("Columnas seleccionadas en el DataFrame:", selected_columns)
-        return selected_columns
+        print("Columnas seleccionadas:", selected_rows)
+        return selected_rows
 
     
     def create_grid_dimensions(self, event=None):
@@ -724,6 +749,57 @@ class App(wx.Frame):
 
         if event is not None:
             event.Skip()
+
+    
+    def on_define_model_dimensions_checked(self, event=None):
+        
+        try:
+            num_components = int(self.entry_nc.GetValue())
+            num_species = int(self.entry_nsp.GetValue())
+            total_rows = num_components + num_species
+            
+            # Limpiar el grid existente
+            self.model_grid.ClearGrid()
+            if self.model_grid.GetNumberRows() > 0:
+                self.model_grid.DeleteRows(0, self.model_grid.GetNumberRows())
+            if self.model_grid.GetNumberCols() > 0:
+                self.model_grid.DeleteCols(0, self.model_grid.GetNumberCols())
+
+            # Establecer nuevas dimensiones del grid
+            self.model_grid.AppendCols(num_components)
+            self.model_grid.AppendRows(total_rows)
+
+            # Asignar nombres a las columnas y filas
+            for col in range(num_components):
+                self.model_grid.SetColLabelValue(col, f"C{col + 1}")
+            for row in range(total_rows):
+                self.model_grid.SetRowLabelValue(row, f"sp{row + 1}")
+
+            # Llenar el grid con la matriz de identidad para las componentes
+            identity_matrix = np.eye(num_components)
+            for row in range(num_components):
+                for col in range(num_components):
+                    self.model_grid.SetCellValue(row, col, str(identity_matrix[row, col]))
+
+            # Las filas adicionales se dejan en blanco o con otro valor predeterminado si se desea
+            for row in range(num_components, total_rows):
+                for col in range(num_components):
+                    self.model_grid.SetCellValue(row, col, "0")  # o cualquier otro valor predeterminado
+
+            self.model_grid.AutoSize()  # Ajustar el tamaño de las celdas para mostrar el contenido
+            self.model_panel.Layout()  # Actualizar el layout del panel que contiene el grid
+        except ValueError:
+            # Mostrar mensaje de error si los valores no son enteros
+            wx.MessageBox("Please enter valid integers for Number of Components and Number of Species.",
+                        "Error", wx.OK | wx.ICON_ERROR)
+        
+        self.model_panel.Layout()  # Actualiza el layout del panel que contiene el grid
+        self.model_panel.Fit()     # Ajusta el tamaño del panel para coincidir con el tamaño de sus hijos
+        self.Layout()              # Actualiza el layout del frame si 'self' es el frame
+        self.Fit()                 # Ajusta el tamaño del frame para coincidir con el tamaño de sus hijos
+        self.Refresh()             # Refresca el frame para mostrar los cambios
+        self.Update()              # Fuerza la repintura inmediata del frame
+
 
     def extract_data_from_grid(self):
         num_rows = self.model_grid.GetNumberRows()
@@ -773,7 +849,7 @@ class App(wx.Frame):
         # Limpiar y reiniciar el DataFrame
         self.df = None
 
-        # Limpiar el ListCtrl (si lo estás utilizando)
+        # Limpiar el grid (si lo estás utilizando)
         if hasattr(self, 'model_grid'):
             # Verificar si el grid tiene filas; si es así, eliminarlas todas
             if self.model_grid.GetNumberRows() > 0:
@@ -924,51 +1000,43 @@ class App(wx.Frame):
         
         try:
             # Intentar leer desde el archivo Excel
-            if self.entry_sheet_model.GetStringSelection():
-                modelo = pd.read_excel(self.file_path, self.entry_sheet_model.GetStringSelection(), header=0, index_col=0)
-            else:
-                # Si no se seleccionó una hoja de modelo, lanzar una excepción propia
-                raise ValueError("No se ha seleccionado una hoja de modelo.")
+            modelo = pd.read_excel(self.file_path, self.entry_sheet_model.GetStringSelection(), header=0, index_col=0)
             nas = self.on_selection_changed(event)
-            
-        except ValueError as ve:
-            # Manejar la excepción si no se ha seleccionado una hoja de modelo
-            wx.MessageBox(str(ve), "Advertencia", wx.OK | wx.ICON_WARNING)
-            return
+
             
         except Exception as e:
-            # Si ocurre algún otro error al intentar leer desde Excel, intentar extraer del grid
-            try:
-                grid_data = self.extract_data_from_grid()
-                if grid_data and any(any(row) for row in grid_data):  # Verificar que grid_data no esté vacío y que tenga datos
-                    modelo = np.array(grid_data).T
-                    nas = self.on_selection_changed(event)
-                else:
-                    # Si el grid también está vacío, lanzar una excepción propia
-                    raise ValueError("No se ha definido un modelo en la hoja de Excel ni en el grid.")
+            grid_data = self.extract_data_from_grid()
+            modelo = np.array(grid_data).T
+            nas = self.on_selection_changed(event)
                     
-            except ValueError as ve:
-                # Manejar la excepción si tanto la hoja de Excel como el grid están vacíos
-                wx.MessageBox(str(ve), "Advertencia", wx.OK | wx.ICON_WARNING)
-                return
-
-            except CancelledByUserException as cue:
-                # Manejar la excepción de cancelación por el usuario
-                print(str(cue))
-                return
-
-        
         modelo = np.array(modelo)
+
+        if not np.any(modelo):
+            # Si no se ha seleccionado ningún checkbox, mostrar un mensaje de advertencia
+            wx.MessageBox('Select a sheet model o create one.', 'Advertencia', wx.OK | wx.ICON_WARNING)
+            return  # Salir de la función para no continuar con el procesamiento
 
         work_algo = self.choice_algoritm.GetStringSelection()
         model_sett = self.choice_model_settings.GetStringSelection()
+
+        n_K = len(modelo.T) - n_comp
+        n_param = self.add_parameter_bounds(n_K)  
         
         if model_sett == "Non-cooperative":
             n_K = len(modelo.T) - n_comp - 1
             n_param = self.add_parameter_bounds(n_K)        
-        else:
-            n_K = len(modelo.T) - n_comp
-            n_param = self.add_parameter_bounds(n_K)    
+                
+
+        k, bounds = self.extract_constants_from_grid()
+        k_ini = k
+
+        print(k)
+        if not np.any(k):
+            # Si no se ha seleccionado ningún checkbox, mostrar un mensaje de advertencia
+            wx.MessageBox('Write an initial estimate for the constants.', 'Advertencia', wx.OK | wx.ICON_WARNING)
+            return  # Salir de la función para no continuar con el procesamiento
+
+        """
         if n_K == 1:
             try:
                 k_e = self.ask_float("K", "Indique un valor estimado para la constante de asociación:")
@@ -994,7 +1062,7 @@ class App(wx.Frame):
                 # Imprimir el mensaje de excepción, que será redirigido a self.console
                 print(str(e))
                 return
-
+        """
 
         if work_algo == "Newton-Raphson":
             
