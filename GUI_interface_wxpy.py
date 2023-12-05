@@ -85,6 +85,33 @@ class App(wx.Frame):
         self.columns_names_panel.SetSizer(self.columns_names_sizer)
         self.left_sizer.Add(self.columns_names_panel, 0, wx.EXPAND | wx.ALL, 5)
 
+        self.choice_columns_panel = wx.Panel(self.panel)
+        # Crear el sizer horizontal para los menús desplegables
+        self.dropdown_sizer = wx.BoxSizer(wx.HORIZONTAL)
+
+        # Crear y añadir el menú desplegable para 'Receptor or Ligant'
+        self.receptor_label = wx.StaticText(self.choice_columns_panel, label="Receptor or Ligant:")
+        self.dropdown_sizer.Add(self.receptor_label, 0, wx.ALL|wx.CENTER, 5)
+        self.receptor_choice = wx.Choice(self.choice_columns_panel)
+        self.dropdown_sizer.Add(self.receptor_choice, 0, wx.ALL|wx.CENTER, 5)
+
+        # Crear y añadir el menú desplegable para 'Guest, Metal or Titrant'
+        self.guest_label = wx.StaticText(self.choice_columns_panel, label="Guest, Metal or Titrant:")
+        self.dropdown_sizer.Add(self.guest_label, 0, wx.ALL|wx.CENTER, 5)
+        self.guest_choice = wx.Choice(self.choice_columns_panel)
+        self.dropdown_sizer.Add(self.guest_choice, 0, wx.ALL|wx.CENTER, 5)
+
+        # Agregar el sizer horizontal al panel principal o sizer
+        # Asumiendo que 'self.columns_names_panel' es el panel que contiene tus checkboxes
+        self.choice_columns_panel.SetSizer(self.dropdown_sizer)
+        self.left_sizer.Add(self.choice_columns_panel, 0, wx.EXPAND | wx.ALL, 5)
+
+       
+        # Vincular la función de manejo de selección duplicada a los eventos de selección de los menús desplegables
+        self.receptor_choice.Bind(wx.EVT_CHOICE, self.on_dropdown_selection)
+        self.guest_choice.Bind(wx.EVT_CHOICE, self.on_dropdown_selection)
+
+            
         # Autovalores
         self.sheet_EV_panel, self.entry_EV = self.create_sheet_section("Eigenvalues:", "0", parent = None)
 
@@ -316,36 +343,27 @@ class App(wx.Frame):
             self.grid.SetCellValue(i, 3, "")  # Valor por defecto para "Máx"
  
     # Función para extraer los datos del grid y crear x0 y bonds para el optimizador
-    import numpy as np
 
     def extract_constants_from_grid(self):
         n_rows = self.grid.GetNumberRows()
         x0 = []
         bounds = []
         for row in range(n_rows):
-            value = self.grid.GetCellValue(row, 1)
-            min_val = self.grid.GetCellValue(row, 2)
-            max_val = self.grid.GetCellValue(row, 3)
+            # Intentar convertir los valores de las celdas a flotantes, o asignar infinitos según corresponda
+            try:
+                value = float(self.grid.GetCellValue(row, 1)) if self.grid.GetCellValue(row, 1) else None
+                min_val = float(self.grid.GetCellValue(row, 2)) if self.grid.GetCellValue(row, 2) else -np.inf
+                max_val = float(self.grid.GetCellValue(row, 3)) if self.grid.GetCellValue(row, 3) else np.inf
+            except ValueError:  # Captura el error si la conversión a flotante falla
+                continue  # Puede agregar aquí un manejo de errores si es necesario
             
-            # Añadir el valor de 'x0' si se ha proporcionado
-            x0.append(float(value) if value else None)
-
-            # Añadir bounds. Si solo uno está presente, asumir el otro como ilimitado
-            bound = (float(min_val) if min_val else -np.inf,
-                    float(max_val) if max_val else np.inf)
+            # Añadir el valor a la lista de valores iniciales si no es None
+            if value is not None:
+                x0.append(value)
             
-            # Si ambos min y max están vacíos, no se establece un límite para ese parámetro
-            if min_val or max_val:
-                bounds.append(bound)
-            else:
-                bounds.append(None)  # Para este caso, se puede usar None o (None, None)
-
-        # Convertir bounds a None si todos los elementos son None
-        if all(bound is None for bound in bounds):
-            bounds = None
-
-        # Filtrar los valores iniciales de 'x0' para asegurarse de que todos tienen un valor
-        x0 = [val for val in x0 if val is not None]
+            # Añadir la tupla de límites a la lista de límites
+            # Aquí ya no necesitamos comprobar si min_val o max_val son None
+            bounds.append((min_val, max_val))
 
         return np.array(x0), bounds
 
@@ -430,6 +448,46 @@ class App(wx.Frame):
 
             panel.SetSizer(sizer)
             return panel, choice
+    
+    def update_dropdown_choices(self):
+        # Obtener las columnas seleccionadas de los checkboxes
+        selected_columns = [checkbox.GetLabel() for checkbox in self.vars_columnas.values() if checkbox.IsChecked()]
+        # Vaciar las selecciones actuales
+        self.receptor_choice.Clear()
+        self.guest_choice.Clear()
+        # Establecer las columnas seleccionadas como elementos de los menús desplegables
+        self.receptor_choice.AppendItems(selected_columns)
+        self.guest_choice.AppendItems(selected_columns)
+        # Reiniciar la selección
+        self.receptor_choice.SetSelection(-1)
+        self.guest_choice.SetSelection(-1)
+
+    # Función para manejar la selección duplicada
+    def on_dropdown_selection(self, event):
+        # Obtener las selecciones actuales de los menús desplegables
+        receptor_selection = self.receptor_choice.GetStringSelection()
+        guest_selection = self.guest_choice.GetStringSelection()
+        # Comprobar si el usuario ha seleccionado la misma columna para ambos
+        if receptor_selection == guest_selection and receptor_selection != "":
+            wx.MessageBox("Receptor and Guest cannot be the same column. Please select different columns.", "Selection Error", wx.OK | wx.ICON_WARNING)
+            # Reiniciar las selecciones
+            self.receptor_choice.SetSelection(-1)
+            self.guest_choice.SetSelection(-1)
+            # Puedes volver a llamar a la función para actualizar los menús desplegables si es necesario
+            self.update_dropdown_choices()
+
+
+    # Vincular la función de actualización a los eventos de los checkboxes
+    def bind_checkbox_events(self):
+        for child in self.columns_names_panel.GetChildren():
+            if isinstance(child, wx.CheckBox):
+                child.Bind(wx.EVT_CHECKBOX, self.on_checkbox_select)
+
+    def on_checkbox_select(self, event):
+        # Llamar a la función que actualiza los menús desplegables
+        self.update_dropdown_choices()
+        # También puedes manejar otras acciones necesarias cuando un checkbox es seleccionado o deseleccionado
+
 
     def populate_sheet_choices(self, file_path):
         try:
@@ -469,6 +527,7 @@ class App(wx.Frame):
         try:
             df = pd.read_excel(self.file_path, sheet_name=selected_sheet)
             self.create_checkboxes(df.columns)
+            self.update_dropdown_choices()  # Llamar a la función para vincular los eventos
         except Exception as e:
             wx.MessageBox(f"Error al leer la hoja de Excel: {e}", "Error en la hoja de Excel", wx.OK | wx.ICON_ERROR)
 
@@ -530,6 +589,7 @@ class App(wx.Frame):
 
         # Reorganizar los controles en el panel
         self.columns_names_panel.Layout()
+        
 
     def on_checkbox_select(self, event):
         cb = event.GetEventObject()
@@ -993,24 +1053,9 @@ class App(wx.Frame):
         print(optimizer)
         print(bnds)
 
-        # Verificar si todos los límites son tuplas válidas, es decir, no son None
-        if bnds is not None:
-            # Verificar si todos los límites son tuplas válidas, es decir, no son None
-            if all(isinstance(bnd, tuple) and None not in bnd for bnd in bnds):
-                # Todos los parámetros tienen límites definidos
-                r_0 = optimize.minimize(f_m, k, method=optimizer, bounds=bnds)
-            else:
-                # Algunos parámetros no tienen límites definidos
-                # Crear una nueva lista de límites, reemplazando los 'None' por None
-                filtered_bounds = [(min_val, max_val) if min_val is not None and max_val is not None else None for min_val, max_val in bnds]
-                # Llamar al optimizador con los valores y límites extraídos
-                r_0 = optimize.minimize(f_m, k, method=optimizer, bounds=filtered_bounds)
-        else:
-            # No hay límites definidos
-            r_0 = optimize.minimize(f_m, k, method=optimizer)
+    
+        r_0 = optimize.minimize(f_m, k, method=optimizer, bounds=bnds)
 
-        
-        #r_0 = optimize.minimize(f_m, k, method=optimizer, bounds=bnds)
                       
         # Registrar el tiempo de finalización
         fin = timeit.default_timer()
@@ -1060,9 +1105,7 @@ class App(wx.Frame):
         
         self.figura(G/np.max(H), C, ":o", "[Especies], M", "[G]/[H], M", "Perfil de concentraciones")
                 
-        Q, R = np.linalg.qr(C)
-        y_cal = Q @ Q.T @ Y.T
-        #y_cal = C @ np.linalg.pinv(C, rcond=1e-20) @ Y.T
+        y_cal = C @ np.linalg.pinv(C) @ Y.T
                         
         ssq, r0 = f_m2(k)
         rms = f_m(k)
