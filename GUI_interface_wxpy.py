@@ -41,7 +41,8 @@ class App(wx.Frame):
         self.vars_columnas = {} #lista para almacenar las columnas de la hoja de concentraciones
         self.figures = []  # Lista para almacenar figuras 
         self.current_figure_index = -1  # Índice inicial para navegación de figuras
-       
+        self.vars_columnas = {}
+    
         # Diseño usando Sizers
         self.main_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.left_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -106,7 +107,6 @@ class App(wx.Frame):
         self.choice_columns_panel.SetSizer(self.dropdown_sizer)
         self.left_sizer.Add(self.choice_columns_panel, 0, wx.EXPAND | wx.ALL, 5)
 
-       
         # Vincular la función de manejo de selección duplicada a los eventos de selección de los menús desplegables
         self.receptor_choice.Bind(wx.EVT_CHOICE, self.on_dropdown_selection)
         self.guest_choice.Bind(wx.EVT_CHOICE, self.on_dropdown_selection)
@@ -527,7 +527,12 @@ class App(wx.Frame):
         try:
             df = pd.read_excel(self.file_path, sheet_name=selected_sheet)
             self.create_checkboxes(df.columns)
-            self.update_dropdown_choices()  # Llamar a la función para vincular los eventos
+            self.update_dropdown_choices()
+            
+            # Re-dibujar el panel para reflejar los cambios en los checkboxes y en los menús desplegables.
+            self.columns_names_panel.Layout()  # Asegura que el sizer del panel organiza de nuevo sus hijos.
+            self.columns_names_panel.Refresh()  # Refresca el panel.
+            self.columns_names_panel.Update()   # Forzar la actualización inmediata del panel.
         except Exception as e:
             wx.MessageBox(f"Error al leer la hoja de Excel: {e}", "Error en la hoja de Excel", wx.OK | wx.ICON_ERROR)
 
@@ -588,8 +593,9 @@ class App(wx.Frame):
             self.vars_columnas[col] = checkbox  # Añadir cada checkbox al diccionario
 
         # Reorganizar los controles en el panel
-        self.columns_names_panel.Layout()
         
+        self.bind_checkbox_events() 
+        self.columns_names_panel.Layout()     
 
     def on_checkbox_select(self, event):
         cb = event.GetEventObject()
@@ -597,9 +603,11 @@ class App(wx.Frame):
         if cb.IsChecked():
             print(f"Selected: {label}")
             # Añadir a la lista de seleccionados, o realizar otra acción
+            self.update_dropdown_choices()
         else:
             print(f"Deselected: {label}")
             # Eliminar de la lista de seleccionados, o realizar otra acción
+            self.update_dropdown_choices()
 
     def figura(self, x, y, mark, ylabel, xlabel, title):
         fig = Figure(figsize=(4, 4), dpi=200)
