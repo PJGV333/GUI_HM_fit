@@ -522,20 +522,41 @@ class App(wx.Frame):
             self.model_grid.Refresh()  # Opcionalmente refresca el grid después de borrarlo
 
 
+    #def on_conc_sheet_selected(self, event):
+    #    selected_sheet = self.choice_sheet_conc.GetStringSelection()
+    #    try:
+    #        df = pd.read_excel(self.file_path, sheet_name=selected_sheet)
+    #        self.create_checkboxes(df.columns)
+    #        self.update_dropdown_choices()
+    #        
+    #        # Re-dibujar el panel para reflejar los cambios en los checkboxes y en los menús desplegables.
+    #        self.columns_names_panel.Layout()  # Asegura que el sizer del panel organiza de nuevo sus hijos.
+    #        self.columns_names_panel.Refresh()  # Refresca el panel.
+    #        self.columns_names_panel.Update()   # Forzar la actualización inmediata del panel.
+    #    except Exception as e:
+    #        wx.MessageBox(f"Error al leer la hoja de Excel: {e}", "Error en la hoja de Excel", wx.OK | wx.ICON_ERROR)
+
     def on_conc_sheet_selected(self, event):
         selected_sheet = self.choice_sheet_conc.GetStringSelection()
         try:
             df = pd.read_excel(self.file_path, sheet_name=selected_sheet)
+            # Crear un mapeo de nombres de columna a índices
+            self.column_indices = {col: i for i, col in enumerate(df.columns)}
+            # Crear checkboxes y actualizar menús desplegables
             self.create_checkboxes(df.columns)
             self.update_dropdown_choices()
-            
-            # Re-dibujar el panel para reflejar los cambios en los checkboxes y en los menús desplegables.
-            self.columns_names_panel.Layout()  # Asegura que el sizer del panel organiza de nuevo sus hijos.
-            self.columns_names_panel.Refresh()  # Refresca el panel.
-            self.columns_names_panel.Update()   # Forzar la actualización inmediata del panel.
         except Exception as e:
             wx.MessageBox(f"Error al leer la hoja de Excel: {e}", "Error en la hoja de Excel", wx.OK | wx.ICON_ERROR)
 
+    # Función para obtener el índice de la columna seleccionada para el receptor
+    def get_receptor_column_index(self):
+        column_name = self.receptor_choice.GetStringSelection()
+        return self.column_indices.get(column_name, -1)  # Retorna -1 si no se encuentra
+
+    # Función para obtener el índice de la columna seleccionada para el huésped
+    def get_guest_column_index(self):
+        column_name = self.guest_choice.GetStringSelection()
+        return self.column_indices.get(column_name, -1)  # Retorna -1 si no se encuentra
 
     def save_results(self, event):
         # Usar FileDialog de wxPython para seleccionar el archivo donde guardar
@@ -936,8 +957,14 @@ class App(wx.Frame):
         print("process_data iniciada")
         
         C_T = concentracion[columnas_seleccionadas].to_numpy()
-        G = C_T[:,1]
-        H = C_T[:,0]
+
+        receptor = self.get_receptor_column_index()
+        guest = self.get_guest_column_index()
+        
+        if receptor != -1 and guest!= -1:
+            G = C_T[:, guest]
+            H = C_T[:, receptor]
+            
         nc = len(C_T)
         n_comp = len(C_T.T)
         nw = len(spec)
