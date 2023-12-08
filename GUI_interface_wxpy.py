@@ -958,12 +958,21 @@ class App(wx.Frame):
         
         C_T = concentracion[columnas_seleccionadas].to_numpy()
 
-        receptor = self.get_receptor_column_index()
-        guest = self.get_guest_column_index()
-        
-        if receptor != -1 and guest!= -1:
-            G = C_T[:, guest]
-            H = C_T[:, receptor]
+        # Crear un diccionario que mapea nombres de columnas a sus nuevos índices en C_T
+        column_indices_in_C_T = {name: index for index, name in enumerate(columnas_seleccionadas)}
+
+        # Obtener los nombres de las columnas seleccionadas para receptor y huésped
+        receptor_name = self.receptor_choice.GetStringSelection()
+        guest_name = self.guest_choice.GetStringSelection()
+
+        # Usar el diccionario para obtener los índices correctos dentro de C_T
+        receptor_index_in_C_T = column_indices_in_C_T.get(receptor_name, -1)
+        guest_index_in_C_T = column_indices_in_C_T.get(guest_name, -1)
+
+        # Ahora puedes usar estos índices para indexar en C_T
+        if receptor_index_in_C_T != -1 and guest_index_in_C_T != -1:
+            G = C_T[:, guest_index_in_C_T]
+            H = C_T[:, receptor_index_in_C_T]
             
         nc = len(C_T)
         n_comp = len(C_T.T)
