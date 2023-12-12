@@ -41,6 +41,9 @@ class App(wx.Frame):
         wx.Frame.__init__(self, None, title="HM Fit", size=(800, 600))
         self.panel = wx.Panel(self)       
         
+        #self.figures = []  # Lista para almacenar figuras 
+        #self.current_figure_index = -1  # Índice inicial para navegación de figuras
+
         # Diseño usando Sizers
         self.main_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.left_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -69,6 +72,9 @@ class App(wx.Frame):
        
     ##############################################################################################################
         """ Panel derecho del gui """
+
+        self.current_technique_panel = None  # Inicializas la referencia al panel actual
+
         
         self.technique_panel = BaseTechniquePanel(self.panel, app_ref=self)
 
@@ -97,7 +103,7 @@ class App(wx.Frame):
         # Botón "Prev"
         self.btn_prev_figure = wx.Button(self.panel, label="<< Prev")
         buttons_sizer.Add(self.btn_prev_figure, 0, wx.ALL, 5)
-        self.btn_prev_figure.Bind(wx.EVT_BUTTON, self.technique_panel.show_prev_figure)
+        self.btn_prev_figure.Bind(wx.EVT_BUTTON, self.show_prev_figure)
 
         # Añadir un espaciador flexible entre los botones
         buttons_sizer.AddStretchSpacer()
@@ -114,7 +120,7 @@ class App(wx.Frame):
         # Botón "Next"
         self.btn_next_figure = wx.Button(self.panel, label="Next >>")
         buttons_sizer.Add(self.btn_next_figure, 0, wx.ALL | wx.LEFT, 5)
-        self.btn_next_figure.Bind(wx.EVT_BUTTON, self.technique_panel.show_next_figure)
+        self.btn_next_figure.Bind(wx.EVT_BUTTON, self.show_next_figure)
 
         # Añadir un espaciador flexible al final
         buttons_sizer.AddStretchSpacer()
@@ -157,11 +163,11 @@ class App(wx.Frame):
         # Botón "Save Results"
         self.btn_save_results = wx.Button(self.panel, label="Save Results")
         save_results_sizer.Add(self.btn_save_results, 0, wx.ALL, 5)
-        self.btn_save_results.Bind(wx.EVT_BUTTON, self.technique_panel.save_results)
+        self.btn_save_results.Bind(wx.EVT_BUTTON, self.save_results)
 
         # Botón "Reset Calculation"
         reset_button = wx.Button(self.panel, label="Reset Calculation")
-        reset_button.Bind(wx.EVT_BUTTON, lambda event: self.technique_panel.reset_calculation)
+        reset_button.Bind(wx.EVT_BUTTON, self.reset_calculation)
         save_results_sizer.Add(reset_button, 0, wx.ALL, 5)
 
         save_results_sizer.AddStretchSpacer()
@@ -178,13 +184,117 @@ class App(wx.Frame):
     def on_process_data(self, event):
         # Obtener el panel actualmente seleccionado
         current_panel = self.technique_notebook.GetCurrentPage()
+        self.current_technique_panel = current_panel
   
         # Llamar al método `process_data` del panel actual
         if current_panel:
             current_panel.process_data(event)
-            
 
-            
+    
+    def show_next_figure(self, event):
+        if self.current_technique_panel and self.current_technique_panel.figures:
+            self.current_technique_panel.current_figure_index = (self.current_technique_panel.current_figure_index + 1) % len(self.current_technique_panel.figures)
+            figure = self.current_technique_panel.figures[self.current_technique_panel.current_figure_index]
+            self.current_technique_panel.update_canvas_figure(figure)
+
+    def show_prev_figure(self, event):
+        if self.current_technique_panel and self.current_technique_panel.figures:
+            self.current_technique_panel.current_figure_index = (self.current_technique_panel.current_figure_index - 1) % len(self.current_technique_panel.figures)
+            figure = self.current_technique_panel.figures[self.current_technique_panel.current_figure_index]
+            self.current_technique_panel.update_canvas_figure(figure)
+
+
+    def reset_calculation(self, event):
+        # Reiniciar la ruta del archivo y la etiqueta correspondiente
+        current_panel = self.current_technique_panel
+        if hasattr(current_panel, 'file_path'):
+            current_panel.file_path = None
+        if hasattr(current_panel, 'lbl_file_path'):
+            current_panel.lbl_file_path.SetLabel("No file selected")
+
+        if hasattr(current_panel, "sheet_spectra_panel"):
+            current_panel.choice_sheet_spectra = None
+
+        if hasattr(current_panel, "choice_sheet_conc"):
+            current_panel.choice_sheet_conc = None
+
+        # Limpiar y reiniciar el DataFrame
+        if hasattr(current_panel, 'df'):
+            current_panel.df = None
+
+        # Limpiar el grid (si lo estás utilizando)
+        if hasattr(self, 'model_grid'):
+            # Verificar si el grid tiene filas; si es así, eliminarlas todas
+            if self.model_grid.GetNumberRows() > 0:
+                self.model_grid.DeleteRows(0, self.model_grid.GetNumberRows())
+
+            # Verificar si el grid tiene columnas; si es así, eliminarlas todas
+            if self.model_grid.GetNumberCols() > 0:
+                self.model_grid.DeleteCols(0, self.model_grid.GetNumberCols())
+
+        # Limpiar la lista de figuras
+        if hasattr(self, 'fig'):
+            self.fig.clear()
+            # Si estás utilizando un canvas para mostrar las figuras, también debes limpiarlo
+            if hasattr(self, 'canvas'):
+                self.canvas.figure.clear()
+                self.canvas.draw()
+
+        # Eliminar los checkboxes actuales
+        if hasattr(current_panel, 'columns_names_panel'):
+            children = list(current_panel.columns_names_panel.GetChildren())
+            for child in children:  # Modificado para incluir todos los hijos
+                if isinstance(child, wx.CheckBox):
+                    child.Destroy()
+
+       # Limpiar el diccionario de checkboxes
+        self.vars_columnas = {}
+
+        self.Layout()
+
+    def save_results(self, event):
+        # Usar FileDialog de wxPython para seleccionar el archivo donde guardar
+        with wx.FileDialog(self, "Save Excel file", wildcard="Excel files (*.xlsx)|*.xlsx",
+                           style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as fileDialog:
+            if fileDialog.ShowModal() == wx.ID_CANCEL:
+                return     # El usuario canceló la selección
+
+            file_path = fileDialog.GetPath()
+
+            # Asegúrate de que el file_path tiene la extensión '.xlsx'
+            if not file_path.endswith('.xlsx'):
+                file_path += '.xlsx'
+
+            # Obtener el panel actualmente seleccionado
+            current_panel = self.current_technique_panel
+
+            # Aquí va la lógica de guardado de tus datos
+            with pd.ExcelWriter(file_path) as writer:
+                if hasattr(current_panel, 'modelo'):
+                    current_panel.modelo.to_excel(writer, sheet_name="Model")
+                if hasattr(current_panel, 'C'):
+                    current_panel.C.to_excel(writer, sheet_name="Absorbent_species")
+                if hasattr(current_panel, 'Co'):
+                    current_panel.Co.to_excel(writer, sheet_name="All_species")   
+                if hasattr(current_panel, 'concentracion'):
+                    current_panel.concentracion.to_excel(writer, sheet_name="Tot_con_comp")  
+                if hasattr(current_panel, 'A'):
+                    current_panel.A.to_excel(writer, sheet_name="Molar_Absortivities", index_label = 'nm', index = True)
+                if hasattr(current_panel, 'k'):
+                    current_panel.k.to_excel(writer, sheet_name="K_calculated")
+                if hasattr(current_panel, 'k_ini'):
+                    current_panel.k_ini.to_excel(writer, sheet_name="Init_guess_K")
+                if hasattr(current_panel, 'phi'):
+                    current_panel.phi.to_excel(writer, sheet_name="Y_calculated", index_label = 'nm', index = True)
+                if hasattr(current_panel, 'Y'):
+                    current_panel.Y.to_excel(writer, sheet_name="Y_observed", index_label = 'nm', index = True)
+                if hasattr(current_panel, 'stats'):
+                    current_panel.stats.to_excel(writer, sheet_name="Stats")
+
+            # Mostrar un mensaje al finalizar el guardado
+            wx.MessageBox(f"Results saved to {file_path}.", "Information", wx.OK | wx.ICON_INFORMATION)
+
+
 
 # Iniciar la aplicación
 if __name__ == "__main__":

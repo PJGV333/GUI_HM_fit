@@ -25,11 +25,6 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         self.panel = self
         #self.technique_panel = BaseTechniquePanel(self.panel)
 
-        self.vars_columnas = {} #lista para almacenar las columnas de la hoja de concentraciones
-        self.figures = []  # Lista para almacenar figuras 
-        self.current_figure_index = -1  # Índice inicial para navegación de figuras
-        self.vars_columnas = {}
-
         # Diseño usando Sizers
         self.main_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.left_sizer = wx.BoxSizer(wx.VERTICAL)

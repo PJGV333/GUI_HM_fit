@@ -10,7 +10,7 @@ class BaseTechniquePanel(wx.Panel):
     def __init__(self, parent, app_ref):
         super().__init__(parent)
         self.app_ref = app_ref
-
+        
         self.vars_columnas = {} #lista para almacenar las columnas de la hoja de concentraciones
         self.figures = []  # Lista para almacenar figuras 
         self.current_figure_index = -1  # Índice inicial para navegación de figuras
@@ -235,44 +235,7 @@ class BaseTechniquePanel(wx.Panel):
         column_name = self.guest_choice.GetStringSelection()
         return self.column_indices.get(column_name, -1)  # Retorna -1 si no se encuentra
 
-    def save_results(self, event):
-        # Usar FileDialog de wxPython para seleccionar el archivo donde guardar
-        with wx.FileDialog(self, "Save Excel file", wildcard="Excel files (*.xlsx)|*.xlsx",
-                           style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as fileDialog:
-            if fileDialog.ShowModal() == wx.ID_CANCEL:
-                return     # El usuario canceló la selección
-
-            file_path = fileDialog.GetPath()
-
-            # Asegúrate de que el file_path tiene la extensión '.xlsx'
-            if not file_path.endswith('.xlsx'):
-                file_path += '.xlsx'
-
-            # Aquí va la lógica de guardado de tus datos
-            with pd.ExcelWriter(file_path) as writer:
-                if hasattr(self, 'modelo'):
-                    self.modelo.to_excel(writer, sheet_name="Model")
-                if hasattr(self, 'C'):
-                    self.C.to_excel(writer, sheet_name="Absorbent_species")
-                if hasattr(self, 'Co'):
-                    self.Co.to_excel(writer, sheet_name="All_species")   
-                if hasattr(self, 'concentracion'):
-                    self.concentracion.to_excel(writer, sheet_name="Tot_con_comp")  
-                if hasattr(self, 'A'):
-                    self.A.to_excel(writer, sheet_name="Molar_Absortivities", index_label = 'nm', index = True)
-                if hasattr(self, 'k'):
-                    self.k.to_excel(writer, sheet_name="K_calculated")
-                if hasattr(self, 'k_ini'):
-                    self.k_ini.to_excel(writer, sheet_name="Init_guess_K")
-                if hasattr(self, 'phi'):
-                    self.phi.to_excel(writer, sheet_name="Y_calculated", index_label = 'nm', index = True)
-                if hasattr(self, 'Y'):
-                    self.Y.to_excel(writer, sheet_name="Y_observed", index_label = 'nm', index = True)
-                if hasattr(self, 'stats'):
-                    self.stats.to_excel(writer, sheet_name="Stats")
-
-            # Mostrar un mensaje al finalizar el guardado
-            wx.MessageBox(f"Results saved to {file_path}.", "Information", wx.OK | wx.ICON_INFORMATION)
+    
     
     def create_checkboxes(self, column_names):
         # Convertir WindowList a una lista regular de Python y limpiar checkboxes antiguos
@@ -315,8 +278,7 @@ class BaseTechniquePanel(wx.Panel):
         ax.set_xlabel(xlabel, size="xx-large")
         ax.tick_params(axis='both', which='major', labelsize='large')
         self.figures.append(fig)  # Almacenar tanto fig como ax
-        #self.add_figure_to_listbox(title)  # Añade título a la listbox
-        #print("Figura añadida. Total de figuras:", len(self.figures))
+        #print(f"Figura añadida en {id(self)}. Total de figuras: {len(self.figures)}")
         self.current_figure_index = len(self.figures) - 1
         self.update_canvas_figure(fig)
 
@@ -329,32 +291,12 @@ class BaseTechniquePanel(wx.Panel):
         ax.set_xlabel(xlabel, size="xx-large")
         ax.tick_params(axis='both', which='major', labelsize='large')
         self.figures.append(fig)  # Almacenar tanto fig como ax
-        #self.add_figure_to_listbox(title)  # Añade título a la listbox
         self.current_figure_index = len(self.figures) - 1
-        #print("Figura añadida. Total de figuras:", len(self.figures))
+        #print(f"Figura añadida en {id(self)}. Total de figuras: {len(self.figures)}")
         self.update_canvas_figure(fig)
     
-    def on_grafica_selected(self, event):
-        seleccionado = self.graficas_listbox.curselection()
-        if seleccionado:
-            index = seleccionado[0]
-            self.show_figure(index)
-
-    def show_next_figure(self, event):
-       if self.figures:
-            print(self.figures)
-            self.current_figure_index = (self.current_figure_index + 1) % len(self.figures)
-            print("Mostrando figura:", self.current_figure_index + 1, "de", len(self.figures))
-            self.update_canvas_figure(self.figures[self.current_figure_index])
-
-    def show_prev_figure(self, event):
-        if self.figures:
-            print(self.figures)
-            self.current_figure_index = (self.current_figure_index - 1) % len(self.figures)
-            print("Mostrando figura:", self.current_figure_index + 1, "de", len(self.figures))
-            self.update_canvas_figure(self.figures[self.current_figure_index])
-
     def update_canvas_figure(self, new_figure):
+        #print("Mostrando figura:", self.figures)
         current_axes = self.app_ref.canvas.figure.gca()
         current_axes.clear()
 
@@ -378,38 +320,6 @@ class BaseTechniquePanel(wx.Panel):
         current_axes.set_title(new_axes.get_title())
 
         self.app_ref.canvas.draw()
-
-    def show_figure(self, index):
-        # Obtener la figura de la lista
-        fig = self.figures[index]
-        self.update_canvas_figure(fig)
-    
-    #Función para añadir los valores deseados para crear el modelo. 
-    def ask_integer(self, message):
-        dialog = wx.TextEntryDialog(self, message, "Input")
-        if dialog.ShowModal() == wx.ID_OK:
-            try:
-                return int(dialog.GetValue())
-            except ValueError:
-                wx.MessageBox("Por favor, ingrese un número entero.", "Error", wx.OK | wx.ICON_ERROR)
-        else:
-            raise CancelledByUserException("La entrada fue cancelada por el usuario.")
-        dialog.Destroy()
-        #return self.reset_calculation() #None  # O manejar de otra manera si se cancela o ingresa un valor no vaiido
-    
-    #Función para añadir las constantes de asociación como floats.
-    def ask_float(self, title, message):
-        dialog = wx.TextEntryDialog(self, message, title)
-        if dialog.ShowModal() == wx.ID_OK:
-            try:
-                return float(dialog.GetValue())
-            except ValueError:
-                wx.MessageBox("Por favor, ingrese un número válido.", "Error", wx.OK | wx.ICON_ERROR)
-        else:
-            raise CancelledByUserException("La entrada fue cancelada por el usuario.") #break  # Salir del bucle si el usuario cancela
-        dialog.Destroy()
-        #return self.reset_calculation()
-          
     
     # Manejador de eventos para la selección de celdas o filas
     def on_selection_changed(self, event):
@@ -508,71 +418,6 @@ class BaseTechniquePanel(wx.Panel):
         # Llamar a la función que actualiza el grid con el número correcto de constantes
         self.add_parameter_bounds(n_K)
 
-        # Aquí puedes agregar cualquier otra lógica que necesites para actualizar el grid
-
-        
-    def ask_indices(self, message):
-        dialog = wx.TextEntryDialog(self, message, "Input")
-        if dialog.ShowModal() == wx.ID_OK:
-            input_text = dialog.GetValue()
-            dialog.Destroy()
-            try:
-                # Convertir el texto ingresado en una lista de enteros
-                if input_text == "":
-                    return []
-                else:
-                    indices = [int(x.strip()) for x in input_text.split(',')]
-                    return indices
-            except ValueError:
-                wx.MessageBox("Por favor, ingrese una lista válida de índices (e.g., '1, 2, 3').", "Error", wx.OK | wx.ICON_ERROR)
-                return self.reset_calculation()  # O manejar de otra manera
-        else:
-            dialog.Destroy()
-            return self.reset_calculation()  # Manejo cuando el usuario cancela
-
-
-    def reset_calculation(self):
-        # Reiniciar la ruta del archivo y la etiqueta correspondiente
-        self.file_path = None
-        self.lbl_file_path.SetLabel("No file selected")
-
-        # Limpiar y reiniciar el DataFrame
-        self.df = None
-
-        # Limpiar el grid (si lo estás utilizando)
-        if hasattr(self, 'model_grid'):
-            # Verificar si el grid tiene filas; si es así, eliminarlas todas
-            if self.model_grid.GetNumberRows() > 0:
-                self.model_grid.DeleteRows(0, self.model_grid.GetNumberRows())
-
-            # Verificar si el grid tiene columnas; si es así, eliminarlas todas
-            if self.model_grid.GetNumberCols() > 0:
-                self.model_grid.DeleteCols(0, self.model_grid.GetNumberCols())
-
-        # Limpiar la lista de figuras
-        if hasattr(self, 'figures'):
-            self.figures.clear()
-            # Si estás utilizando un canvas para mostrar las figuras, también debes limpiarlo
-            if hasattr(self, 'canvas'):
-                self.canvas.figure.clear()
-                self.canvas.draw()
-
-        # Eliminar los checkboxes actuales
-        if hasattr(self, 'columns_names_panel'):
-            children = list(self.columns_names_panel.GetChildren())
-            for child in children[1:]:  # Asumiendo que el primer hijo no es un checkbox
-                child.Destroy()
-
-        # Limpiar el diccionario de checkboxes
-        self.vars_columnas = {}
-
-        # Reorganizar los controles en el panel de nombres de columnas
-        self.columns_names_panel.Layout()
-        # Aquí puedes agregar cualquier otro reinicio necesario, como limpiar campos de texto,
-        # restablecer variables de estado, etc.
-
-        # Finalmente, actualiza el layout si es necesario
-        self.Layout()
 
     def res_consola(self, prefijo, resp):
         # Actualiza la GUI con los resultados de r_0
@@ -597,3 +442,42 @@ class BaseTechniquePanel(wx.Panel):
         self.choice_titulant.SetItems(column_names)
         if column_names:
             self.choice_titulant.SetSelection(0)
+
+    def save_results(self, event):
+        # Usar FileDialog de wxPython para seleccionar el archivo donde guardar
+        with wx.FileDialog(self, "Save Excel file", wildcard="Excel files (*.xlsx)|*.xlsx",
+                           style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as fileDialog:
+            if fileDialog.ShowModal() == wx.ID_CANCEL:
+                return     # El usuario canceló la selección
+
+            file_path = fileDialog.GetPath()
+
+            # Asegúrate de que el file_path tiene la extensión '.xlsx'
+            if not file_path.endswith('.xlsx'):
+                file_path += '.xlsx'
+
+            # Aquí va la lógica de guardado de tus datos
+            with pd.ExcelWriter(file_path) as writer:
+                if hasattr(self, 'modelo'):
+                    self.modelo.to_excel(writer, sheet_name="Model")
+                if hasattr(self, 'C'):
+                    self.C.to_excel(writer, sheet_name="Absorbent_species")
+                if hasattr(self, 'Co'):
+                    self.Co.to_excel(writer, sheet_name="All_species")   
+                if hasattr(self, 'concentracion'):
+                    self.concentracion.to_excel(writer, sheet_name="Tot_con_comp")  
+                if hasattr(self, 'A'):
+                    self.A.to_excel(writer, sheet_name="Molar_Absortivities", index_label = 'nm', index = True)
+                if hasattr(self, 'k'):
+                    self.k.to_excel(writer, sheet_name="K_calculated")
+                if hasattr(self, 'k_ini'):
+                    self.k_ini.to_excel(writer, sheet_name="Init_guess_K")
+                if hasattr(self, 'phi'):
+                    self.phi.to_excel(writer, sheet_name="Y_calculated", index_label = 'nm', index = True)
+                if hasattr(self, 'Y'):
+                    self.Y.to_excel(writer, sheet_name="Y_observed", index_label = 'nm', index = True)
+                if hasattr(self, 'stats'):
+                    self.stats.to_excel(writer, sheet_name="Stats")
+
+            # Mostrar un mensaje al finalizar el guardado
+            wx.MessageBox(f"Results saved to {file_path}.", "Information", wx.OK | wx.ICON_INFORMATION)
