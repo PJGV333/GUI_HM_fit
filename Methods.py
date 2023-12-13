@@ -189,17 +189,56 @@ class BaseTechniquePanel(wx.Panel):
             # Añadir una opción en blanco al principio de la lista de nombres de las hojas
             sheet_names_with_blank = [""] + sheet_names
             
-            # Configurar las opciones del wx.Choice para espectros, con la opción en blanco
-            self.choice_sheet_spectra.SetItems(sheet_names_with_blank)
-            self.choice_sheet_spectra.SetSelection(0)  # La opción en blanco será seleccionada por defecto
-            
-            # Configurar las opciones del wx.Choice para concentraciones, con la opción en blanco
-            self.choice_sheet_conc.SetItems(sheet_names_with_blank)
-            self.choice_sheet_conc.SetSelection(0)  # La opción en blanco será seleccionada por defecto
-            self.choice_sheet_conc.Bind(wx.EVT_CHOICE, self.on_conc_sheet_selected)
-        
+            # Verificar y configurar las opciones del wx.Choice para espectros
+            if hasattr(self, 'choice_sheet_spectra'):
+                self.choice_sheet_spectra.SetItems(sheet_names_with_blank)
+                self.choice_sheet_spectra.SetSelection(0)  # La opción en blanco será seleccionada por defecto
+
+            # Verificar y configurar las opciones del wx.Choice para concentraciones
+            if hasattr(self, 'choice_chemshifts'):
+                self.choice_chemshifts.SetItems(sheet_names_with_blank)
+                self.choice_chemshifts.SetSelection(0)  # La opción en blanco será seleccionada por defecto
+                self.choice_chemshifts.Bind(wx.EVT_CHOICE, self.on_chemical_shift_sheet_selected)
+
+            # Verificar y configurar las opciones del wx.Choice para concentraciones
+            if hasattr(self, 'choice_sheet_conc'):
+                self.choice_sheet_conc.SetItems(sheet_names_with_blank)
+                self.choice_sheet_conc.SetSelection(0)  # La opción en blanco será seleccionada por defecto
+                self.choice_sheet_conc.Bind(wx.EVT_CHOICE, self.on_conc_sheet_selected)
+
+            # Similarmente, puedes agregar verificaciones y configuraciones para otros menús desplegables
+            # que podrías tener en futuras pestañas
+
         except Exception as e:
             wx.MessageBox(f"Error al leer el archivo Excel: {e}", "Error", wx.OK | wx.ICON_ERROR)
+
+    # Función para manejar la selección de la hoja de desplazamientos químicos
+    def on_chemical_shift_sheet_selected(self, event):
+        selected_sheet = self.choice_chemshifts.GetStringSelection()
+        columns = self.read_columns_from_sheet(selected_sheet)  # Implementar esta función
+
+        # Limpiar checkboxes anteriores en el panel de desplazamientos químicos
+        for child in self.chemical_shifts_panel.GetChildren():
+            if isinstance(child, wx.CheckBox):
+                child.Destroy()
+
+        # Crear nuevos checkboxes para cada columna en la hoja seleccionada
+        for column in columns:
+            checkbox = wx.CheckBox(self.chemical_shifts_panel, label=column)
+            self.chemical_shifts_sizer.Add(checkbox, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+
+        # Actualizar el layout del panel
+        self.chemical_shifts_panel.Layout()
+        self.chemical_shifts_panel.Fit()
+
+    def read_columns_from_sheet(self, sheet_name):
+        try:
+            # Asumiendo que `self.file_path` contiene la ruta del archivo Excel
+            df = pd.read_excel(self.file_path, sheet_name=sheet_name, nrows=0)  # Leer solo las cabeceras
+            return df.columns.tolist()  # Devolver la lista de nombres de columnas
+        except Exception as e:
+            print(f"Error al leer las columnas de la hoja: {e}")
+            return []
 
     def clear_model_grid(self):
         if hasattr(self, 'model_grid'):

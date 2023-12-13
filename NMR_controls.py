@@ -1,6 +1,20 @@
 import wx
 from Methods import BaseTechniquePanel
 import wx.grid as gridlib
+import numpy as np
+import pandas as pd
+import matplotlib
+matplotlib.use('WXAgg')
+from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
+from matplotlib.figure import Figure
+from scipy import optimize
+import matplotlib.pyplot as plt
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning) 
+import warnings
+warnings.filterwarnings("ignore")
+import timeit
+from Methods import BaseTechniquePanel
 
 
 # Clase para la técnica de NMR
@@ -23,9 +37,28 @@ class NMR_controlsPanel(BaseTechniquePanel):
         self.lbl_file_path = wx.StaticText(self.panel, label="No file selected")
         self.left_sizer.Add(self.lbl_file_path, 0, wx.ALL | wx.EXPAND, 5)
                 
-        # Espectros
-        self.sheet_spectra_panel, self.choice_sheet_spectra = self.create_sheet_dropdown_section("Spectra Sheet Name:", self)
-        self.left_sizer.Add(self.sheet_spectra_panel, 0, wx.EXPAND | wx.ALL, 5)
+        # desplazamientos químicos
+        self.sheet_chemshift_panel, self.choice_chemshifts = self.create_sheet_dropdown_section("Sheet Name of Chemical Shift:", self)
+        self.left_sizer.Add(self.sheet_chemshift_panel, 0, wx.EXPAND | wx.ALL, 5)
+
+        # Sizer horizontal para los menús desplegables
+        dropdowns_sizer_chemical_shift = wx.BoxSizer(wx.HORIZONTAL)
+        self.left_sizer.Add(dropdowns_sizer_chemical_shift, 0, wx.EXPAND | wx.ALL, 5)
+
+        # Panel para los checkboxes de desplazamientos químicos (inicialmente vacío)
+        self.chemical_shifts_panel = wx.Panel(self.panel)
+        self.chemical_shifts_sizer = wx.BoxSizer(wx.HORIZONTAL)
+
+        # Etiqueta para los desplazamientos químicos
+        self.lbl_chemical_shifts = wx.StaticText(self.chemical_shifts_panel, label="Chemical Shifts: ")
+        self.chemical_shifts_sizer.Add(self.lbl_chemical_shifts, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+        self.chemical_shifts_panel.SetSizer(self.chemical_shifts_sizer)
+        self.left_sizer.Add(self.chemical_shifts_panel, 0, wx.EXPAND | wx.ALL, 5)
+
+        # Panel para los menús desplegables de desplazamientos químicos
+        self.choice_chemical_shifts_panel = wx.Panel(self.panel)
+
+        self.choice_chemshifts.Bind(wx.EVT_CHOICE, self.on_chemical_shift_sheet_selected)
 
         # Concentraciones
         self.sheet_conc_panel, self.choice_sheet_conc = self.create_sheet_dropdown_section("Concentration Sheet Name:", self)
@@ -44,6 +77,7 @@ class NMR_controlsPanel(BaseTechniquePanel):
 
         self.choice_columns_panel = wx.Panel(self.panel)
         # Crear el sizer horizontal para los menús desplegables
+
         self.dropdown_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         # Crear y añadir el menú desplegable para 'Receptor or Ligant'
@@ -67,14 +101,6 @@ class NMR_controlsPanel(BaseTechniquePanel):
         self.receptor_choice.Bind(wx.EVT_CHOICE, self.on_dropdown_selection)
         self.guest_choice.Bind(wx.EVT_CHOICE, self.on_dropdown_selection)
             
-        # Autovalores
-        self.sheet_EV_panel, self.entry_EV = self.create_sheet_section("Eigenvalues:", "0", parent = None)
-
-        # Crear el Checkbox para EFA y añadirlo al sizer de la sección "Eigenvalues"
-        self.EFA_cb = wx.CheckBox(self.sheet_EV_panel, label='EFA')
-        self.EFA_cb.SetValue(True)  # Marcar el checkbox por defecto
-        self.sheet_EV_panel.GetSizer().Insert(0, self.EFA_cb, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
-        self.left_sizer.Add(self.sheet_EV_panel, 0, wx.ALL | wx.EXPAND, 5)
 
         # Creación del wx.Notebook
         notebook = wx.Notebook(self.panel)
@@ -176,3 +202,103 @@ class NMR_controlsPanel(BaseTechniquePanel):
         self.Fit()
         self.Show()
         self.Layout()
+
+    def process_data(self, event):
+        # Placeholder for the actual data processing
+        # Would call the functions from the provided script and display output
+        
+        # Verificar si se han seleccionado hojas válidas
+        if not hasattr(self, 'file_path'):
+            wx.MessageBox("No se ha seleccionado un archivo .xlsx", 
+                        "Seleccione un archivo .xlsx para trabajar.", wx.OK | wx.ICON_ERROR)
+            return  # Detener la ejecución de la función
+
+        chem_shift = self.choice_sheet_chemshift.GetStringSelection()
+        conc_entry = self.choice_sheet_conc.GetStringSelection()
+
+        # Verificar si se han seleccionado hojas válidas
+        if not chem_shift or not conc_entry:
+            wx.MessageBox("Por favor, seleccione las hojas de Excel correctamente.", 
+                        "Error en selección de hojas", wx.OK | wx.ICON_ERROR)
+            return  # Detener la ejecución de la función
+
+        # Extraer espectros para trabajar
+        cs = pd.read_excel(self.file_path, chem_shift, header=0, index_col=0)
+
+        # Extraer datos de esas columnas
+        concentracion = pd.read_excel(self.file_path, conc_entry, header=0)
+
+        nombres_de_columnas = concentracion.columns
+        
+        # Obtener los nombres de las columnas seleccionadas
+        columnas_seleccionadas = [col for col, checkbox in self.vars_columnas.items() if checkbox.IsChecked()]
+
+        if not columnas_seleccionadas:
+            # Si no se ha seleccionado ningún checkbox, mostrar un mensaje de advertencia
+            wx.MessageBox('Por favor, selecciona al menos una casilla para continuar.', 'Advertencia', wx.OK | wx.ICON_WARNING)
+            return  # Salir de la función para no continuar con el procesamiento
+        
+        print("process_data iniciada")
+        
+        C_T = concentracion[columnas_seleccionadas].to_numpy()
+
+        # Crear un diccionario que mapea nombres de columnas a sus nuevos índices en C_T
+        column_indices_in_C_T = {name: index for index, name in enumerate(columnas_seleccionadas)}
+
+        # Obtener los nombres de las columnas seleccionadas para receptor y huésped
+        receptor_name = self.receptor_choice.GetStringSelection()
+        guest_name = self.guest_choice.GetStringSelection()
+
+        # Usar el diccionario para obtener los índices correctos dentro de C_T
+        receptor_index_in_C_T = column_indices_in_C_T.get(receptor_name, -1)
+        guest_index_in_C_T = column_indices_in_C_T.get(guest_name, -1)
+
+        # Ahora puedes usar estos índices para indexar en C_T
+        if receptor_index_in_C_T != -1 and guest_index_in_C_T != -1:
+            G = C_T[:, guest_index_in_C_T]
+            H = C_T[:, receptor_index_in_C_T]
+            
+        nc = len(C_T)
+        n_comp = len(C_T.T)
+        nw = len(spec)
+        nm = spec.index.to_numpy()
+        
+                
+        C_T = pd.DataFrame(C_T)
+        
+        
+        # Intentar leer desde el archivo Excel
+        grid_data = self.extract_data_from_grid()
+        modelo = np.array(grid_data).T
+        nas = self.on_selection_changed(event)
+
+                    
+        modelo = np.array(modelo)
+
+        if not np.any(modelo):
+            # Si no se ha seleccionado ningún checkbox, mostrar un mensaje de advertencia
+            wx.MessageBox('Select a sheet model o create one.', 'Advertencia', wx.OK | wx.ICON_WARNING)
+            return  # Salir de la función para no continuar con el procesamiento
+
+        work_algo = self.choice_algoritm.GetStringSelection()
+        model_sett = self.choice_model_settings.GetStringSelection() 
+
+        k, bnds = self.extract_constants_from_grid()
+        k_ini = k
+
+        if not np.any(k):
+            # Si no se ha seleccionado ningún checkbox, mostrar un mensaje de advertencia
+            wx.MessageBox('Write an initial estimate for the constants.', 'Advertencia', wx.OK | wx.ICON_WARNING)
+            return  # Salir de la función para no continuar con el procesamiento
+
+        if work_algo == "Newton-Raphson":
+            
+            from NR_conc_algoritm import NewtonRaphson
+
+            res = NewtonRaphson(C_T, modelo, nas, model_sett)
+
+        elif work_algo == "Levenberg-Marquardt": 
+            
+            from LM_conc_algoritm import LevenbergMarquardt
+
+            res = LevenbergMarquardt(C_T, modelo, nas, model_sett) 
