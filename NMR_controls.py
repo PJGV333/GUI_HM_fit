@@ -20,7 +20,7 @@ from Methods import BaseTechniquePanel
 # Clase para la técnica de NMR
 class NMR_controlsPanel(BaseTechniquePanel):
     def __init__(self, parent, app_ref):
-        super().__init__(parent, app_ref)
+        super().__init__(parent, app_ref=app_ref)
         self.app_ref = app_ref
 
         self.panel = self
@@ -28,13 +28,15 @@ class NMR_controlsPanel(BaseTechniquePanel):
         self.right_sizer = wx.BoxSizer(wx.VERTICAL)
 
         # Crear controles (botones, etiquetas, etc.) y añadirlos a left_sizer o right_sizer
-        # Ejemplo:
+        # Crear el botón para seleccionar el archivo
         self.btn_select_file = wx.Button(self.panel, label="Select Excel File")
         self.btn_select_file.Bind(wx.EVT_BUTTON, self.select_file)
         self.left_sizer.Add(self.btn_select_file, 0, wx.ALL | wx.EXPAND, 5)
-        
-        # Crear un StaticText para mostrar la ruta del archivo
-        self.lbl_file_path = wx.StaticText(self.panel, label="No file selected")
+
+        # Crear un TextCtrl en lugar de StaticText para mostrar la ruta del archivo
+        self.lbl_file_path = wx.TextCtrl(self.panel, style=wx.TE_READONLY | wx.TE_MULTILINE | wx.HSCROLL)
+        self.lbl_file_path.SetMinSize((-1, 45))  # Ajustar el tamaño mínimo para evitar que sea demasiado grande
+        self.lbl_file_path.SetValue("No file selected")
         self.left_sizer.Add(self.lbl_file_path, 0, wx.ALL | wx.EXPAND, 5)
                 
         # desplazamientos químicos
@@ -58,7 +60,7 @@ class NMR_controlsPanel(BaseTechniquePanel):
         # Panel para los menús desplegables de desplazamientos químicos
         self.choice_chemical_shifts_panel = wx.Panel(self.panel)
 
-        self.choice_chemshifts.Bind(wx.EVT_CHOICE, self.on_chemical_shift_sheet_selected)
+        #self.choice_chemshifts.Bind(wx.EVT_CHOICE, self.on_chemical_shift_sheet_selected)
 
         # Concentraciones
         self.sheet_conc_panel, self.choice_sheet_conc = self.create_sheet_dropdown_section("Concentration Sheet Name:", self)
@@ -213,7 +215,7 @@ class NMR_controlsPanel(BaseTechniquePanel):
                         "Seleccione un archivo .xlsx para trabajar.", wx.OK | wx.ICON_ERROR)
             return  # Detener la ejecución de la función
 
-        chem_shift = self.choice_sheet_chemshift.GetStringSelection()
+        chem_shift = self.choice_chemshifts.GetStringSelection()
         conc_entry = self.choice_sheet_conc.GetStringSelection()
 
         # Verificar si se han seleccionado hojas válidas
@@ -222,8 +224,26 @@ class NMR_controlsPanel(BaseTechniquePanel):
                         "Error en selección de hojas", wx.OK | wx.ICON_ERROR)
             return  # Detener la ejecución de la función
 
-        # Extraer espectros para trabajar
-        cs = pd.read_excel(self.file_path, chem_shift, header=0, index_col=0)
+        
+        chemshift_data = pd.read_excel(self.file_path, chem_shift, header=0)
+
+        # Obtener los nombres de las columnas seleccionadas en los Scheckboxes de desplazamientos químicos
+        # Verificar qué checkboxes están marcados
+        for col, checkbox in self.vars_chemshift.items():
+            print(f"Columna: {col}, Checkbox marcado: {checkbox.IsChecked()}")
+
+        columnas_chemshift_seleccionadas = [col for col, checkbox in self.vars_chemshift.items() if checkbox.IsChecked()]
+
+        if not columnas_chemshift_seleccionadas:
+            # Si no se ha seleccionado ningún checkbox, mostrar un mensaje de advertencia
+            wx.MessageBox('Por favor, selecciona al menos una casilla de desplazamientos químicos para continuar.', 'Advertencia', wx.OK | wx.ICON_WARNING)
+            return  # Salir de la función para no continuar con el procesamiento
+
+        # Extraer datos de las columnas seleccionadas de desplazamientos químicos
+        Chem_Shift_T = chemshift_data[columnas_chemshift_seleccionadas].to_numpy()
+
+        # Crear un diccionario que mapea nombres de columnas a sus nuevos índices en Chem_Shift_T
+        column_indices_in_Chem_Shift_T = {name: index for index, name in enumerate(columnas_chemshift_seleccionadas)}
 
         # Extraer datos de esas columnas
         concentracion = pd.read_excel(self.file_path, conc_entry, header=0)
@@ -241,6 +261,7 @@ class NMR_controlsPanel(BaseTechniquePanel):
         print("process_data iniciada")
         
         C_T = concentracion[columnas_seleccionadas].to_numpy()
+        
 
         # Crear un diccionario que mapea nombres de columnas a sus nuevos índices en C_T
         column_indices_in_C_T = {name: index for index, name in enumerate(columnas_seleccionadas)}
@@ -260,19 +281,17 @@ class NMR_controlsPanel(BaseTechniquePanel):
             
         nc = len(C_T)
         n_comp = len(C_T.T)
-        nw = len(spec)
-        nm = spec.index.to_numpy()
-        
-                
+    
         C_T = pd.DataFrame(C_T)
-        
-        
+        Chem_Shift_T = pd.DataFrame(Chem_Shift_T)
+        dq1 = Chem_Shift_T - Chem_Shift_T.iloc[0]
+        dq = np.array(dq1)
+
         # Intentar leer desde el archivo Excel
         grid_data = self.extract_data_from_grid()
         modelo = np.array(grid_data).T
         nas = self.on_selection_changed(event)
 
-                    
         modelo = np.array(modelo)
 
         if not np.any(modelo):
@@ -302,3 +321,219 @@ class NMR_controlsPanel(BaseTechniquePanel):
             from LM_conc_algoritm import LevenbergMarquardt
 
             res = LevenbergMarquardt(C_T, modelo, nas, model_sett) 
+
+        def cal_delta(k):
+            C = res.concentraciones(k)[0]
+            xi = C / H[:, np.newaxis]
+            coeficientes = np.linalg.pinv(xi) @ dq
+            dq_cal = coeficientes.T @ xi.T
+            return dq_cal
+
+        def cal_coef(k):
+            C = res.concentraciones(k)[0]
+            xi = C / H[:, np.newaxis]
+            coeficientes = np.linalg.pinv(xi) @ dq
+            return coeficientes
+
+        def f_m(k):
+            dq_cal = cal_delta(k)
+            r = dq - dq_cal.T
+            rms = np.sqrt(np.mean(np.square(r)))
+            self.res_consola("f(x)", rms)
+            self.res_consola("x", k)
+            return rms
+        
+        def f_m2(k):
+            dq_cal = cal_delta(k)
+            r = dq - dq_cal.T
+            rms = np.sqrt(np.mean(np.square(r)))
+            return rms
+
+        # Registrar el tiempo de inicio
+        inicio = timeit.default_timer()
+        
+        optimizer = self.choice_optimizer_settings.GetStringSelection()
+        print(optimizer)
+        print(bnds)
+
+    
+        r_0 = optimize.minimize(f_m, k, method=optimizer, bounds=bnds)
+
+                    
+        # Registrar el tiempo de finalización
+        fin = timeit.default_timer()
+        
+        # Calcular el tiempo total de ejecución
+        tiempo_total = fin - inicio
+        
+        print("El tiempo de ejecución de la función fue: ", tiempo_total, "segundos.")
+
+
+        k = np.ravel(r_0.x) 
+
+
+        # Calcular el SER
+        n = len(H)
+        p = len(k)
+        SER = f_m2(k)
+
+
+        # Calcular la matriz jacobiana de los residuos
+        def residuals(k):
+            dq_cal = cal_delta(k)
+            r = dq - dq_cal.T
+            return r.flatten()
+
+        #epsilon = np.sqrt(np.finfo(float).eps)
+        #jacobian = np.array([approx_fprime(k, lambda ki: residuals(ki)[i], epsilon) for i in range(n)])
+
+        def finite(x, fun):
+            dfdx = []
+            delta = np.sqrt(np.finfo(float).eps)
+            for i in range(len(x)):
+                step = np.zeros(len(x))
+                step[i] = delta
+                dfdx.append((fun(x + step) - fun(x - step)) / (2 * delta))
+            return np.array(dfdx)
+
+        jacobian = finite(k, residuals)
+
+        # Calcular la matriz de covarianza
+        cov_matrix = SER**2 * np.linalg.inv(jacobian @ jacobian.T)
+
+        # Calcular el error estándar de las constantes de asociación
+        SE_k = np.sqrt(np.diag(cov_matrix))
+
+        # Calcular el error porcentual
+        error_percent = (SE_k / np.abs(k)) * 100
+
+        coef = cal_coef(k)
+
+        C, Co = res.concentraciones(k)
+
+        self.figura((G/H), (C/np.max(C))*100, ":o", "Abundance (%)", "[G]/[H]", "Perfil de concentraciones")
+        
+        dq_cal = cal_delta(k).T
+
+
+        self.figura2((G/H), dq, cal_delta(k).T, "o", ":", "$\Delta$$\delta$ (ppm)", "[G]/[H]", 1, "Ajuste")
+
+        MAE = abs(SER / nc)
+        dif_en_ct = round(max(100 - (np.sum(C, 1) * 100 / max(H))), 2)
+
+        # 1. Calcular la varianza de los residuales
+        residuals_array = residuals(k)
+        var_residuals = np.var(residuals_array)
+
+        # 2. Calcular la varianza de los datos experimentales
+        var_data_original = np.var(dq)
+
+        # 3. Calcular covfit
+        covfit = var_residuals / var_data_original
+
+         ####pasos para imprimir bonito los resultados. 
+        # Función para calcular los anchos máximos necesarios para cada columna
+        def calculate_max_column_widths(headers, data_rows):
+            column_widths = [len(header) for header in headers]
+            for row in data_rows:
+                for i, item in enumerate(row):
+                    # Considerar la longitud del item como cadena
+                    column_widths[i] = max(column_widths[i], len(str(item)))
+            return column_widths
+
+        # Encabezados y datos de ejemplo
+        headers = ["Constant", "log10(K) ± Error", "% Error", "RMS", "Covfit"]
+        data = [
+            [f"K{i+1}", f"{k[i]:.2e} ± {SE_k[i]:.2e}", f"{error_percent[i]:.2f}", f"{SER:.2e}" if i == 0 else "", f"{covfit:.2e}" if i == 0 else ""]
+            for i in range(len(k))
+        ]
+
+        # Calcular los anchos máximos para las columnas
+        max_widths = calculate_max_column_widths(headers, data)
+
+        # Crear la tabla con los anchos ajustados
+        table_lines = []
+
+        # Encabezado
+        header_line = " | ".join(f"{header.ljust(max_widths[i])}" for i, header in enumerate(headers))
+        table_lines.append("-" * len(header_line))
+        table_lines.append(header_line)
+        table_lines.append("-" * len(header_line))
+
+        # Filas de datos
+        for row in data:
+            line = " | ".join(f"{item.ljust(max_widths[i])}" for i, item in enumerate(row))
+            table_lines.append(line)
+
+        # Unir las líneas para formar la tabla
+        adjusted_table = "\n".join(table_lines)
+        print(adjusted_table)
+        ###### Aqui terminan los pasos para la impresión bonita########
+
+        nombres = [f"k{i}" for i in range(1, len(k)+1)]
+        k_nombres = [f"{n}" for n in nombres]
+        
+        K = np.array([k, error_percent]).T
+        
+        modelo = pd.DataFrame(modelo)
+        C = pd.DataFrame(C)
+        Co = pd.DataFrame(Co)
+        C_T = pd.DataFrame(C_T)
+        dq = pd.DataFrame(dq)
+        dq_cal = pd.DataFrame(dq_cal)
+        k = pd.DataFrame(K, index = [k_nombres])
+        k_ini = pd.DataFrame(k_ini)
+        covfit = covfit
+        coef = pd.DataFrame(coef)
+        
+        stats = np.array([SER, MAE, dif_en_ct, covfit, optimizer])
+        stats = pd.DataFrame(stats, index= ["RMS", "Error absoluto medio", 
+                                            "Diferencia en C total (%)", 
+                                            "covfit", "optimizer"])
+        
+        # Generar nombres de columnas
+        num_columns_C = len(C.columns)
+        column_names_C = [f"sp_{i}" for i in range(1, num_columns_C + 1)]
+
+        num_columns_Co = len(Co.columns)
+        column_names_Co = [f"sp_{i}" for i in range(1, num_columns_Co + 1)]
+
+        num_columns_dq1 = len(Chem_Shift_T.columns)
+        column_names_dq1 = [f"dobs_{i}" for i in range(1, num_columns_dq1 + 1)]
+
+        num_columns_dq_cal = len(dq_cal.columns)
+        column_names_dq_cal = [f"dcal_{i}" for i in range(1, num_columns_dq_cal + 1)]
+
+        num_columns_coef = len(coef.columns)
+        column_names_coef = [f"coef_{i}" for i in range(1, num_columns_coef + 1)]
+
+        num_columns_ct = len(C_T.columns)
+        column_names_ct = [f"ct_{i}" for i in range(1, num_columns_ct + 1)]
+
+        column_names_k = ["Constants", "Error (%)"]
+
+        column_names_k_ini = ["Constants"]
+
+        column_names_stats = ["Stats"]
+
+        # Asignar nombres de columnas a los DataFrames
+        C.columns = column_names_C
+        Co.columns = column_names_Co
+        dq.columns = column_names_dq1
+        dq_cal.columns = column_names_dq_cal
+        k.columns = column_names_k
+        k_ini.columns = column_names_k_ini
+        stats.columns = column_names_stats
+        C_T.columns = column_names_ct
+        coef.columns = column_names_coef
+
+        self.C = C
+        self.Co = Co
+        self.dq = dq
+        self.dq_cal = dq_cal
+        self.k = k
+        self.k_ini = k_ini
+        self.stats = stats
+        self.C_T = C_T
+        self.coef = coef
+

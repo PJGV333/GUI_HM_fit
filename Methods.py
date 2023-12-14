@@ -14,7 +14,7 @@ class BaseTechniquePanel(wx.Panel):
         self.vars_columnas = {} #lista para almacenar las columnas de la hoja de concentraciones
         self.figures = []  # Lista para almacenar figuras 
         self.current_figure_index = -1  # Índice inicial para navegación de figuras
-        self.vars_columnas = {}
+        self.vars_chemshift = {}
 
     # añadir parametros al cuadro de las constantes. Editar los valores por defecto.
     def add_parameter_bounds(self, num_parameters):
@@ -212,34 +212,6 @@ class BaseTechniquePanel(wx.Panel):
         except Exception as e:
             wx.MessageBox(f"Error al leer el archivo Excel: {e}", "Error", wx.OK | wx.ICON_ERROR)
 
-    # Función para manejar la selección de la hoja de desplazamientos químicos
-    def on_chemical_shift_sheet_selected(self, event):
-        selected_sheet = self.choice_chemshifts.GetStringSelection()
-        columns = self.read_columns_from_sheet(selected_sheet)  # Implementar esta función
-
-        # Limpiar checkboxes anteriores en el panel de desplazamientos químicos
-        for child in self.chemical_shifts_panel.GetChildren():
-            if isinstance(child, wx.CheckBox):
-                child.Destroy()
-
-        # Crear nuevos checkboxes para cada columna en la hoja seleccionada
-        for column in columns:
-            checkbox = wx.CheckBox(self.chemical_shifts_panel, label=column)
-            self.chemical_shifts_sizer.Add(checkbox, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
-
-        # Actualizar el layout del panel
-        self.chemical_shifts_panel.Layout()
-        self.chemical_shifts_panel.Fit()
-
-    def read_columns_from_sheet(self, sheet_name):
-        try:
-            # Asumiendo que `self.file_path` contiene la ruta del archivo Excel
-            df = pd.read_excel(self.file_path, sheet_name=sheet_name, nrows=0)  # Leer solo las cabeceras
-            return df.columns.tolist()  # Devolver la lista de nombres de columnas
-        except Exception as e:
-            print(f"Error al leer las columnas de la hoja: {e}")
-            return []
-
     def clear_model_grid(self):
         if hasattr(self, 'model_grid'):
             # Verificar si el grid tiene filas; si es así, eliminarlas todas
@@ -263,6 +235,45 @@ class BaseTechniquePanel(wx.Panel):
             self.update_dropdown_choices()
         except Exception as e:
             wx.MessageBox(f"Error al leer la hoja de Excel: {e}", "Error en la hoja de Excel", wx.OK | wx.ICON_ERROR)
+    
+
+    ### Funciones para Checkboxes de desplazamientos químicos. 
+    def on_chemical_shift_sheet_selected(self, event):
+        selected_sheet = self.choice_chemshifts.GetStringSelection()
+        try:
+            df = pd.read_excel(self.file_path, sheet_name=selected_sheet)
+            self.create_chemshift_checkboxes(df.columns)
+        except Exception as e:
+            wx.MessageBox(f"Error al leer la hoja de Excel: {e}", "Error en la hoja de Excel", wx.OK | wx.ICON_ERROR)
+
+    def create_chemshift_checkboxes(self, column_names):
+        # Limpiar checkboxes antiguos
+        children = list(self.chemical_shifts_panel.GetChildren())
+        for child in children:
+            if isinstance(child, wx.CheckBox):
+                child.Destroy()
+
+        # Asegurarse de que self.vars_chemshift está vacío antes de empezar a añadir nuevos checkboxes
+        self.vars_chemshift = {}
+
+        # Crear los checkboxes dentro del panel y añadirlos a self.vars_chemshift
+        for col in column_names:
+            checkbox = wx.CheckBox(self.chemical_shifts_panel, label=col)
+            checkbox.Bind(wx.EVT_CHECKBOX, self.on_chemshift_checkbox_select)
+            self.chemical_shifts_sizer.Add(checkbox, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+            self.vars_chemshift[col] = checkbox
+
+        # Reorganizar los controles en el panel
+        self.chemical_shifts_panel.Layout()
+    
+    def on_chemshift_checkbox_select(self, event):
+        cb = event.GetEventObject()
+        label = cb.GetLabel()
+        if cb.IsChecked():
+            print(f"Selected: {label}")
+        else:
+            print(f"Deselected: {label}")
+    #### Termina control de checkboxes panel NMR de desplazamientos químicos. 
 
     # Función para obtener el índice de la columna seleccionada para el receptor
     def get_receptor_column_index(self):
@@ -274,7 +285,6 @@ class BaseTechniquePanel(wx.Panel):
         column_name = self.guest_choice.GetStringSelection()
         return self.column_indices.get(column_name, -1)  # Retorna -1 si no se encuentra
 
-    
     
     def create_checkboxes(self, column_names):
         # Convertir WindowList a una lista regular de Python y limpiar checkboxes antiguos
@@ -482,41 +492,4 @@ class BaseTechniquePanel(wx.Panel):
         if column_names:
             self.choice_titulant.SetSelection(0)
 
-    def save_results(self, event):
-        # Usar FileDialog de wxPython para seleccionar el archivo donde guardar
-        with wx.FileDialog(self, "Save Excel file", wildcard="Excel files (*.xlsx)|*.xlsx",
-                           style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as fileDialog:
-            if fileDialog.ShowModal() == wx.ID_CANCEL:
-                return     # El usuario canceló la selección
-
-            file_path = fileDialog.GetPath()
-
-            # Asegúrate de que el file_path tiene la extensión '.xlsx'
-            if not file_path.endswith('.xlsx'):
-                file_path += '.xlsx'
-
-            # Aquí va la lógica de guardado de tus datos
-            with pd.ExcelWriter(file_path) as writer:
-                if hasattr(self, 'modelo'):
-                    self.modelo.to_excel(writer, sheet_name="Model")
-                if hasattr(self, 'C'):
-                    self.C.to_excel(writer, sheet_name="Absorbent_species")
-                if hasattr(self, 'Co'):
-                    self.Co.to_excel(writer, sheet_name="All_species")   
-                if hasattr(self, 'concentracion'):
-                    self.concentracion.to_excel(writer, sheet_name="Tot_con_comp")  
-                if hasattr(self, 'A'):
-                    self.A.to_excel(writer, sheet_name="Molar_Absortivities", index_label = 'nm', index = True)
-                if hasattr(self, 'k'):
-                    self.k.to_excel(writer, sheet_name="K_calculated")
-                if hasattr(self, 'k_ini'):
-                    self.k_ini.to_excel(writer, sheet_name="Init_guess_K")
-                if hasattr(self, 'phi'):
-                    self.phi.to_excel(writer, sheet_name="Y_calculated", index_label = 'nm', index = True)
-                if hasattr(self, 'Y'):
-                    self.Y.to_excel(writer, sheet_name="Y_observed", index_label = 'nm', index = True)
-                if hasattr(self, 'stats'):
-                    self.stats.to_excel(writer, sheet_name="Stats")
-
-            # Mostrar un mensaje al finalizar el guardado
-            wx.MessageBox(f"Results saved to {file_path}.", "Information", wx.OK | wx.ICON_INFORMATION)
+    

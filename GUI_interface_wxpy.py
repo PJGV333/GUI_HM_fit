@@ -265,8 +265,8 @@ class App(wx.Frame):
             if not file_path.endswith('.xlsx'):
                 file_path += '.xlsx'
 
-            # Obtener el panel actualmente seleccionado
-            current_panel = self.current_technique_panel
+             # Obtener el panel actualmente seleccionado
+            current_panel = self.technique_notebook.GetCurrentPage()
 
             # Aquí va la lógica de guardado de tus datos
             with pd.ExcelWriter(file_path) as writer:
@@ -280,6 +280,12 @@ class App(wx.Frame):
                     current_panel.concentracion.to_excel(writer, sheet_name="Tot_con_comp")  
                 if hasattr(current_panel, 'A'):
                     current_panel.A.to_excel(writer, sheet_name="Molar_Absortivities", index_label = 'nm', index = True)
+                if hasattr(current_panel, 'dq'):
+                    current_panel.dq.to_excel(writer, sheet_name="Chemical_Shifts")
+                if hasattr(current_panel, 'dq_cal'):
+                    current_panel.dq_cal.to_excel(writer, sheet_name="Calculated_Chemical_Shifts")
+                if hasattr(current_panel, 'coef'):
+                    current_panel.coef.to_excel(writer, sheet_name="Coefficients")
                 if hasattr(current_panel, 'k'):
                     current_panel.k.to_excel(writer, sheet_name="K_calculated")
                 if hasattr(current_panel, 'k_ini'):

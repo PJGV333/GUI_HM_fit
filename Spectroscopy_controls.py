@@ -33,16 +33,17 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         self.main_sizer.Add(self.left_sizer, 1, wx.EXPAND | wx.ALL, 5)
         self.main_sizer.Add(self.right_sizer, 2, wx.EXPAND | wx.ALL, 5)
 
-        # Crear controles (botones, etiquetas, etc.) y añadirlos a left_sizer o right_sizer
-        # Ejemplo:
+        # Crear el botón para seleccionar el archivo
         self.btn_select_file = wx.Button(self.panel, label="Select Excel File")
         self.btn_select_file.Bind(wx.EVT_BUTTON, self.select_file)
         self.left_sizer.Add(self.btn_select_file, 0, wx.ALL | wx.EXPAND, 5)
-        
-        # Crear un StaticText para mostrar la ruta del archivo
-        self.lbl_file_path = wx.StaticText(self.panel, label="No file selected")
+
+        # Crear un TextCtrl en lugar de StaticText para mostrar la ruta del archivo
+        self.lbl_file_path = wx.TextCtrl(self.panel, style=wx.TE_READONLY | wx.TE_MULTILINE | wx.HSCROLL)
+        self.lbl_file_path.SetMinSize((-1, 45))  # Ajustar el tamaño mínimo para evitar que sea demasiado grande
+        self.lbl_file_path.SetValue("No file selected")
         self.left_sizer.Add(self.lbl_file_path, 0, wx.ALL | wx.EXPAND, 5)
-                
+
         # Espectros
         self.sheet_spectra_panel, self.choice_sheet_spectra = self.create_sheet_dropdown_section("Spectra Sheet Name:", self)
         self.left_sizer.Add(self.sheet_spectra_panel, 0, wx.EXPAND | wx.ALL, 5)
