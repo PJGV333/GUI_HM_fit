@@ -25,11 +25,9 @@ class NewtonRaphson:
 
         if self.model_sett == "Free":
             K = 10**K
-
         elif self.model_sett == "Step by step":
             K = self.step_by_step(K)
             K = 10**K
-
         elif self.model_sett == "Non-cooperative":
             K = self.non_coop(K)
             K = 10**K
@@ -54,7 +52,8 @@ class NewtonRaphson:
         c_calculada = np.zeros((n_reacciones, nspec))
         for i in range(n_reacciones):
             c_guess = np.ones(n_componentes) * 1e-10
-            c_guess[0], c_guess[1] = ctot[i, 0], ctot[i, 1]
+            # Asignación dinámica para c_guess basada en el número de componentes
+            c_guess[:n_componentes] = ctot[i, :n_componentes]
             dif = tol + 1
             it = 0
             while dif > tol and it < max_iter:
@@ -63,5 +62,5 @@ class NewtonRaphson:
                 it += 1
             c_calculada[i] = c_spec
 
-        C = np.delete(c_calculada, self.nas, axis = 1)
+        C = np.delete(c_calculada, self.nas, axis=1)
         return C, c_calculada

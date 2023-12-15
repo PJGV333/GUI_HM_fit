@@ -253,9 +253,21 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         guest_index_in_C_T = column_indices_in_C_T.get(guest_name, -1)
 
         # Ahora puedes usar estos índices para indexar en C_T
-        if receptor_index_in_C_T != -1 and guest_index_in_C_T != -1:
-            G = C_T[:, guest_index_in_C_T]
-            H = C_T[:, receptor_index_in_C_T]
+        #if receptor_index_in_C_T != -1 and guest_index_in_C_T != -1:
+        #    G = C_T[:, guest_index_in_C_T]
+        #    H = C_T[:, receptor_index_in_C_T]
+
+        # Asumiendo que receptor_index_in_C_T y guest_index_in_C_T son los índices.
+        # Verifica si al menos uno de los índices es diferente de -1
+        if receptor_index_in_C_T != -1 or guest_index_in_C_T != -1:
+            
+            # Si guest_index_in_C_T es válido, asigna la columna correspondiente a G
+            if guest_index_in_C_T != -1:
+                G = C_T[:, guest_index_in_C_T]
+
+            # Si receptor_index_in_C_T es válido, asigna la columna correspondiente a H
+            if receptor_index_in_C_T != -1:
+                H = C_T[:, receptor_index_in_C_T]
             
         nc = len(C_T)
         n_comp = len(C_T.T)
@@ -429,20 +441,35 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         
         C, Co = res.concentraciones(k)
         
-        self.figura(G/np.max(H), C, ":o", "[Especies], M", "[G]/[H], M", "Perfil de concentraciones")
-                
-        y_cal = C @ np.linalg.pinv(C) @ Y.T
-                        
-        ssq, r0 = f_m2(k)
-        rms = f_m(k)
-        
-        A = np.linalg.pinv(C) @ Y.T 
-        
-        if not self.EFA_cb.GetValue():
-            self.figura2(G, Y.T, y_cal, "ko", ":", "Y observada (u. a.)", "[X], M", 1, "Ajuste")
-        else:
+
+        if n_comp == 1:
+            self.figura(H, C, ":o", "[Especies], M", "[H], M", "Perfil de concentraciones")
+
+            y_cal = C @ np.linalg.pinv(C) @ Y.T
+                            
+            ssq, r0 = f_m2(k)
+            rms = f_m(k)
+            
+            A = np.linalg.pinv(C) @ Y.T
+
             self.figura(nm, A.T, "-", "Epsilon (u. a.)", "$\lambda$ (nm)", "Absortividades molares")
-            self.figura2(nm, Y, y_cal.T, "-k", "k:", "Y observada (u. a.)", "$\lambda$ (nm)", 0.5, "Ajuste")   
+            self.figura2(nm, Y, y_cal.T, "-k", "k:", "Y observada (u. a.)", "$\lambda$ (nm)", 0.5, "Ajuste")
+            
+        else:
+            self.figura(G/np.max(H), C, ":o", "[Especies], M", "[G]/[H]", "Perfil de concentraciones")
+                    
+            y_cal = C @ np.linalg.pinv(C) @ Y.T
+                            
+            ssq, r0 = f_m2(k)
+            rms = f_m(k)
+            
+            A = np.linalg.pinv(C) @ Y.T 
+            
+            if not self.EFA_cb.GetValue():
+                self.figura2(G, Y.T, y_cal, "ko", ":", "Y observada (u. a.)", "[X], M", 1, "Ajuste")
+            else:
+                self.figura(nm, A.T, "-", "Epsilon (u. a.)", "$\lambda$ (nm)", "Absortividades molares")
+                self.figura2(nm, Y, y_cal.T, "-k", "k:", "Y observada (u. a.)", "$\lambda$ (nm)", 0.5, "Ajuste")   
 
         lof = (((sum(sum((r0**2))) / sum(sum((Y**2)))))**0.5) * 100
         #MAE = np.sqrt((sum(sum(r0**2)) / (nw - len(k))))

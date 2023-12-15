@@ -223,14 +223,14 @@ class App(wx.Frame):
             current_panel.df = None
 
         # Limpiar el grid (si lo estás utilizando)
-        if hasattr(self, 'model_grid'):
+        if hasattr(current_panel, 'model_grid'):
             # Verificar si el grid tiene filas; si es así, eliminarlas todas
-            if self.model_grid.GetNumberRows() > 0:
-                self.model_grid.DeleteRows(0, self.model_grid.GetNumberRows())
+            if current_panel.model_grid.GetNumberRows() > 0:
+                current_panel.model_grid.DeleteRows(0, current_panel.model_grid.GetNumberRows())
 
             # Verificar si el grid tiene columnas; si es así, eliminarlas todas
-            if self.model_grid.GetNumberCols() > 0:
-                self.model_grid.DeleteCols(0, self.model_grid.GetNumberCols())
+            if current_panel.model_grid.GetNumberCols() > 0:
+                current_panel.model_grid.DeleteCols(0, current_panel.model_grid.GetNumberCols())
 
         # Limpiar la lista de figuras
         if hasattr(self, 'fig'):

@@ -229,8 +229,8 @@ class NMR_controlsPanel(BaseTechniquePanel):
 
         # Obtener los nombres de las columnas seleccionadas en los Scheckboxes de desplazamientos químicos
         # Verificar qué checkboxes están marcados
-        for col, checkbox in self.vars_chemshift.items():
-            print(f"Columna: {col}, Checkbox marcado: {checkbox.IsChecked()}")
+        #for col, checkbox in self.vars_chemshift.items():
+        #    print(f"Columna: {col}, Checkbox marcado: {checkbox.IsChecked()}")
 
         columnas_chemshift_seleccionadas = [col for col, checkbox in self.vars_chemshift.items() if checkbox.IsChecked()]
 
@@ -275,10 +275,22 @@ class NMR_controlsPanel(BaseTechniquePanel):
         guest_index_in_C_T = column_indices_in_C_T.get(guest_name, -1)
 
         # Ahora puedes usar estos índices para indexar en C_T
-        if receptor_index_in_C_T != -1 and guest_index_in_C_T != -1:
-            G = C_T[:, guest_index_in_C_T]
-            H = C_T[:, receptor_index_in_C_T]
+        #if receptor_index_in_C_T != -1 and guest_index_in_C_T != -1:
+        #    G = C_T[:, guest_index_in_C_T]
+        #    H = C_T[:, receptor_index_in_C_T]
+
+        # Asumiendo que receptor_index_in_C_T y guest_index_in_C_T son los índices.
+        # Verifica si al menos uno de los índices es diferente de -1
+        if receptor_index_in_C_T != -1 or guest_index_in_C_T != -1:
             
+            # Si guest_index_in_C_T es válido, asigna la columna correspondiente a G
+            if guest_index_in_C_T != -1:
+                G = C_T[:, guest_index_in_C_T]
+
+            # Si receptor_index_in_C_T es válido, asigna la columna correspondiente a H
+            if receptor_index_in_C_T != -1:
+                H = C_T[:, receptor_index_in_C_T]
+
         nc = len(C_T)
         n_comp = len(C_T.T)
     
@@ -399,7 +411,7 @@ class NMR_controlsPanel(BaseTechniquePanel):
         jacobian = finite(k, residuals)
 
         # Calcular la matriz de covarianza
-        cov_matrix = SER**2 * np.linalg.inv(jacobian @ jacobian.T)
+        cov_matrix = SER**2 * np.linalg.pinv(jacobian @ jacobian.T)
 
         # Calcular el error estándar de las constantes de asociación
         SE_k = np.sqrt(np.diag(cov_matrix))
@@ -410,14 +422,27 @@ class NMR_controlsPanel(BaseTechniquePanel):
         coef = cal_coef(k)
 
         C, Co = res.concentraciones(k)
+        #self.entry_nc.GetValue()
+        print("valor de n_comp: ", n_comp)
 
-        self.figura((G/H), (C/np.max(C))*100, ":o", "Abundance (%)", "[G]/[H]", "Perfil de concentraciones")
         
-        dq_cal = cal_delta(k).T
+        if n_comp == 1:
+            
+            self.figura(H, (C/np.max(C))*100, ":o", "Abundance (%)", "[H], M", "Perfil de concentraciones")
 
+            dq_cal = cal_delta(k).T
 
-        self.figura2((G/H), dq, cal_delta(k).T, "o", ":", "$\Delta$$\delta$ (ppm)", "[G]/[H]", 1, "Ajuste")
+            self.figura2(H, dq, cal_delta(k).T, "o", ":", "$\Delta$$\delta$ (ppm)", "[H], M", 1, "Ajuste")
 
+        else:
+                self.figura((G/H), (C/np.max(C))*100, ":o", "Abundance (%)", "[G]/[H]", "Perfil de concentraciones")
+
+                dq_cal = cal_delta(k).T
+
+                self.figura2((G/H), dq, cal_delta(k).T, "o", ":", "$\Delta$$\delta$ (ppm)", "[G]/[H]", 1, "Ajuste")
+        
+            
+        
         MAE = abs(SER / nc)
         dif_en_ct = round(max(100 - (np.sum(C, 1) * 100 / max(H))), 2)
 
