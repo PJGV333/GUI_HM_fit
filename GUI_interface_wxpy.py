@@ -180,6 +180,8 @@ class App(wx.Frame):
     
         self.panel.SetSizer(self.main_sizer)
         self.main_sizer.Layout()
+        self.Refresh()             # Refresca el frame para mostrar los cambios
+        self.Update()
     ####################################################################################################################
     def on_process_data(self, event):
         # Obtener el panel actualmente seleccionado
@@ -209,18 +211,37 @@ class App(wx.Frame):
         current_panel = self.current_technique_panel
         if hasattr(current_panel, 'file_path'):
             current_panel.file_path = None
+            current_panel.Layout()
+            self.Refresh()             # Refresca el frame para mostrar los cambios
+            self.Update()
+        
         if hasattr(current_panel, 'lbl_file_path'):
             current_panel.lbl_file_path.SetLabel("No file selected")
+            current_panel.Layout()
+            self.Refresh()             # Refresca el frame para mostrar los cambios
+            self.Update()
+
+        
+        if hasattr(current_panel, 'scrolled_window'):
+            current_panel.scrolled_window.Layout()
+            self.Refresh()             # Refresca el frame para mostrar los cambios
+            self.Update()
 
         if hasattr(current_panel, "sheet_spectra_panel"):
             current_panel.choice_sheet_spectra = None
+            self.Refresh()             # Refresca el frame para mostrar los cambios
+            self.Update()
 
         if hasattr(current_panel, "choice_sheet_conc"):
             current_panel.choice_sheet_conc = None
+            self.Refresh()             # Refresca el frame para mostrar los cambios
+            self.Update()
 
         # Limpiar y reiniciar el DataFrame
         if hasattr(current_panel, 'df'):
             current_panel.df = None
+            self.Refresh()             # Refresca el frame para mostrar los cambios
+            self.Update()
 
         # Limpiar el grid (si lo estás utilizando)
         if hasattr(current_panel, 'model_grid'):
@@ -251,6 +272,8 @@ class App(wx.Frame):
         self.vars_columnas = {}
 
         self.Layout()
+        self.Refresh()             # Refresca el frame para mostrar los cambios
+        self.Update()
 
     def save_results(self, event):
         # Usar FileDialog de wxPython para seleccionar el archivo donde guardar

@@ -430,7 +430,7 @@ class BaseTechniquePanel(wx.Panel):
         self.model_panel.Layout()  # Actualiza el layout del panel que contiene el grid
         self.model_panel.Fit()     # Ajusta el tamaño del panel para coincidir con el tamaño de sus hijos
         self.Layout()              # Actualiza el layout del frame si 'self' es el frame
-        self.Fit()                 # Ajusta el tamaño del frame para coincidir con el tamaño de sus hijos
+        #self.Fit()                 # Ajusta el tamaño del frame para coincidir con el tamaño de sus hijos
         self.Refresh()             # Refresca el frame para mostrar los cambios
         self.Update()              # Fuerza la repintura inmediata del frame
 

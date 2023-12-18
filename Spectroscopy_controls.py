@@ -38,11 +38,25 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         self.btn_select_file.Bind(wx.EVT_BUTTON, self.select_file)
         self.left_sizer.Add(self.btn_select_file, 0, wx.ALL | wx.EXPAND, 5)
 
-        # Crear un TextCtrl en lugar de StaticText para mostrar la ruta del archivo
-        self.lbl_file_path = wx.TextCtrl(self.panel, style=wx.TE_READONLY | wx.TE_MULTILINE | wx.HSCROLL)
-        self.lbl_file_path.SetMinSize((-1, 45))  # Ajustar el tamaño mínimo para evitar que sea demasiado grande
-        self.lbl_file_path.SetValue("No file selected")
-        self.left_sizer.Add(self.lbl_file_path, 0, wx.ALL | wx.EXPAND, 5)
+        # Crear el ScrolledWindow
+        self.scrolled_window = wx.ScrolledWindow(self.panel, style=wx.HSCROLL)
+        self.scrolled_window.SetScrollRate(10, 0)  # El primer valor es la velocidad de scroll horizontal, el segundo es vertical y está seteado en 0 porque no queremos scroll vertical.
+
+        # Crear un StaticText para mostrar la ruta del archivo dentro del ScrolledWindow
+        self.lbl_file_path = wx.StaticText(self.scrolled_window, label="No file selected")
+
+        # Crear un sizer para el ScrolledWindow y agregar el StaticText
+        scrolled_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        scrolled_sizer.Add(self.lbl_file_path, 1, wx.EXPAND | wx.ALL, 5)
+
+        # Asignar el sizer al ScrolledWindow y actualizar su tamaño
+        self.scrolled_window.SetSizer(scrolled_sizer)
+        self.scrolled_window.SetMinSize((-1, 45))  # Establecer un tamaño mínimo para el ScrolledWindow
+
+        self.left_sizer.Add(self.scrolled_window, 0, wx.EXPAND | wx.ALL, 5)
+        self.Layout()
+        self.Refresh()             # Refresca el frame para mostrar los cambios
+        self.Update()
 
         # Espectros
         self.sheet_spectra_panel, self.choice_sheet_spectra = self.create_sheet_dropdown_section("Spectra Sheet Name:", self)
@@ -55,13 +69,29 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         dropdowns_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.left_sizer.Add(dropdowns_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
-        # Sección para Checkboxes (inicialmente vacía)
-        self.columns_names_panel = wx.Panel(self.panel)
+        # ScrolledWindow para los checkboxes de nombres de columnas (inicialmente vacío)
+        self.columns_names_panel = wx.ScrolledWindow(self.panel, style=wx.HSCROLL)
+        self.columns_names_panel.SetScrollRate(10, 0)  # Configurar la velocidad de desplazamiento horizontal
+
+        # Sizer para los checkboxes dentro del ScrolledWindow
         self.columns_names_sizer = wx.BoxSizer(wx.HORIZONTAL)
+
+        # Etiqueta para los nombres de las columnas
         self.lbl_columns = wx.StaticText(self.columns_names_panel, label="Column names: ")
         self.columns_names_sizer.Add(self.lbl_columns, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+
+        # Configurar el sizer en el ScrolledWindow y añadir el panel al sizer principal
         self.columns_names_panel.SetSizer(self.columns_names_sizer)
         self.left_sizer.Add(self.columns_names_panel, 0, wx.EXPAND | wx.ALL, 5)
+
+        # Ajustar el tamaño del ScrolledWindow para asegurarse de que la barra de desplazamiento aparezca cuando sea necesario
+        self.columns_names_panel.SetMinSize((-1, 40))  # Reemplaza 'altura_deseada' con la altura que quieras para el panel
+        #self.columns_names_panel.SetMaxSize((400, -1))  # Reemplaza 'ancho_deseado' con el ancho máximo que quieras para el panel
+
+        # Llama a Layout para actualizar la interfaz gráfica
+        self.panel.Layout()
+        self.Refresh()             # Refresca el frame para mostrar los cambios
+        self.Update()
 
         self.choice_columns_panel = wx.Panel(self.panel)
         # Crear el sizer horizontal para los menús desplegables
@@ -106,8 +136,8 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         tab_optimizacion = wx.Panel(notebook)
 
         # Añadir los paneles al notebook
-        notebook.AddPage(tab_modelo, "Modelo")
-        notebook.AddPage(tab_optimizacion, "Optimización")
+        notebook.AddPage(tab_modelo, "Model")
+        notebook.AddPage(tab_optimizacion, "Optimization")
 
         # Creación del CheckBox
         self.toggle_components = wx.Button(tab_modelo, label="Define Model Dimensions")
@@ -196,9 +226,11 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         self.left_sizer.Add(notebook, 1, wx.EXPAND | wx.ALL, 5)
         # Configura el sizer en el panel y llama a Layout para organizar los controles
         self.SetSizer(self.left_sizer)
-        self.Fit()
+        #self.Fit()
         self.Show()
         self.Layout()
+        self.Refresh()             # Refresca el frame para mostrar los cambios
+        self.Update()
 
     #####################################################################################################
     
@@ -252,12 +284,7 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         receptor_index_in_C_T = column_indices_in_C_T.get(receptor_name, -1)
         guest_index_in_C_T = column_indices_in_C_T.get(guest_name, -1)
 
-        # Ahora puedes usar estos índices para indexar en C_T
-        #if receptor_index_in_C_T != -1 and guest_index_in_C_T != -1:
-        #    G = C_T[:, guest_index_in_C_T]
-        #    H = C_T[:, receptor_index_in_C_T]
-
-        # Asumiendo que receptor_index_in_C_T y guest_index_in_C_T son los índices.
+      
         # Verifica si al menos uno de los índices es diferente de -1
         if receptor_index_in_C_T != -1 or guest_index_in_C_T != -1:
             
