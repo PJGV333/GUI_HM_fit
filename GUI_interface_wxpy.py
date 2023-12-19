@@ -299,8 +299,8 @@ class App(wx.Frame):
                     current_panel.C.to_excel(writer, sheet_name="Absorbent_species")
                 if hasattr(current_panel, 'Co'):
                     current_panel.Co.to_excel(writer, sheet_name="All_species")   
-                if hasattr(current_panel, 'concentracion'):
-                    current_panel.concentracion.to_excel(writer, sheet_name="Tot_con_comp")  
+                if hasattr(current_panel, 'C_T'):
+                    current_panel.C_T.to_excel(writer, sheet_name="Tot_con_comp")  
                 if hasattr(current_panel, 'A'):
                     current_panel.A.to_excel(writer, sheet_name="Molar_Absortivities", index_label = 'nm', index = True)
                 if hasattr(current_panel, 'dq'):

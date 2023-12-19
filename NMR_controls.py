@@ -239,13 +239,26 @@ class NMR_controlsPanel(BaseTechniquePanel):
         self.grid.SetColLabelValue(3, "Max")
         self.grid.AutoSizeColumns()
 
-        # Configurar sizer y añadir al panel de la pestaña 'Optimización'
-        optimizacion_sizer = wx.BoxSizer(wx.VERTICAL)
-        optimizacion_sizer.Add(algo_panel, 0, wx.EXPAND | wx.ALL, 5)
-        optimizacion_sizer.Add(ajustes_panel, 0, wx.EXPAND | wx.ALL, 5)
-        optimizacion_sizer.Add(optimizador_panel, 0, wx.EXPAND | wx.ALL, 5)
+       # Sizer principal para la pestaña 'Optimización'
+        optimizacion_sizer = wx.BoxSizer(wx.HORIZONTAL)
+
+        # Sizer para los controles verticales (menús desplegables)
+        controls_sizer = wx.BoxSizer(wx.VERTICAL)
+        controls_sizer.Add(algo_panel, 0, wx.EXPAND | wx.ALL, 5)
+        controls_sizer.Add(ajustes_panel, 0, wx.EXPAND | wx.ALL, 5)
+        controls_sizer.Add(optimizador_panel, 0, wx.EXPAND | wx.ALL, 5)
+
+        # Añadir el sizer de controles al sizer principal de 'Optimización'
+        optimizacion_sizer.Add(controls_sizer, 0, wx.EXPAND | wx.ALL, 5)
+
+        # Añadir el grid al sizer principal de 'Optimización'
         optimizacion_sizer.Add(self.grid, 1, wx.EXPAND | wx.ALL, 5)
+
+        # Configurar el sizer en el panel de la pestaña 'Optimización'
         tab_optimizacion.SetSizer(optimizacion_sizer)
+
+        # Ajustar la distribución de los controles
+        tab_optimizacion.Layout()
 
         # Añadir el notebook al left_sizer
         self.left_sizer.Add(notebook, 1, wx.EXPAND | wx.ALL, 5)
@@ -596,6 +609,7 @@ class NMR_controlsPanel(BaseTechniquePanel):
         C_T.columns = column_names_ct
         coef.columns = column_names_coef
 
+        self.modelo = modelo
         self.C = C
         self.Co = Co
         self.dq = dq
