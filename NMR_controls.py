@@ -8,6 +8,7 @@ matplotlib.use('WXAgg')
 from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
 from matplotlib.figure import Figure
 from scipy import optimize
+from scipy.optimize import differential_evolution
 import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning) 
@@ -223,7 +224,7 @@ class NMR_controlsPanel(BaseTechniquePanel):
         optimizador_label = wx.StaticText(optimizador_panel, label='Optimizer')
         optimizador_sizer = wx.BoxSizer(wx.VERTICAL)
         optimizador_sizer.Add(optimizador_label, 0, wx.ALL, 5)
-        optimizador_choices = ["powell", "nelder-mead", "trust-constr", "cg", "bfgs", "l-bfgs-b", "tnc", "cobyla", "slsqp"]
+        optimizador_choices = ["powell", "nelder-mead", "trust-constr", "cg", "bfgs", "l-bfgs-b", "tnc", "cobyla", "slsqp", "differential_evolution"]
         self.choice_optimizer_settings = wx.Choice(optimizador_panel, choices=optimizador_choices)
         optimizador_sizer.Add(self.choice_optimizer_settings, 0, wx.ALL, 5)
         self.choice_optimizer_settings.SetSelection(0)
@@ -425,8 +426,34 @@ class NMR_controlsPanel(BaseTechniquePanel):
         print(optimizer)
         print(bnds)
 
+        def verificar_bounds(bounds):
+            """
+            Verifica si los límites contienen np.inf o -np.inf.
+            Retorna True si los límites son válidos, False de lo contrario.
+            """
+            for (min_val, max_val) in bounds:
+                if np.isinf(min_val) or np.isinf(max_val):
+                    return False
+            return True
+
+        # Inicializa r_0 fuera del bloque if-else
+        r_0 = None
     
-        r_0 = optimize.minimize(f_m, k, method=optimizer, bounds=bnds)
+        if optimizer  == "differential_evolution":
+            if verificar_bounds(bnds) == False:
+                # Mostrar un MessageBox en caso de valores infinitos en los límites
+                wx.MessageBox('Los límites no deben contener valores infinitos.', 
+                            'Error en los Límites', wx.OK | wx.ICON_ERROR)
+                # Aquí puedes manejar el error o simplemente retornar para evitar seguir con el procesamiento
+
+            else:
+                self.r_0 = differential_evolution(f_m, bnds, x0 = k, strategy='best1bin', 
+                          maxiter=1000, popsize=15, tol=0.01, 
+                           mutation=(0.5, 1), recombination=0.7,
+                           init='latinhypercube')
+            
+        else:
+            self.r_0 = optimize.minimize(f_m, k, method=optimizer, bounds=bnds)
 
                     
         # Registrar el tiempo de finalización
@@ -437,8 +464,8 @@ class NMR_controlsPanel(BaseTechniquePanel):
         
         print("El tiempo de ejecución de la función fue: ", tiempo_total, "segundos.")
 
-
-        k = np.ravel(r_0.x) 
+        k = self.r_0.x 
+        k = np.ravel(k) 
 
 
         # Calcular el SER
@@ -485,18 +512,18 @@ class NMR_controlsPanel(BaseTechniquePanel):
         
         if n_comp == 1:
             
-            self.figura(H, (C/np.max(C))*100, ":o", "Abundance (%)", "[H], M", "Perfil de concentraciones")
+            self.figura(H, C, ":o",  "[Species], M", "[H], M", "Perfil de concentraciones")
 
             dq_cal = cal_delta(k).T
 
             self.figura2(H, dq, cal_delta(k).T, "o", ":", "$\Delta$$\delta$ (ppm)", "[H], M", 1, "Ajuste")
 
         else:
-                self.figura((G/H), (C/np.max(C))*100, ":o", "Abundance (%)", "[G]/[H]", "Perfil de concentraciones")
+                self.figura(G, C, ":o", "[Species], M", "[G], M", "Perfil de concentraciones")
 
                 dq_cal = cal_delta(k).T
 
-                self.figura2((G/H), dq, cal_delta(k).T, "o", ":", "$\Delta$$\delta$ (ppm)", "[G]/[H]", 1, "Ajuste")
+                self.figura2(G, dq, cal_delta(k).T, "o", ":", "$\Delta$$\delta$ (ppm)", "[G], M", 1, "Ajuste")
         
             
         
