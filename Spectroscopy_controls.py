@@ -472,8 +472,8 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         
         # Calcular el SER
         
-        n = len(G)
-        p = len(k)
+        #n = len(G)
+        #p = len(k)
         
         SER = f_m(k)
         

@@ -19,6 +19,7 @@ warnings.filterwarnings("ignore")
 import timeit
 from Spectroscopy_controls import Spectroscopy_controlsPanel
 from NMR_controls import NMR_controlsPanel
+from Simulation_controls import Simulation_controlsPanel
 from Methods import BaseTechniquePanel 
 import importlib
 
@@ -59,11 +60,11 @@ class App(wx.Frame):
         #self.spectroscopy_panel = SpectroscopyPanel(self.technique_notebook)
         self.spectroscopy_panel = Spectroscopy_controlsPanel(self.technique_notebook, app_ref=self)
         self.nmr_panel = NMR_controlsPanel(self.technique_notebook, app_ref=self)
-        #self.pka_panel = pkaPanel(self.technique_notebook)
+        self.simulation_panel = Simulation_controlsPanel(self.technique_notebook, app_ref=self)
         #self.pka_panel = pkaPanel(self.technique_notebook)
         self.technique_notebook.AddPage(self.spectroscopy_panel, "Spectroscopy")
         self.technique_notebook.AddPage(self.nmr_panel, "NMR")
-        #self.technique_notebook.AddPage(self.nmr_panel, "NMR") ... debo utilizar estas lineas: self.notebook = TechniqueNotebook(self)
+        self.technique_notebook.AddPage(self.simulation_panel, "Simulation") #... debo utilizar estas lineas: self.notebook = TechniqueNotebook(self)
         
         self.left_sizer.Add(self.technique_notebook,  1, wx.EXPAND | wx.ALL)
         # Establecer el sizer principal y ajustar el layout

@@ -411,6 +411,7 @@ class NMR_controlsPanel(BaseTechniquePanel):
             rms = np.sqrt(np.mean(np.square(r)))
             self.res_consola("f(x)", rms)
             self.res_consola("x", k)
+            wx.Yield()
             return rms
         
         def f_m2(k):
