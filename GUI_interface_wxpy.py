@@ -213,51 +213,61 @@ class App(wx.Frame):
         if hasattr(current_panel, 'file_path'):
             current_panel.file_path = None
             current_panel.Layout()
-            self.Refresh()             # Refresca el frame para mostrar los cambios
+            self.Refresh()
             self.Update()
         
         if hasattr(current_panel, 'lbl_file_path'):
             current_panel.lbl_file_path.SetLabel("No file selected")
             current_panel.Layout()
-            self.Refresh()             # Refresca el frame para mostrar los cambios
+            self.Refresh()
             self.Update()
 
-        
         if hasattr(current_panel, 'scrolled_window'):
             current_panel.scrolled_window.Layout()
-            self.Refresh()             # Refresca el frame para mostrar los cambios
+            self.Refresh()
             self.Update()
 
-        if hasattr(current_panel, "sheet_spectra_panel"):
-            current_panel.choice_sheet_spectra = None
-            self.Refresh()             # Refresca el frame para mostrar los cambios
+        # Reiniciar los menús desplegables
+        if hasattr(current_panel, "choice_sheet_spectra"):
+            current_panel.choice_sheet_spectra.Clear()
+            current_panel.choice_sheet_spectra.SetSelection(-1)
+            self.Refresh()
             self.Update()
 
         if hasattr(current_panel, "choice_sheet_conc"):
-            current_panel.choice_sheet_conc = None
-            self.Refresh()             # Refresca el frame para mostrar los cambios
+            current_panel.choice_sheet_conc.Clear()
+            current_panel.choice_sheet_conc.SetSelection(-1)
+            self.Refresh()
+            self.Update()
+
+        if hasattr(current_panel, 'receptor_choice'):
+            current_panel.receptor_choice.Clear()
+            current_panel.receptor_choice.SetSelection(-1)
+            self.Refresh()
+            self.Update()
+        
+        if hasattr(current_panel, 'guest_choice'):
+            current_panel.guest_choice.Clear()
+            current_panel.guest_choice.SetSelection(-1)
+            self.Refresh()
             self.Update()
 
         # Limpiar y reiniciar el DataFrame
         if hasattr(current_panel, 'df'):
             current_panel.df = None
-            self.Refresh()             # Refresca el frame para mostrar los cambios
+            self.Refresh()
             self.Update()
 
         # Limpiar el grid (si lo estás utilizando)
         if hasattr(current_panel, 'model_grid'):
-            # Verificar si el grid tiene filas; si es así, eliminarlas todas
             if current_panel.model_grid.GetNumberRows() > 0:
                 current_panel.model_grid.DeleteRows(0, current_panel.model_grid.GetNumberRows())
-
-            # Verificar si el grid tiene columnas; si es así, eliminarlas todas
             if current_panel.model_grid.GetNumberCols() > 0:
                 current_panel.model_grid.DeleteCols(0, current_panel.model_grid.GetNumberCols())
 
         # Limpiar la lista de figuras
         if hasattr(self, 'fig'):
             self.fig.clear()
-            # Si estás utilizando un canvas para mostrar las figuras, también debes limpiarlo
             if hasattr(self, 'canvas'):
                 self.canvas.figure.clear()
                 self.canvas.draw()
@@ -265,16 +275,77 @@ class App(wx.Frame):
         # Eliminar los checkboxes actuales
         if hasattr(current_panel, 'columns_names_panel'):
             children = list(current_panel.columns_names_panel.GetChildren())
-            for child in children:  # Modificado para incluir todos los hijos
+            for child in children:
                 if isinstance(child, wx.CheckBox):
                     child.Destroy()
 
-       # Limpiar el diccionario de checkboxes
+        # Limpiar el diccionario de checkboxes
         self.vars_columnas = {}
 
+        # Limpiar los elementos adicionales en el panel de Optimización
+        if hasattr(current_panel, 'choice_algoritm'):
+            current_panel.choice_algoritm.SetSelection(0)
+            
+        if hasattr(current_panel, 'choice_model_settings'):
+            current_panel.choice_model_settings.SetSelection(0)
+            
+        if hasattr(current_panel, 'choice_optimizer_settings'):
+            current_panel.choice_optimizer_settings.SetSelection(0)
+
+        # Limpiar el grid de parámetros
+        if hasattr(current_panel, 'grid'):
+            current_panel.grid.ClearGrid()
+            if current_panel.grid.GetNumberRows() > 0:
+                current_panel.grid.DeleteRows(0, current_panel.grid.GetNumberRows())
+
+        # Resetear entradas de texto para número de componentes y especies
+        if hasattr(current_panel, 'entry_nc'):
+            current_panel.entry_nc.SetValue("0")
+        
+        if hasattr(current_panel, 'entry_nsp'):
+            current_panel.entry_nsp.SetValue("0")
+
+        # Reiniciar elementos específicos de la pestaña NMR
+        if hasattr(current_panel, "choice_chemshifts"):
+            current_panel.choice_chemshifts.Clear()
+            current_panel.choice_chemshifts.SetSelection(-1)
+            self.Refresh()
+            self.Update()
+
+        if hasattr(current_panel, 'chemical_shifts_panel'):
+            children = list(current_panel.chemical_shifts_panel.GetChildren())
+            for child in children:
+                if isinstance(child, wx.CheckBox):
+                    child.Destroy()
+
+        # Nota: No destruir el panel de elección de columnas, solo limpiar su contenido
+        if hasattr(current_panel, 'choice_columns_panel'):
+            children = list(current_panel.choice_columns_panel.GetChildren())
+            for child in children:
+                if isinstance(child, wx.Choice):
+                    child.Clear()
+                    child.SetSelection(-1)
+                elif isinstance(child, wx.TextCtrl):
+                    child.SetValue("")
+
+        # Reiniciar elementos específicos de la pestaña Spectroscopy
+        if hasattr(current_panel, 'sheet_spectra_panel'):
+            current_panel.sheet_spectra_panel.Clear()
+            current_panel.sheet_spectra_panel.SetSelection(-1)
+            self.Refresh()
+            self.Update()
+
+        if hasattr(current_panel, 'sheet_conc_panel'):
+            current_panel.sheet_conc_panel.Clear()
+            current_panel.sheet_conc_panel.SetSelection(-1)
+            self.Refresh()
+            self.Update()
+
         self.Layout()
-        self.Refresh()             # Refresca el frame para mostrar los cambios
+        self.Refresh()
         self.Update()
+
+
 
     def save_results(self, event):
         # Usar FileDialog de wxPython para seleccionar el archivo donde guardar

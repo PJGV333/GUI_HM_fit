@@ -35,7 +35,9 @@ class Simulation_controlsPanel(BaseTechniquePanel):
         # Añadir los paneles al notebook
         notebook.AddPage(tab_modelo, "Model")
         notebook.AddPage(tab_optimizacion, "Optimization")
-
+        
+        #Aquí crear los statictext.
+        
         # Creación del CheckBox
         self.toggle_components = wx.Button(tab_modelo, label="Define Model Dimensions")
         self.toggle_components.Bind(wx.EVT_BUTTON, self.on_define_model_dimensions_checked)
