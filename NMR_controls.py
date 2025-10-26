@@ -17,6 +17,17 @@ warnings.filterwarnings("ignore")
 import timeit
 from Methods import BaseTechniquePanel
 
+def pinv_cs(A, rcond=1e-12):
+    A = np.asarray(A)
+    if not np.iscomplexobj(A):
+        return np.linalg.pinv(A, rcond=rcond)
+    m, n = A.shape
+    Ar = np.block([[A.real, -A.imag],
+                   [A.imag,  A.real]])      # (2m x 2n)
+    Pr = np.linalg.pinv(Ar, rcond=rcond)    # (2n x 2m)
+    X = Pr[:n,    :m]
+    Y = Pr[n:2*n, :m]
+    return X + 1j*Y
 
 # Clase para la técnica de NMR
 class NMR_controlsPanel(BaseTechniquePanel):
@@ -395,14 +406,14 @@ class NMR_controlsPanel(BaseTechniquePanel):
         def cal_delta(k):
             C = res.concentraciones(k)[0]
             xi = C / H[:, np.newaxis]
-            coeficientes = np.linalg.pinv(xi) @ dq
+            coeficientes = pinv_cs(xi) @ dq #se cambio np.linag.pinv por np.linalg.pinv
             dq_cal = coeficientes.T @ xi.T
             return dq_cal
 
         def cal_coef(k):
             C = res.concentraciones(k)[0]
             xi = C / H[:, np.newaxis]
-            coeficientes = np.linalg.pinv(xi) @ dq
+            coeficientes = pinv_cs(xi) @ dq #se cambio np.linag.pinv por np.linalg.pinv
             return coeficientes
 
         def f_m(k):
@@ -484,14 +495,25 @@ class NMR_controlsPanel(BaseTechniquePanel):
         #epsilon = np.sqrt(np.finfo(float).eps)
         #jacobian = np.array([approx_fprime(k, lambda ki: residuals(ki)[i], epsilon) for i in range(n)])
 
+        #def finite(x, fun):
+        #    dfdx = []
+        #    delta = np.sqrt(np.finfo(float).eps)
+        #    for i in range(len(x)):
+        #        step = np.zeros(len(x))
+        #        step[i] = delta
+        #        dfdx.append((fun(x + step) - fun(x - step)) / (2 * delta))
+        #    return np.array(dfdx)
+        
         def finite(x, fun):
+            delta = 1e-20
             dfdx = []
-            delta = np.sqrt(np.finfo(float).eps)
             for i in range(len(x)):
-                step = np.zeros(len(x))
-                step[i] = delta
-                dfdx.append((fun(x + step) - fun(x - step)) / (2 * delta))
+                step = np.zeros_like(x, dtype=np.complex128)
+                step[i] = 1j * delta
+                fx = fun(x + step)     # fx será complejo
+                dfdx.append(np.imag(fx) / delta)
             return np.array(dfdx)
+
 
         jacobian = finite(k, residuals)
 

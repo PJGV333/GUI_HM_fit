@@ -17,6 +17,23 @@ warnings.filterwarnings("ignore")
 import timeit
 from Methods import BaseTechniquePanel
 
+def pinv_cs(A, rcond=1e-12):
+    A = np.asarray(A)
+    if not np.iscomplexobj(A):
+        return np.linalg.pinv(A, rcond=rcond)
+    m, n = A.shape
+    Ar = np.block([[A.real, -A.imag],
+                   [A.imag,  A.real]])      # (2m x 2n)
+    Pr = np.linalg.pinv(Ar, rcond=rcond)    # (2n x 2m)
+    X = Pr[:n,    :m]
+    Y = Pr[n:2*n, :m]
+    return X + 1j*Y
+
+def _solve_A(C, YT, rcond=1e-10):
+    # C: (m×s), YT: (nw×m)  →  A: (s×nw)
+    A, *_ = np.linalg.lstsq(C, YT, rcond=rcond)
+    return A
+
 # Clase para la técnica de Espectroscopia
 class Spectroscopy_controlsPanel(BaseTechniquePanel):
     def __init__(self, parent, app_ref):
@@ -400,12 +417,12 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         # Implementing the abortividades function
         def abortividades(k, Y):
             C, Co = res.concentraciones(k)  # Assuming the function concentraciones returns C and Co
-            A = np.linalg.pinv(C) @ Y.T
+            A = _solve_A(C, Y.T) #np.linalg.pinv(C) @ Y.T #se cambio np.linag.pinv por np.linalg.pinv
             return np.all(A >= 0)
         
         def f_m2(k):
             C = res.concentraciones(k)[0]    
-            r = C @ np.linalg.pinv(C) @ Y.T - Y.T
+            r = C @ _solve_A(C, Y.T) #np.linalg.pinv(C) @ Y.T - Y.T #se cambio np.linag.pinv por np.linalg.pinv
             rms = np.sqrt(np.mean(np.square(r)))
             #print(f"f(x): {rms}")
             #print(f"x: {k}")
@@ -413,7 +430,7 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
             
         def f_m(k):
             C = res.concentraciones(k)[0]    
-            r = C @ np.linalg.pinv(C) @ Y.T - Y.T
+            r = C @ _solve_A(C, Y.T) - Y.T #np.linalg.pinv(C) @ Y.T - Y.T  #se cambio np.linag.pinv por np.linalg.pinv
             rms = np.sqrt(np.mean(np.square(r)))
             self.res_consola("f(x)", rms)
             self.res_consola("x", k)
@@ -480,28 +497,43 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         # Calcular la matriz jacobiana de los residuos
         def residuals(k):
             C = res.concentraciones(k)[0]
-            r = C @ np.linalg.pinv(C) @ Y.T - Y.T
+            r = C @ _solve_A(C, Y.T) - Y.T #np.linalg.pinv(C) @ Y.T - Y.T #se cambio np.linag.pinv por np.linalg.pinv
             return r.flatten()
                 
+        #def finite(x, fun):
+        #    dfdx = []
+        #    delta = np.sqrt(np.finfo(float).eps)
+        #    for i in range(len(x)):
+        #        step = np.zeros(len(x))
+        #        step[i] = delta
+        #        dfdx.append((fun(x + step) - fun(x - step)) / (2 * delta))
+        #    return np.array(dfdx)
+        
         def finite(x, fun):
+            delta = 1e-20
             dfdx = []
-            delta = np.sqrt(np.finfo(float).eps)
             for i in range(len(x)):
-                step = np.zeros(len(x))
-                step[i] = delta
-                dfdx.append((fun(x + step) - fun(x - step)) / (2 * delta))
+                step = np.zeros_like(x, dtype=np.complex128)
+                step[i] = 1j * delta
+                fx = fun(x + step)     # fx será complejo
+                dfdx.append(np.imag(fx) / delta)
             return np.array(dfdx)
         
-        jacobian = finite(k, residuals)
-        
+        #J = finite(k, residuals)
+
+
+        jacobian = finite(k, residuals)  # residuals_vec → (C@A - YT).ravel()
+
         # Calcular la matriz de covarianza
         cov_matrix = SER**2 * np.linalg.pinv(jacobian @ jacobian.T)
-        
+        SE_k = np.sqrt(np.clip(np.diag(cov_matrix), 0, np.inf))
+        error_percent = 100 * SE_k / np.maximum(np.abs(k), 1e-12)
+
         # Calcular el error estándar de las constantes de asociación
-        SE_k = np.sqrt(np.diag(cov_matrix))
+        #SE_k = np.sqrt(np.diag(cov_matrix))
         
         # Calcular el error porcentual
-        error_percent = (SE_k / np.abs(k)) #* 100
+        #error_percent = (SE_k / np.abs(k)) #* 100
         
         C, Co = res.concentraciones(k)
         
@@ -509,12 +541,12 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         if n_comp == 1:
             self.figura(H, C, ":o", "[Especies], M", "[H], M", "Perfil de concentraciones")
 
-            y_cal = C @ np.linalg.pinv(C) @ Y.T
+            y_cal = C @ _solve_A(C, Y.T) #np.linalg.pinv(C) @ Y.T
                             
             ssq, r0 = f_m2(k)
             rms = f_m(k)
             
-            A = np.linalg.pinv(C) @ Y.T
+            A = _solve_A(C, Y.T) #np.linalg.pinv(C) @ Y.T
 
             self.figura(nm, A.T, "-", "Epsilon (u. a.)", "$\lambda$ (nm)", "Absortividades molares")
             self.figura2(nm, Y, y_cal.T, "-k", "k:", "Y observada (u. a.)", "$\lambda$ (nm)", 0.5, "Ajuste")
