@@ -18,16 +18,17 @@ import timeit
 from Methods import BaseTechniquePanel
 
 def pinv_cs(A, rcond=1e-12):
-    A = np.asarray(A)
-    if not np.iscomplexobj(A):
+    """
+    Pseudoinversa estable (ahora sin complex-step).
+    Thin wrapper sobre np.linalg.pinv con fallback por si SVD no converge.
+    """
+    try:
         return np.linalg.pinv(A, rcond=rcond)
-    m, n = A.shape
-    Ar = np.block([[A.real, -A.imag],
-                   [A.imag,  A.real]])      # (2m x 2n)
-    Pr = np.linalg.pinv(Ar, rcond=rcond)    # (2n x 2m)
-    X = Pr[:n,    :m]
-    Y = Pr[n:2*n, :m]
-    return X + 1j*Y
+    except np.linalg.LinAlgError:
+        # Fallback regularizado tipo ridge
+        ATA = A.T @ A + (rcond if np.isscalar(rcond) else 1e-12) * np.eye(A.shape[1], dtype=A.dtype)
+        return np.linalg.solve(ATA, A.T)
+
 
 def _solve_A(C, YT, rcond=1e-10):
     # C: (m×s), YT: (nw×m)  →  A: (s×nw)
@@ -417,12 +418,12 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         # Implementing the abortividades function
         def abortividades(k, Y):
             C, Co = res.concentraciones(k)  # Assuming the function concentraciones returns C and Co
-            A = _solve_A(C, Y.T) #np.linalg.pinv(C) @ Y.T #se cambio np.linag.pinv por np.linalg.pinv
+            A = np.linalg.pinv(C) @ Y.T #se cambio np.linag.pinv por np.linalg.pinv
             return np.all(A >= 0)
         
         def f_m2(k):
             C = res.concentraciones(k)[0]    
-            r = C @ _solve_A(C, Y.T) - Y.T #np.linalg.pinv(C) @ Y.T - Y.T #se cambio np.linag.pinv por np.linalg.pinv
+            r = C @ np.linalg.pinv(C) @ Y.T - Y.T #se cambio np.linag.pinv por np.linalg.pinv
             rms = np.sqrt(np.mean(np.square(r)))
             #print(f"f(x): {rms}")
             #print(f"x: {k}")
@@ -430,7 +431,7 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
             
         def f_m(k):
             C = res.concentraciones(k)[0]    
-            r = C @ _solve_A(C, Y.T) - Y.T #np.linalg.pinv(C) @ Y.T - Y.T  #se cambio np.linag.pinv por np.linalg.pinv
+            r = C @ np.linalg.pinv(C) @ Y.T - Y.T  #se cambio np.linag.pinv por np.linalg.pinv
             rms = np.sqrt(np.mean(np.square(r)))
             self.res_consola("f(x)", rms)
             self.res_consola("x", k)
@@ -488,31 +489,126 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         k = np.ravel(k)
         
         
-        from errors import param_errors_cs
+        from errors import pinv_cs, percent_error_log10K, sensitivities_wrt_logK
 
         
         # Calcular la matriz jacobiana de los residuos
         def residuals(k):
             C = res.concentraciones(k)[0]
-            r = C @ _solve_A(C, Y.T) - Y.T #np.linalg.pinv(C) @ Y.T - Y.T #se cambio np.linag.pinv por np.linalg.pinv
+            r = C @ np.linalg.pinv(C) @ Y.T - Y.T #se cambio np.linag.pinv por np.linalg.pinv
             return r. ravel() #r.flatten()
                 
-        SE_log10K, SE_K, percK, s2, Cov = param_errors_cs(residuals, k)
-        rms = np.sqrt(np.mean(residuals(k)**2))
-        covfit = s2
-        
+        # --- al inicio del archivo asegúrate de tener:
+        # from errors import pinv_cs, percent_error_log10K, sensitivities_wrt_logK
+
+        def compute_errors_spectroscopy(k, res, Y, modelo, nas):
+            """
+            Flujo ÚNICO (NR/LM) para errores en Espectroscopia usando sensibilidades implícitas.
+            k      : (p,)    parámetros óptimos (log10 K)
+            res    : solver de concentraciones con .concentraciones(k)
+            Y      : (nw × m) matriz de datos (tal como la usas; su .T es (m × nw))
+            modelo : (nspec×n_comp) o (n_comp×nspec)
+            nas    : lista de índices de especies NO absorbentes
+            Devuelve: dict con percK, SE_K, SE_log10K, Cov_log10K, RMS, s2, A, J, yfit
+            """
+            import numpy as np
+
+            k = np.ravel(k)
+            m = Y.shape[1]                     # nº puntos (m)
+            nw = Y.shape[0]                    # nº "observables" (longitudes de onda)
+            C, Co = res.concentraciones(k)     # C: (m × n_abs), Co: (m × nspec)
+
+            # Resolver A en el óptimo (mínimos cuadrados)
+            def _solve_A(C, YT, rcond=1e-10):
+                A, *_ = np.linalg.lstsq(C, YT, rcond=rcond)   # (n_abs × nw)
+                return A
+
+            A = _solve_A(C, Y.T)               # (n_abs × nw)
+
+            npts, n_abs = C.shape
+            p = len(k)
+            nspec = Co.shape[1]
+
+            # Normalizar orientación de 'modelo' y deducir n_comp
+            M_in = np.asarray(modelo, dtype=float)
+            if M_in.shape[0] == nspec:
+                Ms = M_in                      # (nspec × n_comp)
+                n_comp = Ms.shape[1]
+            elif M_in.shape[1] == nspec:
+                Ms = M_in.T                    # (nspec × n_comp)
+                n_comp = Ms.shape[1]
+            else:
+                raise ValueError(f"modelo incompatible con Co: nspec={nspec}, modelo shape={M_in.shape}")
+
+            # Índices de especies absorbentes (para pasar de Co -> C)
+            abs_idx = [j for j in range(nspec) if j not in nas]
+
+            # Mapeo parámetros -> columnas de especies (estándar: COMPLEJOS = n_comp..nspec-1)
+            param_idx = list(range(n_comp, nspec))
+            if len(param_idx) != p:
+                if p <= nspec:
+                    param_idx = list(range(nspec - p, nspec))  # fallback consistente con p
+                else:
+                    raise ValueError(f"p={p} mayor que nspec={nspec}.")
+
+            # Construir Jacobiano de residuos J (p × m*nw)
+            J = np.zeros((p, npts * nw), dtype=float)
+
+            for i in range(npts):
+                # dCspec/dlog10K (nspec × p) en la fila i
+                dC_dlog10K = sensitivities_wrt_logK(Co[i], Ms, param_idx=param_idx)   # (nspec × p)
+
+                # Sólo especies absorbentes
+                dC_abs = dC_dlog10K[abs_idx, :]       # (n_abs × p)
+
+                # y_i = C_i @ A  ⇒ dy_i/dlogK = (dC_abs)^T @ A  (p × nw)
+                dyi_dk = (dC_abs.T @ A)               # (p × nw)
+
+                # residuo: r_i = (C_i @ A) - Y_i  ⇒ dr_i/dlogK = dy_i/dlogK
+                # Si prefieres r = Y_i - (C_i@A), usa el signo opuesto; la covarianza no cambia.
+                J[:, i*nw:(i+1)*nw] = dyi_dk
+
+            # Residuos y métricas
+            yfit = C @ A                               # (m × nw)
+            r = (yfit - Y.T).ravel()                   # (m*nw,)
+            dof = max(r.size - p, 1)
+            s2  = float((r @ r) / dof)
+            Cov_log10K = s2 * pinv_cs(J @ J.T)         # (p × p)
+            SE_log10K  = np.sqrt(np.clip(np.diag(Cov_log10K), 0.0, np.inf))
+            percK, SE_K, _ = percent_error_log10K(k, SE_log10K)
+
+            RMS = float(np.sqrt(np.mean(r*r)))
+
+            return {
+                "percK": percK, "SE_K": SE_K, "SE_log10K": SE_log10K, "Cov_log10K": Cov_log10K,
+                "RMS": RMS, "s2": s2, "A": A, "J": J, "yfit": yfit
+            }
+
+        metrics = compute_errors_spectroscopy(k=self.r_0.x, res=res, Y=Y, modelo=modelo, nas=nas)
+
+        SE_log10K = metrics["SE_log10K"]
+        SE_K      = metrics["SE_K"]
+        percK     = metrics["percK"]
+        rms       = metrics["RMS"]
+        covfit    = metrics["s2"]
+        A         = metrics["A"]
+        y_cal     = metrics["yfit"] 
+        yfit      = metrics["yfit"]
+        cov_matrix = metrics["Cov_log10K"]
+
+
         C, Co = res.concentraciones(k)
         
 
         if n_comp == 1:
             self.figura(H, C, ":o", "[Especies], M", "[H], M", "Perfil de concentraciones")
 
-            y_cal = C @ _solve_A(C, Y.T) #np.linalg.pinv(C) @ Y.T
+            y_cal = C @ np.linalg.pinv(C) @ Y.T
                             
             ssq, r0 = f_m2(k)
             #rms = f_m(k)
             
-            A = _solve_A(C, Y.T) #np.linalg.pinv(C) @ Y.T
+            A = np.linalg.pinv(C) @ Y.T
 
             self.figura(nm, A.T, "-", "Epsilon (u. a.)", "$\lambda$ (nm)", "Absortividades molares")
             self.figura2(nm, Y, y_cal.T, "-k", "k:", "Y observada (u. a.)", "$\lambda$ (nm)", 0.5, "Ajuste")
@@ -533,9 +629,33 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
                 self.figura(nm, A.T, "-", "Epsilon (u. a.)", "$\lambda$ (nm)", "Absortividades molares")
                 self.figura2(nm, Y, y_cal.T, "-k", "k:", "Y observada (u. a.)", "$\lambda$ (nm)", 0.5, "Ajuste")   
 
-        #MAE = np.sqrt((sum(sum(r0**2)) / (nw - len(k))))
+                
+        ssq, r0 = f_m2(k)
+        
+        # Lack of fit (porcentaje)
+        # Definido como 100 * SS_res / SS_tot, donde:
+        #   SS_res = sum(r^2) y SS_tot = sum( (Y - mean(Y))^2 )
+        Yvec = Y.T  # mismo arreglo que usamos para r0
+        SS_res = float(np.sum(r0**2))
+        SS_tot = float(np.sum((Yvec - np.mean(Yvec))**2))
+        
+        if SS_tot <= 1e-30:    # evita división por cero si no hay varianza
+            lof = 0.0
+        else:
+            lof = 100.0 * SS_res / SS_tot
+            
         MAE = np.mean(abs(r0))
         dif_en_ct = round(max(100 - (np.sum(C, 1) * 100 / max(H))), 2)
+        
+        # Lack of fit (%)
+        Yvec = Y.T
+        SS_res = float(np.sum(r0**2))
+        SS_tot = float(np.sum((Yvec - np.mean(Yvec))**2))
+        lof = 0.0 if SS_tot <= 1e-30 else 100.0 * SS_res / SS_tot
+        
+        dif_en_ct = round(max(100 - (np.sum(C, 1) * 100 / max(H))), 2)
+            
+        
         
         ####pasos para imprimir bonito los resultados. 
         # Función para calcular los anchos máximos necesarios para cada columna
@@ -550,12 +670,13 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         def fmt(x, pat): 
             return "—" if not np.isfinite(x) else pat.format(x)
 
-        headers = ["Constant", "log10(K) ± SE", "% Error", "RMS", "s² (var. reducida)"]
+        headers = ["Constant", "log10(K) ± SE", "% Error", "RMS", "lof", "s² (var. reducida)"]
         data = [
             [f"K{i+1}",
             f"{k[i]:.2e} ± {SE_log10K[i]:.2e}",
             f"{percK[i]:.2f}",           # ya es porcentaje
             f"{rms:.2e}" if i == 0 else "",
+            f"{lof:.2e}" if i == 0 else "", 
             f"{covfit:.2e}" if i == 0 else ""]
             for i in range(len(k))
         ]
