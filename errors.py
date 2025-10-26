@@ -69,3 +69,56 @@ def param_errors_cs(residuals, k):
     SE_K  = np.log(10.0) * K_num * SE_log10K
     percK = 100.0 * np.log(10.0) * SE_log10K  # % en K (delta)
     return SE_log10K, SE_K, percK, s2, Cov
+
+
+
+def sensitivities_wrt_logK(c_spec, modelo, param_idx=None, rcond=1e-12):
+    """
+    Devuelve dCspec/d(log10 K) por diferenciación implícita.
+    Acepta 'modelo' en cualquiera de las dos orientaciones:
+      - (nspec, n_comp)  ó
+      - (n_comp, nspec)
+    """
+    c = np.asarray(c_spec, dtype=float)           # (nspec,)
+    M_in = np.asarray(modelo, dtype=float)
+
+    nspec = c.size
+
+    # --- Normalizar orientación de M ---
+    # Ms: (nspec, n_comp), MT: (n_comp, nspec)
+    if M_in.shape[0] == nspec:
+        Ms = M_in
+        MT = Ms.T
+    elif M_in.shape[1] == nspec:
+        Ms = M_in.T
+        MT = Ms.T
+    else:
+        raise ValueError(
+            f"modelo incompatible con c_spec: c:{c.shape}, modelo:{M_in.shape} "
+            "(se espera (nspec, n_comp) o (n_comp, nspec))"
+        )
+
+    # --- Jacobiano respecto a u = ln c ---
+    # Ju = M^T diag(c) M   -> (n_comp, n_comp)
+    Ju = MT @ (c[:, None] * Ms)
+
+    # RHS = M^T diag(c)    -> (n_comp, nspec)
+    RHS = MT * c
+
+    # Resolver Ju * (du/dlnK) = RHS
+    try:
+        du_dlnK = np.linalg.solve(Ju, RHS)          # (n_comp, nspec)
+    except np.linalg.LinAlgError:
+        du_dlnK = np.linalg.pinv(Ju, rcond=rcond) @ RHS
+
+    # dCspec/dlnK = diag(c) * (I + M * du/dlnK)  -> (nspec, nspec)
+    dCspec_dlnK = (c[:, None]) * (np.eye(nspec) + Ms @ du_dlnK)
+
+    # Pasar a log10: d/d(log10 K) = ln(10) * d/d(ln K)
+    dCspec_dlog10K = np.log(10.0) * dCspec_dlnK
+
+    # Seleccionar columnas si sólo un subconjunto de especies está parametrizado
+    if param_idx is not None:
+        dCspec_dlog10K = dCspec_dlog10K[:, param_idx]  # (nspec, p)
+
+    return dCspec_dlog10K

@@ -485,56 +485,134 @@ class NMR_controlsPanel(BaseTechniquePanel):
         p = len(k)
         #SER = f_m2(k)
 
-        from errors import jacobian_cs, percent_error_log10K
+        from errors import percent_error_log10K, sensitivities_wrt_logK
         
+        # --- al inicio del archivo (cabecera) asegúrate de tener:
+# from errors import pinv_cs, percent_error_log10K, sensitivities_wrt_logK
 
-        def residuals(k):
-            dq_cal = cal_delta(k)        # (m, n) o vector según tu caso
-            r = dq - dq_cal.T
-            return r.ravel()
-        
-        # --- helpers: mapeo general θ <-> k (n parámetros) ---
-        def k_to_theta(k):
-            k = np.asarray(k)                      # sin dtype=float
-            out = np.empty_like(k)
-            out[0]  = k[0]
-            out[1:] = np.diff(k)
-            return out
+        def compute_errors_common(k, res, dq, H, modelo, nas):
+            """
+            Calcula jacobiano de residuos, covarianza y métricas de ajuste
+            para NR y LM con un único flujo, usando sensibilidades implícitas.
 
-        def theta_to_k(theta):
-            theta = np.asarray(theta)              # sin dtype=float
-            return np.cumsum(theta)
+            Parámetros
+            ----------
+            k       : (p,)           parámetros óptimos (log10 K)
+            res     : solver de concentraciones (NR o LM) con método .concentraciones(k)
+            dq      : (npts × nP)    datos (Δδ) observados
+            H       : (npts,)        vector H (denominador que usas para xi)
+            modelo  : (nspec×n_comp) o (n_comp×nspec)  matriz M del balance
+            nas     : lista[int]     índices de especies NO absorbentes
 
-        # --- wrapper de residuo en θ (no toques residuals(k)) ---
-        def residuals_theta(theta):
-            return residuals(theta_to_k(theta)) 
-        
-        # --- cálculo de errores en θ y propagación a k ---
-        theta_hat = k_to_theta(k)                 # k: tus log10(K) optimizados
-        r_vec     = residuals_theta(theta_hat)
-        Jt        = jacobian_cs(residuals_theta, theta_hat)     # (p, m)
+            Devuelve
+            --------
+            dict con claves:
+            - 'percK', 'SE_K', 'SE_log10K', 'Cov_log10K', 'rms', 'covfit',
+                'coef', 'xi', 'J'
+            """
+            import numpy as np
 
-        m, p = r_vec.size, len(theta_hat)
-        s2    = (r_vec @ r_vec) / max(m - p, 1)                 # var. reducida
-        Cov_t = s2 * pinv_cs(Jt @ Jt.T)                         # Cov(θ)
+            k = np.ravel(k)
 
-        # M = ∂k/∂θ  -> matriz triangular inferior de unos (p×p)
-        M = np.tril(np.ones((p, p), dtype=float))
-        Cov_k = M @ Cov_t @ M.T                                  # Cov en log10(K)
+            # 1) Concentraciones al óptimo (común a NR/LM)
+            C, Co = res.concentraciones(k)      # C: (npts × n_abs), Co: (npts × nspec)
 
-        SE_log10K = np.sqrt(np.clip(np.diag(Cov_k), 0, np.inf))
-        percK, SE_K, K_num = percent_error_log10K(k, SE_log10K)
+            # 2) Ajuste lineal en el óptimo (común a NR/LM)
+            xi   = C / H[:, None]               # (npts × n_abs)
+            coef = pinv_cs(xi) @ dq             # (n_abs × nP)
 
-        # métricas
-        rms    = float(np.sqrt(np.mean(r_vec**2)))
-        covfit = float(s2)
+            npts, n_abs = C.shape
+            nP   = dq.shape[1]                  # nº de observables/protones
+            p    = len(k)                       # nº de parámetros libres
+            nspec = Co.shape[1]
 
-        # (opcional) diagnóstico de colinealidad ya en θ:
-        rho = float((Jt[0] @ Jt[1]) / (np.linalg.norm(Jt[0]) * np.linalg.norm(Jt[1]))) if p>=2 else 0.0
-        print("corr filas Jθ =", rho)
+            # 3) Normalizar orientación de 'modelo' y deducir n_comp
+            M_in = np.asarray(modelo, dtype=float)
+            if M_in.shape[0] == nspec:
+                Ms = M_in                       # (nspec × n_comp)
+                n_comp = Ms.shape[1]
+            elif M_in.shape[1] == nspec:
+                Ms = M_in.T                     # (nspec × n_comp)
+                n_comp = Ms.shape[1]
+            else:
+                raise ValueError(
+                    f"modelo incompatible con Co: Co has nspec={nspec}, modelo shape={M_in.shape}"
+                )
+
+            # 4) Índices de especies absorbentes (para mapear a xi)
+            abs_idx = [j for j in range(nspec) if j not in nas]
+
+            # 5) Mapeo parámetros -> columnas de especies (param_idx)
+            #    Caso estándar: parámetros K gobiernan los COMPLEJOS (columnas desde n_comp al final).
+            param_idx = list(range(n_comp, nspec))
+
+            #    Si por diseño p != nspec - n_comp (p. ej., no todos los complejos se parametrizan),
+            #    ajusta al tamaño p tomando las últimas p columnas o lanza error si prefieres.
+            if len(param_idx) != p:
+                if p <= nspec:
+                    param_idx = list(range(nspec - p, nspec))
+                else:
+                    raise ValueError(f"No hay {p} columnas en Co para mapear parámetros; nspec={nspec}")
+
+            # 6) Construir jacobiano de residuos J (p × m), m = npts*nP
+            J = np.zeros((p, npts * nP), dtype=float)
+
+            for i in range(npts):
+                # dCspec/dlog10K (nspec × p) para la fila i (común a NR/LM)
+                dC_dlog10K = sensitivities_wrt_logK(Co[i], Ms, param_idx=param_idx)  # (nspec × p)
+
+                # Sólo especies absorbentes y pasar a xi (divide por H[i])
+                dC_abs = dC_dlog10K[abs_idx, :]   # (n_abs × p)
+                dxi    = (1.0 / H[i]) * dC_abs    # (n_abs × p)
+
+                # y_i = coef.T @ xi_i  -> dy_i/dlogK = coef.T @ dxi_i
+                dyi_dk = (coef.T @ dxi).T         # (p × nP)
+
+                # residuo: r_i = dq_i - y_i -> dr_i/dlogK = -dy_i/dlogK
+                J[:, i*nP:(i+1)*nP] = -dyi_dk
+
+            # 7) Residuos y métricas
+            yfit = (coef.T @ xi.T).T             # (npts × nP)
+            r    = (dq - yfit).ravel()
+            m    = r.size
+            dof  = max(m - p, 1)
+            s2   = float((r @ r) / dof)
+
+            # Covarianza en log10K y errores
+            Cov_log10K = s2 * pinv_cs(J @ J.T)   # (p × p)
+            SE_log10K  = np.sqrt(np.clip(np.diag(Cov_log10K), 0.0, np.inf))
+            percK, SE_K, _ = percent_error_log10K(k, SE_log10K)
+
+            rms    = float(np.sqrt(np.mean(r**2)))
+            covfit = s2
+
+            return {
+                "percK": percK,
+                "SE_K": SE_K,
+                "SE_log10K": SE_log10K,
+                "Cov_log10K": Cov_log10K,
+                "rms": rms,
+                "covfit": covfit,
+                "coef": coef,
+                "xi": xi,
+                "J": J,
+            }
 
 
-        coef = cal_coef(k)
+        metrics = compute_errors_common(k=self.r_0.x, res=res, dq=dq, H=H, modelo=modelo, nas=nas)
+
+        # Ejemplo de uso:
+        percK    = metrics["percK"]
+        SE_K     = metrics["SE_K"]
+        rms      = metrics["rms"]
+        covfit   = metrics["covfit"]
+        SE_log10K= metrics["SE_log10K"]
+        coef     = metrics["coef"]
+        J        = metrics["J"]
+        xi       = metrics["xi"]
+        covfit   = metrics["covfit"]
+            
+
         SER = f_m2(k)
 
         C, Co = res.concentraciones(k)
@@ -556,7 +634,6 @@ class NMR_controlsPanel(BaseTechniquePanel):
                 self.figura2(G, dq, cal_delta(k).T, "o", ":", "$\Delta$$\delta$ (ppm)", "[G], M", 1, "Ajuste")
         
             
-        covfit = s2
 
         MAE = abs(SER / nc)
         dif_en_ct = round(max(100 - (np.sum(C, 1) * 100 / max(H))), 2)

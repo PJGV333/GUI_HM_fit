@@ -133,3 +133,4 @@ class LevenbergMarquardt:
 
         C = np.delete(c_calculada, self.nas, axis=1)
         return C, c_calculada
+# ---------------------------------------------------------------
