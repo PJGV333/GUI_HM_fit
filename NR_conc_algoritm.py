@@ -1,5 +1,18 @@
 import numpy as np
 
+# ---------- pseudo-inversa complex-step-safe (sin conjugado) ----------
+def pinv_cs(A, rcond=1e-12):
+    A = np.asarray(A)
+    if not np.iscomplexobj(A):
+        return np.linalg.pinv(A, rcond=rcond)
+    m, n = A.shape
+    Ar = np.block([[A.real, -A.imag],
+                   [A.imag,  A.real]])           # (2m x 2n)
+    Pr = np.linalg.pinv(Ar, rcond=rcond)         # (2n x 2m)
+    X = Pr[:n,    :m]
+    Y = Pr[n:2*n, :m]
+    return X + 1j*Y
+
 class NewtonRaphson:
     def __init__(self, C_T, modelo, nas, model_sett):
         self.C_T = C_T
@@ -99,7 +112,7 @@ class NewtonRaphson:
                 for h in range(n_componentes):
                     J[j, h] = np.sum(self.modelo.T[:, j] * self.modelo.T[:, h] * c_spec)
 
-            delta_c = d @ np.linalg.pinv(J) @ np.diagflat(c_guess)
+            delta_c = d @ pinv_cs(J) @ np.diagflat(c_guess)
             c_guess += delta_c
             return c_guess, np.linalg.norm(d), c_spec
 

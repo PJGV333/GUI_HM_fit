@@ -483,56 +483,63 @@ class NMR_controlsPanel(BaseTechniquePanel):
         # Calcular el SER
         n = len(H)
         p = len(k)
-        SER = f_m2(k)
+        #SER = f_m2(k)
 
-
-        # Calcular la matriz jacobiana de los residuos
-        def residuals(k):
-            dq_cal = cal_delta(k)
-            r = dq - dq_cal.T
-            return r.flatten()
-
-        #epsilon = np.sqrt(np.finfo(float).eps)
-        #jacobian = np.array([approx_fprime(k, lambda ki: residuals(ki)[i], epsilon) for i in range(n)])
-
-        #def finite(x, fun):
-        #    dfdx = []
-        #    delta = np.sqrt(np.finfo(float).eps)
-        #    for i in range(len(x)):
-        #        step = np.zeros(len(x))
-        #        step[i] = delta
-        #        dfdx.append((fun(x + step) - fun(x - step)) / (2 * delta))
-        #    return np.array(dfdx)
+        from errors import jacobian_cs, percent_error_log10K
         
-        def finite(x, fun):
-            delta = 1e-20
-            dfdx = []
-            for i in range(len(x)):
-                step = np.zeros_like(x, dtype=np.complex128)
-                step[i] = 1j * delta
-                fx = fun(x + step)     # fx será complejo
-                dfdx.append(np.imag(fx) / delta)
-            return np.array(dfdx)
 
+        def residuals(k):
+            dq_cal = cal_delta(k)        # (m, n) o vector según tu caso
+            r = dq - dq_cal.T
+            return r.ravel()
+        
+        # --- helpers: mapeo general θ <-> k (n parámetros) ---
+        def k_to_theta(k):
+            k = np.asarray(k)                      # sin dtype=float
+            out = np.empty_like(k)
+            out[0]  = k[0]
+            out[1:] = np.diff(k)
+            return out
 
-        jacobian = finite(k, residuals)
+        def theta_to_k(theta):
+            theta = np.asarray(theta)              # sin dtype=float
+            return np.cumsum(theta)
 
-        # Calcular la matriz de covarianza
-        cov_matrix = SER**2 * np.linalg.pinv(jacobian @ jacobian.T)
+        # --- wrapper de residuo en θ (no toques residuals(k)) ---
+        def residuals_theta(theta):
+            return residuals(theta_to_k(theta)) 
+        
+        # --- cálculo de errores en θ y propagación a k ---
+        theta_hat = k_to_theta(k)                 # k: tus log10(K) optimizados
+        r_vec     = residuals_theta(theta_hat)
+        Jt        = jacobian_cs(residuals_theta, theta_hat)     # (p, m)
 
-        # Calcular el error estándar de las constantes de asociación
-        SE_k = np.sqrt(np.diag(cov_matrix))
+        m, p = r_vec.size, len(theta_hat)
+        s2    = (r_vec @ r_vec) / max(m - p, 1)                 # var. reducida
+        Cov_t = s2 * pinv_cs(Jt @ Jt.T)                         # Cov(θ)
 
-        # Calcular el error porcentual
-        error_percent = (SE_k / np.abs(k)) * 100
+        # M = ∂k/∂θ  -> matriz triangular inferior de unos (p×p)
+        M = np.tril(np.ones((p, p), dtype=float))
+        Cov_k = M @ Cov_t @ M.T                                  # Cov en log10(K)
+
+        SE_log10K = np.sqrt(np.clip(np.diag(Cov_k), 0, np.inf))
+        percK, SE_K, K_num = percent_error_log10K(k, SE_log10K)
+
+        # métricas
+        rms    = float(np.sqrt(np.mean(r_vec**2)))
+        covfit = float(s2)
+
+        # (opcional) diagnóstico de colinealidad ya en θ:
+        rho = float((Jt[0] @ Jt[1]) / (np.linalg.norm(Jt[0]) * np.linalg.norm(Jt[1]))) if p>=2 else 0.0
+        print("corr filas Jθ =", rho)
+
 
         coef = cal_coef(k)
+        SER = f_m2(k)
 
         C, Co = res.concentraciones(k)
         #self.entry_nc.GetValue()
-        print("valor de n_comp: ", n_comp)
-
-        
+                
         if n_comp == 1:
             
             self.figura(H, C, ":o",  "[Species], M", "[H], M", "Perfil de concentraciones")
@@ -549,20 +556,12 @@ class NMR_controlsPanel(BaseTechniquePanel):
                 self.figura2(G, dq, cal_delta(k).T, "o", ":", "$\Delta$$\delta$ (ppm)", "[G], M", 1, "Ajuste")
         
             
-        
+        covfit = s2
+
         MAE = abs(SER / nc)
         dif_en_ct = round(max(100 - (np.sum(C, 1) * 100 / max(H))), 2)
 
-        # 1. Calcular la varianza de los residuales
-        residuals_array = residuals(k)
-        var_residuals = np.var(residuals_array)
-
-        # 2. Calcular la varianza de los datos experimentales
-        var_data_original = np.var(dq)
-
-        # 3. Calcular covfit
-        covfit = var_residuals / var_data_original
-
+    
          ####pasos para imprimir bonito los resultados. 
         # Función para calcular los anchos máximos necesarios para cada columna
         def calculate_max_column_widths(headers, data_rows):
@@ -573,12 +572,16 @@ class NMR_controlsPanel(BaseTechniquePanel):
                     column_widths[i] = max(column_widths[i], len(str(item)))
             return column_widths
 
-        # Encabezados y datos de ejemplo
-        headers = ["Constant", "log10(K) ± Error", "% Error", "RMS", "Covfit"]
+        headers = ["Constant", "log10(K) ± SE", "% Error", "RMS", "s² (var. reducida)"]
         data = [
-            [f"K{i+1}", f"{k[i]:.2e} ± {SE_k[i]:.2e}", f"{error_percent[i]:.2f}", f"{SER:.2e}" if i == 0 else "", f"{covfit:.2e}" if i == 0 else ""]
+            [f"K{i+1}",
+            f"{k[i]:.2e} ± {SE_log10K[i]:.2e}",
+            f"{percK[i]:.2f}",           # ya es porcentaje
+            f"{rms:.2e}" if i == 0 else "",
+            f"{covfit:.2e}" if i == 0 else ""]
             for i in range(len(k))
         ]
+
 
         # Calcular los anchos máximos para las columnas
         max_widths = calculate_max_column_widths(headers, data)
@@ -605,7 +608,7 @@ class NMR_controlsPanel(BaseTechniquePanel):
         nombres = [f"k{i}" for i in range(1, len(k)+1)]
         k_nombres = [f"{n}" for n in nombres]
         
-        K = np.array([k, error_percent]).T
+        K = np.array([k, percK]).T
         
         modelo = pd.DataFrame(modelo)
         C = pd.DataFrame(C)

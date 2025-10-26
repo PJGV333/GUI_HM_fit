@@ -422,7 +422,7 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         
         def f_m2(k):
             C = res.concentraciones(k)[0]    
-            r = C @ _solve_A(C, Y.T) #np.linalg.pinv(C) @ Y.T - Y.T #se cambio np.linag.pinv por np.linalg.pinv
+            r = C @ _solve_A(C, Y.T) - Y.T #np.linalg.pinv(C) @ Y.T - Y.T #se cambio np.linag.pinv por np.linalg.pinv
             rms = np.sqrt(np.mean(np.square(r)))
             #print(f"f(x): {rms}")
             #print(f"x: {k}")
@@ -487,53 +487,19 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         k = self.r_0.x 
         k = np.ravel(k)
         
-        # Calcular el SER
         
-        #n = len(G)
-        #p = len(k)
-        
-        SER = f_m(k)
+        from errors import param_errors_cs
+
         
         # Calcular la matriz jacobiana de los residuos
         def residuals(k):
             C = res.concentraciones(k)[0]
             r = C @ _solve_A(C, Y.T) - Y.T #np.linalg.pinv(C) @ Y.T - Y.T #se cambio np.linag.pinv por np.linalg.pinv
-            return r.flatten()
+            return r. ravel() #r.flatten()
                 
-        #def finite(x, fun):
-        #    dfdx = []
-        #    delta = np.sqrt(np.finfo(float).eps)
-        #    for i in range(len(x)):
-        #        step = np.zeros(len(x))
-        #        step[i] = delta
-        #        dfdx.append((fun(x + step) - fun(x - step)) / (2 * delta))
-        #    return np.array(dfdx)
-        
-        def finite(x, fun):
-            delta = 1e-20
-            dfdx = []
-            for i in range(len(x)):
-                step = np.zeros_like(x, dtype=np.complex128)
-                step[i] = 1j * delta
-                fx = fun(x + step)     # fx será complejo
-                dfdx.append(np.imag(fx) / delta)
-            return np.array(dfdx)
-        
-        #J = finite(k, residuals)
-
-
-        jacobian = finite(k, residuals)  # residuals_vec → (C@A - YT).ravel()
-
-        # Calcular la matriz de covarianza
-        cov_matrix = SER**2 * np.linalg.pinv(jacobian @ jacobian.T)
-        SE_k = np.sqrt(np.clip(np.diag(cov_matrix), 0, np.inf))
-        error_percent = 100 * SE_k / np.maximum(np.abs(k), 1e-12)
-
-        # Calcular el error estándar de las constantes de asociación
-        #SE_k = np.sqrt(np.diag(cov_matrix))
-        
-        # Calcular el error porcentual
-        #error_percent = (SE_k / np.abs(k)) #* 100
+        SE_log10K, SE_K, percK, s2, Cov = param_errors_cs(residuals, k)
+        rms = np.sqrt(np.mean(residuals(k)**2))
+        covfit = s2
         
         C, Co = res.concentraciones(k)
         
@@ -544,7 +510,7 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
             y_cal = C @ _solve_A(C, Y.T) #np.linalg.pinv(C) @ Y.T
                             
             ssq, r0 = f_m2(k)
-            rms = f_m(k)
+            #rms = f_m(k)
             
             A = _solve_A(C, Y.T) #np.linalg.pinv(C) @ Y.T
 
@@ -557,7 +523,7 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
             y_cal = C @ np.linalg.pinv(C) @ Y.T
                             
             ssq, r0 = f_m2(k)
-            rms = f_m(k)
+            #rms = f_m(k)
             
             A = np.linalg.pinv(C) @ Y.T 
             
@@ -567,20 +533,9 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
                 self.figura(nm, A.T, "-", "Epsilon (u. a.)", "$\lambda$ (nm)", "Absortividades molares")
                 self.figura2(nm, Y, y_cal.T, "-k", "k:", "Y observada (u. a.)", "$\lambda$ (nm)", 0.5, "Ajuste")   
 
-        lof = (((sum(sum((r0**2))) / sum(sum((Y**2)))))**0.5) * 100
         #MAE = np.sqrt((sum(sum(r0**2)) / (nw - len(k))))
         MAE = np.mean(abs(r0))
         dif_en_ct = round(max(100 - (np.sum(C, 1) * 100 / max(H))), 2)
-        
-        # 1. Calcular la varianza de los residuales
-        residuals_array = residuals(k)
-        var_residuals = np.var(residuals_array)
-        
-        # 2. Calcular la varianza de los datos experimentales
-        var_data_original = np.var(Y)
-        
-        # 3. Calcular covfit
-        covfit = var_residuals / var_data_original
         
         ####pasos para imprimir bonito los resultados. 
         # Función para calcular los anchos máximos necesarios para cada columna
@@ -592,12 +547,19 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
                     column_widths[i] = max(column_widths[i], len(str(item)))
             return column_widths
 
-        # Encabezados y datos de ejemplo
-        headers = ["Constant", "log10(K) ± Error", "% Error", "LoF (%)", "RMS", "Covfit"]
+        def fmt(x, pat): 
+            return "—" if not np.isfinite(x) else pat.format(x)
+
+        headers = ["Constant", "log10(K) ± SE", "% Error", "RMS", "s² (var. reducida)"]
         data = [
-            [f"K{i+1}", f"{k[i]:.2e} ± {SE_k[i]:.2e}", f"{error_percent[i] * 100:.2f}", f"{lof:.2f}" if i == 0 else "", f"{rms:.2e}" if i == 0 else "", f"{covfit:.2e}" if i == 0 else ""]
+            [f"K{i+1}",
+            f"{k[i]:.2e} ± {SE_log10K[i]:.2e}",
+            f"{percK[i]:.2f}",           # ya es porcentaje
+            f"{rms:.2e}" if i == 0 else "",
+            f"{covfit:.2e}" if i == 0 else ""]
             for i in range(len(k))
         ]
+
 
         # Calcular los anchos máximos para las columnas
         max_widths = calculate_max_column_widths(headers, data)
@@ -624,7 +586,7 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         nombres = [f"k{i}" for i in range(1, len(k)+1)]
         k_nombres = [f"{n}" for n in nombres]
         
-        K = np.array([k, error_percent]).T
+        K = np.array([k, percK]).T
         
         Y = pd.DataFrame(Y, index = [list(nm)])
         modelo = pd.DataFrame(modelo)
