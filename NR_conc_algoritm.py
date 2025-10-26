@@ -79,43 +79,106 @@ class NewtonRaphson:
     #    return C, c_calculada
 
 
+# =============================================================================
+#     def concentraciones(self, K, max_iter=1000, tol=1e-10):
+#         ctot = np.array(self.C_T)
+#         n_reacciones, n_componentes = ctot.shape
+# 
+#         # <<< nuevo: elegir dtype según K >>>
+#         dtype = np.complex128 if np.iscomplexobj(K) else float
+# 
+#         pre_ko = np.zeros(n_componentes, dtype=dtype)
+#         K = np.concatenate((pre_ko, K))
+# 
+#         if self.model_sett == "Free":
+#             K = 10**K
+#         elif self.model_sett == "Step by step":
+#             K = self.step_by_step(K); K = 10**K
+#         elif self.model_sett == "Non-cooperative":
+#             K = self.non_coop(K); K = 10**K
+# 
+#         nspec = len(K)
+# 
+#         def calcular_concentraciones(ctot_i, c_guess):
+#             # Asegura que c_guess sea del dtype correcto
+#             c_guess = np.asarray(c_guess, dtype=dtype)
+# 
+#             c_spec = np.prod(np.power(np.tile(c_guess, (nspec, 1)).T, self.modelo), axis=0) * K
+#             c_tot_cal = np.sum(self.modelo * np.tile(c_spec, (n_componentes, 1)), axis=1)
+#             d = ctot_i - c_tot_cal
+# 
+#             # Jacobiano en el dtype correcto
+#             J = np.empty((n_componentes, n_componentes), dtype=dtype)
+#             for j in range(n_componentes):
+#                 for h in range(n_componentes):
+#                     J[j, h] = np.sum(self.modelo.T[:, j] * self.modelo.T[:, h] * c_spec)
+# 
+#             delta_c = d @ pinv_cs(J) @ np.diagflat(c_guess)
+#             c_guess += delta_c
+#             return c_guess, np.linalg.norm(d), c_spec
+# 
+#         c_calculada = np.zeros((n_reacciones, nspec), dtype=dtype)
+#         for i in range(n_reacciones):
+#             c_guess = np.ones(n_componentes, dtype=dtype) * 1e-10
+#             c_guess[:n_componentes] = ctot[i, :n_componentes]
+#             dif = tol + 1; it = 0
+#             while dif > tol and it < max_iter:
+#                 c_guess, delta_c_norm_sq, c_spec = calcular_concentraciones(ctot[i], c_guess)
+#                 dif = delta_c_norm_sq; it += 1
+#             c_calculada[i] = c_spec
+# 
+#         C = np.delete(c_calculada, self.nas, axis=1)
+#         return C, c_calculada
+# 
+# =============================================================================
+
     def concentraciones(self, K, max_iter=1000, tol=1e-10):
+        
         ctot = np.array(self.C_T)
         n_reacciones, n_componentes = ctot.shape
-
-        # <<< nuevo: elegir dtype según K >>>
+    
+        # elegir dtype según K
         dtype = np.complex128 if np.iscomplexobj(K) else float
-
+    
         pre_ko = np.zeros(n_componentes, dtype=dtype)
         K = np.concatenate((pre_ko, K))
-
+    
         if self.model_sett == "Free":
             K = 10**K
         elif self.model_sett == "Step by step":
             K = self.step_by_step(K); K = 10**K
         elif self.model_sett == "Non-cooperative":
             K = self.non_coop(K); K = 10**K
-
+    
         nspec = len(K)
-
+    
+        # fijar referencias a M y M^T una sola vez
+        modelo = np.asarray(self.modelo, dtype=float)      # (n_componentes, nspec)
+        mt = modelo.T                                      # (nspec, n_componentes)
+    
         def calcular_concentraciones(ctot_i, c_guess):
             # Asegura que c_guess sea del dtype correcto
             c_guess = np.asarray(c_guess, dtype=dtype)
-
-            c_spec = np.prod(np.power(np.tile(c_guess, (nspec, 1)).T, self.modelo), axis=0) * K
-            c_tot_cal = np.sum(self.modelo * np.tile(c_spec, (n_componentes, 1)), axis=1)
+    
+            # especies: ∏_k c_k^{ν_{k,j}} * K_j
+            c_spec = np.prod(np.power(np.tile(c_guess, (nspec, 1)).T, modelo), axis=0) * K
+    
+            # balance de masa: M @ c_spec
+            c_tot_cal = modelo @ c_spec
+    
             d = ctot_i - c_tot_cal
-
-            # Jacobiano en el dtype correcto
-            J = np.empty((n_componentes, n_componentes), dtype=dtype)
-            for j in range(n_componentes):
-                for h in range(n_componentes):
-                    J[j, h] = np.sum(self.modelo.T[:, j] * self.modelo.T[:, h] * c_spec)
-
-            delta_c = d @ pinv_cs(J) @ np.diagflat(c_guess)
+    
+            # --- Jacobiano vectorizado (reemplaza el doble for) ---
+            # J = M^T diag(c_spec) M, con M = mt (nspec × n_componentes)
+            J = mt.T @ (c_spec[:, None] * mt)             # (n_componentes, n_componentes)
+    
+            # Paso NR en c (tu forma original): delta_c = (d @ pinv(J)) .* c_guess
+            delta_u = d @ pinv_cs(J)                      # (n_componentes,)
+            delta_c = delta_u * c_guess                   # evita np.diagflat(c_guess)
+    
             c_guess += delta_c
             return c_guess, np.linalg.norm(d), c_spec
-
+    
         c_calculada = np.zeros((n_reacciones, nspec), dtype=dtype)
         for i in range(n_reacciones):
             c_guess = np.ones(n_componentes, dtype=dtype) * 1e-10
@@ -125,6 +188,6 @@ class NewtonRaphson:
                 c_guess, delta_c_norm_sq, c_spec = calcular_concentraciones(ctot[i], c_guess)
                 dif = delta_c_norm_sq; it += 1
             c_calculada[i] = c_spec
-
+    
         C = np.delete(c_calculada, self.nas, axis=1)
         return C, c_calculada
