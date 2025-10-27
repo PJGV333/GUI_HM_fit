@@ -16,6 +16,8 @@ import warnings
 warnings.filterwarnings("ignore")
 import timeit
 from Methods import BaseTechniquePanel
+from wx.lib.scrolledpanel import ScrolledPanel
+
 
 def pinv_cs(A, rcond=1e-12):
     A = np.asarray(A)
@@ -46,9 +48,11 @@ class NMR_controlsPanel(BaseTechniquePanel):
         self.left_sizer.Add(self.btn_select_file, 0, wx.ALL | wx.EXPAND, 5)
 
         # Crear el ScrolledWindow
-        self.scrolled_window = wx.ScrolledWindow(self.panel, style=wx.HSCROLL)
-        self.scrolled_window.SetScrollRate(10, 0)  # El primer valor es la velocidad de scroll horizontal, el segundo es vertical y está seteado en 0 porque no queremos scroll vertical.
-
+        #self.scrolled_window = wx.ScrolledWindow(self.panel, style=wx.HSCROLL)
+        #self.scrolled_window.SetScrollRate(10, 0)  # El primer valor es la velocidad de scroll horizontal, el segundo es vertical y está seteado en 0 porque no queremos scroll vertical.
+        self.scrolled_window = ScrolledPanel(self.panel, style=wx.HSCROLL | wx.TAB_TRAVERSAL)
+        self.scrolled_window.SetupScrolling(scroll_x=True, scroll_y=False, rate_x=10, rate_y=0)
+        
         # Crear un StaticText para mostrar la ruta del archivo dentro del ScrolledWindow
         self.lbl_file_path = wx.StaticText(self.scrolled_window, label="No file selected")
 
@@ -78,9 +82,12 @@ class NMR_controlsPanel(BaseTechniquePanel):
         self.left_sizer.Add(dropdowns_sizer_chemical_shift, 0, wx.EXPAND | wx.ALL, 5)
 
         # ScrolledWindow para los checkboxes de desplazamientos químicos (inicialmente vacío)
-        self.chemical_shifts_panel = wx.ScrolledWindow(self.panel, style=wx.HSCROLL)
-        self.chemical_shifts_panel.SetScrollRate(10, 0)  # El primer número es la velocidad de desplazamiento horizontal, el segundo es para vertical (seteado a 0, ya que no queremos scroll vertical).
-
+        #self.chemical_shifts_panel = wx.ScrolledWindow(self.panel, style=wx.HSCROLL)
+        #self.chemical_shifts_panel.SetScrollRate(10, 0)  # El primer número es la velocidad de desplazamiento horizontal, el segundo es para vertical (seteado a 0, ya que no queremos scroll vertical).
+        self.chemical_shifts_panel = ScrolledPanel(self.panel, style=wx.HSCROLL | wx.TAB_TRAVERSAL)
+        self.chemical_shifts_panel.SetupScrolling(scroll_x=True, scroll_y=False, rate_x=10, rate_y=0)
+        
+        
         # Sizer para los checkboxes dentro de ScrolledWindow
         self.chemical_shifts_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
@@ -114,9 +121,12 @@ class NMR_controlsPanel(BaseTechniquePanel):
         self.left_sizer.Add(dropdowns_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
         # ScrolledWindow para los checkboxes de nombres de columnas (inicialmente vacío)
-        self.columns_names_panel = wx.ScrolledWindow(self.panel, style=wx.HSCROLL)
-        self.columns_names_panel.SetScrollRate(10, 0)  # Configurar la velocidad de desplazamiento horizontal
-
+        #self.columns_names_panel = wx.ScrolledWindow(self.panel, style=wx.HSCROLL)
+        #self.columns_names_panel.SetScrollRate(10, 0)  # Configurar la velocidad de desplazamiento horizontal
+        self.columns_names_panel = ScrolledPanel(self.panel, style=wx.HSCROLL | wx.TAB_TRAVERSAL)
+        self.columns_names_panel.SetupScrolling(scroll_x=True, scroll_y=False, rate_x=10, rate_y=0)
+        
+        
         # Sizer para los checkboxes dentro del ScrolledWindow
         self.columns_names_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
@@ -169,7 +179,9 @@ class NMR_controlsPanel(BaseTechniquePanel):
         notebook = wx.Notebook(self.panel)
 
         # Creación de los paneles para las pestañas
-        tab_modelo = wx.Panel(notebook)
+        #tab_modelo = wx.Panel(notebook)
+        tab_modelo = ScrolledPanel(notebook, style=wx.VSCROLL | wx.TAB_TRAVERSAL)
+        tab_modelo.SetupScrolling(scroll_x=False, scroll_y=True, rate_x=0, rate_y=10)
         tab_optimizacion = wx.Panel(notebook)
 
         # Añadir los paneles al notebook
@@ -208,6 +220,9 @@ class NMR_controlsPanel(BaseTechniquePanel):
         modelo_sizer.Add(self.sp_columns, 0, wx.EXPAND | wx.ALL, 5)
         modelo_sizer.Add(self.model_panel, 1, wx.EXPAND | wx.ALL, 5)
         tab_modelo.SetSizer(modelo_sizer)
+        tab_modelo.SetupScrolling(scroll_x=False, scroll_y=True)
+        tab_modelo.FitInside()
+
 
         # Crear los controles para la pestaña 'Optimización'
         algo_panel = wx.Panel(tab_optimizacion)

@@ -16,6 +16,33 @@ class BaseTechniquePanel(wx.Panel):
         self.current_figure_index = -1  # Índice inicial para navegación de figuras
         self.vars_chemshift = {}
 
+    
+    # --- en Methods.py, dentro de BaseTechniquePanel ---
+    def _refresh_scroller(self, sw, scroll_x=True, scroll_y=False):
+        """Recalcula tamaño virtual, layout y fuerza el repintado inmediato."""
+        from wx.lib.scrolledpanel import ScrolledPanel
+    
+        # Si es ScrolledPanel usamos su helper
+        if isinstance(sw, ScrolledPanel):
+            sw.FitInside()
+            sw.SetupScrolling(scroll_x=scroll_x, scroll_y=scroll_y)
+        else:
+            # ScrolledWindow clásico: fijar tamaño virtual manualmente
+            if sw.GetSizer():
+                sw.SetVirtualSize(sw.GetSizer().CalcMin())
+    
+        sw.Layout()
+        sw.Refresh()
+        sw.Update()
+        sw.SendSizeEvent()
+    
+        tlw = sw.GetTopLevelParent()
+        if tlw:
+            tlw.Layout()
+            tlw.SendSizeEvent()
+
+
+
     # añadir parametros al cuadro de las constantes. Editar los valores por defecto.
     def add_parameter_bounds(self, num_parameters):
         self.grid.ClearGrid()  # Limpiar el Grid antes de añadir nuevos elementos
@@ -120,6 +147,7 @@ class BaseTechniquePanel(wx.Panel):
 
             file_path = fileDialog.GetPath()
             self.lbl_file_path.SetLabel(file_path)
+            self._refresh_scroller(self.scrolled_window, scroll_x=True, scroll_y=False)
             self.file_path = file_path
             self.populate_sheet_choices(file_path)
     
@@ -265,6 +293,8 @@ class BaseTechniquePanel(wx.Panel):
 
         # Reorganizar los controles en el panel
         self.chemical_shifts_panel.Layout()
+        self._refresh_scroller(self.chemical_shifts_panel, scroll_x=True, scroll_y=False)
+
     
     def on_chemshift_checkbox_select(self, event):
         cb = event.GetEventObject()
@@ -305,7 +335,8 @@ class BaseTechniquePanel(wx.Panel):
         # Reorganizar los controles en el panel
         
         self.bind_checkbox_events() 
-        self.columns_names_panel.Layout()     
+        #self.columns_names_panel.Layout()     
+        self._refresh_scroller(self.columns_names_panel, scroll_x=True, scroll_y=False)
 
     def on_checkbox_select(self, event):
         cb = event.GetEventObject()
