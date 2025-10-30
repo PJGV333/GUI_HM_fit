@@ -1,9 +1,46 @@
+import os
 import wx
 import sys
 from wx import FileDialog
 from matplotlib.figure import Figure
 import pandas as pd
 import numpy as np
+
+
+def add_private_font_if_available():
+    """Register an embedded monospace font if it ships with the project."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    font_path = os.path.join(here, "assets", "fonts", "DejaVuSansMono.ttf")
+    try:
+        if os.path.isfile(font_path):
+            wx.Font.AddPrivateFont(font_path)
+    except Exception:
+        # Best effort: failing to register the font should not break the UI.
+        pass
+
+
+def get_monospace_font(point_size=None):
+    """Return a robust monospace font with fallbacks for portable bundles."""
+    base_font = wx.SystemSettings.GetFont(wx.SYS_DEFAULT_GUI_FONT)
+    default_size = base_font.GetPointSize() if base_font and base_font.IsOk() else 10
+    size = point_size or default_size
+
+    candidates = [
+        "DejaVu Sans Mono",
+        "Liberation Mono",
+        "Noto Sans Mono",
+        "Courier New",
+        "Monospace",
+        "monospace",
+    ]
+
+    for face in candidates:
+        font_info = wx.FontInfo(size).FaceName(face).Family(wx.FONTFAMILY_TELETYPE)
+        candidate = wx.Font(font_info)
+        if candidate.IsOk():
+            return candidate
+
+    return wx.Font(wx.FontInfo(size).Family(wx.FONTFAMILY_TELETYPE))
 
 
 class BaseTechniquePanel(wx.Panel):
