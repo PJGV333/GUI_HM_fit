@@ -1,4 +1,4 @@
-import numpy as np
+from np_backend import xp as np, jit, jacrev, vmap, lax
 from scipy.linalg import cho_factor, cho_solve, LinAlgError
 
 # ---------- pseudo-inversa complex-step-safe (sin conjugado) ----------

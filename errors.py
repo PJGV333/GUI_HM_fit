@@ -1,5 +1,5 @@
 # errors.py
-import numpy as np
+from np_backend import xp as np, jit, jacrev, vmap, lax
 from LM_conc_algoritm import pinv_cs  # complex-step-safe :contentReference[oaicite:4]{index=4}
 
 def jacobian_cs(fun, x, delta=1e-20):

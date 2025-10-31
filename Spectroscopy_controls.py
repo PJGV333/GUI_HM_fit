@@ -1,7 +1,8 @@
 import wx
 from Methods import BaseTechniquePanel
 import wx.grid as gridlib
-import numpy as np
+import numpy as onp  # NumPy “real”, no JAX
+from np_backend import xp as np, jit, jacrev, vmap, lax
 import pandas as pd
 import matplotlib
 matplotlib.use('WXAgg')
@@ -344,8 +345,11 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         nw = len(spec)
         nm = spec.index.to_numpy()
         
+        spec = spec.to_numpy(dtype=float) if hasattr(spec, "to_numpy") else onp.asarray(spec, dtype=float)
+        conc = conc.to_numpy(dtype=float) if hasattr(conc, "to_numpy") else onp.asarray(conc, dtype=float)
+
         def SVD_EFA(spec, args = (nc)):
-            u, s, v = np.linalg.svd(spec, full_matrices=False)
+            u, s, v = onp.linalg.svd(spec, full_matrices=False)
             
             #EFA fijo
             
@@ -354,15 +358,15 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
             
             X = []
             for i in L:
-                uj, sj, vj = np.linalg.svd(spec.T.iloc[:i,:], full_matrices=False)
+                uj, sj, vj = onp.linalg.svd(spec.T.iloc[:i,:], full_matrices=False)
                 X.append(sj)
             
             ev_s = pd.DataFrame(X)
-            ev_s0 = np.array(ev_s)
+            ev_s0 = onp.array(ev_s)
             
             X2 = []
             for i in L2:
-                ui, si, vi = np.linalg.svd(spec.T.iloc[i:,:], full_matrices=False)
+                ui, si, vi = onp.linalg.svd(spec.T.iloc[i:,:], full_matrices=False)
                 X2.append(si)
             
             ev_s1 = pd.DataFrame(X2)

@@ -1,7 +1,7 @@
 import wx
 from Methods import BaseTechniquePanel
 import wx.grid as gridlib
-import numpy as np
+from np_backend import xp as np, jit, jacrev, vmap, lax
 import pandas as pd
 import matplotlib
 matplotlib.use('WXAgg')

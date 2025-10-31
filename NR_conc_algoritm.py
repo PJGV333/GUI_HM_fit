@@ -1,4 +1,5 @@
-import numpy as np
+from np_backend import xp as np, jit, jacrev, vmap, lax
+
 
 # ---------- pseudo-inversa complex-step-safe (sin conjugado) ----------
 def pinv_cs(A, rcond=1e-12):
