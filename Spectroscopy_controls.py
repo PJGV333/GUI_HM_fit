@@ -299,6 +299,7 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
 
         # Extraer espectros para trabajar
         spec = pd.read_excel(self.file_path, spec_entry, header=0, index_col=0)
+        nm = spec.index.to_numpy()
 
         # Extraer datos de esas columnas
         concentracion = pd.read_excel(self.file_path, conc_entry, header=0)
@@ -315,7 +316,12 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         
         print("process_data iniciada")
         
+        #spec = spec.to_numpy(dtype=float) if hasattr(spec, "to_numpy") else onp.asarray(spec, dtype=float)
+        
         C_T = concentracion[columnas_seleccionadas].to_numpy()
+
+        #C_T = C_T.to_numpy(dtype=float) if hasattr(C_T, "to_numpy") else onp.asarray(C_T, dtype=float)
+
 
         # Crear un diccionario que mapea nombres de columnas a sus nuevos índices en C_T
         column_indices_in_C_T = {name: index for index, name in enumerate(columnas_seleccionadas)}
@@ -343,11 +349,7 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         nc = len(C_T)
         n_comp = len(C_T.T)
         nw = len(spec)
-        nm = spec.index.to_numpy()
         
-        spec = spec.to_numpy(dtype=float) if hasattr(spec, "to_numpy") else onp.asarray(spec, dtype=float)
-        conc = conc.to_numpy(dtype=float) if hasattr(conc, "to_numpy") else onp.asarray(conc, dtype=float)
-
         def SVD_EFA(spec, args = (nc)):
             u, s, v = onp.linalg.svd(spec, full_matrices=False)
             

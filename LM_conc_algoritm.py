@@ -1,226 +1,240 @@
-from np_backend import xp as np, jit, jacrev, vmap, lax
-from scipy.linalg import cho_factor, cho_solve, LinAlgError
+# LM_conc_algoritm.py
+# ---------------------------------------------------------
+# Levenberg–Marquardt para resolver el balance de masa (c de componentes)
+# Internamente usa NumPy (onp) para mutabilidad; al salir convierte al backend (np).
 
-# ---------- pseudo-inversa complex-step-safe (sin conjugado) ----------
-import numpy as np
+import numpy as onp
+from np_backend import xp as np  # backend conmutable (JAX/NumPy)
 
+# ---------------------------------------------------------
+# Pseudoinversa robusta en NumPy real (fallback si el sistema es mal condicionado)
 def pinv_cs(A, rcond=1e-12):
-    """
-    Pseudoinversa estable (ahora sin complex-step).
-    Thin wrapper sobre np.linalg.pinv con fallback por si SVD no converge.
-    """
+    A = onp.asarray(A)
     try:
-        return np.linalg.pinv(A, rcond=rcond)
-    except np.linalg.LinAlgError:
-        # Fallback regularizado tipo ridge
-        ATA = A.T @ A + (rcond if np.isscalar(rcond) else 1e-12) * np.eye(A.shape[1], dtype=A.dtype)
-        return np.linalg.solve(ATA, A.T)
+        return onp.linalg.pinv(A, rcond=rcond)
+    except onp.linalg.LinAlgError:
+        ATA = A.T @ A + (rcond if onp.isscalar(rcond) else 1e-12) * onp.eye(A.shape[1], dtype=A.dtype)
+        return onp.linalg.solve(ATA, A.T)
+# ---------------------------------------------------------
 
 
 class LevenbergMarquardt:
     """
-    LM manual en espacio logarítmico u = ln(c):
-      c = exp(u) >= 0
-      c_spec = K * exp(modelo^T @ u)
-      MB(u)   = modelo @ c_spec
-      J_u[k,h] = sum_j ν_{kj} ν_{hj} c_spec_j
-      Δu = (J_u + λI)^+ d,  u <- u + Re(Δu)
-    * Complex-step-safe: K puede ser complejo y se propaga sin conjugados.
-    * Devuelve (C, c_calculada) como NR.
+    Interfaz esperada por la GUI:
+        res = LevenbergMarquardt(C_T, modelo, nas, model_sett, ...)
+
+    Donde:
+      - C_T      : (n_reacciones, n_componentes), totales por corrida
+      - modelo   : (n_componentes, nspec), matriz estequiométrica
+      - nas      : índices de especies no absorbentes (columnas a eliminar)
+      - model_sett : 'Free' | 'Step by step' | 'Non-cooperative' (convención existente)
     """
-    def __init__(self, C_T, modelo, nas, model_sett):
-        self.C_T = np.array(C_T)
-        self.modelo = np.array(modelo, dtype=float)   # (n_comp, nspec)
-        self.nas = nas
+
+    def __init__(self, C_T, modelo, nas, model_sett,
+                 tol=1e-10, max_iter=200,
+                 lam0=1e-2, lam_up=10.0, lam_down=0.2,
+                 max_step=2.0, max_backtrack=8):
+        self.C_T = onp.asarray(C_T, dtype=float)            # (n_reac, n_comp)
+        self.modelo = onp.asarray(modelo, dtype=float)      # (n_comp, nspec)
+        self.nas = onp.asarray(nas if nas is not None else [], dtype=int)
         self.model_sett = model_sett
 
-    # ----- transformaciones de K -----
-    def non_coop(self, K):
-        K = np.asarray(K)
-        if K.size < 3:
-            return np.cumsum(K)
-        K_0 = np.array([K[2] - np.log10(4)], dtype=K.dtype)
-        K_1 = np.concatenate((K, K_0))
-        return np.cumsum(K_1)
+        self.tol = float(tol)
+        self.max_iter = int(max_iter)
+        self.lam0 = float(lam0)
+        self.lam_up = float(lam_up)
+        self.lam_down = float(lam_down)
+        self.max_step = float(max_step)
+        self.max_backtrack = int(max_backtrack)
 
+        self.n_reac, self.n_comp = self.C_T.shape
+        self.nspec = self.modelo.shape[1]
+        self.mt = self.modelo.T  # (nspec, n_comp)
+
+    # ----- transformaciones K (siguiendo tu convención actual) -----
     def step_by_step(self, K):
-        return np.cumsum(K)
+        return onp.cumsum(K)
 
-    def _prepare_K_numeric(self, K):
-        K = np.asarray(K)
-        n_comp = self.C_T.shape[1]
-        pre_ko = np.zeros(n_comp, dtype=K.dtype)
-        K = np.concatenate((pre_ko, K))
-        if self.model_sett == "Free":
-            K = 10.0 ** K
-        elif self.model_sett == "Step by step":
-            K = 10.0 ** self.step_by_step(K)
-        elif self.model_sett == "Non-cooperative":
-            K = 10.0 ** self.non_coop(K)
+    def non_coop(self, K):
+        # Si no hay suficientes términos, aplica cumsum simple
+        if K.size < 3:
+            return onp.cumsum(K)
+        # Ajuste adicional para el tercer término (como tenías)
+        K_0 = onp.array([K[2] - onp.log10(4)], dtype=K.dtype)
+        K_1 = onp.concatenate((K, K_0))
+        return onp.cumsum(K_1)
+
+    def _prepare_K_numeric(self, K_in):
+        """
+        Recibe K sólo para especies formadas (o completo) en log10.
+        Devuelve K numérico (no log) de tamaño nspec, con 1.0 para componentes.
+        """
+        K_in = onp.asarray(K_in)
+        n_comp = self.n_comp
+        nspec = self.nspec
+
+        # Completar a tamaño nspec (anteponer ceros para componentes si hace falta)
+        if K_in.size == nspec:
+            K_log = K_in.astype(float)
+        elif K_in.size == (nspec - n_comp):
+            K_log = onp.concatenate((onp.zeros(n_comp, dtype=float), K_in))
         else:
-            K = 10.0 ** K
-        dtype = np.complex128 if np.iscomplexobj(K) else np.float64
-        return np.asarray(K, dtype=dtype)
-    
+            raise ValueError(
+                f"len(K)={K_in.size}, esperado {nspec} o {nspec - n_comp} "
+                f"(nspec={nspec}, n_comp={n_comp})"
+            )
+
+        # Aplicar modo (en log10)
+        if self.model_sett == "Free":
+            K_log_eff = K_log
+        elif self.model_sett == "Step by step":
+            K_log_eff = self.step_by_step(K_log)
+        elif self.model_sett == "Non-cooperative":
+            K_log_eff = self.non_coop(K_log)
+        else:
+            # Default a 'Free'
+            K_log_eff = K_log
+
+        # Pasar a numérico (no log)
+        K_num = onp.power(10.0, K_log_eff)
+        return onp.asarray(K_num, dtype=onp.float64)
+
     # ----- helpers -----
-    def _c_spec_from_u(self, u, K, modelo):
-        """
-        u: (n_comp,) real
-        K: (nspec,) float o complex
-        modelo: (n_comp, nspec)
-        """
-        mt_u = modelo.T @ u                  # (nspec,)
-        c_spec = K * np.exp(mt_u)            # (nspec,)
-        return c_spec
+    def _c_spec_from_u(self, u, K):
+        # c_spec = K * exp(M^T @ u)
+        mt_u = self.mt @ u
+        return K * onp.exp(mt_u)
 
-    def _mass_balance(self, c_spec, modelo):
-        # (n_comp,), no conj
-        return modelo @ c_spec
+    def _mass_balance(self, c_spec):
+        # modelo: (n_comp, nspec) × c_spec: (nspec,) → (n_comp,)
+        return self.modelo @ c_spec
 
-    # ----- LM sobre u = ln(c) -----
-    def concentraciones(self, K, max_iter=200, tol=1e-10,
-                    lam0=1e-2, lam_up=10.0, lam_down=0.2,
-                    max_step=2.0, max_backtrack=8):
-        """
-        LM robusto con fallback a Newton amortiguado (búsqueda de línea).
-        Válido para RMN y Espectroscopía. Misma interfaz que el original.
-        """
-        import numpy as np
-        from errors import pinv_cs  # wrapper a np.linalg.pinv
-    
-        # --- datos base ---
-        ctot = np.array(self.C_T, dtype=float)           # (n_reac, n_comp)
-        n_reac, n_comp = ctot.shape
-    
-        K = self._prepare_K_numeric(K)
-        modelo = np.asarray(self.modelo, dtype=float)    # (n_comp, nspec)  ← tu convención
-        mt = modelo.T                                    # (nspec, n_comp)
-        nspec = len(K)
-    
+    def _jac_u(self, c_spec):
+        # J = M @ diag(c_spec) @ M^T ; forma eficiente:
+        # mt: (nspec, n_comp)
+        return self.mt.T @ (c_spec[:, None] * self.mt)  # (n_comp, n_comp)
+
+    # ---------- LM principal (NumPy real) ----------
+    def concentraciones(self, K, tol=None, max_iter=None,
+                        lam0=None, lam_up=None, lam_down=None,
+                        max_step=None, max_backtrack=None):
+        # Overwrites opcionales
+        tol = self.tol if tol is None else float(tol)
+        max_iter = self.max_iter if max_iter is None else int(max_iter)
+        lam0 = self.lam0 if lam0 is None else float(lam0)
+        lam_up = self.lam_up if lam_up is None else float(lam_up)
+        lam_down = self.lam_down if lam_down is None else float(lam_down)
+        max_step = self.max_step if max_step is None else float(max_step)
+        max_backtrack = self.max_backtrack if max_backtrack is None else int(max_backtrack)
+
         ridge = 1e-12
-        c_calculada = np.zeros((n_reac, nspec), dtype=float)
-    
-        # utilidades (¡ojo a la orientación!)
-        def mass_balance(c_spec):
-            # modelo: (n_comp, nspec)  ×  c_spec: (nspec,)  →  (n_comp,)
-            return modelo @ c_spec
-    
-        def jac_u(c_spec):
-            # J = M^T diag(c_spec) M con M = mt (nspec × n_comp)
-            # mt: (nspec, n_comp)  →  J: (n_comp, n_comp)
-            return mt.T @ (c_spec[:, None] * mt)
-    
-        def c_from(u):
-            # _c_spec_from_u espera 'modelo' con forma (n_comp, nspec)
-            return self._c_spec_from_u(u, K, modelo)
-    
-        for i in range(n_reac):
-            # u inicial
-            c0 = np.clip(ctot[i, :n_comp], 1e-18, None)
-            u = np.log(c0)
-    
-            # residuo inicial
-            c_spec = c_from(u)
-            d = ctot[i] - mass_balance(c_spec)           # (n_comp,)
-            prev = float(np.linalg.norm(d))
-    
+        c_calculada = onp.zeros((self.n_reac, self.nspec), dtype=float)
+
+        K_num = self._prepare_K_numeric(K)
+
+        for i in range(self.n_reac):
+            # u = ln(c) inicial
+            c0 = onp.clip(self.C_T[i, :self.n_comp], 1e-18, None)
+            u = onp.log(c0)
+
+            # estado inicial
+            c_spec = self._c_spec_from_u(u, K_num)
+            d = self.C_T[i] - self._mass_balance(c_spec)
+            prev = float(onp.linalg.norm(d, ord=2))
             lam = float(lam0)
+
             it = 0
-            while it < max_iter:
-                # Jacobiano y sistema LM
-                J = jac_u(c_spec)                        # (n_comp, n_comp)
-                J_d = J + (lam + ridge) * np.eye(n_comp)
-    
+            while prev > tol and it < max_iter:
+                J = self._jac_u(c_spec)                         # (n_comp, n_comp)
+                Jd = J + (lam + ridge) * onp.eye(self.n_comp)   # damping
+
                 # Precondicionamiento Jacobi
-                diagJ = np.clip(np.diag(J_d), 1e-30, None)
-                P = 1.0 / np.sqrt(diagJ)
-                PJP = (P[:, None] * J_d) * P[None, :]
+                diagJ = onp.clip(onp.diag(Jd), 1e-30, None)
+                P = 1.0 / onp.sqrt(diagJ)
+                PJP = (P[:, None] * Jd) * P[None, :]
                 Pd  = P * d
-    
-                # Resolver (PJP)Δz = Pd ; Δu = PΔz
+
+                # Resolver Δz y llevar a Δu
                 try:
-                    delta_z = np.linalg.solve(PJP, Pd)
-                except np.linalg.LinAlgError:
+                    delta_z = onp.linalg.solve(PJP, Pd)
+                except onp.linalg.LinAlgError:
                     delta_z = pinv_cs(PJP) @ Pd
                 delta_u = P * delta_z
-    
-                # limitar paso
-                ndu = float(np.linalg.norm(delta_u))
+
+                # Limitar paso
+                ndu = float(onp.linalg.norm(delta_u))
                 if ndu > max_step:
                     delta_u *= (max_step / max(ndu, 1e-18))
-    
-                # backtracking (Armijo) sobre el paso actual
+
+                # Backtracking (Armijo)
                 alpha = 1.0
-                ok = False
+                accepted = False
                 for _ in range(max_backtrack):
                     u_trial = u + alpha * delta_u
-                    c_trial = c_from(u_trial)
-                    d_trial = ctot[i] - mass_balance(c_trial)
-                    cur = float(np.linalg.norm(d_trial))
+                    c_trial = self._c_spec_from_u(u_trial, K_num)
+                    d_trial = self.C_T[i] - self._mass_balance(c_trial)
+                    cur = float(onp.linalg.norm(d_trial, ord=2))
                     if cur < prev:
-                        ok = True
+                        accepted = True
                         break
                     alpha *= 0.5
-    
-                if ok:
-                    # aceptar
+
+                if accepted:
                     u = u_trial
                     c_spec = c_trial
                     d = d_trial
                     prev = cur
                     lam = max(lam * lam_down, 1e-12)
-                    if prev < tol:
-                        break
                     it += 1
                     continue
+
+                # Fallback: Newton amortiguado (mismo precondicionamiento)
+                PJ = (P[:, None] * J) * P[None, :]
+                try:
+                    delta_zN = onp.linalg.solve(PJ + ridge * onp.eye(self.n_comp), Pd)
+                except onp.linalg.LinAlgError:
+                    delta_zN = pinv_cs(PJ + ridge * onp.eye(self.n_comp)) @ Pd
+                delta_uN = P * delta_zN
+
+                nduN = float(onp.linalg.norm(delta_uN))
+                if nduN > max_step:
+                    delta_uN *= (max_step / max(nduN, 1e-18))
+
+                alpha = 1.0
+                acceptedN = False
+                for _ in range(max_backtrack):
+                    u_trial = u + alpha * delta_uN
+                    c_trial = self._c_spec_from_u(u_trial, K_num)
+                    d_trial = self.C_T[i] - self._mass_balance(c_trial)
+                    cur = float(onp.linalg.norm(d_trial, ord=2))
+                    if cur < prev:
+                        acceptedN = True
+                        break
+                    alpha *= 0.5
+
+                if acceptedN:
+                    u = u_trial
+                    c_spec = c_trial
+                    d = d_trial
+                    prev = cur
+                    lam = min(lam * lam_up, 1e12)
+                    it += 1
                 else:
-                    # FAILOVER: Newton amortiguado con la misma búsqueda de línea
-                    PJ = (P[:, None] * J) * P[None, :]
-                    try:
-                        delta_zN = np.linalg.solve(PJ + ridge*np.eye(n_comp), Pd)
-                    except np.linalg.LinAlgError:
-                        delta_zN = pinv_cs(PJ + ridge*np.eye(n_comp)) @ Pd
-                    delta_uN = P * delta_zN
-    
-                    nduN = float(np.linalg.norm(delta_uN))
-                    if nduN > max_step:
-                        delta_uN *= (max_step / max(nduN, 1e-18))
-    
-                    alpha = 1.0
-                    accepted_newton = False
-                    for _ in range(max_backtrack):
-                        u_trial = u + alpha * delta_uN
-                        c_trial = c_from(u_trial)
-                        d_trial = ctot[i] - mass_balance(c_trial)
-                        cur = float(np.linalg.norm(d_trial))
-                        if cur < prev:
-                            accepted_newton = True
-                            break
-                        alpha *= 0.5
-    
-                    if accepted_newton:
-                        u = u_trial
-                        c_spec = c_trial
-                        d = d_trial
-                        prev = cur
-                        lam = min(lam * lam_up, 1e12)  # tras Newton, amortigua más
-                        if prev < tol:
-                            break
-                        it += 1
-                        continue
-                    else:
-                        # reinicio seguro de u para evitar atascos numéricos
-                        u = np.log(np.clip(ctot[i, :n_comp], 1e-16, None))
-                        c_spec = c_from(u)
-                        d = ctot[i] - mass_balance(c_spec)
-                        prev = float(np.linalg.norm(d))
-                        lam = lam0 * 10.0
-                        it += 1
-                        continue
-    
-            c_calculada[i] = c_spec
-    
-        C = np.delete(c_calculada, self.nas, axis=1)
-        return C, c_calculada
-    
-            
+                    # Reinicio seguro para evitar estancamientos
+                    u = onp.log(onp.clip(self.C_T[i, :self.n_comp], 1e-16, None))
+                    c_spec = self._c_spec_from_u(u, K_num)
+                    d = self.C_T[i] - self._mass_balance(c_spec)
+                    prev = float(onp.linalg.norm(d, ord=2))
+                    lam = lam0 * 10.0
+                    it += 1
+
+            c_calculada[i, :] = c_spec
+
+        # Eliminar especies no absorbentes (NumPy real)
+        if self.nas.size > 0:
+            C_np = onp.delete(c_calculada, self.nas, axis=1)
+        else:
+            C_np = c_calculada
+
+        # Regresar en el backend (JAX/NumPy)
+        return np.asarray(C_np, dtype=float), np.asarray(c_calculada, dtype=float)

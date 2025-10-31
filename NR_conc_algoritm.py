@@ -1,194 +1,203 @@
-from np_backend import xp as np, jit, jacrev, vmap, lax
+# NR_conc_algoritm.py
+# ---------------------------------------------
+# Newton–Raphson para balance de masa con:
+#  - Paso positivo (c >= 0)
+#  - Búsqueda de línea (Armijo) y paso máximo
+#  - Cálculo interno en NumPy real (onp), salida en backend (np)
+import numpy as onp
+from np_backend import xp as np  # backend conmutable (JAX/NumPy)
 
-
-# ---------- pseudo-inversa complex-step-safe (sin conjugado) ----------
+# ------------------------------------------------------------------
+# Pseudoinversa robusta en NumPy real (fallback)
 def pinv_cs(A, rcond=1e-12):
-    A = np.asarray(A)
-    if not np.iscomplexobj(A):
-        return np.linalg.pinv(A, rcond=rcond)
-    m, n = A.shape
-    Ar = np.block([[A.real, -A.imag],
-                   [A.imag,  A.real]])           # (2m x 2n)
-    Pr = np.linalg.pinv(Ar, rcond=rcond)         # (2n x 2m)
-    X = Pr[:n,    :m]
-    Y = Pr[n:2*n, :m]
-    return X + 1j*Y
+    A = onp.asarray(A)
+    try:
+        return onp.linalg.pinv(A, rcond=rcond)
+    except onp.linalg.LinAlgError:
+        ATA = A.T @ A + (rcond if onp.isscalar(rcond) else 1e-12) * onp.eye(A.shape[1], dtype=A.dtype)
+        return onp.linalg.solve(ATA, A.T)
+# ------------------------------------------------------------------
+
 
 class NewtonRaphson:
-    def __init__(self, C_T, modelo, nas, model_sett):
-        self.C_T = C_T
-        self.modelo = modelo
-        self.nas = nas
-        self.model_sett = model_sett
+    """
+    Llamada esperada por la GUI:
+        res = NewtonRaphson(ctot, modelo, nas, model_sett, ...)
+    Donde:
+      - ctot   : (n_reacciones, n_componentes)
+      - modelo : (n_componentes, nspec)
+      - nas    : índices de especies no-absorbentes (columnas a eliminar)
+      - model_sett : string (p.ej., 'Free') — aquí no afecta al NR
+    """
 
-    def non_coop(self, K):
-            K_0 = np.array([K[2] - np.log10(4)])
-            K_1 = np.concatenate((K, K_0))
-            K_2 = np.cumsum(K_1)
-            return K_2
+    def __init__(self, ctot, modelo, nas=None, model_sett=None,
+                 tol=1e-10, max_iter=200, k_is_log10=True,
+                 max_step=2.0, max_backtrack=8):
+        self.modelo = onp.asarray(modelo, dtype=float)
+        self.ctot   = onp.asarray(ctot,   dtype=float)
+        self.nas    = onp.asarray(nas if nas is not None else [], dtype=int)
+        _ = model_sett  # no usado aquí
 
-    def step_by_step(self, K):
-        K_2 = np.cumsum(K)
-        return K_2
+        self.tol = float(tol)
+        self.max_iter = int(max_iter)
+        self.k_is_log10 = bool(k_is_log10)
 
-    #def concentraciones(self, K, max_iter=1000, tol=1e-10):
-    #    ctot = np.array(self.C_T)
-    #    n_reacciones, n_componentes = ctot.shape
-    #    pre_ko = np.zeros(n_componentes)
-    #    K = np.concatenate((pre_ko, K))
-#
-    #    if self.model_sett == "Free":
-    #        K = 10**K
-    #    elif self.model_sett == "Step by step":
-    #        K = self.step_by_step(K)
-    #        K = 10**K
-    #    elif self.model_sett == "Non-cooperative":
-    #        K = self.non_coop(K)
-    #        K = 10**K
-#
-    #    nspec = len(K)
-#
-    #    def calcular_concentraciones(ctot_i, c_guess):
-    #        c_spec = np.prod(np.power(np.tile(c_guess, (nspec, 1)).T, self.modelo), axis=0) * K
-    #        c_tot_cal = np.sum(self.modelo * np.tile(c_spec, (n_componentes, 1)), axis=1)
-    #        d = ctot_i - c_tot_cal
-#
-    #        J = np.empty((n_componentes, n_componentes))
-    #        for j in range(n_componentes):
-    #            for h in range(n_componentes):
-    #                J[j, h] = np.sum(self.modelo.T[:, j] * self.modelo.T[:, h] * c_spec)
-#
-    #        delta_c = d @ np.linalg.pinv(J) @ np.diagflat(c_guess)
-#
-    #        c_guess += delta_c
-    #        return c_guess, np.linalg.norm(d), c_spec
-#
-    #    c_calculada = np.zeros((n_reacciones, nspec))
-    #    for i in range(n_reacciones):
-    #        c_guess = np.ones(n_componentes) * 1e-10
-    #        # Asignación dinámica para c_guess basada en el número de componentes
-    #        c_guess[:n_componentes] = ctot[i, :n_componentes]
-    #        dif = tol + 1
-    #        it = 0
-    #        while dif > tol and it < max_iter:
-    #            c_guess, delta_c_norm_sq, c_spec = calcular_concentraciones(ctot[i], c_guess)
-    #            dif = delta_c_norm_sq
-    #            it += 1
-    #        c_calculada[i] = c_spec
-#
-    #    C = np.delete(c_calculada, self.nas, axis=1)
-    #    return C, c_calculada
+        self.max_step = float(max_step)          # norma máxima del paso Δc
+        self.max_backtrack = int(max_backtrack)  # reintentos de backtracking
 
+        # shapes
+        self.n_componentes, self.nspec = self.modelo.shape
+        self.n_reacciones = self.ctot.shape[0]
 
-# =============================================================================
-#     def concentraciones(self, K, max_iter=1000, tol=1e-10):
-#         ctot = np.array(self.C_T)
-#         n_reacciones, n_componentes = ctot.shape
-# 
-#         # <<< nuevo: elegir dtype según K >>>
-#         dtype = np.complex128 if np.iscomplexobj(K) else float
-# 
-#         pre_ko = np.zeros(n_componentes, dtype=dtype)
-#         K = np.concatenate((pre_ko, K))
-# 
-#         if self.model_sett == "Free":
-#             K = 10**K
-#         elif self.model_sett == "Step by step":
-#             K = self.step_by_step(K); K = 10**K
-#         elif self.model_sett == "Non-cooperative":
-#             K = self.non_coop(K); K = 10**K
-# 
-#         nspec = len(K)
-# 
-#         def calcular_concentraciones(ctot_i, c_guess):
-#             # Asegura que c_guess sea del dtype correcto
-#             c_guess = np.asarray(c_guess, dtype=dtype)
-# 
-#             c_spec = np.prod(np.power(np.tile(c_guess, (nspec, 1)).T, self.modelo), axis=0) * K
-#             c_tot_cal = np.sum(self.modelo * np.tile(c_spec, (n_componentes, 1)), axis=1)
-#             d = ctot_i - c_tot_cal
-# 
-#             # Jacobiano en el dtype correcto
-#             J = np.empty((n_componentes, n_componentes), dtype=dtype)
-#             for j in range(n_componentes):
-#                 for h in range(n_componentes):
-#                     J[j, h] = np.sum(self.modelo.T[:, j] * self.modelo.T[:, h] * c_spec)
-# 
-#             delta_c = d @ pinv_cs(J) @ np.diagflat(c_guess)
-#             c_guess += delta_c
-#             return c_guess, np.linalg.norm(d), c_spec
-# 
-#         c_calculada = np.zeros((n_reacciones, nspec), dtype=dtype)
-#         for i in range(n_reacciones):
-#             c_guess = np.ones(n_componentes, dtype=dtype) * 1e-10
-#             c_guess[:n_componentes] = ctot[i, :n_componentes]
-#             dif = tol + 1; it = 0
-#             while dif > tol and it < max_iter:
-#                 c_guess, delta_c_norm_sq, c_spec = calcular_concentraciones(ctot[i], c_guess)
-#                 dif = delta_c_norm_sq; it += 1
-#             c_calculada[i] = c_spec
-# 
-#         C = np.delete(c_calculada, self.nas, axis=1)
-#         return C, c_calculada
-# 
-# =============================================================================
+        self.mt = self.modelo.T  # (nspec, n_componentes)
 
-    def concentraciones(self, K, max_iter=1000, tol=1e-10):
-        
-        ctot = np.array(self.C_T)
-        n_reacciones, n_componentes = ctot.shape
-    
-        # elegir dtype según K
-        dtype = np.complex128 if np.iscomplexobj(K) else float
-    
-        pre_ko = np.zeros(n_componentes, dtype=dtype)
-        K = np.concatenate((pre_ko, K))
-    
-        if self.model_sett == "Free":
-            K = 10**K
-        elif self.model_sett == "Step by step":
-            K = self.step_by_step(K); K = 10**K
-        elif self.model_sett == "Non-cooperative":
-            K = self.non_coop(K); K = 10**K
-    
-        nspec = len(K)
-    
-        # fijar referencias a M y M^T una sola vez
-        modelo = np.asarray(self.modelo, dtype=float)      # (n_componentes, nspec)
-        mt = modelo.T                                      # (nspec, n_componentes)
-    
-        def calcular_concentraciones(ctot_i, c_guess):
-            # Asegura que c_guess sea del dtype correcto
-            c_guess = np.asarray(c_guess, dtype=dtype)
-    
-            # especies: ∏_k c_k^{ν_{k,j}} * K_j
-            c_spec = np.prod(np.power(np.tile(c_guess, (nspec, 1)).T, modelo), axis=0) * K
-    
-            # balance de masa: M @ c_spec
-            c_tot_cal = modelo @ c_spec
-    
-            d = ctot_i - c_tot_cal
-    
-            # --- Jacobiano vectorizado (reemplaza el doble for) ---
-            # J = M^T diag(c_spec) M, con M = mt (nspec × n_componentes)
-            J = mt.T @ (c_spec[:, None] * mt)             # (n_componentes, n_componentes)
-    
-            # Paso NR en c (tu forma original): delta_c = (d @ pinv(J)) .* c_guess
-            delta_u = d @ pinv_cs(J)                      # (n_componentes,)
-            delta_c = delta_u * c_guess                   # evita np.diagflat(c_guess)
-    
-            c_guess += delta_c
-            return c_guess, np.linalg.norm(d), c_spec
-    
-        c_calculada = np.zeros((n_reacciones, nspec), dtype=dtype)
-        for i in range(n_reacciones):
-            c_guess = np.ones(n_componentes, dtype=dtype) * 1e-10
-            c_guess[:n_componentes] = ctot[i, :n_componentes]
-            dif = tol + 1; it = 0
-            while dif > tol and it < max_iter:
-                c_guess, delta_c_norm_sq, c_spec = calcular_concentraciones(ctot[i], c_guess)
-                dif = delta_c_norm_sq; it += 1
-            c_calculada[i] = c_spec
-    
-        C = np.delete(c_calculada, self.nas, axis=1)
-        return C, c_calculada
+    # ---------- núcleo NR con búsqueda de línea (NumPy real) ----------
+    def _solve_single_nr(self, ctot_i, K):
+        """
+        Resuelve c (componentes) por NR amortiguado para una corrida.
+        Retorna (c_final, ||res||, c_spec_final).
+        """
+        n_comp = self.n_componentes
+        M  = self.modelo
+        MT = self.mt
+
+        # inicial positivo
+        c = onp.maximum(ctot_i[:n_comp].astype(float).copy(), 1e-14)
+
+        def especies_from_c(c_vec):
+            # c_spec = K * exp(M^T log(c))
+            log_c = onp.log(onp.clip(c_vec, 1e-300, onp.inf))
+            return onp.exp(MT @ log_c) * K
+
+        def residuo(c_vec):
+            c_spec = especies_from_c(c_vec)
+            return self.ctot_row - (M @ c_spec), c_spec  # (n_comp,), (nspec,)
+
+        def jacobian(c_vec, c_spec):
+            # J_{j,h} = sum_p M_{j,p} * v_{h,p} * c_spec_p / c_h
+            inv_c = 1.0 / onp.clip(c_vec, 1e-300, onp.inf)
+            term = M * c_spec  # (n_comp, nspec), broadcasting por filas (v_{h,p}*c_spec_p)
+            J = onp.empty((n_comp, n_comp), dtype=float)
+            for h in range(n_comp):
+                col_h = term[h, :] * inv_c[h]      # (nspec,)
+                J[:, h] = M @ col_h                # (n_comp,)
+            return J
+
+        # estado inicial
+        self.ctot_row = ctot_i
+        d, c_spec = residuo(c)
+        prev = float(onp.linalg.norm(d, ord=2))
+        it = 0
+        ridge = 1e-12
+
+        while prev > self.tol and it < self.max_iter:
+            J = jacobian(c, c_spec)
+
+            # Resolver J Δ = d (o pseudo-inversa si mal condicionado)
+            try:
+                delta = onp.linalg.solve(J, d)
+            except onp.linalg.LinAlgError:
+                delta = pinv_cs(J) @ d
+
+            # limitar tamaño de paso
+            ndelta = float(onp.linalg.norm(delta, ord=2))
+            if ndelta > self.max_step:
+                delta *= (self.max_step / max(ndelta, 1e-18))
+
+            # backtracking (Armijo simple): aceptar si ||r|| baja
+            alpha = 1.0
+            accepted = False
+            for _ in range(self.max_backtrack):
+                cand = onp.maximum(c + alpha * delta, 1e-14)  # mantiene positividad
+                d_trial, c_spec_trial = residuo(cand)
+                cur = float(onp.linalg.norm(d_trial, ord=2))
+                if cur < prev:
+                    accepted = True
+                    break
+                alpha *= 0.5
+
+            if accepted:
+                c = cand
+                d = d_trial
+                c_spec = c_spec_trial
+                prev = cur
+                it += 1
+                continue
+
+            # fallback: paso de Gauss–Newton “regularizado” (J^T J + μI) Δ = J^T d
+            JTJ = J.T @ J + ridge * onp.eye(n_comp)
+            g   = J.T @ d
+            try:
+                delta_gn = onp.linalg.solve(JTJ, g)
+            except onp.linalg.LinAlgError:
+                delta_gn = pinv_cs(JTJ) @ g
+
+            ndelta = float(onp.linalg.norm(delta_gn, ord=2))
+            if ndelta > self.max_step:
+                delta_gn *= (self.max_step / max(ndelta, 1e-18))
+
+            alpha = 1.0
+            accepted = False
+            for _ in range(self.max_backtrack):
+                cand = onp.maximum(c + alpha * delta_gn, 1e-14)
+                d_trial, c_spec_trial = residuo(cand)
+                cur = float(onp.linalg.norm(d_trial, ord=2))
+                if cur < prev:
+                    accepted = True
+                    break
+                alpha *= 0.5
+
+            if accepted:
+                c = cand
+                d = d_trial
+                c_spec = c_spec_trial
+                prev = cur
+                it += 1
+            else:
+                # si nada mejora, reduce agresivamente el paso
+                c = onp.maximum(c + 0.1 * delta_gn, 1e-14)
+                d, c_spec = residuo(c)
+                prev = float(onp.linalg.norm(d, ord=2))
+                it += 1
+
+        return c, prev, c_spec
+
+    # ------------------ API llamado por la GUI ------------------
+    def concentraciones(self, k):
+        """
+        Devuelve:
+          C  : (n_reacciones, nspec - len(nas))  (solo absorbentes)
+          c_calculada : (n_reacciones, nspec)    (todas las especies)
+        """
+        # Construye K con tamaño nspec (1.0 para componentes si k no los trae)
+        k = onp.asarray(k, dtype=float).ravel()
+        kval = onp.power(10.0, k) if self.k_is_log10 else k
+
+        n_comp = self.n_componentes
+        nspec  = self.nspec
+
+        if kval.size == nspec:
+            K = kval.astype(float)
+        elif kval.size == (nspec - n_comp):
+            K = onp.ones(nspec, dtype=float)
+            K[n_comp:] = kval
+        else:
+            raise ValueError(
+                f"Longitud de k incompatible: len(k)={kval.size}, "
+                f"se esperaba {nspec} o {nspec - n_comp} (nspec={nspec}, n_comp={n_comp})."
+            )
+
+        c_calculada = onp.zeros((self.n_reacciones, nspec), dtype=float)
+
+        for i in range(self.n_reacciones):
+            c_i, _, c_spec_i = self._solve_single_nr(self.ctot[i, :], K)
+            c_calculada[i, :] = c_spec_i
+
+        # eliminar no-absorbentes en NumPy real
+        if self.nas.size > 0:
+            C_np = onp.delete(c_calculada, self.nas, axis=1)
+        else:
+            C_np = c_calculada
+
+        # salida en backend
+        return np.asarray(C_np, dtype=float), np.asarray(c_calculada, dtype=float)
