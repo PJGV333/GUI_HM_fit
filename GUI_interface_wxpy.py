@@ -6,21 +6,21 @@ import pandas as pd
 import numpy as np
 import matplotlib
 matplotlib.use('WXAgg')
+matplotlib.rcParams['keymap.quit'] = []
+matplotlib.rcParams['keymap.quit_all'] = []
 from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
 from matplotlib.figure import Figure
 from scipy import optimize
 import matplotlib.pyplot as plt
 from scipy.optimize import differential_evolution, basinhopping
-import sys
 import warnings
-warnings.filterwarnings("ignore", category=RuntimeWarning) 
-import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 warnings.filterwarnings("ignore")
 import timeit
 from Spectroscopy_controls import Spectroscopy_controlsPanel
 from NMR_controls import NMR_controlsPanel
 #from Simulation_controls import Simulation_controlsPanel
-from Methods import BaseTechniquePanel 
+from Methods import BaseTechniquePanel, add_private_font_if_available, get_monospace_font
 import importlib
 
 
@@ -29,7 +29,7 @@ class TextRedirector:
         self.text_ctrl = text_ctrl
 
     def write(self, string):
-        wx.CallAfter(self.text_ctrl.WriteText, string)
+        wx.CallAfter(self.text_ctrl.WriteText, string.expandtabs(4))
 
     def flush(self):
         pass
@@ -40,7 +40,9 @@ class CancelledByUserException(Exception):
 class App(wx.Frame):
     def __init__(self):
         wx.Frame.__init__(self, None, title="HM Fit", size=(800, 600))
-        self.panel = wx.Panel(self)       
+        add_private_font_if_available()
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
+        self.panel = wx.Panel(self)
         
         #self.figures = []  # Lista para almacenar figuras 
         #self.current_figure_index = -1  # Índice inicial para navegación de figuras
@@ -134,7 +136,7 @@ class App(wx.Frame):
 
         # Crear la consola en el console_panel
         self.console = wx.TextCtrl(console_panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
-        self.console.SetFont(wx.Font(9, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
+        self.console.SetFont(get_monospace_font(9))
 
         # Configuración de colores para la consola
         self.console.SetBackgroundColour(wx.BLACK)  # Fondo negro
@@ -183,6 +185,18 @@ class App(wx.Frame):
         self.main_sizer.Layout()
         self.Refresh()             # Refresca el frame para mostrar los cambios
         self.Update()
+
+    def _on_char_hook(self, evt):
+        win = wx.Window.FindFocus()
+        if isinstance(win, (wx.TextCtrl, wx.SpinCtrl, wx.ComboBox, gridlib.Grid)):
+            evt.Skip()
+            return
+
+        key_code = evt.GetKeyCode()
+        if key_code is not None and ord('0') <= key_code <= ord('9'):
+            return
+
+        evt.Skip()
     ####################################################################################################################
     def on_process_data(self, event):
         # Obtener el panel actualmente seleccionado

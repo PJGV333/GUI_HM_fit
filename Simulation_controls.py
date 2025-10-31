@@ -43,10 +43,10 @@ class Simulation_controlsPanel(BaseTechniquePanel):
         self.toggle_components.Bind(wx.EVT_BUTTON, self.on_define_model_dimensions_checked)
 
         # Creación de los TextCtrl para número de componentes y número de especies
-        self.num_components_text, self.entry_nc = self.create_sheet_section("Number of Components:", "0", parent = tab_modelo)
-        self.num_species_text, self.entry_nsp = self.create_sheet_section("Number of Species:", "0", parent = tab_modelo)
-        
-        self.num_components_text.Bind(wx.EVT_TEXT, self.on_num_components_change)
+        self.nc_panel, self.entry_nc = self.create_sheet_section("Number of Components:", "0", parent=tab_modelo)
+        self.ns_panel, self.entry_nsp = self.create_sheet_section("Number of Species:", "0", parent=tab_modelo)
+
+        self.entry_nc.Bind(wx.EVT_TEXT, self.on_num_components_change)
 
         self.sp_columns = wx.StaticText(tab_modelo, label="Select non-absorbent species: ")
 
@@ -67,8 +67,8 @@ class Simulation_controlsPanel(BaseTechniquePanel):
         #modelo_sizer.Add(self.sheet_model_panel, 0, wx.EXPAND | wx.ALL, 5)
         # Añadirlos al sizer
         modelo_sizer.Add(self.toggle_components, 0, wx.ALL | wx.EXPAND, 5)
-        modelo_sizer.Add(self.num_components_text, 0, wx.ALL | wx.EXPAND, 5)
-        modelo_sizer.Add(self.num_species_text, 0, wx.ALL | wx.EXPAND, 5)
+        modelo_sizer.Add(self.nc_panel, 0, wx.ALL | wx.EXPAND, 5)
+        modelo_sizer.Add(self.ns_panel, 0, wx.ALL | wx.EXPAND, 5)
         modelo_sizer.Add(self.sp_columns, 0, wx.EXPAND | wx.ALL, 5)
         modelo_sizer.Add(self.model_panel, 1, wx.EXPAND | wx.ALL, 5)
         tab_modelo.SetSizer(modelo_sizer)
@@ -128,44 +128,39 @@ class Simulation_controlsPanel(BaseTechniquePanel):
         """
         Manejador del evento que se dispara cuando cambia el texto del número de componentes.
         """
-        current_panel = self.technique_notebook.GetCurrentPage()
-        if current_panel is not None and current_panel.GetLabel() == "Simulation":
-            try:
-                num_components = int(self.num_components_text.GetValue())
-            except ValueError:
-                # Manejar el caso en que el valor no sea un número
-                return
+        try:
+            num_components = int(self.entry_nc.GetValue())
+        except (ValueError, AttributeError):
+            event.Skip()
+            return
 
-            # Eliminar TextCtrls anteriores si existen
-            if hasattr(self, 'component_inputs'):
-                for input_control in self.component_inputs:
-                    input_control.Destroy()
+        self.clear_component_inputs()
 
-            # Crear nuevos TextCtrls
-            self.create_component_inputs(num_components)
+        if num_components <= 0:
+            self.panel.Layout()
+            event.Skip()
+            return
+
+        self.create_component_inputs(num_components)
+        event.Skip()
 
     
     def on_confirm_components(self, event):
         """
         Manejador del evento que se dispara cuando se presiona el botón de confirmar componentes.
         """
-        current_panel = self.technique_notebook.GetCurrentPage()
-        if current_panel is not None and current_panel.GetLabel() == "Simulation":
-            try:
-                num_components = int(self.num_components_text.GetValue())
-            except ValueError:
-                # Manejar el caso en que el valor no sea un número
-                wx.MessageBox("Please enter a valid number of components", "Error", wx.OK | wx.ICON_ERROR)
-                return
+        try:
+            num_components = int(self.entry_nc.GetValue())
+        except ValueError:
+            # Manejar el caso en que el valor no sea un número
+            wx.MessageBox("Please enter a valid number of components", "Error", wx.OK | wx.ICON_ERROR)
+            return
 
-            # Eliminar TextCtrls anteriores si existen
-            if hasattr(self, 'component_inputs'):
-                for input_control in self.component_inputs:
-                    input_control.Destroy()
-                del self.component_inputs
+        # Eliminar TextCtrls anteriores si existen
+        self.clear_component_inputs()
 
-            # Crear nuevos TextCtrls
-            self.create_component_inputs(num_components)
+        # Crear nuevos TextCtrls
+        self.create_component_inputs(num_components)
 
 
     def create_component_inputs(self, num_components):
@@ -175,15 +170,26 @@ class Simulation_controlsPanel(BaseTechniquePanel):
         Args:
             num_components (int): Número de componentes ingresado por el usuario.
         """
-        self.component_inputs = []
+        self.component_input_panels = []
+        self.component_input_texts = []
         for i in range(num_components):
             label = f"C{i+1} Concentration Range (e.g. 1e-3,2e-5,50):"
             default_value = "1e-3,2e-5,50"
-            input_control = self.create_sheet_section(label, default_value, parent=self)
-            self.component_inputs.append(input_control)
-            self.left_sizer.Add(input_control, 0, wx.EXPAND)
+            panel, text_ctrl = self.create_sheet_section(label, default_value, parent=self)
+            self.component_input_panels.append(panel)
+            self.component_input_texts.append(text_ctrl)
+            self.left_sizer.Add(panel, 0, wx.EXPAND)
 
         self.panel.Layout()  # Actualizar el layout para mostrar los nuevos controles
+
+    def clear_component_inputs(self):
+        for panel in getattr(self, "component_input_panels", []):
+            if panel:
+                panel.Destroy()
+
+        self.component_input_panels = []
+        self.component_input_texts = []
+        self.panel.Layout()
 
     #####################################################################################################
     
