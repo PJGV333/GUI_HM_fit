@@ -18,6 +18,7 @@ warnings.filterwarnings("ignore")
 import timeit
 from Methods import BaseTechniquePanel
 from wx.lib.scrolledpanel import ScrolledPanel
+from errors import compute_errors_spectro_varpro
 
 
 def pinv_cs(A, rcond=1e-12):
@@ -602,17 +603,18 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
                 "RMS": RMS, "s2": s2, "A": A, "J": J, "yfit": yfit
             }
 
-        metrics = compute_errors_spectroscopy(k=self.r_0.x, res=res, Y=Y, modelo=modelo, nas=nas)
-
+        metrics = compute_errors_spectro_varpro(
+        k=self.r_0.x, res=res, Y=Y, modelo=modelo, nas=nas,
+        rcond=1e-10, use_projector=True
+        )
         SE_log10K = metrics["SE_log10K"]
         SE_K      = metrics["SE_K"]
         percK     = metrics["percK"]
         rms       = metrics["RMS"]
         covfit    = metrics["s2"]
         A         = metrics["A"]
-        y_cal     = metrics["yfit"] 
         yfit      = metrics["yfit"]
-        cov_matrix = metrics["Cov_log10K"]
+        cov_matrix= metrics["Cov_log10K"]
 
 
         C, Co = res.concentraciones(k)
@@ -688,14 +690,26 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         def fmt(x, pat): 
             return "—" if not np.isfinite(x) else pat.format(x)
 
-        headers = ["Constant", "log10(K) ± SE", "% Error", "RMS", "lof", "s² (var. reducida)"]
+        # Encabezados
+        headers = [
+            "Constant",
+            "log10(K) ± SE(log10K)",
+            "% Error (K, Δ-method)",
+            "RMS",
+            "lof",
+            "s² (var. reducida)"
+        ]
+
+        # Filas
         data = [
-            [f"K{i+1}",
-            f"{k[i]:.2e} ± {SE_log10K[i]:.2e}",
-            f"{percK[i]:.2f}",           # ya es porcentaje
-            f"{rms:.2e}" if i == 0 else "",
-            f"{lof:.2e}" if i == 0 else "", 
-            f"{covfit:.2e}" if i == 0 else ""]
+            [
+                f"K{i+1}",
+                f"{k[i]:.2e} ± {SE_log10K[i]:.2e}",   # ± en log10(K)
+                f"{percK[i]:.2f} %",                  # % en K (delta method)
+                f"{rms:.2e}" if i == 0 else "",
+                f"{lof:.2e}" if i == 0 else "",
+                f"{covfit:.2e}" if i == 0 else "",
+            ]
             for i in range(len(k))
         ]
 

@@ -1,4 +1,5 @@
 # errors.py
+import numpy as _onp
 from np_backend import xp as np, jit, jacrev, vmap, lax
 from LM_conc_algoritm import pinv_cs  # complex-step-safe :contentReference[oaicite:4]{index=4}
 
@@ -49,6 +50,39 @@ def percent_error_log10K(k_log10, se_log10):
     se_K = np.log(10.0) * K * np.asarray(se_log10)
     perc = 100.0 * se_K / np.maximum(np.abs(K), 1e-300)
     return perc, se_K, K
+
+
+# --- NUEVO: util para pasar de SE_log10K a métricas en K ---
+
+def percent_metrics_from_log10K(log10K, SE_log10K):
+    """
+    Devuelve SE(K), %Error lineal (delta method) y % asimétrico log-normal.
+    Entradas y salidas vectoriales.
+    """
+    log10K = _onp.asarray(log10K, dtype=float)
+    SE     = _onp.asarray(SE_log10K, dtype=float)
+
+    # K y SE(K) por delta method (linealización)
+    K      = _onp.power(10.0, log10K)
+    rel_SE = _onp.log(10.0) * SE              # SE(K)/K
+    SE_K   = K * rel_SE
+    perc_linear = 100.0 * rel_SE              # %Error (K) lineal
+
+    # Banda asimétrica 1σ de una lognormal exacta
+    m      = _onp.power(10.0, SE)             # factor multiplicativo 1σ
+    perc_hi = 100.0 * (m - 1.0)               # % por arriba
+    perc_lo = 100.0 * (1.0 - 1.0/m)           # % por abajo
+
+    # (opcional) % relativo en escala log10 (sólo para diagnóstico)
+    with _onp.errstate(divide='ignore', invalid='ignore'):
+        perc_log10 = 100.0 * SE / _onp.maximum(_onp.abs(log10K), 1e-12)
+
+    return {
+        "K": K, "SE_K": SE_K,
+        "perc_linear": perc_linear,
+        "perc_hi": perc_hi, "perc_lo": perc_lo,
+        "perc_log10K": perc_log10
+    }
 
 def basic_metrics(y_obs, y_cal, r):
     sse = np.sum(r*r)
@@ -122,3 +156,198 @@ def sensitivities_wrt_logK(c_spec, modelo, param_idx=None, rcond=1e-12):
         dCspec_dlog10K = dCspec_dlog10K[:, param_idx]  # (nspec, p)
 
     return dCspec_dlog10K
+
+
+# --- errors.py (añadir al final) ---
+from np_backend import xp as np, USE_JAX, jit
+# Usaremos tu sensitivities_wrt_log10K ya existente:
+_sens = sensitivities_wrt_logK
+
+def _pinv_backend(A, rcond=1e-10):
+    # pinv compatible con JAX/NumPy
+    return np.linalg.pinv(A, rcond=rcond)
+
+def _projector(C, rcond=1e-10):
+    return C @ _pinv_backend(C, rcond=rcond)
+
+def _stack_rows(lst):
+    # stack que funcione en ambos backends
+    return np.stack(lst, axis=0)
+
+def _as_onp(x):
+    try:
+        import jax.numpy as jnp
+        if isinstance(x, jnp.ndarray):
+            return _onp.array(x)
+    except Exception:
+        pass
+    return _onp.array(x)
+
+def _normalize_modelo(modelo, nspec):
+    Min = _as_onp(modelo)
+    if Min.shape[0] == nspec:
+        Ms = Min
+        n_comp = Ms.shape[1]
+    elif Min.shape[1] == nspec:
+        Ms = Min.T
+        n_comp = Ms.shape[1]
+    else:
+        raise ValueError(f"modelo incompatible con nspec={nspec}, shape={Min.shape}")
+    return Ms, n_comp
+
+def _jac_varpro(C, A, dC_all, use_projector=True, rcond=1e-10):
+    """
+    C      : (m × s)
+    A      : (s × nw)
+    dC_all : (m × s × p)
+    Devuelve J (p × m*nw) con la forma proyectada (I-P) dC A
+    """
+    m, s = C.shape
+    nw    = A.shape[1]
+    p     = dC_all.shape[2]
+
+    if use_projector:
+        P = _projector(C, rcond=rcond)
+        IminusP = np.eye(m) - P
+
+    Js = []
+    for q in range(p):
+        dCq = dC_all[:, :, q]     # (m × s)
+        Vq  = dCq @ A             # (m × nw)
+        if use_projector:
+            Vq = IminusP @ Vq
+        Js.append(Vq.reshape(m * nw))
+    J = np.stack(Js, axis=0)      # (p × m*nw)
+    return J
+
+# --- al final del archivo, después de definir la función ---
+try:
+    if USE_JAX:
+        # jit de JAX con argumento estático
+        from jax import jit as _jit
+        _jac_varpro = _jit(_jac_varpro, static_argnames=("use_projector",))
+except Exception:
+    # si no hay JAX o falla el wrap, seguimos sin jit (modo NumPy)
+    pass
+
+
+def _build_dC_all(Co, Ms, nas, param_idx):
+    """
+    Co      : (m × nspec) todas las especies
+    Ms      : (nspec × n_comp)
+    nas     : lista de NO absorbentes
+    param_idx: columnas de especies (en nspec) que están parametrizadas
+    """
+    nspec = Co.shape[1]
+    abs_idx = [j for j in range(nspec) if j not in nas]  # especies absorbentes
+    rows = []
+    for i in range(Co.shape[0]):
+        # dCspec/dlog10K en TODAS las especies (nspec × p)
+        dC_dlog = _sens(Co[i], Ms, param_idx=param_idx)
+        # Sólo absorbentes:
+        rows.append(dC_dlog[abs_idx, :])   # (n_abs × p)
+    return _stack_rows(rows)               # (m × n_abs × p)
+
+def _percent_errors_from_cov(k, Cov_log10K):
+    SE_log10K = _onp.sqrt(_onp.clip(_onp.diag(_as_onp(Cov_log10K)), 0.0, _onp.inf))
+    from errors import percent_error_log10K  # tu función existente
+    percK, SE_K, _ = percent_error_log10K(_as_onp(k), SE_log10K)
+    return _onp.array(percK), _onp.array(SE_K), _onp.array(SE_log10K)
+
+def compute_errors_spectro_varpro(k, res, Y, modelo, nas, rcond=1e-10, use_projector=True):
+    """
+    Cálculo robusto (variable projection) para espectroscopía.
+    k       : (p,)
+    res     : solver con .concentraciones(k) -> (C_abs, Co_all)
+    Y       : (m × nw)  datos (filas: puntos de titulación; cols: longitudes de onda)
+    modelo  : M (nspec×n_comp) o (n_comp×nspec)
+    nas     : lista[int] índices NO absorbentes
+    """
+    C, Co = res.concentraciones(k)    # C: (m × n_abs), Co: (m × nspec)
+    nspec = Co.shape[1]
+    Ms, n_comp = _normalize_modelo(modelo, nspec)
+
+    # Mapear parámetros a columnas de especies (por defecto, complejos):
+    p = len(k)
+    param_idx = list(range(n_comp, nspec))
+    if len(param_idx) != p:
+        if p <= nspec:
+            param_idx = list(range(nspec - p, nspec))
+        else:
+            raise ValueError(f"p={p} > nspec={nspec}")
+
+    # Ajuste lineal y residuo
+    A   = _pinv_backend(C, rcond=rcond) @ Y.T     # (n_abs × nw)
+    R   = (C @ A - Y.T)                           # (m × nw)
+    r   = R.reshape(-1)
+    dof = max(r.size - p, 1)
+    s2  = float((r @ r) / dof)
+
+    # Jacobiano proyectado
+    dC_all = _build_dC_all(Co, Ms, nas, param_idx)          # (m × n_abs × p)
+    J = _jac_varpro(C, A, dC_all, use_projector=use_projector, rcond=rcond)
+
+    # Covarianza y errores
+    Cov_log10K = s2 * _pinv_backend(J @ J.T, rcond=rcond)
+    SE_log10K = _onp.sqrt(_onp.clip(_onp.diag(_as_onp(Cov_log10K)), 0.0, _onp.inf))
+    pm = percent_metrics_from_log10K(_as_onp(k), SE_log10K)
+
+    percK      = pm["perc_linear"]      # %Error (K) por delta method (simétrico)
+    SE_K       = pm["SE_K"]         
+    perc_hi    = pm["perc_hi"]          # % asimétrico (arriba)
+    perc_lo    = pm["perc_lo"]      # % asimétrico (abajo)
+
+    RMS = float(np.sqrt(np.mean(R * R)))
+    return {
+        "percK": percK, "SE_K": SE_K, "SE_log10K": SE_log10K,
+        "Cov_log10K": _as_onp(Cov_log10K), "RMS": RMS, "s2": s2,
+        "A": _as_onp(A), "J": _as_onp(J), "yfit": _as_onp((C @ A).T)
+    }
+
+def compute_errors_nmr_varpro(k, res, dq, H, modelo, nas, rcond=1e-10, use_projector=True):
+    """
+    Versión NMR: sustituye C->Xi=C/H, Y->dq
+    """
+    C, Co = res.concentraciones(k)    # C: (m × n_abs), Co: (m × nspec)
+    nspec = Co.shape[1]
+    Ms, n_comp = _normalize_modelo(modelo, nspec)
+
+    p = len(k)
+    param_idx = list(range(n_comp, nspec))
+    if len(param_idx) != p:
+        if p <= nspec:
+            param_idx = list(range(nspec - p, nspec))
+        else:
+            raise ValueError(f"p={p} > nspec={nspec}")
+
+    Xi   = C / H[:, None]                      # (m × n_abs)
+    coef = _pinv_backend(Xi, rcond=rcond) @ dq # (n_abs × nP)
+    Yfit = (coef.T @ Xi.T).T                   # (m × nP)
+    R    = (Yfit - dq)                         # ojo: residuo con mismo signo que espectro
+    r    = R.reshape(-1)
+    dof  = max(r.size - p, 1)
+    s2   = float((r @ r) / dof)
+
+    # Jacobiano proyectado: dXi = (1/H_i) * dC_abs
+    # Primero dC_abs como en espectro:
+    dC_all_abs = _build_dC_all(Co, Ms, nas, param_idx)      # (m × n_abs × p)
+    Hcol = H.reshape(-1, 1, 1)
+    dXi_all = dC_all_abs / Hcol                             # (m × n_abs × p)
+
+    J = _jac_varpro(Xi, coef, dXi_all, use_projector=use_projector, rcond=rcond)
+
+    Cov_log10K = s2 * _pinv_backend(J @ J.T, rcond=rcond)
+    SE_log10K = _onp.sqrt(_onp.clip(_onp.diag(_as_onp(Cov_log10K)), 0.0, _onp.inf))
+    pm = percent_metrics_from_log10K(_as_onp(k), SE_log10K)
+
+    percK      = pm["perc_linear"]      # %Error (K) por delta method (simétrico)
+    SE_K       = pm["SE_K"]
+    perc_hi    = pm["perc_hi"]          # % asimétrico (arriba)
+    perc_lo    = pm["perc_lo"]          # % asimétrico (abajo)
+
+    rms = float(np.sqrt(np.mean(R * R)))
+    return {
+        "percK": percK, "SE_K": SE_K, "SE_log10K": SE_log10K,
+        "Cov_log10K": _as_onp(Cov_log10K), "rms": rms, "covfit": s2,
+        "coef": _as_onp(coef), "xi": _as_onp(Xi), "J": _as_onp(J),
+    }

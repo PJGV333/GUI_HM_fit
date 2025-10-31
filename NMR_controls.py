@@ -17,6 +17,7 @@ warnings.filterwarnings("ignore")
 import timeit
 from Methods import BaseTechniquePanel
 from wx.lib.scrolledpanel import ScrolledPanel
+from errors import compute_errors_nmr_varpro
 
 
 def pinv_cs(A, rcond=1e-12):
@@ -614,19 +615,19 @@ class NMR_controlsPanel(BaseTechniquePanel):
             }
 
 
-        metrics = compute_errors_common(k=self.r_0.x, res=res, dq=dq, H=H, modelo=modelo, nas=nas)
-
-        # Ejemplo de uso:
-        percK    = metrics["percK"]
-        SE_K     = metrics["SE_K"]
-        rms      = metrics["rms"]
-        covfit   = metrics["covfit"]
-        SE_log10K= metrics["SE_log10K"]
-        coef     = metrics["coef"]
-        J        = metrics["J"]
-        xi       = metrics["xi"]
-        covfit   = metrics["covfit"]
-            
+        metrics = compute_errors_nmr_varpro(
+        k=self.r_0.x, res=res, dq=dq, H=H, modelo=modelo, nas=nas,
+        rcond=1e-10, use_projector=True
+        )
+        percK     = metrics["percK"]
+        SE_K      = metrics["SE_K"]
+        rms       = metrics["rms"]
+        covfit    = metrics["covfit"]
+        SE_log10K = metrics["SE_log10K"]
+        coef      = metrics["coef"]
+        J         = metrics["J"]
+        xi        = metrics["xi"]
+                
 
         SER = f_m2(k)
 
@@ -664,13 +665,24 @@ class NMR_controlsPanel(BaseTechniquePanel):
                     column_widths[i] = max(column_widths[i], len(str(item)))
             return column_widths
 
-        headers = ["Constant", "log10(K) ± SE", "% Error", "RMS", "s² (var. reducida)"]
+        # Encabezados
+        headers = [
+            "Constant",
+            "log10(K) ± SE(log10K)",
+            "% Error (K, Δ-method)",
+            "RMS",
+            "s² (var. reducida)"
+        ]
+
+        # Filas
         data = [
-            [f"K{i+1}",
-            f"{k[i]:.2e} ± {SE_log10K[i]:.2e}",
-            f"{percK[i]:.2f}",           # ya es porcentaje
-            f"{rms:.2e}" if i == 0 else "",
-            f"{covfit:.2e}" if i == 0 else ""]
+            [
+                f"K{i+1}",
+                f"{k[i]:.2e} ± {SE_log10K[i]:.2e}",   # ± en log10(K)
+                f"{percK[i]:.2f} %",                  # % en K (delta method)
+                f"{rms:.2e}" if i == 0 else "",
+                f"{covfit:.2e}" if i == 0 else "",
+            ]
             for i in range(len(k))
         ]
 
