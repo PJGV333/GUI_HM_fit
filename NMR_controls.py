@@ -1,6 +1,7 @@
 import wx
 from Methods import BaseTechniquePanel
 import wx.grid as gridlib
+import numpy as onp  # NumPy “real”, no JAX
 from np_backend import xp as np, jit, jacrev, vmap, lax
 import pandas as pd
 import matplotlib
@@ -725,7 +726,7 @@ class NMR_controlsPanel(BaseTechniquePanel):
         covfit = covfit
         coef = pd.DataFrame(coef)
         
-        stats = np.array([SER, MAE, dif_en_ct, covfit, optimizer])
+        stats = onp.array([SER, MAE, dif_en_ct, covfit, optimizer], dtype=object)
         stats = pd.DataFrame(stats, index= ["RMS", "Error absoluto medio", 
                                             "Diferencia en C total (%)", 
                                             "covfit", "optimizer"])

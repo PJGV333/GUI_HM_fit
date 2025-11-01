@@ -754,7 +754,7 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         if not self.EFA_cb.GetValue():
             EV = nc
             
-        stats = np.array([rms, lof, MAE, dif_en_ct, EV, cov_matrix, optimizer])
+        stats = onp.array([rms, lof, MAE, dif_en_ct, EV, cov_matrix, optimizer], dtype=object)
         stats = pd.DataFrame(stats, index= ["RMS", "Falta de ajuste (%)",\
                                             "Error absoluto medio", "Diferencia en C total (%)", "# Autovalores", "covfit", "optimizer"])
         

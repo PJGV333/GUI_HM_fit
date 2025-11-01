@@ -37,7 +37,13 @@ class LevenbergMarquardt:
         self.C_T = onp.asarray(C_T, dtype=float)            # (n_reac, n_comp)
         self.modelo = onp.asarray(modelo, dtype=float)      # (n_comp, nspec)
         self.nas = onp.asarray(nas if nas is not None else [], dtype=int)
-        self.model_sett = model_sett
+        #self.model_sett = model_sett
+        self.model_sett = model_sett or "Free"
+
+        # shapes
+        self.n_componentes, self.nspec = self.modelo.shape
+        self.n_reacciones = self.C_T.shape[0]
+        self.mt = self.modelo.T
 
         self.tol = float(tol)
         self.max_iter = int(max_iter)
@@ -52,52 +58,67 @@ class LevenbergMarquardt:
         self.mt = self.modelo.T  # (nspec, n_comp)
 
     # ----- transformaciones K (siguiendo tu convención actual) -----
-    def step_by_step(self, K):
-        return onp.cumsum(K)
+    def step_by_step(self, K_log):
+        return onp.cumsum(onp.asarray(K_log, dtype=float))
 
-    def non_coop(self, K):
-        # Si no hay suficientes términos, aplica cumsum simple
-        if K.size < 3:
-            return onp.cumsum(K)
-        # Ajuste adicional para el tercer término (como tenías)
-        K_0 = onp.array([K[2] - onp.log10(4)], dtype=K.dtype)
-        K_1 = onp.concatenate((K, K_0))
-        return onp.cumsum(K_1)
-
-    def _prepare_K_numeric(self, K_in):
+    def non_coop(self, K_log):
         """
-        Recibe K sólo para especies formadas (o completo) en log10.
-        Devuelve K numérico (no log) de tamaño nspec, con 1.0 para componentes.
+        No cooperativo 1:2 colapsado:
+        - Si llega solo K1, genera internamente [K1, K1 - log10(4)] en log10 y luego acumula (β).
+        - Si llegan K1,K2 “crudos”, aplica corrección al segundo paso y acumula.
         """
-        K_in = onp.asarray(K_in)
-        n_comp = self.n_comp
-        nspec = self.nspec
+        K_log = onp.asarray(K_log, dtype=float)
+        start = self.n_componentes
+        n_complex = K_log.size - start
 
-        # Completar a tamaño nspec (anteponer ceros para componentes si hace falta)
-        if K_in.size == nspec:
-            K_log = K_in.astype(float)
-        elif K_in.size == (nspec - n_comp):
-            K_log = onp.concatenate((onp.zeros(n_comp, dtype=float), K_in))
+        if n_complex == 1 and (self.nspec - self.n_componentes) == 2:
+            K1 = K_log[start]
+            K_log = onp.concatenate((K_log, onp.array([K1 - onp.log10(4.0)], dtype=float)))
+        elif n_complex >= 2:
+            K_log[start + 1] -= onp.log10(4.0)
+
+        return onp.cumsum(K_log)
+
+
+    def _prepare_K_numeric(self, k_in):
+        """
+        Free / Step by step: entran n_complex constantes (log10).
+        Non-cooperative: puede entrar n_complex - 1 (colapsado) o n_complex.
+        Hace pre-padding de 0's para componentes y devuelve tamaño nspec.
+        """
+        k_in = onp.asarray(k_in, dtype=float).ravel()
+        n_comp    = self.n_componentes
+        nspec     = self.nspec
+        n_complex = nspec - n_comp
+
+        pre_ko   = onp.zeros(n_comp, dtype=float)       # log10(1)=0 para componentes
+        K_log_in = onp.concatenate((pre_ko, k_in))      # aún en log10
+
+        ms = self.model_sett
+        if ms == "Free":
+            if k_in.size != n_complex:
+                raise ValueError(f"Para 'Free' se esperan {n_complex} constantes, llegaron {k_in.size}.")
+            K_log_eff = K_log_in
+
+        elif ms == "Step by step":
+            if k_in.size != n_complex:
+                raise ValueError(f"Para 'Step by step' se esperan {n_complex} constantes, llegaron {k_in.size}.")
+            K_log_eff = self.step_by_step(K_log_in)
+
+        elif ms in ("Non-cooperative", "Statistical"):
+            if not (k_in.size == n_complex - 1 or k_in.size == n_complex):
+                raise ValueError(
+                    f"Para 'Non-cooperative' se esperan {n_complex-1} o {n_complex} constantes, "
+                    f"llegaron {k_in.size}."
+                )
+            K_log_eff = self.non_coop(K_log_in)
+
         else:
-            raise ValueError(
-                f"len(K)={K_in.size}, esperado {nspec} o {nspec - n_comp} "
-                f"(nspec={nspec}, n_comp={n_comp})"
-            )
+            K_log_eff = K_log_in  # fallback
 
-        # Aplicar modo (en log10)
-        if self.model_sett == "Free":
-            K_log_eff = K_log
-        elif self.model_sett == "Step by step":
-            K_log_eff = self.step_by_step(K_log)
-        elif self.model_sett == "Non-cooperative":
-            K_log_eff = self.non_coop(K_log)
-        else:
-            # Default a 'Free'
-            K_log_eff = K_log
-
-        # Pasar a numérico (no log)
         K_num = onp.power(10.0, K_log_eff)
-        return onp.asarray(K_num, dtype=onp.float64)
+        return onp.asarray(K_num, dtype=onp.result_type(K_num.dtype, onp.float64))
+
 
     # ----- helpers -----
     def _c_spec_from_u(self, u, K):

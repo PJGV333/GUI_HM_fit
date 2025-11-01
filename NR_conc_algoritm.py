@@ -4,11 +4,11 @@
 #  - Paso positivo (c >= 0)
 #  - Búsqueda de línea (Armijo) y paso máximo
 #  - Cálculo interno en NumPy real (onp), salida en backend (np)
+
 import numpy as onp
 from np_backend import xp as np  # backend conmutable (JAX/NumPy)
 
 # ------------------------------------------------------------------
-# Pseudoinversa robusta en NumPy real (fallback)
 def pinv_cs(A, rcond=1e-12):
     A = onp.asarray(A)
     try:
@@ -27,23 +27,24 @@ class NewtonRaphson:
       - ctot   : (n_reacciones, n_componentes)
       - modelo : (n_componentes, nspec)
       - nas    : índices de especies no-absorbentes (columnas a eliminar)
-      - model_sett : string (p.ej., 'Free') — aquí no afecta al NR
+      - model_sett : 'Free' | 'Step by step' | 'Non-cooperative'
     """
 
     def __init__(self, ctot, modelo, nas=None, model_sett=None,
                  tol=1e-10, max_iter=200, k_is_log10=True,
                  max_step=2.0, max_backtrack=8):
+
         self.modelo = onp.asarray(modelo, dtype=float)
         self.ctot   = onp.asarray(ctot,   dtype=float)
         self.nas    = onp.asarray(nas if nas is not None else [], dtype=int)
-        _ = model_sett  # no usado aquí
+        self.model_sett = model_sett or "Free"
 
         self.tol = float(tol)
         self.max_iter = int(max_iter)
-        self.k_is_log10 = bool(k_is_log10)
+        self.k_is_log10 = bool(k_is_log10)  # la GUI manda log10(K); lo mantenemos por compatibilidad
 
-        self.max_step = float(max_step)          # norma máxima del paso Δc
-        self.max_backtrack = int(max_backtrack)  # reintentos de backtracking
+        self.max_step = float(max_step)
+        self.max_backtrack = int(max_backtrack)
 
         # shapes
         self.n_componentes, self.nspec = self.modelo.shape
@@ -51,8 +52,77 @@ class NewtonRaphson:
 
         self.mt = self.modelo.T  # (nspec, n_componentes)
 
-    # ---------- núcleo NR con búsqueda de línea (NumPy real) ----------
-    def _solve_single_nr(self, ctot_i, K):
+    # ----- transformaciones de K según configuración -----
+
+    def step_by_step(self, K_log):
+        # cumsum en log10 → β acumuladas
+        return onp.cumsum(onp.asarray(K_log, dtype=float))
+
+    def non_coop(self, K_log):
+        """
+        Misma regla que tenías:
+        - El vector que entra YA incluye los ceros de componentes al inicio.
+        - Para 1:2 (dos complejos) se recibe solo K1.
+        - Se añade internamente K2 = K1 - log10(4) (en log10),
+          se concatena y luego se acumula con cumsum.
+        - No cambia la convención para 1:1 (no usar Non-cooperative ahí).
+        """
+        K_log = onp.asarray(K_log, dtype=float)
+        if K_log.size < 3:
+            # sin K1 presente (solo componentes) → no tocar
+            return onp.cumsum(K_log)
+        K_0 = onp.array([K_log[2] - onp.log10(4.0)], dtype=K_log.dtype)
+        K_1 = onp.concatenate((K_log, K_0))
+        return onp.cumsum(K_1)
+
+    def _prepare_K_numeric(self, k_in):
+        """
+        Aplica model_sett y regresa K numérico (no log10), con dtype promovido.
+        La GUI envía K en log10 para los complejos:
+          - Free / Step by step → n_complex valores
+          - Non-cooperative     → n_complex - 1 (p.ej. 1:2 → solo K1)
+        """
+        k_in = onp.asarray(k_in, dtype=float).ravel()
+        n_comp   = self.n_componentes
+        nspec    = self.nspec
+        n_complex = nspec - n_comp
+
+        # Pre-padding de ceros (componentes) en log10
+        pre_ko = onp.zeros(n_comp, dtype=float)
+        K_log_full = onp.concatenate((pre_ko, k_in))  # aún en log10
+
+        ms = self.model_sett
+        if ms == "Free":
+            # Deben venir todos los complejos
+            if k_in.size != n_complex:
+                raise ValueError(f"Para 'Free' se esperan {n_complex} constantes, llegaron {k_in.size}.")
+            K_log_eff = K_log_full
+        elif ms == "Step by step":
+            if k_in.size != n_complex:
+                raise ValueError(f"Para 'Step by step' se esperan {n_complex} constantes, llegaron {k_in.size}.")
+            K_log_eff = self.step_by_step(K_log_full)
+        elif ms in ("Non-cooperative", "Statistical"):
+            # Aquí puede venir 'una menos' (p.ej. 1:2 → 1)
+            if not (k_in.size == n_complex or k_in.size == n_complex - 1):
+                raise ValueError(
+                    f"Para 'Non-cooperative' se esperan {n_complex-1} o {n_complex} constantes, "
+                    f"llegaron {k_in.size}."
+                )
+            K_log_eff = self.non_coop(K_log_full) if k_in.size == n_complex - 1 else self.step_by_step(K_log_full)
+        else:
+            # fallback conservador
+            K_log_eff = K_log_full
+
+        # A numérico
+        K_num = onp.power(10.0, K_log_eff)
+
+        # dtype consistente
+        dtype = onp.result_type(K_num.dtype, onp.float64)
+        return onp.asarray(K_num, dtype=dtype)
+
+    # ------------------ Núcleo NR por corrida ------------------
+
+    def _solve_single_nr(self, ctot_row, K_num):
         """
         Resuelve c (componentes) por NR amortiguado para una corrida.
         Retorna (c_final, ||res||, c_spec_final).
@@ -62,29 +132,27 @@ class NewtonRaphson:
         MT = self.mt
 
         # inicial positivo
-        c = onp.maximum(ctot_i[:n_comp].astype(float).copy(), 1e-14)
+        c = onp.maximum(ctot_row[:n_comp].astype(float).copy(), 1e-14)
 
         def especies_from_c(c_vec):
             # c_spec = K * exp(M^T log(c))
             log_c = onp.log(onp.clip(c_vec, 1e-300, onp.inf))
-            return onp.exp(MT @ log_c) * K
+            return onp.exp(MT @ log_c) * K_num
 
         def residuo(c_vec):
             c_spec = especies_from_c(c_vec)
-            return self.ctot_row - (M @ c_spec), c_spec  # (n_comp,), (nspec,)
+            return ctot_row - (M @ c_spec), c_spec  # (n_comp,), (nspec,)
 
         def jacobian(c_vec, c_spec):
-            # J_{j,h} = sum_p M_{j,p} * v_{h,p} * c_spec_p / c_h
             inv_c = 1.0 / onp.clip(c_vec, 1e-300, onp.inf)
-            term = M * c_spec  # (n_comp, nspec), broadcasting por filas (v_{h,p}*c_spec_p)
+            term = M * c_spec
             J = onp.empty((n_comp, n_comp), dtype=float)
             for h in range(n_comp):
-                col_h = term[h, :] * inv_c[h]      # (nspec,)
-                J[:, h] = M @ col_h                # (n_comp,)
+                col_h = term[h, :] * inv_c[h]
+                J[:, h] = M @ col_h
             return J
 
         # estado inicial
-        self.ctot_row = ctot_i
         d, c_spec = residuo(c)
         prev = float(onp.linalg.norm(d, ord=2))
         it = 0
@@ -93,22 +161,19 @@ class NewtonRaphson:
         while prev > self.tol and it < self.max_iter:
             J = jacobian(c, c_spec)
 
-            # Resolver J Δ = d (o pseudo-inversa si mal condicionado)
             try:
                 delta = onp.linalg.solve(J, d)
             except onp.linalg.LinAlgError:
                 delta = pinv_cs(J) @ d
 
-            # limitar tamaño de paso
             ndelta = float(onp.linalg.norm(delta, ord=2))
             if ndelta > self.max_step:
                 delta *= (self.max_step / max(ndelta, 1e-18))
 
-            # backtracking (Armijo simple): aceptar si ||r|| baja
             alpha = 1.0
             accepted = False
             for _ in range(self.max_backtrack):
-                cand = onp.maximum(c + alpha * delta, 1e-14)  # mantiene positividad
+                cand = onp.maximum(c + alpha * delta, 1e-14)
                 d_trial, c_spec_trial = residuo(cand)
                 cur = float(onp.linalg.norm(d_trial, ord=2))
                 if cur < prev:
@@ -124,7 +189,7 @@ class NewtonRaphson:
                 it += 1
                 continue
 
-            # fallback: paso de Gauss–Newton “regularizado” (J^T J + μI) Δ = J^T d
+            # Gauss–Newton regularizado
             JTJ = J.T @ J + ridge * onp.eye(n_comp)
             g   = J.T @ d
             try:
@@ -154,7 +219,6 @@ class NewtonRaphson:
                 prev = cur
                 it += 1
             else:
-                # si nada mejora, reduce agresivamente el paso
                 c = onp.maximum(c + 0.1 * delta_gn, 1e-14)
                 d, c_spec = residuo(c)
                 prev = float(onp.linalg.norm(d, ord=2))
@@ -163,34 +227,24 @@ class NewtonRaphson:
         return c, prev, c_spec
 
     # ------------------ API llamado por la GUI ------------------
+
     def concentraciones(self, k):
         """
         Devuelve:
-          C  : (n_reacciones, nspec - len(nas))  (solo absorbentes)
-          c_calculada : (n_reacciones, nspec)    (todas las especies)
+          C            : (n_reacciones, nspec - len(nas))  (solo absorbentes)
+          c_calculada  : (n_reacciones, nspec)             (todas las especies)
         """
-        # Construye K con tamaño nspec (1.0 para componentes si k no los trae)
-        k = onp.asarray(k, dtype=float).ravel()
-        kval = onp.power(10.0, k) if self.k_is_log10 else k
+        K_num = self._prepare_K_numeric(k)
 
-        n_comp = self.n_componentes
-        nspec  = self.nspec
+        # chequeo defensivo
+        if K_num.size != self.nspec:
+            raise ValueError(f"K_num tiene tamaño {K_num.size}, pero nspec={self.nspec}.")
 
-        if kval.size == nspec:
-            K = kval.astype(float)
-        elif kval.size == (nspec - n_comp):
-            K = onp.ones(nspec, dtype=float)
-            K[n_comp:] = kval
-        else:
-            raise ValueError(
-                f"Longitud de k incompatible: len(k)={kval.size}, "
-                f"se esperaba {nspec} o {nspec - n_comp} (nspec={nspec}, n_comp={n_comp})."
-            )
-
+        nspec = self.nspec
         c_calculada = onp.zeros((self.n_reacciones, nspec), dtype=float)
 
         for i in range(self.n_reacciones):
-            c_i, _, c_spec_i = self._solve_single_nr(self.ctot[i, :], K)
+            _, _, c_spec_i = self._solve_single_nr(self.ctot[i, :], K_num)
             c_calculada[i, :] = c_spec_i
 
         # eliminar no-absorbentes en NumPy real
