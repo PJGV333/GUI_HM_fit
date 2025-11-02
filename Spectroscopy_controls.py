@@ -172,7 +172,8 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
 
         # Creación del CheckBox
         self.toggle_components = wx.Button(tab_modelo, label="Define Model Dimensions")
-        self.toggle_components.Bind(wx.EVT_BUTTON, self.on_define_model_dimensions_checked)
+        #self.toggle_components.Bind(wx.EVT_BUTTON, self.on_define_model_dimensions_checked)
+        self.toggle_components.Bind(wx.EVT_BUTTON, self._wrap_define_model_dimensions)
 
         # Creación de los TextCtrl para número de componentes y número de especies
         self.num_components_text, self.entry_nc = self.create_sheet_section("Number of Components:", "0", parent = tab_modelo)
@@ -183,7 +184,11 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         self.sp_select_sizer = wx.BoxSizer(wx.HORIZONTAL)
         
         # Reemplazar el wx.ListCtrl por un wx.grid.Grid
-        self.model_panel = wx.Panel(tab_modelo)
+        #self.model_panel = wx.Panel(tab_modelo)
+        self.model_panel = ScrolledPanel(tab_modelo, style=wx.TAB_TRAVERSAL)
+        self.model_panel.SetupScrolling(scroll_x=False, scroll_y=True)
+        self.model_panel.SetScrollRate(0, 10)
+        self.model_panel.SetMinSize((-1, 240))  # altura fija para que aparezca el scroll interno
         self.model_grid = wx.grid.Grid(self.model_panel)
         self.model_grid.CreateGrid(0, 4)  # Por ejemplo, crear una cuadrícula sin filas inicialmente, pero con 4 columnas
         self.model_grid.SetSelectionMode(wx.grid.Grid.SelectRows)  # Configurar para seleccionar filas completas
@@ -200,7 +205,8 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         modelo_sizer.Add(self.num_components_text, 0, wx.ALL | wx.EXPAND, 5)
         modelo_sizer.Add(self.num_species_text, 0, wx.ALL | wx.EXPAND, 5)
         modelo_sizer.Add(self.sp_columns, 0, wx.EXPAND | wx.ALL, 5)
-        modelo_sizer.Add(self.model_panel, 1, wx.EXPAND | wx.ALL, 5)
+        #modelo_sizer.Add(self.model_panel, 1, wx.EXPAND | wx.ALL, 5)
+        modelo_sizer.Add(self.model_panel, 0, wx.EXPAND | wx.ALL, 5)
         tab_modelo.SetSizer(modelo_sizer)
         tab_modelo.SetupScrolling(scroll_x=False, scroll_y=True)
         tab_modelo.FitInside()
@@ -278,8 +284,28 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         self.Refresh()             # Refresca el frame para mostrar los cambios
         self.Update()
 
+
     #####################################################################################################
-    
+    def _refresh_scroller(self):
+            page = self.GetParent()
+            while page is not None and not hasattr(page, "FitInside"):
+                page = page.GetParent()
+            if page is not None:
+                page.Layout()
+                page.FitInside()
+                page.SendSizeEvent()
+
+    def _wrap_define_model_dimensions(self, evt):
+        try:
+            self.on_define_model_dimensions_checked(evt)  # tu handler original
+        finally:
+            self.Layout()
+            # <- refresca el scroller del bloque Model (la barrita chica)
+            wx.CallAfter(self._refresh_scroller, self.model_panel, False, True)
+            # <- opcional: refresca también la página izquierda completa
+            target_outer = getattr(self, "scrolled_window", self.GetParent())
+            wx.CallAfter(self._refresh_scroller, target_outer, True, True)
+
     def process_data(self, event):
         # Placeholder for the actual data processing
         # Would call the functions from the provided script and display output

@@ -1,6 +1,8 @@
 import wx
 import sys
+import os
 from wx import FileDialog
+from wx.lib.scrolledpanel import ScrolledPanel
 import wx.grid as gridlib
 import pandas as pd
 import numpy as np
@@ -40,6 +42,8 @@ class CancelledByUserException(Exception):
 class App(wx.Frame):
     def __init__(self):
         wx.Frame.__init__(self, None, title="HM Fit", size=(800, 600))
+        
+        self.SetMinSize((1100, 650))
         add_private_font_if_available()
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         self.panel = wx.Panel(self)
@@ -54,24 +58,47 @@ class App(wx.Frame):
 
         # Añadir sizers al panel principal
         self.main_sizer.Add(self.left_sizer, 1, wx.EXPAND | wx.ALL, 5)
-        self.main_sizer.Add(self.right_sizer, 2, wx.EXPAND | wx.ALL, 5)
+        self.main_sizer.Add(self.right_sizer, 1, wx.EXPAND | wx.ALL, 5)
         
         self.technique_notebook = wx.Notebook(self.panel)
                 
-        # Añadir paneles de técnica al wx.Notebook
-        #self.spectroscopy_panel = SpectroscopyPanel(self.technique_notebook)
-        self.spectroscopy_panel = Spectroscopy_controlsPanel(self.technique_notebook, app_ref=self)
-        self.nmr_panel = NMR_controlsPanel(self.technique_notebook, app_ref=self)
-        #self.simulation_panel = Simulation_controlsPanel(self.technique_notebook, app_ref=self)
-        #self.pka_panel = pkaPanel(self.technique_notebook)
-        self.technique_notebook.AddPage(self.spectroscopy_panel, "Spectroscopy")
-        self.technique_notebook.AddPage(self.nmr_panel, "NMR")
-        #self.technique_notebook.AddPage(self.simulation_panel, "Simulation") #... debo utilizar estas lineas: self.notebook = TechniqueNotebook(self)
+        # --- Spectroscopy en ScrolledPanel ---
+        self.spectro_page = ScrolledPanel(self.technique_notebook, style=wx.TAB_TRAVERSAL)
+        self.spectroscopy_panel = Spectroscopy_controlsPanel(self.spectro_page, app_ref=self)
+        _sizer_s = wx.BoxSizer(wx.VERTICAL)
+        _sizer_s.Add(self.spectroscopy_panel, 1, wx.EXPAND)
+        self.spectro_page.SetSizer(_sizer_s)
+        self.spectro_page.SetupScrolling(scroll_x=True, scroll_y=True)
+        self.spectro_page.SetMinSize((560, -1))
+        self.spectro_page.inner_panel = self.spectroscopy_panel
+        self.spectro_page.Bind(
+            wx.EVT_SIZE,
+            lambda e: (self.spectro_page.Layout(), self.spectro_page.FitInside(), e.Skip())
+        )
+        self.technique_notebook.AddPage(self.spectro_page, "Spectroscopy")
+
+        # --- NMR en ScrolledPanel ---
+        self.nmr_page = ScrolledPanel(self.technique_notebook, style=wx.TAB_TRAVERSAL)
+        self.nmr_panel = NMR_controlsPanel(self.nmr_page, app_ref=self)
+        _sizer_n = wx.BoxSizer(wx.VERTICAL)
+        _sizer_n.Add(self.nmr_panel, 1, wx.EXPAND)
+        self.nmr_page.SetSizer(_sizer_n)
+        self.nmr_page.SetupScrolling(scroll_x=True, scroll_y=True)
+        self.nmr_page.SetMinSize((560, -1))
+        self.nmr_page.inner_panel = self.nmr_panel
+        self.nmr_page.Bind(
+            wx.EVT_SIZE,
+            lambda e: (self.nmr_page.Layout(), self.nmr_page.FitInside(), e.Skip())
+        )
+        self.technique_notebook.AddPage(self.nmr_page, "NMR")
+#self.technique_notebook.AddPage(self.simulation_panel, "Simulation") #... debo utilizar estas lineas: self.notebook = TechniqueNotebook(self)
         
         self.left_sizer.Add(self.technique_notebook,  1, wx.EXPAND | wx.ALL)
         # Establecer el sizer principal y ajustar el layout
         self.panel.SetSizer(self.main_sizer)
         self.panel.Layout()
+        # Ajuste automático del ScrolledPanel tras cambios dinámicos
+        self.Bind(wx.EVT_IDLE, self._fit_pages_on_idle)
        
     ##############################################################################################################
         """ Panel derecho del gui """
@@ -96,6 +123,7 @@ class App(wx.Frame):
         self.canvas = FigureCanvas(canvas_panel, -1, self.fig)
         canvas_sizer.Add(self.canvas, 1, wx.EXPAND | wx.ALL)
         canvas_panel.SetSizer(canvas_sizer)
+        canvas_panel.Bind(wx.EVT_SIZE, lambda e: (canvas_panel.Layout(), self.canvas.draw(), e.Skip()))
 
         # Sizer para los botones
         buttons_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -135,7 +163,7 @@ class App(wx.Frame):
         console_sizer = wx.BoxSizer(wx.VERTICAL)
 
         # Crear la consola en el console_panel
-        self.console = wx.TextCtrl(console_panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
+        self.console = wx.TextCtrl(console_panel, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_DONTWRAP | wx.HSCROLL)
         self.console.SetFont(get_monospace_font(9))
 
         # Configuración de colores para la consola
@@ -198,9 +226,22 @@ class App(wx.Frame):
 
         evt.Skip()
     ####################################################################################################################
+    def _fit_pages_on_idle(self, evt):
+        # Mantiene actualizados los scrollbars cuando cambian paneles internos
+        for page in getattr(self, 'spectro_page', []), getattr(self, 'nmr_page', []):
+            if isinstance(page, list):
+                continue
+            try:
+                page.Layout(); page.FitInside()
+            except Exception:
+                pass
+        evt.Skip()
+
+
     def on_process_data(self, event):
         # Obtener el panel actualmente seleccionado
-        current_panel = self.technique_notebook.GetCurrentPage()
+        current_page = self.technique_notebook.GetCurrentPage()
+        current_panel = getattr(current_page, "inner_panel", current_page)
         self.current_technique_panel = current_panel
   
         # Llamar al método `process_data` del panel actual
@@ -369,7 +410,8 @@ class App(wx.Frame):
                 self.Update()
 
         # Determinar el panel activo y reiniciarlo
-        active_panel = self.technique_notebook.GetCurrentPage()  # Asume que self.technique_notebook es el wx.Notebook que contiene las pestañas
+        active_page = self.technique_notebook.GetCurrentPage()
+        active_panel = getattr(active_page, "inner_panel", active_page)  # Asume que self.technique_notebook es el wx.Notebook que contiene las pestañas
         reset_panel(active_panel)
 
         self.Layout()
@@ -391,7 +433,8 @@ class App(wx.Frame):
                 file_path += '.xlsx'
 
              # Obtener el panel actualmente seleccionado
-            current_panel = self.technique_notebook.GetCurrentPage()
+            current_page = self.technique_notebook.GetCurrentPage()
+            current_panel = getattr(current_page, "inner_panel", current_page)
 
             # Aquí va la lógica de guardado de tus datos
             with pd.ExcelWriter(file_path) as writer:
@@ -429,6 +472,8 @@ class App(wx.Frame):
 
 # Iniciar la aplicación
 if __name__ == "__main__":
+    if sys.platform.startswith("win"):
+        os.environ.setdefault("WX_HIGH_DPI_AWARE", "1")
     app = wx.App(False)
     frame = App()
     frame.Show()
