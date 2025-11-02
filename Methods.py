@@ -187,6 +187,7 @@ class BaseTechniquePanel(wx.Panel):
             self._refresh_scroller(self.scrolled_window, scroll_x=True, scroll_y=False)
             self.file_path = file_path
             self.populate_sheet_choices(file_path)
+            
     
     def create_sheet_dropdown_section(self, label_text, parent=None):
             if parent is None:
@@ -245,6 +246,15 @@ class BaseTechniquePanel(wx.Panel):
         self.update_dropdown_choices()
         # También puedes manejar otras acciones necesarias cuando un checkbox es seleccionado o deseleccionado
 
+    def _choice_set_items(choice: 'wx.Choice', items):
+        """Compatibilidad wx: usa SetItems si existe, si no, Set."""
+        if hasattr(choice, "SetItems"):
+            choice.SetItems(items)
+        else:
+            choice.Set(items)
+        choice.Enable(True)
+        choice.Refresh()
+
 
     def populate_sheet_choices(self, file_path):
         try:
@@ -276,6 +286,7 @@ class BaseTechniquePanel(wx.Panel):
 
         except Exception as e:
             wx.MessageBox(f"Error al leer el archivo Excel: {e}", "Error", wx.OK | wx.ICON_ERROR)
+
 
     def clear_model_grid(self):
         if hasattr(self, 'model_grid'):

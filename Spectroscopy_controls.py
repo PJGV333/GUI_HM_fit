@@ -285,26 +285,29 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         self.Update()
 
 
-    #####################################################################################################
-    def _refresh_scroller(self):
-            page = self.GetParent()
-            while page is not None and not hasattr(page, "FitInside"):
-                page = page.GetParent()
-            if page is not None:
-                page.Layout()
-                page.FitInside()
-                page.SendSizeEvent()
-
+    ###############################################################################################
+    def _refresh_page_scroller(self):
+        page = self.GetParent()
+        while page is not None and not hasattr(page, "FitInside"):
+            page = page.GetParent()
+        if page is not None:
+            page.Layout()
+            page.FitInside()
+            page.SendSizeEvent()
+    ###############################################################################################    
     def _wrap_define_model_dimensions(self, evt):
         try:
-            self.on_define_model_dimensions_checked(evt)  # tu handler original
+            self.on_define_model_dimensions_checked(evt)
         finally:
             self.Layout()
-            # <- refresca el scroller del bloque Model (la barrita chica)
-            wx.CallAfter(self._refresh_scroller, self.model_panel, False, True)
-            # <- opcional: refresca también la página izquierda completa
+            # refresca el scroller del bloque Model (usa el de la clase base)
+            wx.CallAfter(BaseTechniquePanel._refresh_scroller, self, self.model_panel, False, True)
+            # refresca también el scroller externo (el de la barra horizontal)
             target_outer = getattr(self, "scrolled_window", self.GetParent())
-            wx.CallAfter(self._refresh_scroller, target_outer, True, True)
+            wx.CallAfter(BaseTechniquePanel._refresh_scroller, self, target_outer, True, True)
+            # y, si quieres, refresca toda la página como extra
+            wx.CallAfter(self._refresh_page_scroller)
+
 
     def process_data(self, event):
         # Placeholder for the actual data processing
@@ -548,7 +551,7 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
             A = solve_A_nnls_pgd(C, Y.T, ridge=0.0, max_iters=300)  
             r = C @ A - Y.T
             #r = C @ np.linalg.pinv(C) @ Y.T - Y.T 
-            return r. ravel() #r.flatten()
+            return r.ravel() #r.flatten()
                 
         # --- al inicio del archivo asegúrate de tener:
         # from errors import pinv_cs, percent_error_log10K, sensitivities_wrt_logK
