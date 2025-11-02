@@ -19,6 +19,7 @@ import timeit
 from Methods import BaseTechniquePanel
 from wx.lib.scrolledpanel import ScrolledPanel
 from errors import compute_errors_spectro_varpro
+from core_ad_probe import solve_A_nnls_pgd
 
 
 def pinv_cs(A, rcond=1e-12):
@@ -437,12 +438,14 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         # Implementing the abortividades function
         def abortividades(k, Y):
             C, Co = res.concentraciones(k)  # Assuming the function concentraciones returns C and Co
-            A = np.linalg.pinv(C) @ Y.T #se cambio np.linag.pinv por np.linalg.pinv
+            #A = np.linalg.pinv(C) @ Y.T 
+            A = solve_A_nnls_pgd(C, Y.T, ridge=0.0, max_iters=300)
             return np.all(A >= 0)
         
         def f_m2(k):
-            C = res.concentraciones(k)[0]    
-            r = C @ np.linalg.pinv(C) @ Y.T - Y.T #se cambio np.linag.pinv por np.linalg.pinv
+            C = res.concentraciones(k)[0]  
+            A = solve_A_nnls_pgd(C, Y.T, ridge=0.0, max_iters=300)  
+            r = C @ A - Y.T #se cambio np.linag.pinv por np.linalg.pinv
             rms = np.sqrt(np.mean(np.square(r)))
             #print(f"f(x): {rms}")
             #print(f"x: {k}")
@@ -450,7 +453,9 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
             
         def f_m(k):
             C = res.concentraciones(k)[0]    
-            r = C @ np.linalg.pinv(C) @ Y.T - Y.T  #se cambio np.linag.pinv por np.linalg.pinv
+            A = solve_A_nnls_pgd(C, Y.T, ridge=0.0, max_iters=300)  
+            r = C @ A - Y.T
+            #r = C @ np.linalg.pinv(C) @ Y.T - Y.T 
             rms = np.sqrt(np.mean(np.square(r)))
             self.res_consola("f(x)", rms)
             self.res_consola("x", k)
@@ -514,7 +519,9 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         # Calcular la matriz jacobiana de los residuos
         def residuals(k):
             C = res.concentraciones(k)[0]
-            r = C @ np.linalg.pinv(C) @ Y.T - Y.T #se cambio np.linag.pinv por np.linalg.pinv
+            A = solve_A_nnls_pgd(C, Y.T, ridge=0.0, max_iters=300)  
+            r = C @ A - Y.T
+            #r = C @ np.linalg.pinv(C) @ Y.T - Y.T 
             return r. ravel() #r.flatten()
                 
         # --- al inicio del archivo asegúrate de tener:
@@ -628,7 +635,7 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
             ssq, r0 = f_m2(k)
             #rms = f_m(k)
             
-            A = np.linalg.pinv(C) @ Y.T
+            A = solve_A_nnls_pgd(C, Y.T, ridge=0.0, max_iters=300)  
 
             self.figura(nm, A.T, "-", "Epsilon (u. a.)", "$\lambda$ (nm)", "Absortividades molares")
             self.figura2(nm, Y, y_cal.T, "-k", "k:", "Y observada (u. a.)", "$\lambda$ (nm)", 0.5, "Ajuste")
@@ -641,7 +648,7 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
             ssq, r0 = f_m2(k)
             #rms = f_m(k)
             
-            A = np.linalg.pinv(C) @ Y.T 
+            A = solve_A_nnls_pgd(C, Y.T, ridge=0.0, max_iters=300) 
             
             if not self.EFA_cb.GetValue():
                 self.figura2(G, Y.T, y_cal, "ko", ":", "Y observada (u. a.)", "[X], M", 1, "Ajuste")
@@ -675,8 +682,7 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         
         dif_en_ct = round(max(100 - (np.sum(C, 1) * 100 / max(H))), 2)
             
-        
-        
+            
         ####pasos para imprimir bonito los resultados. 
         # Función para calcular los anchos máximos necesarios para cada columna
         def calculate_max_column_widths(headers, data_rows):
