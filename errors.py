@@ -3,7 +3,6 @@ import numpy as _onp
 from np_backend import xp as np, jit, jacrev, vmap, lax
 from LM_conc_algoritm import pinv_cs  # complex-step-safe :contentReference[oaicite:4]{index=4}
 
-
 def jacobian_cs(fun, x, delta=1e-20):
     x = np.asarray(x)
     rows = []
@@ -351,95 +350,4 @@ def compute_errors_nmr_varpro(k, res, dq, H, modelo, nas, rcond=1e-10, use_proje
         "percK": percK, "SE_K": SE_K, "SE_log10K": SE_log10K,
         "Cov_log10K": _as_onp(Cov_log10K), "rms": rms, "covfit": s2,
         "coef": _as_onp(coef), "xi": _as_onp(Xi), "J": _as_onp(J),
-    }
-
-# --- RMN: errores con fracción mixta + ridge (JAX/NumPy) ---
-
-def _as_Y2D_np(y, npts, npmod):
-    y = npmod.asarray(y)
-    if y.ndim == 1:
-        if y.shape[0] != npts:
-            raise ValueError(f"Longitud de y={y.shape[0]} no coincide con npts={npts}.")
-        return y[:, None]
-    if y.shape[0] == npts:
-        return y
-    if y.shape[1] == npts:
-        return npmod.swapaxes(y, 0, 1)
-    raise ValueError(f"Formas incompatibles: y={y.shape}, npts={npts}.")
-
-def _fd_jacobian_residuals(fun, x, rel_step=1e-6, abs_step=1e-8):
-    """
-    Jacobiano por diferencia finita central (robusto si hay NumPy puro dentro).
-    fun: R^p -> R^m (devuelve vector 1D)
-    x  : (p,)
-    """
-    x = _onp.asarray(x, dtype=float).ravel()
-    f0 = _onp.asarray(fun(x))
-    m, p = f0.size, x.size
-    J = _onp.empty((m, p), dtype=float)
-    for j in range(p):
-        h = abs_step + rel_step*max(1.0, abs(x[j]))
-        xp = x.copy(); xp[j] = x[j] + h
-        xm = x.copy(); xm[j] = x[j] - h
-        fp = _onp.asarray(fun(xp))
-        fm = _onp.asarray(fun(xm))
-        J[:, j] = (fp - fm) / (2.0*h)
-    return np.asarray(J)  # devuelve en backend actual (jnp o np)
-
-def _fractions_mixed_np(C, H, gamma=0.7, eps=1e-12):
-    denom = eps + gamma * H[:, None] + (1.0 - gamma) * np.sum(C, axis=1, keepdims=True)
-    return C / denom
-
-def _solve_coef_ridge_np(X, y, lam=1e-8):
-    # X: (npts × n_abs), y: (npts × nSignals)
-    XtX = X.T @ X
-    return np.linalg.solve(XtX + lam * np.eye(XtX.shape[0]), X.T @ y)
-
-def compute_errors_nmr_varpro_mixed(k, res, dq, H, modelo, nas,
-                                    gamma=0.7, eps=1e-12, lam=1e-8, rcond=1e-10):
-    """
-    k: (p,) parámetros (log10K)
-    res: solver con .concentraciones(k) -> (C_abs, Co_all)
-    dq: (nSignals × npts) desplazamientos observados (ppm)
-    H : (npts,) total del núcleo observable
-    """
-    k = np.ravel(k)
-
-    def _residuals(theta):
-        C  = res.concentraciones(theta)[0]               # (npts × n_abs)
-        Xi = _fractions_mixed_np(C, H, gamma=gamma, eps=eps)
-        Y2 = _as_Y2D_np(dq.T, Xi.shape[0], np)           # (npts × nSignals)
-        A  = _solve_coef_ridge_np(Xi, Y2, lam=lam)       # (n_abs × nSignals)
-        r  = Y2 - (Xi @ A)                               # (npts × nSignals)
-        return r.ravel()
-
-
-    # --- Jacobiano: intenta JAX; si hay TracerArrayConversionError -> FD ---
-    try:
-        J = jacrev(_residuals)(k)
-    except Exception:
-        # Usa FD central; fun debe aceptar onp.ndarray y devolver 1D onp/jnp
-        J = _fd_jacobian_residuals(
-            lambda th: np.asarray(_residuals(th)),
-            _onp.asarray(k, dtype=float)
-        )
-
-    r   = _residuals(k)
-    p   = k.size
-    m   = r.size
-    dof = max(m - p, 1)
-    s2  = np.sum(r*r) / dof
-    G   = J.T @ J
-    Cov_log10K = s2 * np.linalg.pinv(G, rcond=rcond)
-
-    SE_log10K = np.sqrt(np.clip(np.diag(Cov_log10K), 0.0, np.inf))
-    from errors import percent_error_log10K   # ya lo tienes definido
-    percK, SE_K, _ = percent_error_log10K(k, SE_log10K)
-
-    rms = float(np.sqrt(np.mean(r*r)))
-    return {
-        "percK": np.asarray(percK), "SE_K": np.asarray(SE_K),
-        "SE_log10K": np.asarray(SE_log10K),
-        "Cov_log10K": np.asarray(Cov_log10K),
-        "rms": rms, "s2": float(s2), "J": np.asarray(J)
     }
