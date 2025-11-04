@@ -18,7 +18,8 @@ warnings.filterwarnings("ignore")
 import timeit
 from Methods import BaseTechniquePanel
 from wx.lib.scrolledpanel import ScrolledPanel
-from errors import compute_errors_nmr_varpro
+from errors import compute_errors_nmr_varpro, _pinv_backend
+
 
 
 def pinv_cs(A, rcond=1e-12):
@@ -445,33 +446,67 @@ class NMR_controlsPanel(BaseTechniquePanel):
 
             res = LevenbergMarquardt(C_T, modelo, nas, model_sett) 
 
-        def cal_delta(k):
-            C = res.concentraciones(k)[0]
-            xi = C / H[:, np.newaxis]
-            coeficientes = pinv_cs(xi) @ dq #se cambio np.linag.pinv por np.linalg.pinv
-            dq_cal = coeficientes.T @ xi.T
-            return dq_cal
+        
+        def _as_Y2D(y, npts):
+            """
+            Devuelve y como matriz (npts × nSignals).
+            Acepta:
+            - vector (npts,)           -> (npts × 1)
+            - matriz (npts × m)        -> tal cual
+            - matriz (m × npts)        -> transpone a (npts × m)
+            """
+            y = np.asarray(y)
+            if y.ndim == 1:
+                if y.shape[0] != npts:
+                    raise ValueError(f"Longitud de y={y.shape[0]} no coincide con npts={npts}.")
+                return y[:, None]
+            # y es 2D
+            if y.shape[0] == npts:
+                return y
+            if y.shape[1] == npts:
+                return y.T
+            raise ValueError(f"Formas incompatibles: y={y.shape}, npts={npts}.")
+        
+        
+        def _fractions_mixed(C, H, gamma=0.7, eps=1e-12):
+            denom = eps + gamma * H[:, None] + (1.0 - gamma) * np.sum(C, axis=1, keepdims=True)
+            return C / denom
 
-        def cal_coef(k):
-            C = res.concentraciones(k)[0]
-            xi = C / H[:, np.newaxis]
-            coeficientes = pinv_cs(xi) @ dq #se cambio np.linag.pinv por np.linalg.pinv
-            return coeficientes
+        def _solve_coef_ridge(X, y, lam=1e-8):
+            # X: (npts × n_abs), y: (npts × nSignals)
+            npts = X.shape[0]
+            y2d  = _as_Y2D(y, npts)
+            XtX  = X.T @ X                     # (n_abs × n_abs)
+            rhs  = X.T @ y2d                   # (n_abs × nSignals)
+            return np.linalg.solve(XtX + lam * np.eye(XtX.shape[0]), rhs)  # (n_abs × nSignals)
 
-        def f_m(k):
-            dq_cal = cal_delta(k)
+        def cal_delta(k, gamma=0.7, eps=1e-12, lam=1e-8):
+            C  = res.concentraciones(k)[0]               # (npts × n_abs)
+            Xi = _fractions_mixed(C, H, gamma=gamma, eps=eps)  # (npts × n_abs)
+            A  = _solve_coef_ridge(Xi, dq.T, lam=lam)    # A: (n_abs × nSignals)
+            dq_cal = Xi @ A                               # (npts × nSignals)
+            return dq_cal.T                               # (nSignals × npts)
+
+        def cal_coef(k, gamma=0.7, eps=1e-12, lam=1e-8):
+            C  = res.concentraciones(k)[0]
+            Xi = _fractions_mixed(C, H, gamma=gamma, eps=eps)
+            return _solve_coef_ridge(Xi, dq.T, lam=lam)
+
+
+        def f_m(k, gamma=0.7, eps=1e-12, lam=1e-8):
+            dq_cal = cal_delta(k, gamma=gamma, eps=eps, lam=lam)
             r = dq - dq_cal.T
             rms = np.sqrt(np.mean(np.square(r)))
             self.res_consola("f(x)", rms)
             self.res_consola("x", k)
             wx.Yield()
             return rms
-        
-        def f_m2(k):
-            dq_cal = cal_delta(k)
+
+        def f_m2(k, gamma=0.7, eps=1e-12, lam=1e-8):
+            dq_cal = cal_delta(k, gamma=gamma, eps=eps, lam=lam)
             r = dq - dq_cal.T
-            rms = np.sqrt(np.mean(np.square(r)))
-            return rms
+            return np.sqrt(np.mean(np.square(r)))
+
 
         # Registrar el tiempo de inicio
         inicio = timeit.default_timer()
@@ -526,134 +561,20 @@ class NMR_controlsPanel(BaseTechniquePanel):
         n = len(H)
         p = len(k)
         #SER = f_m2(k)
-
-        from errors import percent_error_log10K, sensitivities_wrt_logK
         
-        # --- al inicio del archivo (cabecera) asegúrate de tener:
-# from errors import pinv_cs, percent_error_log10K, sensitivities_wrt_logK
+        from errors import compute_errors_nmr_varpro_mixed
 
-        def compute_errors_common(k, res, dq, H, modelo, nas):
-            """
-            Calcula jacobiano de residuos, covarianza y métricas de ajuste
-            para NR y LM con un único flujo, usando sensibilidades implícitas.
-
-            Parámetros
-            ----------
-            k       : (p,)           parámetros óptimos (log10 K)
-            res     : solver de concentraciones (NR o LM) con método .concentraciones(k)
-            dq      : (npts × nP)    datos (Δδ) observados
-            H       : (npts,)        vector H (denominador que usas para xi)
-            modelo  : (nspec×n_comp) o (n_comp×nspec)  matriz M del balance
-            nas     : lista[int]     índices de especies NO absorbentes
-
-            Devuelve
-            --------
-            dict con claves:
-            - 'percK', 'SE_K', 'SE_log10K', 'Cov_log10K', 'rms', 'covfit',
-                'coef', 'xi', 'J'
-            """
-            import numpy as np
-
-            k = np.ravel(k)
-
-            # 1) Concentraciones al óptimo (común a NR/LM)
-            C, Co = res.concentraciones(k)      # C: (npts × n_abs), Co: (npts × nspec)
-
-            # 2) Ajuste lineal en el óptimo (común a NR/LM)
-            xi   = C / H[:, None]               # (npts × n_abs)
-            coef = pinv_cs(xi) @ dq             # (n_abs × nP)
-
-            npts, n_abs = C.shape
-            nP   = dq.shape[1]                  # nº de observables/protones
-            p    = len(k)                       # nº de parámetros libres
-            nspec = Co.shape[1]
-
-            # 3) Normalizar orientación de 'modelo' y deducir n_comp
-            M_in = np.asarray(modelo, dtype=float)
-            if M_in.shape[0] == nspec:
-                Ms = M_in                       # (nspec × n_comp)
-                n_comp = Ms.shape[1]
-            elif M_in.shape[1] == nspec:
-                Ms = M_in.T                     # (nspec × n_comp)
-                n_comp = Ms.shape[1]
-            else:
-                raise ValueError(
-                    f"modelo incompatible con Co: Co has nspec={nspec}, modelo shape={M_in.shape}"
-                )
-
-            # 4) Índices de especies absorbentes (para mapear a xi)
-            abs_idx = [j for j in range(nspec) if j not in nas]
-
-            # 5) Mapeo parámetros -> columnas de especies (param_idx)
-            #    Caso estándar: parámetros K gobiernan los COMPLEJOS (columnas desde n_comp al final).
-            param_idx = list(range(n_comp, nspec))
-
-            #    Si por diseño p != nspec - n_comp (p. ej., no todos los complejos se parametrizan),
-            #    ajusta al tamaño p tomando las últimas p columnas o lanza error si prefieres.
-            if len(param_idx) != p:
-                if p <= nspec:
-                    param_idx = list(range(nspec - p, nspec))
-                else:
-                    raise ValueError(f"No hay {p} columnas en Co para mapear parámetros; nspec={nspec}")
-
-            # 6) Construir jacobiano de residuos J (p × m), m = npts*nP
-            J = np.zeros((p, npts * nP), dtype=float)
-
-            for i in range(npts):
-                # dCspec/dlog10K (nspec × p) para la fila i (común a NR/LM)
-                dC_dlog10K = sensitivities_wrt_logK(Co[i], Ms, param_idx=param_idx)  # (nspec × p)
-
-                # Sólo especies absorbentes y pasar a xi (divide por H[i])
-                dC_abs = dC_dlog10K[abs_idx, :]   # (n_abs × p)
-                dxi    = (1.0 / H[i]) * dC_abs    # (n_abs × p)
-
-                # y_i = coef.T @ xi_i  -> dy_i/dlogK = coef.T @ dxi_i
-                dyi_dk = (coef.T @ dxi).T         # (p × nP)
-
-                # residuo: r_i = dq_i - y_i -> dr_i/dlogK = -dy_i/dlogK
-                J[:, i*nP:(i+1)*nP] = -dyi_dk
-
-            # 7) Residuos y métricas
-            yfit = (coef.T @ xi.T).T             # (npts × nP)
-            r    = (dq - yfit).ravel()
-            m    = r.size
-            dof  = max(m - p, 1)
-            s2   = float((r @ r) / dof)
-
-            # Covarianza en log10K y errores
-            Cov_log10K = s2 * pinv_cs(J @ J.T)   # (p × p)
-            SE_log10K  = np.sqrt(np.clip(np.diag(Cov_log10K), 0.0, np.inf))
-            percK, SE_K, _ = percent_error_log10K(k, SE_log10K)
-
-            rms    = float(np.sqrt(np.mean(r**2)))
-            covfit = s2
-
-            return {
-                "percK": percK,
-                "SE_K": SE_K,
-                "SE_log10K": SE_log10K,
-                "Cov_log10K": Cov_log10K,
-                "rms": rms,
-                "covfit": covfit,
-                "coef": coef,
-                "xi": xi,
-                "J": J,
-            }
-
-
-        metrics = compute_errors_nmr_varpro(
-        k=self.r_0.x, res=res, dq=dq, H=H, modelo=modelo, nas=nas,
-        rcond=1e-10, use_projector=True
+        metrics = compute_errors_nmr_varpro_mixed(
+            k=self.r_0.x, res=res, dq=dq, H=H, modelo=modelo, nas=nas,
+            gamma=0.7, eps=1e-12, lam=1e-8, rcond=1e-10
         )
         percK     = metrics["percK"]
         SE_K      = metrics["SE_K"]
         rms       = metrics["rms"]
-        covfit    = metrics["covfit"]
+        covfit    = metrics["s2"]
         SE_log10K = metrics["SE_log10K"]
-        coef      = metrics["coef"]
         J         = metrics["J"]
-        xi        = metrics["xi"]
-                
+
 
         SER = f_m2(k)
 
