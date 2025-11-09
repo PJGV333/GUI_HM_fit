@@ -19,7 +19,7 @@ import timeit
 from Methods import BaseTechniquePanel
 from wx.lib.scrolledpanel import ScrolledPanel
 from errors import compute_errors_nmr_varpro
-
+import re
 
 def pinv_cs(A, rcond=1e-12):
     A = np.asarray(A)
@@ -33,6 +33,37 @@ def pinv_cs(A, rcond=1e-12):
     Y = Pr[n:2*n, :m]
     return X + 1j*Y
 
+
+# --- a nivel de módulo, en NMR_controls.py ---
+
+def project_coeffs_block_onp(dq_block, Cspec_block, mask_block):
+    """
+    Ajuste lineal por señal usando SOLO filas observadas (mask=True).
+    dq_block:   (n_i, m_sig)   Δδ con NaN preservados (o 0 donde no hay dato)
+    Cspec_block:(n_i, nspec)   concentraciones de especies (del solver) para ESTE bloque
+    mask_block: (n_i, m_sig)   True donde hay dato observado en dq_block
+    Devuelve: dq_calc_block (n_i, m_sig) con 0 donde no hay dato.
+    """
+    n_i, m_sig = dq_block.shape
+    dq_calc = onp.zeros_like(dq_block, dtype=float)
+
+    for j in range(m_sig):
+        mj = mask_block[:, j]
+        if mj.sum() < 2:
+            continue  # no hay suficientes puntos para esa señal
+        X = Cspec_block[mj, :]        # diseño solo en filas observadas
+        y = dq_block[mj, j]
+        # LS estable (NumPy real)
+        coef, *_ = onp.linalg.lstsq(X, y, rcond=None)
+        dq_calc[mj, j] = X @ coef
+    return dq_calc
+
+def residual_masked_onp(dq_block, dq_calc_block, mask_block):
+    """Vectoriza residuales SOLO donde mask=True."""
+    return (dq_block - dq_calc_block)[mask_block].ravel()
+
+
+    
 # Clase para la técnica de NMR
 class NMR_controlsPanel(BaseTechniquePanel):
     def __init__(self, parent, app_ref):
@@ -378,7 +409,6 @@ class NMR_controlsPanel(BaseTechniquePanel):
         
         C_T = concentracion[columnas_seleccionadas].to_numpy()
         
-
         # Crear un diccionario que mapea nombres de columnas a sus nuevos índices en C_T
         column_indices_in_C_T = {name: index for index, name in enumerate(columnas_seleccionadas)}
 
@@ -408,7 +438,9 @@ class NMR_controlsPanel(BaseTechniquePanel):
         C_T = pd.DataFrame(C_T)
         Chem_Shift_T = pd.DataFrame(Chem_Shift_T)
         dq1 = Chem_Shift_T - Chem_Shift_T.iloc[0]
-        dq = np.array(dq1)
+        dq  = onp.asarray(dq1.to_numpy(dtype=float))   # NumPy real
+        mask = onp.isfinite(dq)                        # True solo donde hay dato
+
 
         # Intentar leer desde el archivo Excel
         grid_data = self.extract_data_from_grid()
@@ -459,19 +491,28 @@ class NMR_controlsPanel(BaseTechniquePanel):
             return coeficientes
 
         def f_m(k):
-            dq_cal = cal_delta(k)
-            r = dq - dq_cal.T
-            rms = np.sqrt(np.mean(np.square(r)))
+            # Concentraciones y matriz de diseño por especie observante
+            C = res.concentraciones(k)[0]         # (npts × n_abs)
+            X = C / H[:, None]                     # (npts × n_abs)
+
+            # Proyección por señal usando SOLO filas válidas en cada columna
+            dq_cal = project_coeffs_block_onp(dq, X, mask)        # (npts × nP)
+            r_vec  = residual_masked_onp(dq, dq_cal, mask)        # (Nobs_eff,)
+
+            rms = float(onp.sqrt(onp.mean(r_vec**2)))
             self.res_consola("f(x)", rms)
             self.res_consola("x", k)
             wx.Yield()
             return rms
-        
+
         def f_m2(k):
-            dq_cal = cal_delta(k)
-            r = dq - dq_cal.T
-            rms = np.sqrt(np.mean(np.square(r)))
+            C = res.concentraciones(k)[0]
+            X = C / H[:, None]
+            dq_cal = project_coeffs_block_onp(dq, X, mask)
+            r_vec  = residual_masked_onp(dq, dq_cal, mask)
+            rms = float(onp.sqrt(onp.mean(r_vec**2)))
             return rms
+
 
         # Registrar el tiempo de inicio
         inicio = timeit.default_timer()
@@ -526,6 +567,7 @@ class NMR_controlsPanel(BaseTechniquePanel):
         n = len(H)
         p = len(k)
         #SER = f_m2(k)
+
 
         from errors import percent_error_log10K, sensitivities_wrt_logK
         
@@ -643,8 +685,8 @@ class NMR_controlsPanel(BaseTechniquePanel):
 
         metrics = compute_errors_nmr_varpro(
         k=self.r_0.x, res=res, dq=dq, H=H, modelo=modelo, nas=nas,
-        rcond=1e-10, use_projector=True
-        )
+        rcond=1e-10, use_projector=True, mask=mask)
+
         percK     = metrics["percK"]
         SE_K      = metrics["SE_K"]
         rms       = metrics["rms"]
@@ -664,16 +706,24 @@ class NMR_controlsPanel(BaseTechniquePanel):
             
             self.figura(H, C, ":o",  "[Species], M", "[H], M", "Perfil de concentraciones")
 
-            dq_cal = cal_delta(k).T
+            C_opt = res.concentraciones(k)[0]
+            X_opt = C_opt / H[:, None]
+            dq_fit = project_coeffs_block_onp(dq, X_opt, mask)   # (npts × nP)
 
-            self.figura2(H, dq, cal_delta(k).T, "o", ":", "$\Delta$$\delta$ (ppm)", "[H], M", 1, "Ajuste")
+            dq_cal = dq_fit                                      # para tablas/export
+            self.figura2(H, dq, dq_fit, "o", ":", "$\\Delta$\\delta (ppm)", "[H], M", 1, "Ajuste")
+
 
         else:
-                self.figura(G, C, ":o", "[Species], M", "[G], M", "Perfil de concentraciones")
+            self.figura(G, C, ":o", "[Species], M", "[G], M", "Perfil de concentraciones")
 
-                dq_cal = cal_delta(k).T
+            C_opt = res.concentraciones(k)[0]
+            X_opt = C_opt / H[:, None]
+            dq_fit = project_coeffs_block_onp(dq, X_opt, mask)   # (npts × nP)
 
-                self.figura2(G, dq, cal_delta(k).T, "o", ":", "$\Delta$$\delta$ (ppm)", "[G], M", 1, "Ajuste")
+            dq_cal = dq_fit    
+
+            self.figura2(G, dq, cal_delta(k).T, "o", ":", "$\Delta$$\delta$ (ppm)", "[G], M", 1, "Ajuste")
         
             
 

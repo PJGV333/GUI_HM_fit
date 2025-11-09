@@ -304,9 +304,11 @@ def compute_errors_spectro_varpro(k, res, Y, modelo, nas, rcond=1e-10, use_proje
         "A": _as_onp(A), "J": _as_onp(J), "yfit": _as_onp((C @ A).T)
     }
 
-def compute_errors_nmr_varpro(k, res, dq, H, modelo, nas, rcond=1e-10, use_projector=True):
+def compute_errors_nmr_varpro(k, res, dq, H, modelo, nas, rcond=1e-10, use_projector=True, mask=None):
     """
-    Versión NMR: sustituye C->Xi=C/H, Y->dq
+    Versión NMR con soporte de datos faltantes.
+    Si 'mask' es None, usa el camino denso (compatibilidad).
+    Si 'mask' es bool (m × nP), ignora filas NO observadas por columna (estilo HypNMR).
     """
     C, Co = res.concentraciones(k)    # C: (m × n_abs), Co: (m × nspec)
     nspec = Co.shape[1]
@@ -320,34 +322,85 @@ def compute_errors_nmr_varpro(k, res, dq, H, modelo, nas, rcond=1e-10, use_proje
         else:
             raise ValueError(f"p={p} > nspec={nspec}")
 
-    Xi   = C / H[:, None]                      # (m × n_abs)
-    coef = _pinv_backend(Xi, rcond=rcond) @ dq # (n_abs × nP)
-    Yfit = (coef.T @ Xi.T).T                   # (m × nP)
-    R    = (Yfit - dq)                         # ojo: residuo con mismo signo que espectro
-    r    = R.reshape(-1)
-    dof  = max(r.size - p, 1)
-    s2   = float((r @ r) / dof)
+    Xi = C / H[:, None]                      # (m × n_abs)
+    m, n_abs = Xi.shape
+    dq = _as_onp(dq)
 
-    # Jacobiano proyectado: dXi = (1/H_i) * dC_abs
-    # Primero dC_abs como en espectro:
-    dC_all_abs = _build_dC_all(Co, Ms, nas, param_idx)      # (m × n_abs × p)
-    Hcol = H.reshape(-1, 1, 1)
-    dXi_all = dC_all_abs / Hcol                             # (m × n_abs × p)
+    # ---------- CAMINO SIN MÁSCARA (compatibilidad) ----------
+    if mask is None:
+        coef = _pinv_backend(Xi, rcond=rcond) @ dq  # (n_abs × nP)
+        Yfit = (coef.T @ Xi.T).T                    # (m × nP)
+        R    = (Yfit - dq)                          # (m × nP)
+        r    = R.reshape(-1)
+        dof  = max(r.size - p, 1)
+        s2   = float((r @ r) / dof)
 
-    J = _jac_varpro(Xi, coef, dXi_all, use_projector=use_projector, rcond=rcond)
+        # Jacobiano proyectado (denso)
+        dC_all_abs = _build_dC_all(Co, Ms, nas, param_idx)      # (m × n_abs × p)
+        dXi_all = dC_all_abs / H.reshape(-1, 1, 1)              # (m × n_abs × p)
+        J = _jac_varpro(Xi, coef, dXi_all, use_projector=use_projector, rcond=rcond)
+
+        Cov_log10K = s2 * _pinv_backend(J @ J.T, rcond=rcond)
+        SE_log10K = _onp.sqrt(_onp.clip(_onp.diag(_as_onp(Cov_log10K)), 0.0, _onp.inf))
+        pm = percent_metrics_from_log10K(_as_onp(k), SE_log10K)
+
+        percK = pm["perc_linear"]; SE_K = pm["SE_K"]
+        rms = float(np.sqrt(np.mean(R * R)))
+        return {
+            "percK": percK, "SE_K": SE_K, "SE_log10K": SE_log10K,
+            "Cov_log10K": _as_onp(Cov_log10K), "rms": rms, "covfit": s2,
+            "coef": _as_onp(coef), "xi": _as_onp(Xi), "J": _as_onp(J),
+        }
+
+    # ---------- CAMINO CON MÁSCARA (ignora huecos por columna) ----------
+    mask = _onp.asarray(mask, dtype=bool)
+    nP = dq.shape[1]
+
+    coef = _onp.zeros((n_abs, nP), dtype=float)
+    R_blocks = []   # lista de residuales por columna, sólo filas observadas
+    J_cols   = []   # lista de J (p × m_j) por columna
+
+    # Precompute dC_all_abs (m × n_abs × p)
+    dC_all_abs = _build_dC_all(Co, Ms, nas, param_idx)
+
+    for j in range(nP):
+        mj = mask[:, j]
+        if not mj.any():
+            continue
+        Xi_m = Xi[mj, :]                        # (m_j × n_abs)
+        y    = dq[mj, j]                         # (m_j,)
+
+        # coeficiente de la señal j usando SOLO filas observadas
+        Aj = _pinv_backend(Xi_m, rcond=rcond) @ y[:, None]   # (n_abs × 1)
+        coef[:, j] = Aj[:, 0]
+
+        # residuales de la señal j
+        yfit = (Xi_m @ Aj).ravel()              # (m_j,)
+        R_blocks.append(yfit - y)
+
+        # Jacobiano para la señal j: dXi en filas observadas
+        dXi_m = (dC_all_abs[mj, :, :] / H[mj].reshape(-1, 1, 1))   # (m_j × n_abs × p)
+        Jj = _jac_varpro(Xi_m, Aj, dXi_m, use_projector=use_projector, rcond=rcond)  # (p × m_j)
+        J_cols.append(Jj)
+
+    if not J_cols:
+        raise ValueError("No hay datos observados para calcular errores (máscara vacía).")
+
+    r  = _onp.concatenate([_as_onp(rb) for rb in R_blocks], axis=0)   # (M_eff,)
+    J  = _onp.concatenate([_as_onp(Jc) for Jc in J_cols], axis=1)     # (p × M_eff)
+    dof = max(r.size - p, 1)
+    s2  = float((r @ r) / dof)
 
     Cov_log10K = s2 * _pinv_backend(J @ J.T, rcond=rcond)
-    SE_log10K = _onp.sqrt(_onp.clip(_onp.diag(_as_onp(Cov_log10K)), 0.0, _onp.inf))
+    SE_log10K  = _onp.sqrt(_onp.clip(_onp.diag(_as_onp(Cov_log10K)), 0.0, _onp.inf))
     pm = percent_metrics_from_log10K(_as_onp(k), SE_log10K)
 
-    percK      = pm["perc_linear"]      # %Error (K) por delta method (simétrico)
-    SE_K       = pm["SE_K"]
-    perc_hi    = pm["perc_hi"]          # % asimétrico (arriba)
-    perc_lo    = pm["perc_lo"]          # % asimétrico (abajo)
+    percK = pm["perc_linear"]; SE_K = pm["SE_K"]
+    # RMS sobre observados únicamente
+    RMS = float(_onp.sqrt(_onp.mean(_onp.concatenate(R_blocks)**2)))
 
-    rms = float(np.sqrt(np.mean(R * R)))
     return {
         "percK": percK, "SE_K": SE_K, "SE_log10K": SE_log10K,
-        "Cov_log10K": _as_onp(Cov_log10K), "rms": rms, "covfit": s2,
+        "Cov_log10K": _as_onp(Cov_log10K), "rms": RMS, "covfit": s2,
         "coef": _as_onp(coef), "xi": _as_onp(Xi), "J": _as_onp(J),
     }
