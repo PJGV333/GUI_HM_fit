@@ -34,29 +34,58 @@ def pinv_cs(A, rcond=1e-12):
     return X + 1j*Y
 
 
+def residuals_masked_onp(k, dq, mask, H, solver):
+    """Vector de residuales usando solo observaciones válidas (mask=True)."""
+    C = solver.concentraciones(k)[0]      # (m × n_abs)
+    X = C / H[:, None]                    # (m × n_abs)
+    dq_cal = project_coeffs_block_onp(dq, X, mask)
+    return (dq - dq_cal)[mask].ravel()
+
 # --- a nivel de módulo, en NMR_controls.py ---
 
-def project_coeffs_block_onp(dq_block, Cspec_block, mask_block):
+def project_coeffs_block_onp(dq_block, X_block, mask_block, rcond=1e-10, ridge=0.0):
     """
-    Ajuste lineal por señal usando SOLO filas observadas (mask=True).
-    dq_block:   (n_i, m_sig)   Δδ con NaN preservados (o 0 donde no hay dato)
-    Cspec_block:(n_i, nspec)   concentraciones de especies (del solver) para ESTE bloque
-    mask_block: (n_i, m_sig)   True donde hay dato observado en dq_block
-    Devuelve: dq_calc_block (n_i, m_sig) con 0 donde no hay dato.
+    Ajusta coeficientes por señal usando SOLO filas válidas.
+    - Filtra también filas donde X tenga NaN/Inf o norm≈0 (p.ej. H=0).
+    - Usa pinv o ridge si lstsq falla / X es mal condicionada.
+    dq_block : (m, nP)
+    X_block  : (m, n_abs)   # = C / H[:,None] que tú ya calculas antes
+    mask_block: (m, nP)
     """
-    n_i, m_sig = dq_block.shape
+    m, nP = dq_block.shape
     dq_calc = onp.zeros_like(dq_block, dtype=float)
 
-    for j in range(m_sig):
-        mj = mask_block[:, j]
-        if mj.sum() < 2:
+    # filas de X que son numéricamente utilizables
+    finite_rows = onp.isfinite(X_block).all(axis=1)
+    nonzero_rows = onp.linalg.norm(X_block, axis=1) > 0.0
+    good_rows_X = finite_rows & nonzero_rows
+
+    for j in range(nP):
+        mj = mask_block[:, j] & good_rows_X
+        nj = int(mj.sum())
+        if nj < 2:
             continue  # no hay suficientes puntos para esa señal
-        X = Cspec_block[mj, :]        # diseño solo en filas observadas
-        y = dq_block[mj, j]
-        # LS estable (NumPy real)
-        coef, *_ = onp.linalg.lstsq(X, y, rcond=None)
+
+        X = X_block[mj, :]      # (nj × n_abs)
+        y = dq_block[mj, j]     # (nj,)
+
+        try:
+            # camino estable
+            coef, *_ = onp.linalg.lstsq(X, y, rcond=rcond)
+        except onp.linalg.LinAlgError:
+            if ridge > 0.0:
+                # ridge mínimo si lstsq no converge
+                XtX = X.T @ X
+                coef = onp.linalg.solve(XtX + ridge * onp.eye(XtX.shape[0]), X.T @ y)
+            else:
+                # fallback pinv
+                coef = onp.linalg.pinv(X, rcond=rcond) @ y
+
+        # predicción solo en filas observadas
         dq_calc[mj, j] = X @ coef
+
     return dq_calc
+
 
 def residual_masked_onp(dq_block, dq_calc_block, mask_block):
     """Vectoriza residuales SOLO donde mask=True."""
@@ -491,19 +520,33 @@ class NMR_controlsPanel(BaseTechniquePanel):
             return coeficientes
 
         def f_m(k):
-            # Concentraciones y matriz de diseño por especie observante
-            C = res.concentraciones(k)[0]         # (npts × n_abs)
-            X = C / H[:, None]                     # (npts × n_abs)
+            try:
+                C = res.concentraciones(k)[0]          # (m × n_abs)
+                X = C / H[:, None]                     # (m × n_abs)
 
-            # Proyección por señal usando SOLO filas válidas en cada columna
-            dq_cal = project_coeffs_block_onp(dq, X, mask)        # (npts × nP)
-            r_vec  = residual_masked_onp(dq, dq_cal, mask)        # (Nobs_eff,)
+                # Filtra filas inutilizables en X (evita H≈0 / inf / NaN)
+                finite = onp.isfinite(X).all(axis=1)
+                nonzero = onp.linalg.norm(X, axis=1) > 0.0
+                good = finite & nonzero
 
-            rms = float(onp.sqrt(onp.mean(r_vec**2)))
-            self.res_consola("f(x)", rms)
-            self.res_consola("x", k)
-            wx.Yield()
-            return rms
+                # Si quedan muy pocas filas efectivas para todas las señales → penaliza
+                if good.sum() < (len(k) + 2):
+                    return 1e9
+
+                dq_cal = project_coeffs_block_onp(dq, X, mask)   # ya robusta
+                r_vec  = (dq - dq_cal)[mask].ravel()
+                if r_vec.size == 0 or not onp.isfinite(r_vec).all():
+                    return 1e9
+
+                rms = float(onp.sqrt(onp.mean(r_vec**2)))
+                self.res_consola("f(x)", rms)
+                self.res_consola("x", k)
+                wx.Yield()   # ok, pero no bloquea si la función termina
+                return rms
+            except Exception:
+                # Cualquier error numérico inesperado → penaliza (no cuelga el DE/NM)
+                return 1e9
+
 
         def f_m2(k):
             C = res.concentraciones(k)[0]
@@ -572,115 +615,14 @@ class NMR_controlsPanel(BaseTechniquePanel):
         from errors import percent_error_log10K, sensitivities_wrt_logK
         
         # --- al inicio del archivo (cabecera) asegúrate de tener:
-# from errors import pinv_cs, percent_error_log10K, sensitivities_wrt_logK
 
-        def compute_errors_common(k, res, dq, H, modelo, nas):
-            """
-            Calcula jacobiano de residuos, covarianza y métricas de ajuste
-            para NR y LM con un único flujo, usando sensibilidades implícitas.
 
-            Parámetros
-            ----------
-            k       : (p,)           parámetros óptimos (log10 K)
-            res     : solver de concentraciones (NR o LM) con método .concentraciones(k)
-            dq      : (npts × nP)    datos (Δδ) observados
-            H       : (npts,)        vector H (denominador que usas para xi)
-            modelo  : (nspec×n_comp) o (n_comp×nspec)  matriz M del balance
-            nas     : lista[int]     índices de especies NO absorbentes
-
-            Devuelve
-            --------
-            dict con claves:
-            - 'percK', 'SE_K', 'SE_log10K', 'Cov_log10K', 'rms', 'covfit',
-                'coef', 'xi', 'J'
-            """
-            import numpy as np
-
-            k = np.ravel(k)
-
-            # 1) Concentraciones al óptimo (común a NR/LM)
-            C, Co = res.concentraciones(k)      # C: (npts × n_abs), Co: (npts × nspec)
-
-            # 2) Ajuste lineal en el óptimo (común a NR/LM)
-            xi   = C / H[:, None]               # (npts × n_abs)
-            coef = pinv_cs(xi) @ dq             # (n_abs × nP)
-
-            npts, n_abs = C.shape
-            nP   = dq.shape[1]                  # nº de observables/protones
-            p    = len(k)                       # nº de parámetros libres
-            nspec = Co.shape[1]
-
-            # 3) Normalizar orientación de 'modelo' y deducir n_comp
-            M_in = np.asarray(modelo, dtype=float)
-            if M_in.shape[0] == nspec:
-                Ms = M_in                       # (nspec × n_comp)
-                n_comp = Ms.shape[1]
-            elif M_in.shape[1] == nspec:
-                Ms = M_in.T                     # (nspec × n_comp)
-                n_comp = Ms.shape[1]
-            else:
-                raise ValueError(
-                    f"modelo incompatible con Co: Co has nspec={nspec}, modelo shape={M_in.shape}"
-                )
-
-            # 4) Índices de especies absorbentes (para mapear a xi)
-            abs_idx = [j for j in range(nspec) if j not in nas]
-
-            # 5) Mapeo parámetros -> columnas de especies (param_idx)
-            #    Caso estándar: parámetros K gobiernan los COMPLEJOS (columnas desde n_comp al final).
-            param_idx = list(range(n_comp, nspec))
-
-            #    Si por diseño p != nspec - n_comp (p. ej., no todos los complejos se parametrizan),
-            #    ajusta al tamaño p tomando las últimas p columnas o lanza error si prefieres.
-            if len(param_idx) != p:
-                if p <= nspec:
-                    param_idx = list(range(nspec - p, nspec))
-                else:
-                    raise ValueError(f"No hay {p} columnas en Co para mapear parámetros; nspec={nspec}")
-
-            # 6) Construir jacobiano de residuos J (p × m), m = npts*nP
-            J = np.zeros((p, npts * nP), dtype=float)
-
-            for i in range(npts):
-                # dCspec/dlog10K (nspec × p) para la fila i (común a NR/LM)
-                dC_dlog10K = sensitivities_wrt_logK(Co[i], Ms, param_idx=param_idx)  # (nspec × p)
-
-                # Sólo especies absorbentes y pasar a xi (divide por H[i])
-                dC_abs = dC_dlog10K[abs_idx, :]   # (n_abs × p)
-                dxi    = (1.0 / H[i]) * dC_abs    # (n_abs × p)
-
-                # y_i = coef.T @ xi_i  -> dy_i/dlogK = coef.T @ dxi_i
-                dyi_dk = (coef.T @ dxi).T         # (p × nP)
-
-                # residuo: r_i = dq_i - y_i -> dr_i/dlogK = -dy_i/dlogK
-                J[:, i*nP:(i+1)*nP] = -dyi_dk
-
-            # 7) Residuos y métricas
-            yfit = (coef.T @ xi.T).T             # (npts × nP)
-            r    = (dq - yfit).ravel()
-            m    = r.size
-            dof  = max(m - p, 1)
-            s2   = float((r @ r) / dof)
-
-            # Covarianza en log10K y errores
-            Cov_log10K = s2 * pinv_cs(J @ J.T)   # (p × p)
-            SE_log10K  = np.sqrt(np.clip(np.diag(Cov_log10K), 0.0, np.inf))
-            percK, SE_K, _ = percent_error_log10K(k, SE_log10K)
-
-            rms    = float(np.sqrt(np.mean(r**2)))
-            covfit = s2
-
-            return {
-                "percK": percK,
-                "SE_K": SE_K,
-                "SE_log10K": SE_log10K,
-                "Cov_log10K": Cov_log10K,
-                "rms": rms,
-                "covfit": covfit,
-                "coef": coef,
-                "xi": xi,
-                "J": J,
-            }
+        # Chequeo mínimo antes de calcular errores
+        r_test = residuals_masked_onp(self.r_0.x, dq, mask, H, res)
+        if (r_test.size <= len(self.r_0.x)) or (not onp.isfinite(r_test).all()):
+            self.res_consola("Aviso",
+                "No se pueden calcular errores: Nobs_eff ≤ p o residuales no finitos (roles/columnas).")
+            return  # salir sin calcular errores
 
 
         metrics = compute_errors_nmr_varpro(
@@ -697,7 +639,7 @@ class NMR_controlsPanel(BaseTechniquePanel):
         xi        = metrics["xi"]
                 
 
-        SER = f_m2(k)
+        SER = f_m(k)
 
         C, Co = res.concentraciones(k)
         #self.entry_nc.GetValue()
