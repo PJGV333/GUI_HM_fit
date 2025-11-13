@@ -56,27 +56,29 @@ class BaseTechniquePanel(wx.Panel):
     
     # --- en Methods.py, dentro de BaseTechniquePanel ---
     def _refresh_scroller(self, sw, scroll_x=True, scroll_y=False):
-        """Recalcula tamaño virtual, layout y fuerza el repintado inmediato."""
+        """Recalcula tamaño virtual y refresca de forma robusta (Windows/Linux)."""
         from wx.lib.scrolledpanel import ScrolledPanel
-    
-        # Si es ScrolledPanel usamos su helper
-        if isinstance(sw, ScrolledPanel):
-            sw.FitInside()
-            sw.SetupScrolling(scroll_x=scroll_x, scroll_y=scroll_y)
-        else:
-            # ScrolledWindow clásico: fijar tamaño virtual manualmente
-            if sw.GetSizer():
-                sw.SetVirtualSize(sw.GetSizer().CalcMin())
-    
-        sw.Layout()
+        if not sw:
+            return
+        sw.Freeze()
+        try:
+            if isinstance(sw, ScrolledPanel):
+                sw.FitInside()
+                sw.SetupScrolling(scroll_x=scroll_x, scroll_y=scroll_y, rate_x=16, rate_y=16)
+                # Forzar tamaño virtual consistente en Win
+                sw.SetVirtualSize(sw.GetBestSize())
+            else:
+                if sw.GetSizer():
+                    sw.SetVirtualSize(sw.GetSizer().CalcMin())
+            sw.Layout()
+            tlw = wx.GetTopLevelParent(sw)
+            if tlw:
+                tlw.Layout()
+        finally:
+            sw.Thaw()
+        sw.SendSizeEvent()
         sw.Refresh()
         sw.Update()
-        sw.SendSizeEvent()
-    
-        tlw = sw.GetTopLevelParent()
-        if tlw:
-            tlw.Layout()
-            tlw.SendSizeEvent()
 
 
 

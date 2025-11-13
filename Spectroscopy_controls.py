@@ -65,7 +65,7 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         # Crear el ScrolledWindow
         #self.scrolled_window = wx.ScrolledWindow(self.panel, style=wx.HSCROLL)
         #self.scrolled_window.SetScrollRate(10, 0)  # El primer valor es la velocidad de scroll horizontal, el segundo es vertical y está seteado en 0 porque no queremos scroll vertical.
-        self.scrolled_window = ScrolledPanel(self.panel, style=wx.HSCROLL | wx.TAB_TRAVERSAL)
+        self.scrolled_window = ScrolledPanel(self.panel, style=wx.HSCROLL | wx.TAB_TRAVERSAL | wx.ALWAYS_SHOW_SB)
         self.scrolled_window.SetupScrolling(scroll_x=True, scroll_y=False, rate_x=10, rate_y=0)
         
         
@@ -99,7 +99,7 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         # ScrolledWindow para los checkboxes de nombres de columnas (inicialmente vacío)
         #self.columns_names_panel = wx.ScrolledWindow(self.panel, style=wx.HSCROLL)
         #self.columns_names_panel.SetScrollRate(10, 0)  # Configurar la velocidad de desplazamiento horizontal
-        self.columns_names_panel = ScrolledPanel(self.panel, style=wx.HSCROLL | wx.TAB_TRAVERSAL)
+        self.columns_names_panel = ScrolledPanel(self.panel, style=wx.HSCROLL | wx.TAB_TRAVERSAL | wx.ALWAYS_SHOW_SB)
         self.columns_names_panel.SetupScrolling(scroll_x=True, scroll_y=False, rate_x=10, rate_y=0)
                 
         # Sizer para los checkboxes dentro del ScrolledWindow
@@ -162,7 +162,7 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
 
         # Creación de los paneles para las pestañas
         #tab_modelo = wx.Panel(notebook)
-        tab_modelo = ScrolledPanel(notebook, style=wx.VSCROLL | wx.TAB_TRAVERSAL)
+        tab_modelo = ScrolledPanel(notebook, style=wx.VSCROLL | wx.TAB_TRAVERSAL | wx.ALWAYS_SHOW_SB)
         tab_modelo.SetupScrolling(scroll_x=False, scroll_y=True, rate_x=0, rate_y=10)
         tab_optimizacion = wx.Panel(notebook)
 
@@ -185,7 +185,7 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         
         # Reemplazar el wx.ListCtrl por un wx.grid.Grid
         #self.model_panel = wx.Panel(tab_modelo)
-        self.model_panel = ScrolledPanel(tab_modelo, style=wx.TAB_TRAVERSAL)
+        self.model_panel = ScrolledPanel(tab_modelo, style=wx.VSCROLL | wx.TAB_TRAVERSAL | wx.ALWAYS_SHOW_SB)
         self.model_panel.SetupScrolling(scroll_x=False, scroll_y=True)
         self.model_panel.SetScrollRate(0, 10)
         self.model_panel.SetMinSize((-1, 240))  # altura fija para que aparezca el scroll interno
