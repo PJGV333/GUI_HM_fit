@@ -33,12 +33,93 @@ def pinv_cs(A, rcond=1e-12):
     Y = Pr[n:2*n, :m]
     return X + 1j*Y
 
+_alias_re = re.compile(r"\(([^)]+)\)")
+
+def _aliases_from_names(names):
+    alias2idx = {}
+    for i, nm in enumerate(names):
+        s = str(nm).lower()
+        for a in _alias_re.findall(s):
+            alias2idx[a.strip().lower()] = i
+        head = s.split("(")[0].strip().split()
+        if head:
+            alias2idx[head[0]] = i
+    return alias2idx
+
+def build_D_cols(CT, conc_colnames, signal_colnames, default_idx=0):
+    """
+    CT: DataFrame o ndarray (n_i, n_comp) con las columnas marcadas.
+    conc_colnames: lista de nombres en el MISMO orden de CT.
+    signal_colnames: encabezados de señales (Chem_Shift_T.columns)
+    """
+    # --- normaliza CT a ndarray y alinea nombres ---
+    if 'pd' in globals() and isinstance(CT, pd.DataFrame):
+        CT_arr = CT.to_numpy(dtype=float)
+        if not conc_colnames or len(conc_colnames) != CT.shape[1]:
+            conc_colnames = list(CT.columns)
+    else:
+        CT_arr = onp.asarray(CT, dtype=float)
+
+    alias2idx = _aliases_from_names(conc_colnames)
+    m_sig = len(signal_colnames)
+    n_i = CT_arr.shape[0]
+
+    D_cols = onp.empty((n_i, m_sig), float)
+    parent_idx = []
+
+    for j, sname in enumerate(signal_colnames):
+        s = str(sname).lower()
+        found = None
+        # alias entre paréntesis
+        for a in _alias_re.findall(s):
+            k = a.strip().lower()
+            if k in alias2idx:
+                found = alias2idx[k]; break
+        # fallback por token
+        if found is None:
+            head = s.split("(")[0].strip().split()
+            if head:
+                found = alias2idx.get(head[-1])
+
+        if (found is None) or (found < 0) or (found >= CT_arr.shape[1]):
+            found = default_idx  # último recurso
+
+        D_cols[:, j] = CT_arr[:, found]
+        parent_idx.append(found)
+
+    return D_cols, parent_idx
+
+
+def project_coeffs_block_onp_frac(dq_block, C_block, D_cols, mask_block, rcond=1e-10, ridge=0.0):
+    """Proyección por señal usando fracción molar del 'padre' de cada señal."""
+    m, nP = dq_block.shape
+    dq_calc = onp.zeros_like(dq_block, float)
+    Xbase = onp.asarray(C_block, float)
+    finite_rows = onp.isfinite(Xbase).all(axis=1)
+    nonzero_rows = onp.linalg.norm(Xbase, axis=1) > 0.0
+    goodX = finite_rows & nonzero_rows
+    for j in range(nP):
+        D = D_cols[:, j]
+        mj = mask_block[:, j] & goodX & onp.isfinite(D) & (onp.abs(D) > 0)
+        if mj.sum() < 2: continue
+        Xj = Xbase[mj, :] / D[mj][:, None]
+        y  = dq_block[mj, j]
+        try:
+            coef, *_ = onp.linalg.lstsq(Xj, y, rcond=rcond)
+        except onp.linalg.LinAlgError:
+            if ridge > 0.0:
+                XtX = Xj.T @ Xj
+                coef = onp.linalg.solve(XtX + ridge*onp.eye(XtX.shape[0]), Xj.T @ y)
+            else:
+                coef = onp.linalg.pinv(Xj, rcond=rcond) @ y
+        dq_calc[mj, j] = Xj @ coef
+    return dq_calc
+
 
 def residuals_masked_onp(k, dq, mask, H, solver):
     """Vector de residuales usando solo observaciones válidas (mask=True)."""
-    C = solver.concentraciones(k)[0]      # (m × n_abs)
-    X = C / H[:, None]                    # (m × n_abs)
-    dq_cal = project_coeffs_block_onp(dq, X, mask)
+    C = res.concentraciones(k)[0]
+    dq_cal = project_coeffs_block_onp_frac(dq, C, D_cols, mask)
     return (dq - dq_cal)[mask].ravel()
 
 # --- a nivel de módulo, en NMR_controls.py ---
@@ -85,12 +166,6 @@ def project_coeffs_block_onp(dq_block, X_block, mask_block, rcond=1e-10, ridge=0
         dq_calc[mj, j] = X @ coef
 
     return dq_calc
-
-
-def residual_masked_onp(dq_block, dq_calc_block, mask_block):
-    """Vectoriza residuales SOLO donde mask=True."""
-    return (dq_block - dq_calc_block)[mask_block].ravel()
-
 
     
 # Clase para la técnica de NMR
@@ -471,6 +546,19 @@ class NMR_controlsPanel(BaseTechniquePanel):
         mask = onp.isfinite(dq)                        # True solo donde hay dato
 
 
+        signal_names = list(Chem_Shift_T.columns)        # encabezados de señales
+        # si tu lista 'columnas_seleccionadas' no existe o no coincide en longitud, usa C_T.columns
+        try:
+            nombres_conc = list(columnas_seleccionadas)
+        except NameError:
+            nombres_conc = list(C_T.columns)
+        if len(nombres_conc) != C_T.shape[1]:
+            nombres_conc = list(C_T.columns)
+
+        D_cols, parent_idx = build_D_cols(C_T, nombres_conc, signal_names, default_idx=0)
+        mask = mask & onp.isfinite(D_cols) & (onp.abs(D_cols) > 0)
+
+
         # Intentar leer desde el archivo Excel
         grid_data = self.extract_data_from_grid()
         modelo = np.array(grid_data).T
@@ -506,6 +594,20 @@ class NMR_controlsPanel(BaseTechniquePanel):
 
             res = LevenbergMarquardt(C_T, modelo, nas, model_sett) 
 
+
+        # --- chequeo de observaciones efectivas por la máscara fraccionaria ---
+        N_eff_total = int(mask.sum())
+        p = len(k)  # nº de parámetros que estás optimizando
+        n_eff_por_senal = onp.sum(mask, axis=0)
+
+        if (N_eff_total <= p) or (n_eff_por_senal < 2).all():
+            wx.MessageBox(
+                "Planteamiento degenerado: muy pocos puntos efectivos por señal tras la selección de roles/columnas.\n"
+                "Revisa qué specie es Receptor/Ligand y cuál es Guest/Titrant.",
+                "Datos insuficientes", wx.OK | wx.ICON_WARNING
+            )
+            return  # salimos sin lanzar la optimización
+
         def cal_delta(k):
             C = res.concentraciones(k)[0]
             xi = C / H[:, np.newaxis]
@@ -521,31 +623,38 @@ class NMR_controlsPanel(BaseTechniquePanel):
 
         def f_m(k):
             try:
-                C = res.concentraciones(k)[0]          # (m × n_abs)
-                X = C / H[:, None]                     # (m × n_abs)
-
-                # Filtra filas inutilizables en X (evita H≈0 / inf / NaN)
-                finite = onp.isfinite(X).all(axis=1)
-                nonzero = onp.linalg.norm(X, axis=1) > 0.0
-                good = finite & nonzero
-
-                # Si quedan muy pocas filas efectivas para todas las señales → penaliza
-                if good.sum() < (len(k) + 2):
+                C = res.concentraciones(k)[0]
+                dq_cal = project_coeffs_block_onp_frac(
+                    dq, C, D_cols, mask, rcond=1e-10, ridge=1e-8
+                )
+                r = (dq - dq_cal)[mask].ravel()
+                if (r.size <= len(k)) or (not onp.isfinite(r).all()):
                     return 1e9
 
-                dq_cal = project_coeffs_block_onp(dq, X, mask)   # ya robusta
-                r_vec  = (dq - dq_cal)[mask].ravel()
-                if r_vec.size == 0 or not onp.isfinite(r_vec).all():
-                    return 1e9
+                # objetivo como RMS (compatible con lo que imprimías antes)
+                rms = float(onp.sqrt(onp.mean(r * r)))
 
-                rms = float(onp.sqrt(onp.mean(r_vec**2)))
-                self.res_consola("f(x)", rms)
-                self.res_consola("x", k)
-                wx.Yield()   # ok, pero no bloquea si la función termina
+                # --- monitoreo no-bloqueante y con “throttling” ---
+                # imprime cada ~25 llamadas o cuando mejora el mejor valor
+                cnt = getattr(self, "_print_counter", 0) + 1
+                best = getattr(self, "_best_f", onp.inf)
+                should_print = (cnt % 25 == 0) or (rms < best * 0.999)
+
+                if should_print:
+                    self.res_consola("f(x)", rms)
+                    self.res_consola("x", k)
+                    self._best_f = min(best, rms)
+
+                self._print_counter = cnt
+                try:
+                    wx.Yield()
+                except Exception:
+                    pass
+
                 return rms
             except Exception:
-                # Cualquier error numérico inesperado → penaliza (no cuelga el DE/NM)
                 return 1e9
+
 
 
         def f_m2(k):
@@ -616,9 +725,19 @@ class NMR_controlsPanel(BaseTechniquePanel):
         
         # --- al inicio del archivo (cabecera) asegúrate de tener:
 
+        # --- residual enmascarado para errores (equivalente 1 bloque) ---
+        def residuals_masked_for_errors(k):
+            C = res.concentraciones(k)[0]          # (n_i × n_abs)
+            X = C / H[:, None]                     # diseño del bloque
+            dq_cal = project_coeffs_block_onp(dq, X, mask)
+            return (dq - dq_cal)[mask].ravel()
+
+
+
+        
 
         # Chequeo mínimo antes de calcular errores
-        r_test = residuals_masked_onp(self.r_0.x, dq, mask, H, res)
+        r_test = residuals_masked_for_errors(self.r_0.x)
         if (r_test.size <= len(self.r_0.x)) or (not onp.isfinite(r_test).all()):
             self.res_consola("Aviso",
                 "No se pueden calcular errores: Nobs_eff ≤ p o residuales no finitos (roles/columnas).")
