@@ -131,6 +131,7 @@ class App(wx.Frame):
 
         # Panel superior: gráfica
         canvas_panel = wx.Panel(self.right_splitter)
+        canvas_panel.SetDoubleBuffered(True)
         canvas_sizer = wx.BoxSizer(wx.VERTICAL)
 
         # Figura sin constrained_layout; manejaremos márgenes manualmente
@@ -143,10 +144,11 @@ class App(wx.Frame):
 
         # Panel inferior: consola
         console_panel = wx.Panel(self.right_splitter)
+        console_panel.SetDoubleBuffered(True)
         console_sizer = wx.BoxSizer(wx.VERTICAL)
         self.console = wx.TextCtrl(
             console_panel,
-            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_DONTWRAP | wx.HSCROLL
+            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_DONTWRAP | wx.HSCROLL | wx.VSCROLL
         )
         self.console.SetFont(get_monospace_font(9))
         self.console.SetBackgroundColour(wx.BLACK)
@@ -231,16 +233,12 @@ class App(wx.Frame):
             pass
 
     def _on_splitter_sash(self, evt):
-        self._redraw_canvas()
+        wx.CallAfter(self._redraw_canvas)
         evt.Skip()
 
     def _on_canvas_resize(self, evt):
-        # Redibuja la figura al cambiar tamaño del panel/canvas
-        try:
-            evt.GetEventObject().Layout()
-        except Exception:
-            pass
-        self._redraw_canvas()
+        # Redibuja diferido para evitar parpadeos en Win11
+        wx.CallAfter(self._redraw_canvas)
         evt.Skip()
 
     # ----------------- Botones navegación y cálculo -----------------
