@@ -1,0 +1,27 @@
+{
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devPath": "http://localhost:5173",
+    "distDir": "../dist"
+  },
+  "package": {
+    "productName": "HM Fit Tauri",
+    "version": "0.1.0"
+  },
+  "tauri": {
+    "windows": [
+      {
+        "title": "HM Fit - Prototipo Tauri",
+        "width": 800,
+        "height": 600
+      }
+    ],
+    "allowlist": {
+      "shell": {
+        "all": false,
+        "open": true
+      }
+    }
+  }
+}
