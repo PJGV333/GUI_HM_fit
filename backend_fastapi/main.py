@@ -6,6 +6,7 @@ Endpoints are placeholders where we can later call functions from:
 - Methods.py, NR_conc_algoritm.py, LM_conc_algoritm.py (fitting routines)
 """
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 
@@ -19,13 +20,20 @@ class DummyFitRequest(BaseModel):
 
 app = FastAPI(title="HM Fit FastAPI prototype")
 
+# 👉 CORS para desarrollo
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],      # para desarrollo; luego podemos restringir
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 @app.get("/health")
 def health():
     """Health check endpoint used by the Tauri frontend."""
-
     return {"status": "ok"}
-
 
 @app.post("/dummy_fit")
 def dummy_fit(req: DummyFitRequest):
