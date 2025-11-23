@@ -1,46 +1,63 @@
 """Minimal FastAPI backend for HM Fit prototype.
 
-This module intentionally does not modify existing calculation logic.
-Endpoints are placeholders where we can later call functions from:
-- Simulation_controls.py (simulation routines)
-- Methods.py, NR_conc_algoritm.py, LM_conc_algoritm.py (fitting routines)
+En esta fase los endpoints solo sirven como “stubs” para probar
+la comunicación con la GUI Tauri. Más adelante aquí llamaremos
+a Simulation_controls.py, Methods.py, etc.
 """
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 
 
 class DummyFitRequest(BaseModel):
-    """Placeholder request model for testing the backend wiring."""
-
+    """Ejemplo sencillo para probar el backend."""
     x: list[float]
     y: list[float]
 
 
-app = FastAPI(title="HM Fit FastAPI prototype")
+class SpectroscopySetup(BaseModel):
+    """Datos básicos del formulario de Spectroscopy (fase 1)."""
 
-# 👉 CORS para desarrollo
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],      # para desarrollo; luego podemos restringir
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    spectra_sheet: str | None = None
+    conc_sheet: str | None = None
+    column_names: list[str] = []
+    receptor_label: str | None = None
+    guest_label: str | None = None
+    efa_enabled: bool = False
+    efa_eigenvalues: int = 0
+    n_components: int = 0
+    n_species: int = 0
+    non_abs_species: list[str] = []
+
+
+app = FastAPI(title="HM Fit FastAPI prototype")
 
 
 @app.get("/health")
 def health():
-    """Health check endpoint used by the Tauri frontend."""
+    """Health check endpoint usado por el botón 'Probar backend'."""
     return {"status": "ok"}
+
 
 @app.post("/dummy_fit")
 def dummy_fit(req: DummyFitRequest):
-    """Dummy endpoint that will later delegate to HM Fit calculation modules."""
-
+    """Endpoint de prueba original."""
     return {"sum_y": sum(req.y), "n_points": len(req.y)}
 
 
+@app.post("/spectroscopy/preview")
+def spectroscopy_preview(setup: SpectroscopySetup):
+    """Por ahora solo eco de los datos que manda la GUI."""
+    return {
+        "message": "Spectroscopy setup recibido (stub).",
+        "setup": setup,
+    }
+
+
 if __name__ == "__main__":
-    uvicorn.run("backend_fastapi.main:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run(
+        "backend_fastapi.main:app",
+        host="127.0.0.1",
+        port=8000,
+        reload=True,
+    )
