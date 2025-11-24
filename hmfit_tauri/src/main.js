@@ -45,7 +45,48 @@ function resetCalculation() {
   log("Esperando...");
 }
 
-function render() {
+function updateUI() {
+  // Tabs: módulo (Spectroscopy / NMR)
+  document.querySelectorAll("[data-module-tab]").forEach((btn) => {
+    const mod = btn.dataset.moduleTab;
+    if (mod === state.activeModule) {
+      btn.classList.add("tab-active");
+    } else {
+      btn.classList.remove("tab-active");
+    }
+  });
+
+  // Subtabs: Model / Optimization
+  document.querySelectorAll("[data-subtab]").forEach((btn) => {
+    const sub = btn.dataset.subtab;
+    if (sub === state.activeSubtab) {
+      btn.classList.add("tab-active");
+    } else {
+      btn.classList.remove("tab-active");
+    }
+  });
+
+  document.querySelectorAll("[data-subtab-panel]").forEach((panel) => {
+    const sub = panel.dataset.subtabPanel;
+    if (sub === state.activeSubtab) {
+      panel.classList.add("subtab-visible");
+    } else {
+      panel.classList.remove("subtab-visible");
+    }
+  });
+
+  // EFA solo en Spectroscopy
+  const efaRow = document.querySelector(".efa-row");
+  if (efaRow) {
+    if (state.activeModule === "nmr") {
+      efaRow.classList.add("hidden");
+    } else {
+      efaRow.classList.remove("hidden");
+    }
+  }
+}
+
+function initApp() {
   const app = document.querySelector("#app");
   if (!app) return;
 
@@ -102,11 +143,15 @@ function render() {
             <div class="field-grid">
               <div class="field">
                 <label class="field-label">Receptor or Ligand</label>
-                <input type="text" class="field-input" />
+                <select id="receptor-select" class="field-input">
+                  <option value="">Select columns first...</option>
+                </select>
               </div>
               <div class="field">
                 <label class="field-label">Guest, Metal or Titrant</label>
-                <input type="text" class="field-input" />
+                <select id="guest-select" class="field-input">
+                  <option value="">Select columns first...</option>
+                </select>
               </div>
             </div>
 
@@ -130,7 +175,7 @@ function render() {
             </nav>
 
             <div class="subtab-panel" data-subtab-panel="model">
-              <h2 class="section-title">Define Model Dimensions</h2>
+              <button id="define-model-btn" class="btn full-width-btn">Define Model Dimensions</button>
 
               <div class="field-grid">
                 <div class="field">
@@ -145,18 +190,35 @@ function render() {
 
               <div class="field">
                 <label class="field-label">Select non-absorbent species</label>
-                <div class="table-placeholder">
-                  ABCD – checkbox grid placeholder
+                <div id="model-grid-container" class="model-grid-container">
+                  <!-- Grid will be generated here -->
                 </div>
               </div>
             </div>
 
             <div class="subtab-panel" data-subtab-panel="optimization">
-              <h2 class="section-title">Optimization (placeholder)</h2>
-              <p class="hint-text">
-                Aquí irán los parámetros de optimización (algoritmo, iteraciones,
-                tolerancias, etc.) igual que en la GUI de wx.
-              </p>
+              <div class="field-grid">
+                <div class="field">
+                  <label class="field-label">Algorithm for C</label>
+                  <select id="algorithm-select" class="field-input"></select>
+                </div>
+                <div class="field">
+                  <label class="field-label">Model settings</label>
+                  <select id="model-settings-select" class="field-input"></select>
+                </div>
+              </div>
+              
+              <div class="field">
+                <label class="field-label">Optimizer</label>
+                <select id="optimizer-select" class="field-input"></select>
+              </div>
+
+              <div class="field">
+                <label class="field-label">Parameters (Initial Estimates)</label>
+                <div id="optimization-grid-container" class="model-grid-container">
+                  <!-- Grid will be generated here -->
+                </div>
+              </div>
             </div>
 
             <div class="actions-row">
@@ -187,64 +249,43 @@ function render() {
   // Tabs: módulo (Spectroscopy / NMR)
   document.querySelectorAll("[data-module-tab]").forEach((btn) => {
     const mod = btn.dataset.moduleTab;
-    if (mod === state.activeModule) {
-      btn.classList.add("tab-active");
-    } else {
-      btn.classList.remove("tab-active");
-    }
     btn.addEventListener("click", () => {
       state.activeModule = mod;
-      render();
+      updateUI();
     });
   });
 
   // Subtabs: Model / Optimization
   document.querySelectorAll("[data-subtab]").forEach((btn) => {
     const sub = btn.dataset.subtab;
-    if (sub === state.activeSubtab) {
-      btn.classList.add("tab-active");
-    } else {
-      btn.classList.remove("tab-active");
-    }
     btn.addEventListener("click", () => {
       state.activeSubtab = sub;
-      render();
+      updateUI();
     });
   });
-
-  document.querySelectorAll("[data-subtab-panel]").forEach((panel) => {
-    const sub = panel.dataset.subtabPanel;
-    if (sub === state.activeSubtab) {
-      panel.classList.add("subtab-visible");
-    } else {
-      panel.classList.remove("subtab-visible");
-    }
-  });
-
-  // EFA solo en Spectroscopy
-  const efaRow = document.querySelector(".efa-row");
-  if (efaRow) {
-    if (state.activeModule === "nmr") {
-      efaRow.classList.add("hidden");
-    } else {
-      efaRow.classList.remove("hidden");
-    }
-  }
 
   // Botones
   const backendBtn = document.getElementById("backend-health");
   backendBtn?.addEventListener("click", pingBackend);
 
-  const processBtn = document.getElementById("process-btn");
-  processBtn?.addEventListener("click", dummyFit);
+  // Note: processBtn and resetBtn listeners are also attached in wireSpectroscopyForm.
+  // We can leave them here or rely on wireSpectroscopyForm. 
+  // Since wireSpectroscopyForm is called below, it will attach the main logic.
+  // The listeners here (dummyFit, resetCalculation) might be redundant or conflicting if not careful.
+  // resetCalculation is simple logging. wireSpectroscopyForm's reset is more comprehensive.
+  // I will comment out the simple ones here to avoid duplication/confusion, relying on wireSpectroscopyForm.
 
-  const resetBtn = document.getElementById("reset-btn");
-  resetBtn?.addEventListener("click", resetCalculation);
+  // const processBtn = document.getElementById("process-btn");
+  // processBtn?.addEventListener("click", dummyFit);
 
-  // Wire up spectroscopy form if active
-  if (state.activeModule === "spectroscopy") {
-    wireSpectroscopyForm();
-  }
+  // const resetBtn = document.getElementById("reset-btn");
+  // resetBtn?.addEventListener("click", resetCalculation);
+
+  // Wire up spectroscopy form
+  wireSpectroscopyForm();
+
+  // Initial UI Update
+  updateUI();
 }
 
 // === Helpers para localizar elementos existentes sin cambiar el HTML ===
@@ -298,18 +339,14 @@ function wireSpectroscopyForm() {
 
   // Campos de texto identificables por placeholder
   // NOTA: Ahora son selects, los buscamos por ID
+
   const spectraSheetInput = document.getElementById("spectra-sheet-select");
   const concSheetInput = document.getElementById("conc-sheet-select");
   const columnsContainer = document.getElementById("columns-container");
 
-  // Otros campos: usamos el orden en el formulario
-  const textInputs = Array.from(
-    document.querySelectorAll('input[type="text"]'),
-  );
-  // asumiendo orden: Column names (0), Receptor (1), Guest (2)
-  // Ajustamos índices porque quitamos 2 inputs de texto
-  const receptorInput = textInputs[1] || null;
-  const guestInput = textInputs[2] || null;
+  // Dropdowns para Receptor y Guest
+  const receptorInput = document.getElementById("receptor-select");
+  const guestInput = document.getElementById("guest-select");
 
   const numericInputs = Array.from(
     document.querySelectorAll('input[type="number"]'),
@@ -322,8 +359,43 @@ function wireSpectroscopyForm() {
   // Único checkbox de EFA
   const efaCheckbox = document.querySelector('input[type="checkbox"]');
 
-  // Área de non-absorbent species (placeholder de momento)
-  const nonAbsArea = document.querySelector("textarea, .nonabs-placeholder");
+  // Botón para definir dimensiones
+  const defineModelBtn = document.getElementById("define-model-btn");
+
+  // Área de grid
+  const modelGridContainer = document.getElementById("model-grid-container");
+  const optGridContainer = document.getElementById("optimization-grid-container");
+
+  // Dropdowns de Optimización
+  const algoSelect = document.getElementById("algorithm-select");
+  const modelSettingsSelect = document.getElementById("model-settings-select");
+  const optimizerSelect = document.getElementById("optimizer-select");
+
+  // Poblar dropdowns de optimización
+  if (algoSelect) {
+    ["Newton-Raphson", "Levenberg-Marquardt"].forEach(opt => {
+      const el = document.createElement("option");
+      el.value = opt;
+      el.text = opt;
+      algoSelect.add(el);
+    });
+  }
+  if (modelSettingsSelect) {
+    ["Free", "Step by step", "Non-cooperative"].forEach(opt => {
+      const el = document.createElement("option");
+      el.value = opt;
+      el.text = opt;
+      modelSettingsSelect.add(el);
+    });
+  }
+  if (optimizerSelect) {
+    ["powell", "nelder-mead", "trust-constr", "cg", "bfgs", "l-bfgs-b", "tnc", "cobyla", "slsqp", "differential_evolution"].forEach(opt => {
+      const el = document.createElement("option");
+      el.value = opt;
+      el.text = opt;
+      optimizerSelect.add(el);
+    });
+  }
 
   // --- Handler: File Selection ---
   const fileInput = document.getElementById("excel-file");
@@ -436,7 +508,213 @@ function wireSpectroscopyForm() {
       console.error(err);
       diagEl.textContent = `Error al leer columnas: ${err.message}`;
     }
+
   });
+
+  // --- Handler: Define Model Dimensions (Grid Generation) ---
+  defineModelBtn?.addEventListener("click", () => {
+    const nComp = readInt(nCompInput?.value);
+    const nSpecies = readInt(nSpeciesInput?.value);
+
+    if (nComp <= 0 || nSpecies <= 0) {
+      diagEl.textContent = "Please enter valid Number of Components and Species (>0).";
+      return;
+    }
+
+    // Generar tabla
+    modelGridContainer.innerHTML = "";
+    const table = document.createElement("table");
+    table.className = "model-grid-table";
+
+    // Header
+    const thead = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+    // Empty corner cell
+    headerRow.appendChild(document.createElement("th"));
+    for (let c = 1; c <= nComp; c++) {
+      const th = document.createElement("th");
+      th.textContent = `C${c}`;
+      headerRow.appendChild(th);
+    }
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    // Body
+    const tbody = document.createElement("tbody");
+    const totalRows = nComp + nSpecies;
+
+    for (let s = 1; s <= totalRows; s++) {
+      const tr = document.createElement("tr");
+      tr.dataset.species = `sp${s}`; // Identificador de especie
+
+      // Label cell
+      const tdLabel = document.createElement("td");
+      tdLabel.textContent = `sp${s}`;
+      tdLabel.className = "species-label";
+      tr.appendChild(tdLabel);
+
+      // Input cells
+      for (let c = 1; c <= nComp; c++) {
+        const td = document.createElement("td");
+        const input = document.createElement("input");
+        input.type = "number";
+        input.className = "grid-input";
+
+        // Logic: First nComp rows are identity matrix
+        if (s <= nComp) {
+          input.value = (c === s) ? "1.0" : "0.0";
+        } else {
+          // Remaining rows are 0
+          input.value = "0";
+        }
+
+        td.appendChild(input);
+        tr.appendChild(td);
+      }
+
+      // Click listener for row selection
+      tr.addEventListener("click", (e) => {
+        // Evitar que el click en el input dispare la selección de fila si se desea
+        // Pero el usuario pidió "cuando se selecciona una fila".
+        // Si hacemos click en el input, queremos editar, no necesariamente seleccionar la fila entera para borrarla.
+        // Vamos a permitir seleccionar haciendo click en la etiqueta o en el padding, pero no interferir con el input.
+        if (e.target.tagName.toLowerCase() === "input") return;
+
+        tr.classList.toggle("selected");
+      });
+
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    modelGridContainer.appendChild(table);
+
+    // --- Generar Grid de Optimización ---
+    if (optGridContainer) {
+      optGridContainer.innerHTML = "";
+      const nConstants = nSpecies; // K por cada especie adicional (complejo)
+
+      if (nConstants > 0) {
+        const optTable = document.createElement("table");
+        optTable.className = "model-grid-table";
+
+        // Header
+        const optThead = document.createElement("thead");
+        const optHeaderRow = document.createElement("tr");
+        ["Parameter", "Value", "Min", "Max"].forEach(text => {
+          const th = document.createElement("th");
+          th.textContent = text;
+          optHeaderRow.appendChild(th);
+        });
+        optThead.appendChild(optHeaderRow);
+        optTable.appendChild(optThead);
+
+        // Body
+        const optTbody = document.createElement("tbody");
+        for (let k = 1; k <= nConstants; k++) {
+          const tr = document.createElement("tr");
+
+          // Parameter Label
+          const tdParam = document.createElement("td");
+          tdParam.textContent = `K${k}`;
+          tdParam.className = "species-label"; // Reusing style
+          tr.appendChild(tdParam);
+
+          // Value Input
+          const tdVal = document.createElement("td");
+          const inputVal = document.createElement("input");
+          inputVal.type = "number";
+          inputVal.className = "grid-input";
+          inputVal.placeholder = "Value";
+          tdVal.appendChild(inputVal);
+          tr.appendChild(tdVal);
+
+          // Min Input
+          const tdMin = document.createElement("td");
+          const inputMin = document.createElement("input");
+          inputMin.type = "number";
+          inputMin.className = "grid-input";
+          inputMin.placeholder = "Min";
+          tdMin.appendChild(inputMin);
+          tr.appendChild(tdMin);
+
+          // Max Input
+          const tdMax = document.createElement("td");
+          const inputMax = document.createElement("input");
+          inputMax.type = "number";
+          inputMax.className = "grid-input";
+          inputMax.placeholder = "Max";
+          tdMax.appendChild(inputMax);
+          tr.appendChild(tdMax);
+
+          optTbody.appendChild(tr);
+        }
+        optTable.appendChild(optTbody);
+        optGridContainer.appendChild(optTable);
+      } else {
+        optGridContainer.textContent = "No species defined.";
+      }
+    }
+
+    diagEl.textContent = `Grid generado: ${nComp} Componentes x ${nSpecies} Especies.`;
+  });
+
+  // --- Helper: Update Receptor/Guest Dropdowns ---
+  function updateDropdowns() {
+    if (!receptorInput || !guestInput) return;
+
+    // Guardar selección actual para intentar mantenerla
+    const currentReceptor = receptorInput.value;
+    const currentGuest = guestInput.value;
+
+    // Obtener columnas seleccionadas
+    const selectedCols = Array.from(columnsContainer.querySelectorAll('input[type="checkbox"]:checked'))
+      .map(cb => cb.value);
+
+    // Limpiar y repoblar
+    [receptorInput, guestInput].forEach(select => {
+      select.innerHTML = "";
+      // Opción vacía por defecto
+      const defaultOpt = document.createElement("option");
+      defaultOpt.value = "";
+      defaultOpt.text = ""; // O "Select..."
+      select.add(defaultOpt);
+
+      selectedCols.forEach(col => {
+        const opt = document.createElement("option");
+        opt.value = col;
+        opt.text = col;
+        select.add(opt);
+      });
+    });
+
+    // Restaurar selección si aún existe
+    if (selectedCols.includes(currentReceptor)) {
+      receptorInput.value = currentReceptor;
+    }
+    if (selectedCols.includes(currentGuest)) {
+      guestInput.value = currentGuest;
+    }
+  }
+
+  // Escuchar cambios en los checkboxes para actualizar dropdowns
+  columnsContainer.addEventListener("change", (e) => {
+    if (e.target.matches('input[type="checkbox"]')) {
+      updateDropdowns();
+    }
+  });
+
+  // También actualizar cuando se cargan las columnas (dentro del fetch de list_columns)
+  // ...pero como list_columns es asíncrono y ya tiene su lógica, lo mejor es llamar updateDropdowns()
+  // al final de la carga exitosa de columnas.
+  // Modificamos el listener de concSheetInput para llamar a updateDropdowns al final?
+  // Mejor usamos un MutationObserver o simplemente lo llamamos explícitamente si pudiéramos.
+  // Dado que no puedo editar fácilmente el bloque anterior sin hacerlo gigante,
+  // voy a usar un MutationObserver en columnsContainer para detectar cuando se añaden los checkboxes.
+
+  const observer = new MutationObserver(() => {
+    updateDropdowns();
+  });
+  observer.observe(columnsContainer, { childList: true, subtree: true });
 
   // --- Handler: Reset ---
   resetBtn.addEventListener("click", () => {
@@ -446,13 +724,21 @@ function wireSpectroscopyForm() {
     if (fileStatus) fileStatus.textContent = "No file selected";
 
     if (columnsContainer) columnsContainer.innerHTML = "Select a concentration sheet to load columns...";
-    if (receptorInput) receptorInput.value = "";
-    if (guestInput) guestInput.value = "";
+    if (receptorInput) {
+      receptorInput.innerHTML = '<option value="">Select columns first...</option>';
+      receptorInput.value = "";
+    }
+    if (guestInput) {
+      guestInput.innerHTML = '<option value="">Select columns first...</option>';
+      guestInput.value = "";
+    }
     if (efaEigenInput) efaEigenInput.value = "0";
     if (nCompInput) nCompInput.value = "0";
     if (nSpeciesInput) nSpeciesInput.value = "0";
     if (efaCheckbox) efaCheckbox.checked = false;
-    if (nonAbsArea && "value" in nonAbsArea) nonAbsArea.value = "";
+    if (efaCheckbox) efaCheckbox.checked = false;
+    if (modelGridContainer) modelGridContainer.innerHTML = "";
+    if (optGridContainer) optGridContainer.innerHTML = "";
 
     diagEl.textContent = "Esperando...";
   });
@@ -475,8 +761,11 @@ function wireSpectroscopyForm() {
       efa_eigenvalues: readInt(efaEigenInput?.value),
       n_components: readInt(nCompInput?.value),
       n_species: readInt(nSpeciesInput?.value),
-      non_abs_species: nonAbsArea && "value" in nonAbsArea
-        ? readList(nonAbsArea.value)
+      n_components: readInt(nCompInput?.value),
+      n_species: readInt(nSpeciesInput?.value),
+      non_abs_species: modelGridContainer
+        ? Array.from(modelGridContainer.querySelectorAll("tr.selected"))
+          .map(tr => tr.dataset.species)
         : [],
     };
 
@@ -507,4 +796,5 @@ function wireSpectroscopyForm() {
 
 
 // Primera renderización
-render();
+// Primera renderización
+initApp();
