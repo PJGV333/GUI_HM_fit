@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 import uvicorn
 import pandas as pd
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 import io
 
 
@@ -77,6 +77,18 @@ async def list_sheets(file: UploadFile = File(...)):
         return {"sheets": xl.sheet_names}
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error reading Excel file: {str(e)}")
+
+
+@app.post("/list_columns")
+async def list_columns(file: UploadFile = File(...), sheet_name: str = Form(...)):
+    """Recibe un archivo Excel y un nombre de hoja, devuelve las columnas."""
+    try:
+        contents = await file.read()
+        # Leemos solo el encabezado (nrows=0) para ser eficientes
+        df = pd.read_excel(io.BytesIO(contents), sheet_name=sheet_name, nrows=0)
+        return {"columns": list(df.columns)}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error reading columns: {str(e)}")
 
 
 if __name__ == "__main__":

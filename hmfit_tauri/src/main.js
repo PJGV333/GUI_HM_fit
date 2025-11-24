@@ -94,7 +94,9 @@ function render() {
 
             <div class="field">
               <label class="field-label">Column names</label>
-              <input type="text" class="field-input" placeholder="Comma-separated" />
+              <div id="columns-container" class="checkbox-grid-placeholder">
+                Select a concentration sheet to load columns...
+              </div>
             </div>
 
             <div class="field-grid">
@@ -298,10 +300,7 @@ function wireSpectroscopyForm() {
   // NOTA: Ahora son selects, los buscamos por ID
   const spectraSheetInput = document.getElementById("spectra-sheet-select");
   const concSheetInput = document.getElementById("conc-sheet-select");
-
-  const columnNamesInput = document.querySelector(
-    'input[placeholder="Comma-separated"]',
-  );
+  const columnsContainer = document.getElementById("columns-container");
 
   // Otros campos: usamos el orden en el formulario
   const textInputs = Array.from(
@@ -381,6 +380,64 @@ function wireSpectroscopyForm() {
     }
   });
 
+  // --- Handler: Concentration Sheet Selection ---
+  concSheetInput?.addEventListener("change", async () => {
+    const sheetName = concSheetInput.value;
+    const file = fileInput.files[0];
+
+    if (!sheetName || !file) {
+      columnsContainer.innerHTML = "Select a concentration sheet to load columns...";
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("sheet_name", sheetName);
+
+    try {
+      diagEl.textContent = `Leyendo columnas de ${sheetName}...`;
+      const resp = await fetch("http://127.0.0.1:8000/list_columns", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!resp.ok) {
+        throw new Error(`Error ${resp.status}: ${await resp.text()}`);
+      }
+
+      const data = await resp.json();
+      const columns = data.columns || [];
+
+      columnsContainer.innerHTML = ""; // Limpiar
+      if (columns.length === 0) {
+        columnsContainer.textContent = "No columns found.";
+      } else {
+        columns.forEach(col => {
+          const label = document.createElement("label");
+          label.className = "checkbox-inline";
+          label.style.marginRight = "10px";
+
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.value = col;
+          cb.name = "column_names"; // Para facilitar recolección si se desea
+
+          const span = document.createElement("span");
+          span.textContent = col;
+
+          label.appendChild(cb);
+          label.appendChild(span);
+          columnsContainer.appendChild(label);
+        });
+      }
+      diagEl.textContent = `Columnas cargadas de ${sheetName}.`;
+
+    } catch (err) {
+      console.error(err);
+      diagEl.textContent = `Error al leer columnas: ${err.message}`;
+    }
+  });
+
   // --- Handler: Reset ---
   resetBtn.addEventListener("click", () => {
     if (spectraSheetInput) spectraSheetInput.innerHTML = '<option value="">Select a file first...</option>';
@@ -388,7 +445,7 @@ function wireSpectroscopyForm() {
     if (fileInput) fileInput.value = "";
     if (fileStatus) fileStatus.textContent = "No file selected";
 
-    if (columnNamesInput) columnNamesInput.value = "";
+    if (columnsContainer) columnsContainer.innerHTML = "Select a concentration sheet to load columns...";
     if (receptorInput) receptorInput.value = "";
     if (guestInput) guestInput.value = "";
     if (efaEigenInput) efaEigenInput.value = "0";
@@ -404,10 +461,14 @@ function wireSpectroscopyForm() {
   processBtn.addEventListener("click", async () => {
     diagEl.textContent = "Procesando datos de Spectroscopy...";
 
+    // Recolectar columnas seleccionadas
+    const selectedCols = Array.from(columnsContainer.querySelectorAll('input[type="checkbox"]:checked'))
+      .map(cb => cb.value);
+
     const payload = {
       spectra_sheet: spectraSheetInput?.value || "",
       conc_sheet: concSheetInput?.value || "",
-      column_names: readList(columnNamesInput?.value || ""),
+      column_names: selectedCols,
       receptor_label: receptorInput?.value || "",
       guest_label: guestInput?.value || "",
       efa_enabled: !!efaCheckbox?.checked,
