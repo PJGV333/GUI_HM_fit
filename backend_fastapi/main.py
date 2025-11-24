@@ -7,6 +7,9 @@ a Simulation_controls.py, Methods.py, etc.
 from fastapi import FastAPI
 from pydantic import BaseModel
 import uvicorn
+import pandas as pd
+from fastapi import FastAPI, UploadFile, File, HTTPException
+import io
 
 
 class DummyFitRequest(BaseModel):
@@ -30,7 +33,17 @@ class SpectroscopySetup(BaseModel):
     non_abs_species: list[str] = []
 
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(title="HM Fit FastAPI prototype")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # En producción restringir a ["http://localhost:5173", "tauri://localhost"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health")
@@ -52,6 +65,18 @@ def spectroscopy_preview(setup: SpectroscopySetup):
         "message": "Spectroscopy setup recibido (stub).",
         "setup": setup,
     }
+
+
+@app.post("/list_sheets")
+async def list_sheets(file: UploadFile = File(...)):
+    """Recibe un archivo Excel y devuelve la lista de hojas."""
+    try:
+        contents = await file.read()
+        # Usamos pandas para leer solo los nombres de las hojas sin cargar todo el archivo
+        xl = pd.ExcelFile(io.BytesIO(contents))
+        return {"sheets": xl.sheet_names}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error reading Excel file: {str(e)}")
 
 
 if __name__ == "__main__":

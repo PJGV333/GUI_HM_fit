@@ -80,11 +80,15 @@ function render() {
             <div class="field-grid">
               <div class="field">
                 <label class="field-label">Spectra Sheet Name</label>
-                <input type="text" class="field-input" placeholder="e.g. Spectra" />
+                <select id="spectra-sheet-select" class="field-input">
+                  <option value="">Select a file first...</option>
+                </select>
               </div>
               <div class="field">
                 <label class="field-label">Concentration Sheet Name</label>
-                <input type="text" class="field-input" placeholder="e.g. Conc" />
+                <select id="conc-sheet-select" class="field-input">
+                  <option value="">Select a file first...</option>
+                </select>
               </div>
             </div>
 
@@ -234,6 +238,11 @@ function render() {
 
   const resetBtn = document.getElementById("reset-btn");
   resetBtn?.addEventListener("click", resetCalculation);
+
+  // Wire up spectroscopy form if active
+  if (state.activeModule === "spectroscopy") {
+    wireSpectroscopyForm();
+  }
 }
 
 // === Helpers para localizar elementos existentes sin cambiar el HTML ===
@@ -276,7 +285,7 @@ function wireSpectroscopyForm() {
   // Botones
   const processBtn = findButtonByLabel("Process Data");
   const resetBtn = findButtonByLabel("Reset Calculation");
-  const diagEl = findDiagnosticsElement();
+  const diagEl = document.getElementById("log-output");
 
   if (!processBtn || !resetBtn || !diagEl) {
     console.warn(
@@ -286,12 +295,10 @@ function wireSpectroscopyForm() {
   }
 
   // Campos de texto identificables por placeholder
-  const spectraSheetInput = document.querySelector(
-    'input[placeholder="e.g. Spectra"]',
-  );
-  const concSheetInput = document.querySelector(
-    'input[placeholder="e.g. Conc"]',
-  );
+  // NOTA: Ahora son selects, los buscamos por ID
+  const spectraSheetInput = document.getElementById("spectra-sheet-select");
+  const concSheetInput = document.getElementById("conc-sheet-select");
+
   const columnNamesInput = document.querySelector(
     'input[placeholder="Comma-separated"]',
   );
@@ -300,9 +307,10 @@ function wireSpectroscopyForm() {
   const textInputs = Array.from(
     document.querySelectorAll('input[type="text"]'),
   );
-  // asumiendo orden: Spectra, Conc, Column names, Receptor, Guest
-  const receptorInput = textInputs[3] || null;
-  const guestInput = textInputs[4] || null;
+  // asumiendo orden: Column names (0), Receptor (1), Guest (2)
+  // Ajustamos índices porque quitamos 2 inputs de texto
+  const receptorInput = textInputs[1] || null;
+  const guestInput = textInputs[2] || null;
 
   const numericInputs = Array.from(
     document.querySelectorAll('input[type="number"]'),
@@ -318,10 +326,68 @@ function wireSpectroscopyForm() {
   // Área de non-absorbent species (placeholder de momento)
   const nonAbsArea = document.querySelector("textarea, .nonabs-placeholder");
 
+  // --- Handler: File Selection ---
+  const fileInput = document.getElementById("excel-file");
+  const fileStatus = document.querySelector(".file-status");
+
+  fileInput?.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) {
+      fileStatus.textContent = "No file selected";
+      return;
+    }
+    fileStatus.textContent = file.name;
+
+    // Enviar al backend para obtener hojas
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      diagEl.textContent = "Leyendo archivo Excel...";
+      const resp = await fetch("http://127.0.0.1:8000/list_sheets", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!resp.ok) {
+        throw new Error(`Error ${resp.status}: ${await resp.text()}`);
+      }
+
+      const data = await resp.json();
+      const sheets = data.sheets || [];
+
+      // Poblar dropdowns
+      [spectraSheetInput, concSheetInput].forEach(select => {
+        if (!select) return;
+        select.innerHTML = ""; // Limpiar
+        if (sheets.length === 0) {
+          const opt = document.createElement("option");
+          opt.text = "No sheets found";
+          select.add(opt);
+        } else {
+          sheets.forEach(sheet => {
+            const opt = document.createElement("option");
+            opt.value = sheet;
+            opt.text = sheet;
+            select.add(opt);
+          });
+        }
+      });
+      diagEl.textContent = `Archivo cargado. ${sheets.length} hojas encontradas.`;
+
+    } catch (err) {
+      console.error(err);
+      diagEl.textContent = `Error al leer Excel: ${err.message}`;
+    }
+  });
+
   // --- Handler: Reset ---
   resetBtn.addEventListener("click", () => {
-    if (spectraSheetInput) spectraSheetInput.value = "";
-    if (concSheetInput) concSheetInput.value = "";
+    if (spectraSheetInput) spectraSheetInput.innerHTML = '<option value="">Select a file first...</option>';
+    if (concSheetInput) concSheetInput.innerHTML = '<option value="">Select a file first...</option>';
+    if (fileInput) fileInput.value = "";
+    if (fileStatus) fileStatus.textContent = "No file selected";
+
     if (columnNamesInput) columnNamesInput.value = "";
     if (receptorInput) receptorInput.value = "";
     if (guestInput) guestInput.value = "";
@@ -375,7 +441,8 @@ function wireSpectroscopyForm() {
 }
 
 // Ejecutar una vez que el HTML ya está montado
-wireSpectroscopyForm();
+// Ejecutar una vez que el HTML ya está montado
+// wireSpectroscopyForm(); // MOVED TO RENDER
 
 
 // Primera renderización
