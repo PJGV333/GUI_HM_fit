@@ -3,12 +3,55 @@ import "./style.css";
 const state = {
   activeModule: "spectroscopy", // "spectroscopy" | "nmr"
   activeSubtab: "model",        // "model" | "optimization"
+  uploadedFile: null,            // Currently selected file
 };
+
+// WebSocket for progress streaming
+let progressWs = null;
+
+function connectWebSocket() {
+  if (progressWs && progressWs.readyState === WebSocket.OPEN) return;
+
+  progressWs = new WebSocket("ws://127.0.0.1:8000/ws/progress");
+
+  progressWs.onopen = () => {
+    console.log("WebSocket connected");
+  };
+
+  progressWs.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (data.type === "progress") {
+        appendLog(data.message);
+      }
+    } catch (err) {
+      console.error("WebSocket message error:", err);
+    }
+  };
+
+  progressWs.onerror = (error) => {
+    console.error("WebSocket error:", error);
+  };
+
+  progressWs.onclose = () => {
+    console.log("WebSocket disconnected");
+    // Reconnect after 2 seconds
+    setTimeout(connectWebSocket, 2000);
+  };
+}
 
 function log(text) {
   const pre = document.getElementById("log-output");
   if (!pre) return;
   pre.textContent = text;
+}
+
+function appendLog(text) {
+  const pre = document.getElementById("log-output");
+  if (!pre) return;
+  pre.textContent += text + "\n";
+  // Auto-scroll to bottom
+  pre.scrollTop = pre.scrollHeight;
 }
 
 async function pingBackend() {
@@ -159,7 +202,7 @@ function initApp() {
               <label class="field-label">EFA Eigenvalues</label>
               <div class="efa-inline">
                 <label class="checkbox-inline">
-                  <input type="checkbox" />
+                  <input type="checkbox" checked />
                   <span>EFA</span>
                 </label>
                 <input type="number" class="field-input narrow" value="0" />
@@ -405,9 +448,11 @@ function wireSpectroscopyForm() {
     const file = e.target.files[0];
     if (!file) {
       fileStatus.textContent = "No file selected";
+      state.uploadedFile = null;
       return;
     }
     fileStatus.textContent = file.name;
+    state.uploadedFile = file;
 
     // Enviar al backend para obtener hojas
     const formData = new FormData();
@@ -745,35 +790,73 @@ function wireSpectroscopyForm() {
 
   // --- Handler: Process Data ---
   processBtn.addEventListener("click", async () => {
-    diagEl.textContent = "Procesando datos de Spectroscopy...";
+    if (!state.uploadedFile) {
+      diagEl.textContent = "Error: No file selected. Please select a file first.";
+      return;
+    }
+
+    diagEl.textContent = "Procesando datos de Spectroscopy...\n";
 
     // Recolectar columnas seleccionadas
     const selectedCols = Array.from(columnsContainer.querySelectorAll('input[type="checkbox"]:checked'))
       .map(cb => cb.value);
 
-    const payload = {
-      spectra_sheet: spectraSheetInput?.value || "",
-      conc_sheet: concSheetInput?.value || "",
-      column_names: selectedCols,
-      receptor_label: receptorInput?.value || "",
-      guest_label: guestInput?.value || "",
-      efa_enabled: !!efaCheckbox?.checked,
-      efa_eigenvalues: readInt(efaEigenInput?.value),
-      n_components: readInt(nCompInput?.value),
-      n_species: readInt(nSpeciesInput?.value),
-      n_components: readInt(nCompInput?.value),
-      n_species: readInt(nSpeciesInput?.value),
-      non_abs_species: modelGridContainer
-        ? Array.from(modelGridContainer.querySelectorAll("tr.selected"))
-          .map(tr => tr.dataset.species)
-        : [],
-    };
+    // Recolectar datos del grid del modelo
+    const gridData = [];
+    if (modelGridContainer) {
+      const rows = modelGridContainer.querySelectorAll("tbody tr");
+      rows.forEach(row => {
+        const inputs = row.querySelectorAll(".grid-input");
+        const rowData = Array.from(inputs).map(inp => parseFloat(inp.value) || 0);
+        gridData.push(rowData);
+      });
+    }
+
+    // Extraer especies no absorbentes
+    const nonAbsSpecies = modelGridContainer
+      ? Array.from(modelGridContainer.querySelectorAll("tr.selected"))
+        .map(tr => parseInt(tr.dataset.species.replace('sp', '')) - 1)
+      : [];
+
+    // Extraer parámetros de optimización (K values)
+    const kValues = [];
+    const kBounds = [];
+    if (optGridContainer) {
+      const rows = optGridContainer.querySelectorAll("tbody tr");
+      rows.forEach(row => {
+        const inputs = row.querySelectorAll(".grid-input");
+        if (inputs.length >= 3) {
+          const val = parseFloat(inputs[0].value) || 1.0;
+          const min = parseFloat(inputs[1].value) || -20;
+          const max = parseFloat(inputs[2].value) || 20;
+          kValues.push(val);
+          kBounds.push([min, max]);
+        }
+      });
+    }
+
+    // Create FormData with file and parameters
+    const formData = new FormData();
+    formData.append("file", state.uploadedFile);
+    formData.append("spectra_sheet", spectraSheetInput?.value || "");
+    formData.append("conc_sheet", concSheetInput?.value || "");
+    formData.append("column_names", JSON.stringify(selectedCols));
+    formData.append("receptor_label", receptorInput?.value || "");
+    formData.append("guest_label", guestInput?.value || "");
+    formData.append("efa_enabled", efaCheckbox?.checked ? "true" : "false");
+    formData.append("efa_eigenvalues", readInt(efaEigenInput?.value).toString());
+    formData.append("modelo", JSON.stringify(gridData));
+    formData.append("non_abs_species", JSON.stringify(nonAbsSpecies));
+    formData.append("algorithm", algoSelect?.value || "Newton-Raphson");
+    formData.append("model_settings", modelSettingsSelect?.value || "Free");
+    formData.append("optimizer", optimizerSelect?.value || "powell");
+    formData.append("initial_k", JSON.stringify(kValues));
+    formData.append("bounds", JSON.stringify(kBounds));
 
     try {
-      const resp = await fetch("http://127.0.0.1:8000/spectroscopy/preview", {
+      const resp = await fetch("http://127.0.0.1:8000/process_spectroscopy", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: formData,  // Send as FormData, not JSON
       });
 
       if (!resp.ok) {
@@ -783,11 +866,97 @@ function wireSpectroscopyForm() {
       }
 
       const data = await resp.json();
-      diagEl.textContent = JSON.stringify(data, null, 2);
+
+      // Display results
+      displayResults(data);
+
     } catch (err) {
       diagEl.textContent = `Error de red: ${err}`;
+      console.error(err);
     }
   });
+
+  // Helper function to display results
+  function displayResults(data) {
+    if (!data.success) {
+      diagEl.textContent = "Procesamiento falló.";
+      return;
+    }
+
+    // Display constants and statistics
+    let resultText = "=== RESULTADOS ===\n\n";
+    resultText += "Constantes:\n";
+    data.constants.forEach(c => {
+      resultText += `${c.name}: log10(K) = ${c.log10K.toExponential(3)} ± ${c.SE_log10K.toExponential(3)}\n`;
+      resultText += `    K = ${c.K.toExponential(3)} ± ${c.SE_K.toExponential(3)} (${c.percent_error.toFixed(2)}%)\n`;
+    });
+
+    resultText += "\nEstadísticas:\n";
+    resultText += `RMS: ${data.statistics.RMS.toExponential(3)}\n`;
+    resultText += `Lack of fit: ${data.statistics.lof.toExponential(3)}%\n`;
+    resultText += `MAE: ${data.statistics.MAE.toExponential(3)}\n`;
+    resultText += `Optimizer: ${data.statistics.optimizer}\n`;
+    resultText += `Eigenvalues: ${data.statistics.eigenvalues}\n`;
+
+    diagEl.textContent = resultText;
+
+    // Display graphs
+    displayGraphs(data.graphs);
+  }
+
+  function displayGraphs(graphs) {
+    // Get plot containers
+    const plotContainers = document.querySelectorAll(".plot-placeholder");
+
+    if (plotContainers.length >= 2) {
+      // Clear previous content
+      plotContainers.forEach(container => {
+        container.innerHTML = "";
+      });
+
+      // Display main plots in first container
+      const mainPlots = [];
+      if (graphs.concentrations) mainPlots.push({ name: "Concentrations", data: graphs.concentrations });
+      if (graphs.fit) mainPlots.push({ name: "Fit", data: graphs.fit });
+      if (graphs.eigenvalues) mainPlots.push({ name: "Eigenvalues", data: graphs.eigenvalues });
+      if (graphs.efa) mainPlots.push({ name: "EFA", data: graphs.efa });
+
+      const secondPlots = [];
+      if (graphs.absorptivities) secondPlots.push({ name: "Absorptivities", data: graphs.absorptivities });
+
+      // Add all remaining plots to second container
+      if (secondPlots.length === 0 && mainPlots.length > 2) {
+        secondPlots.push(mainPlots.pop());
+      }
+
+      // Display in first container
+      if (mainPlots.length > 0) {
+        mainPlots.forEach(plot => {
+          const img = document.createElement("img");
+          img.src = `data:image/png;base64,${plot.data}`;
+          img.alt = plot.name;
+          img.style.maxWidth = "100%";
+          img.style.height = "auto";
+          img.style.marginBottom = "10px";
+          plotContainers[0].appendChild(img);
+        });
+      }
+
+      // Display in second container
+      if (secondPlots.length > 0) {
+        secondPlots.forEach(plot => {
+          const img = document.createElement("img");
+          img.src = `data:image/png;base64,${plot.data}`;
+          img.alt = plot.name;
+          img.style.maxWidth = "100%";
+          img.style.height = "auto";
+          plotContainers[1].appendChild(img);
+        });
+      } else {
+        plotContainers[1].innerHTML = "<p style='color: #9ca3af;'>No additional plots</p>";
+      }
+    }
+  }
 }
 
 // Ejecutar una vez que el HTML ya está montado
@@ -798,3 +967,6 @@ function wireSpectroscopyForm() {
 // Primera renderización
 // Primera renderización
 initApp();
+
+// Connect WebSocket for progress updates
+connectWebSocket();

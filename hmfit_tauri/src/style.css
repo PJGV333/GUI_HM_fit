@@ -150,6 +150,11 @@ body {
   border-color: transparent;
 }
 
+/* File Row */
+.file-row {
+  margin-bottom: 1.25rem;
+}
+
 /* Buttons */
 .btn {
   padding: 0.5rem 1rem;
@@ -275,12 +280,22 @@ body {
 }
 
 .plot-placeholder {
-  height: 200px;
+  min-height: 200px;
   border: 1px dashed var(--border-color);
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   color: #9ca3af;
+  padding: 1rem;
+  overflow-y: auto;
+  background-color: var(--panel-bg);
+}
+
+.plot-placeholder img {
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
 }
 
 .actions-row {
