@@ -315,12 +315,14 @@ body {
 .split-top {
   flex: 1;
   min-height: 220px;
+  overflow: auto;
+  position: relative;
 }
 
 .split-bottom {
   min-height: 200px;
   max-height: 380px;
-  resize: vertical;
+  /* resize: vertical; - Disabled to avoid conflict with JS splitter */
   overflow: auto;
 }
 

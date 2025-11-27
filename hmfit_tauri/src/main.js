@@ -292,6 +292,9 @@ function initApp() {
               <div class="plot-placeholder primary-plot">
                 Plot placeholder (aquí irán las gráficas principales).
               </div>
+              <div class="plot-placeholder secondary-plot" style="margin-top: 1rem;">
+                 <!-- Placeholder for secondary plots -->
+              </div>
             </div>
             <div class="split-resizer" title="Arrastra para redimensionar"></div>
             <div class="split-bottom">
@@ -880,11 +883,17 @@ function wireSpectroscopyForm() {
       rows.forEach(row => {
         const inputs = row.querySelectorAll(".grid-input");
         if (inputs.length >= 3) {
-          const val = parseFloat(inputs[0].value) || 1.0;
-          const min = parseFloat(inputs[1].value) || -20;
-          const max = parseFloat(inputs[2].value) || 20;
-          kValues.push(val);
-          kBounds.push([min, max]);
+          const val = parseFloat(inputs[0].value);
+          const min = parseFloat(inputs[1].value);
+          const max = parseFloat(inputs[2].value);
+
+          // Use Number.isNaN to check for valid numbers, allowing 0
+          const finalVal = Number.isNaN(val) ? 1.0 : val;
+          const finalMin = Number.isNaN(min) ? -20 : min;
+          const finalMax = Number.isNaN(max) ? 20 : max;
+
+          kValues.push(finalVal);
+          kBounds.push([finalMin, finalMax]);
         }
       });
     }
@@ -907,11 +916,11 @@ function wireSpectroscopyForm() {
     formData.append("initial_k", JSON.stringify(kValues));
     formData.append("bounds", JSON.stringify(kBounds));
 
-  try {
-    const resp = await fetch(`${BACKEND_BASE}/process_spectroscopy`, {
-      method: "POST",
-      body: formData,  // Send as FormData, not JSON
-    });
+    try {
+      const resp = await fetch(`${BACKEND_BASE}/process_spectroscopy`, {
+        method: "POST",
+        body: formData,  // Send as FormData, not JSON
+      });
 
       if (!resp.ok) {
         let text;
@@ -984,7 +993,6 @@ function wireSpectroscopyForm() {
 
   function displayGraphs(graphs) {
     const plotContainers = document.querySelectorAll(".plot-placeholder");
-    if (plotContainers.length < 2) return;
 
     // Clear previous content
     plotContainers.forEach((container) => {
