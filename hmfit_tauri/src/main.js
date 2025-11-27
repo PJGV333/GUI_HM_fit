@@ -1,5 +1,8 @@
 import "./style.css";
 
+const BACKEND_BASE = "http://127.0.0.1:8001";
+const WS_BASE = "ws://127.0.0.1:8001";
+
 const state = {
   activeModule: "spectroscopy", // "spectroscopy" | "nmr"
   activeSubtab: "model",        // "model" | "optimization"
@@ -8,11 +11,12 @@ const state = {
 
 // WebSocket for progress streaming
 let progressWs = null;
+let isProcessing = false;
 
 function connectWebSocket() {
   if (progressWs && progressWs.readyState === WebSocket.OPEN) return;
 
-  progressWs = new WebSocket("ws://127.0.0.1:8000/ws/progress");
+  progressWs = new WebSocket(`${WS_BASE}/ws/progress`);
 
   progressWs.onopen = () => {
     console.log("WebSocket connected");
@@ -54,10 +58,19 @@ function appendLog(text) {
   pre.scrollTop = pre.scrollHeight;
 }
 
+function setProcessing(active) {
+  isProcessing = active;
+  const processBtn = document.getElementById("process-btn");
+  if (processBtn) {
+    processBtn.disabled = active;
+    processBtn.textContent = active ? "Processing..." : "Process Data";
+  }
+}
+
 async function pingBackend() {
   log("Consultando /health …");
   try {
-    const resp = await fetch("http://127.0.0.1:8000/health");
+    const resp = await fetch(`${BACKEND_BASE}/health`);
     const data = await resp.json();
     log(JSON.stringify(data, null, 2));
   } catch (err) {
@@ -72,7 +85,7 @@ async function dummyFit() {
       x: [0, 1, 2, 3],
       y: [0.1, 0.5, 0.9, 1.2],
     };
-    const resp = await fetch("http://127.0.0.1:8000/dummy_fit", {
+    const resp = await fetch(`${BACKEND_BASE}/dummy_fit`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -273,16 +286,18 @@ function initApp() {
 
         <!-- Panel derecho: gráficos + log -->
         <div class="right-panel">
-          <section class="panel plot-panel">
-            <h2 class="section-title">Main spectra / titration plot</h2>
-            <div class="plot-placeholder">
-              Plot placeholder (aquí irán las gráficas principales).
+          <section class="panel plot-panel split-panel">
+            <div class="split-top">
+              <h2 class="section-title">Main spectra / titration plot</h2>
+              <div class="plot-placeholder primary-plot">
+                Plot placeholder (aquí irán las gráficas principales).
+              </div>
             </div>
-          </section>
-
-          <section class="panel plot-panel">
-            <h2 class="section-title">Residuals / component spectra / diagnostics</h2>
-            <pre id="log-output" class="log-output">Esperando...</pre>
+            <div class="split-resizer" title="Arrastra para redimensionar"></div>
+            <div class="split-bottom">
+              <h2 class="section-title">Residuals / component spectra / diagnostics</h2>
+              <pre id="log-output" class="log-output">Esperando...</pre>
+            </div>
           </section>
         </div>
       </section>
@@ -329,9 +344,41 @@ function initApp() {
 
   // Initial UI Update
   updateUI();
+
+  // Initialize splitter behavior
+  initSplitPanel();
 }
 
 // === Helpers para localizar elementos existentes sin cambiar el HTML ===
+
+// Split panel resizable log area
+function initSplitPanel() {
+  const panel = document.querySelector(".split-panel");
+  const resizer = document.querySelector(".split-resizer");
+  const top = document.querySelector(".split-top");
+  const bottom = document.querySelector(".split-bottom");
+  if (!panel || !resizer || !top || !bottom) return;
+
+  let isDragging = false;
+  resizer.addEventListener("mousedown", () => {
+    isDragging = true;
+    document.body.classList.add("resizing");
+  });
+  window.addEventListener("mouseup", () => {
+    isDragging = false;
+    document.body.classList.remove("resizing");
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (!isDragging) return;
+    const rect = panel.getBoundingClientRect();
+    const offset = e.clientY - rect.top;
+    const minTop = 150;
+    const minBottom = 150;
+    const maxTop = rect.height - minBottom;
+    const newTopHeight = Math.min(Math.max(offset, minTop), maxTop);
+    top.style.height = `${newTopHeight}px`;
+  });
+}
 
 // Encuentra un botón por su texto visible
 function findButtonByLabel(label) {
@@ -460,7 +507,7 @@ function wireSpectroscopyForm() {
 
     try {
       diagEl.textContent = "Leyendo archivo Excel...";
-      const resp = await fetch("http://127.0.0.1:8000/list_sheets", {
+      const resp = await fetch(`${BACKEND_BASE}/list_sheets`, {
         method: "POST",
         body: formData,
       });
@@ -513,7 +560,7 @@ function wireSpectroscopyForm() {
 
     try {
       diagEl.textContent = `Leyendo columnas de ${sheetName}...`;
-      const resp = await fetch("http://127.0.0.1:8000/list_columns", {
+      const resp = await fetch(`${BACKEND_BASE}/list_columns`, {
         method: "POST",
         body: formData,
       });
@@ -790,11 +837,18 @@ function wireSpectroscopyForm() {
 
   // --- Handler: Process Data ---
   processBtn.addEventListener("click", async () => {
+    if (isProcessing) {
+      appendLog("Procesamiento en curso, espera a que termine...");
+      return;
+    }
+
     if (!state.uploadedFile) {
       diagEl.textContent = "Error: No file selected. Please select a file first.";
       return;
     }
 
+    connectWebSocket();
+    setProcessing(true);
     diagEl.textContent = "Procesando datos de Spectroscopy...\n";
 
     // Recolectar columnas seleccionadas
@@ -853,14 +907,20 @@ function wireSpectroscopyForm() {
     formData.append("initial_k", JSON.stringify(kValues));
     formData.append("bounds", JSON.stringify(kBounds));
 
-    try {
-      const resp = await fetch("http://127.0.0.1:8000/process_spectroscopy", {
-        method: "POST",
-        body: formData,  // Send as FormData, not JSON
-      });
+  try {
+    const resp = await fetch(`${BACKEND_BASE}/process_spectroscopy`, {
+      method: "POST",
+      body: formData,  // Send as FormData, not JSON
+    });
 
       if (!resp.ok) {
-        const text = await resp.text();
+        let text;
+        try {
+          const errJson = await resp.json();
+          text = errJson.detail || JSON.stringify(errJson);
+        } catch (_) {
+          text = await resp.text();
+        }
         diagEl.textContent = `Error HTTP ${resp.status}: ${text}`;
         return;
       }
@@ -869,93 +929,106 @@ function wireSpectroscopyForm() {
 
       // Display results
       displayResults(data);
+      displayGraphs(data.graphs);
 
     } catch (err) {
-      diagEl.textContent = `Error de red: ${err}`;
-      console.error(err);
+      diagEl.textContent =
+        "Error de red: backend no disponible o petición bloqueada.\nDetalle: " +
+        (err?.message || err);
+      console.error("Process Data request failed:", err);
+    } finally {
+      setProcessing(false);
     }
   });
 
   // Helper function to display results
   function displayResults(data) {
     if (!data.success) {
-      diagEl.textContent = "Procesamiento falló.";
+      const detail = data.detail || data.error || "Procesamiento falló.";
+      diagEl.textContent = detail;
       return;
     }
 
     // Display constants and statistics
-    let resultText = "=== RESULTADOS ===\n\n";
-    resultText += "Constantes:\n";
-    data.constants.forEach(c => {
-      resultText += `${c.name}: log10(K) = ${c.log10K.toExponential(3)} ± ${c.SE_log10K.toExponential(3)}\n`;
-      resultText += `    K = ${c.K.toExponential(3)} ± ${c.SE_K.toExponential(3)} (${c.percent_error.toFixed(2)}%)\n`;
+    const constants = data.constants || [];
+    const stats = data.statistics || {};
+
+    const fmt = (n, opts = {}) => {
+      if (n === null || n === undefined || Number.isNaN(n)) return "—";
+      if (opts.fixed) return Number(n).toFixed(opts.fixed);
+      return Number(n).toExponential(opts.exp ?? 3);
+    };
+
+    const lines = [];
+    lines.push("=== RESULTADOS ===", "");
+    lines.push("Constantes:");
+    constants.forEach((c) => {
+      const name = c.name || "";
+      lines.push(
+        `${name}: log10(K) = ${fmt(c.log10K)} ± ${fmt(c.SE_log10K)}`
+      );
+      lines.push(
+        `    K = ${fmt(c.K)} ± ${fmt(c.SE_K)} (${fmt(c.percent_error, { fixed: 2 })}%)`
+      );
     });
 
-    resultText += "\nEstadísticas:\n";
-    resultText += `RMS: ${data.statistics.RMS.toExponential(3)}\n`;
-    resultText += `Lack of fit: ${data.statistics.lof.toExponential(3)}%\n`;
-    resultText += `MAE: ${data.statistics.MAE.toExponential(3)}\n`;
-    resultText += `Optimizer: ${data.statistics.optimizer}\n`;
-    resultText += `Eigenvalues: ${data.statistics.eigenvalues}\n`;
+    lines.push("", "Estadísticas:");
+    lines.push(`RMS: ${fmt(stats.RMS)}`);
+    lines.push(`Lack of fit: ${fmt(stats.lof)}%`);
+    lines.push(`MAE: ${fmt(stats.MAE)}`);
+    lines.push(`Optimizer: ${stats.optimizer || "—"}`);
+    lines.push(`Eigenvalues: ${stats.eigenvalues ?? "—"}`);
 
-    diagEl.textContent = resultText;
-
-    // Display graphs
-    displayGraphs(data.graphs);
+    diagEl.textContent = lines.join("\n");
   }
 
   function displayGraphs(graphs) {
-    // Get plot containers
     const plotContainers = document.querySelectorAll(".plot-placeholder");
+    if (plotContainers.length < 2) return;
 
-    if (plotContainers.length >= 2) {
-      // Clear previous content
-      plotContainers.forEach(container => {
-        container.innerHTML = "";
-      });
+    // Clear previous content
+    plotContainers.forEach((container) => {
+      container.innerHTML = "";
+    });
 
-      // Display main plots in first container
-      const mainPlots = [];
-      if (graphs.concentrations) mainPlots.push({ name: "Concentrations", data: graphs.concentrations });
-      if (graphs.fit) mainPlots.push({ name: "Fit", data: graphs.fit });
-      if (graphs.eigenvalues) mainPlots.push({ name: "Eigenvalues", data: graphs.eigenvalues });
-      if (graphs.efa) mainPlots.push({ name: "EFA", data: graphs.efa });
+    const mainPlots = [];
+    if (graphs.concentrations) mainPlots.push({ name: "Concentrations", data: graphs.concentrations });
+    if (graphs.fit) mainPlots.push({ name: "Fit", data: graphs.fit });
+    if (graphs.eigenvalues) mainPlots.push({ name: "Eigenvalues", data: graphs.eigenvalues });
+    if (graphs.efa) mainPlots.push({ name: "EFA", data: graphs.efa });
 
-      const secondPlots = [];
-      if (graphs.absorptivities) secondPlots.push({ name: "Absorptivities", data: graphs.absorptivities });
+    const secondaryPlots = [];
+    if (graphs.absorptivities) secondaryPlots.push({ name: "Absorptivities", data: graphs.absorptivities });
 
-      // Add all remaining plots to second container
-      if (secondPlots.length === 0 && mainPlots.length > 2) {
-        secondPlots.push(mainPlots.pop());
-      }
-
-      // Display in first container
-      if (mainPlots.length > 0) {
-        mainPlots.forEach(plot => {
-          const img = document.createElement("img");
-          img.src = `data:image/png;base64,${plot.data}`;
-          img.alt = plot.name;
-          img.style.maxWidth = "100%";
-          img.style.height = "auto";
-          img.style.marginBottom = "10px";
-          plotContainers[0].appendChild(img);
-        });
-      }
-
-      // Display in second container
-      if (secondPlots.length > 0) {
-        secondPlots.forEach(plot => {
-          const img = document.createElement("img");
-          img.src = `data:image/png;base64,${plot.data}`;
-          img.alt = plot.name;
-          img.style.maxWidth = "100%";
-          img.style.height = "auto";
-          plotContainers[1].appendChild(img);
-        });
-      } else {
-        plotContainers[1].innerHTML = "<p style='color: #9ca3af;'>No additional plots</p>";
-      }
+    // Fallback: si no hay secundarias y hay más de 2 principales, mueve una
+    if (secondaryPlots.length === 0 && mainPlots.length > 2) {
+      secondaryPlots.push(mainPlots.pop());
     }
+
+    const renderList = (container, plots) => {
+      if (!plots.length) {
+        container.innerHTML = "<p style='color: #9ca3af;'>No plots</p>";
+        return;
+      }
+      plots.forEach((plot) => {
+        const wrapper = document.createElement("div");
+        wrapper.className = "plot-wrapper";
+        const title = document.createElement("div");
+        title.className = "plot-title";
+        title.textContent = plot.name;
+        const img = document.createElement("img");
+        img.src = `data:image/png;base64,${plot.data}`;
+        img.alt = plot.name;
+        img.style.maxWidth = "100%";
+        img.style.height = "auto";
+        wrapper.appendChild(title);
+        wrapper.appendChild(img);
+        container.appendChild(wrapper);
+      });
+    };
+
+    renderList(plotContainers[0], mainPlots);
+    renderList(plotContainers[1], secondaryPlots);
   }
 }
 

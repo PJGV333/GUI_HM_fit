@@ -69,12 +69,26 @@ def generate_figure_base64(x, y, mark, ylabel, xlabel, title):
     fig = Figure(figsize=(8, 6), dpi=100)
     ax = fig.add_subplot(111)
     
-    if isinstance(y, (list, np.ndarray)) and len(y) > 0 and isinstance(y[0], (list, np.ndarray)):
-        # Multiple series
-        for yi in y:
-            ax.plot(x, yi, mark)
+    # Normaliza dimensiones para evitar mismatches (se comporta como figura de wx)
+    x_arr = np.asarray(x).reshape(-1)
+    y_arr = np.asarray(y)
+
+    if y_arr.ndim == 1:
+        ax.plot(x_arr, y_arr, mark)
+    elif y_arr.ndim == 2:
+        if y_arr.shape[0] == x_arr.shape[0]:
+            for i in range(y_arr.shape[1]):
+                ax.plot(x_arr, y_arr[:, i], mark)
+        elif y_arr.shape[1] == x_arr.shape[0]:
+            for i in range(y_arr.shape[0]):
+                ax.plot(x_arr, y_arr[i, :], mark)
+        elif y_arr.size == x_arr.shape[0]:
+            ax.plot(x_arr, y_arr.reshape(-1), mark)
+        else:
+            m = min(x_arr.shape[0], y_arr.shape[0])
+            ax.plot(x_arr[:m], y_arr[:m, 0], mark)
     else:
-        ax.plot(x, y, mark)
+        ax.plot(x_arr, y_arr.reshape(-1), mark)
     
     ax.set_ylabel(ylabel)
     ax.set_xlabel(xlabel)
@@ -223,8 +237,9 @@ def process_spectroscopy_data(
         ev_s10 = np.array(ev_s1)
         
         # Generate graphs
+        # Evita mismatch de dimensiones: x del tamaño real de s
         graphs['eigenvalues'] = generate_figure_base64(
-            range(0, nc), np.log10(s), "o", "log(EV)", "# de autovalores", "Eigenvalues"
+            range(len(s)), np.log10(s), "o", "log(EV)", "# de autovalores", "Eigenvalues"
         )
         
         if G is not None:
