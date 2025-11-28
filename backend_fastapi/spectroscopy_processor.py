@@ -283,14 +283,45 @@ def process_spectroscopy_data(
         return rms, r
     
     def f_m(k):
-        C = res.concentraciones(k)[0]
-        A = solve_A_nnls_pgd(C, Y.T, ridge=0.0, max_iters=300)
-        r = C @ A - Y.T
-        rms = np.sqrt(np.mean(np.square(r)))
-        log_progress(f"f(x): {float(rms):.6e}")
-        log_progress(f"x: {[float(ki) for ki in k]}")
-        return rms
+        # Handle potential NaNs/Infs in parameters
+        if np.any(np.isnan(k)) or np.any(np.isinf(k)):
+            return 1e50
+
+        try:
+            C = res.concentraciones(k)[0]
+            # Check for NaNs in concentration matrix
+            if np.any(np.isnan(C)) or np.any(np.isinf(C)):
+                return 1e50
+                
+            A = solve_A_nnls_pgd(C, Y.T, ridge=0.0, max_iters=300)
+            r = C @ A - Y.T
+            rms = np.sqrt(np.mean(np.square(r)))
+            
+            if np.isnan(rms) or np.isinf(rms):
+                return 1e50
+                
+            # Log progress (throttled or every N iterations if needed, but here we log all for debugging)
+            # log_progress(f"f(x): {float(rms):.6e}") 
+            return rms
+        except Exception as e:
+            print(f"Error in objective function: {e}")
+            return 1e50
     
+    # Best-so-far tracking
+    best_result = {"rms": float('inf'), "k": initial_k}
+
+    # Optimization callback
+    def callback_log(xk, convergence=None):
+        # convergence arg is for differential_evolution, minimize passes only xk
+        val = f_m(xk)
+        
+        # Update best
+        if val < best_result["rms"]:
+            best_result["rms"] = val
+            best_result["k"] = np.copy(xk)
+            
+        log_progress(f"Iter: f(x)={val:.6e} | x={[float(xi) for xi in xk]}")
+
     # Optimization
     log_progress(f"Optimizer: {optimizer}")
     log_progress(f"Bounds: {bounds}")
@@ -306,11 +337,19 @@ def process_spectroscopy_data(
         r_0 = differential_evolution(f_m, bounds, x0=k, strategy='best1bin',
                                      maxiter=1000, popsize=15, tol=0.01,
                                      mutation=(0.5, 1), recombination=0.7,
-                                     init='latinhypercube')
+                                     init='latinhypercube',
+                                     callback=callback_log)
     else:
-        r_0 = optimize.minimize(f_m, k, method=optimizer, bounds=bounds)
+        r_0 = optimize.minimize(f_m, k, method=optimizer, bounds=bounds, callback=callback_log)
     
-    k = r_0.x
+    # Check if final result is better or worse than best seen
+    final_rms = f_m(r_0.x)
+    if final_rms > best_result["rms"]:
+        log_progress(f"Warning: Final result (RMS={final_rms:.6e}) is worse than best seen (RMS={best_result['rms']:.6e}). Restoring best parameters.")
+        k = best_result["k"]
+    else:
+        k = r_0.x
+
     k = np.ravel(k)
     
     log_progress("Optimización completada")

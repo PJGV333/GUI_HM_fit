@@ -153,9 +153,6 @@ function initApp() {
           <h1 class="hmfit-title">HM Fit</h1>
           <p class="hmfit-subtitle">Hard Modeling · Spectroscopy &amp; NMR</p>
         </div>
-        <button id="backend-health" class="btn ghost-btn">
-          Probar backend
-        </button>
       </header>
 
       <nav class="top-tabs">
@@ -278,8 +275,13 @@ function initApp() {
             </div>
 
             <div class="actions-row">
-              <button id="reset-btn" class="btn secondary-btn">Reset Calculation</button>
-              <button id="process-btn" class="btn primary-btn">Process Data</button>
+              <div class="actions-left">
+                <button id="backend-health" class="btn ghost-btn">Probar backend</button>
+              </div>
+              <div class="actions-right">
+                <button id="reset-btn" class="btn secondary-btn">Reset Calculation</button>
+                <button id="process-btn" class="btn primary-btn">Process Data</button>
+              </div>
             </div>
           </section>
         </div>
@@ -288,8 +290,12 @@ function initApp() {
         <div class="right-panel">
           <section class="panel plot-panel split-panel">
             <div class="split-top">
-              <h2 class="section-title">Main spectra / titration plot</h2>
-              <div class="plot-placeholder primary-plot">
+              <div class="plot-toolbar">
+                <button id="plot-prev-btn" class="btn tertiary-btn">« Prev</button>
+                <h2 class="section-title">Main spectra / titration plot</h2>
+                <button id="plot-next-btn" class="btn tertiary-btn">Next »</button>
+              </div>
+              <div class="plot-placeholder primary-plot scrollable-plot">
                 Plot placeholder (aquí irán las gráficas principales).
               </div>
               <div class="plot-placeholder secondary-plot" style="margin-top: 1rem;">
@@ -375,11 +381,21 @@ function initSplitPanel() {
     if (!isDragging) return;
     const rect = panel.getBoundingClientRect();
     const offset = e.clientY - rect.top;
-    const minTop = 150;
-    const minBottom = 150;
-    const maxTop = rect.height - minBottom;
-    const newTopHeight = Math.min(Math.max(offset, minTop), maxTop);
-    top.style.height = `${newTopHeight}px`;
+    const totalHeight = rect.height;
+
+    const minTop = 100;
+    const minBottom = 50;
+
+    // Calculate new bottom height based on mouse position
+    // Mouse is at 'offset' from top, so bottom height is total - offset
+    let newBottomHeight = totalHeight - offset;
+
+    // Clamp
+    const maxBottom = totalHeight - minTop;
+    newBottomHeight = Math.min(Math.max(newBottomHeight, minBottom), maxBottom);
+
+    bottom.style.height = `${newBottomHeight}px`;
+    // Top automatically adjusts due to flex: 1
   });
 }
 
@@ -993,50 +1009,155 @@ function wireSpectroscopyForm() {
 
   function displayGraphs(graphs) {
     const plotContainers = document.querySelectorAll(".plot-placeholder");
+    const prevBtn = document.getElementById("plot-prev-btn");
+    const nextBtn = document.getElementById("plot-next-btn");
 
     // Clear previous content
     plotContainers.forEach((container) => {
       container.innerHTML = "";
     });
 
+    const disableNav = () => {
+      if (prevBtn) prevBtn.disabled = true;
+      if (nextBtn) nextBtn.disabled = true;
+    };
+
     const mainPlots = [];
     if (graphs.concentrations) mainPlots.push({ name: "Concentrations", data: graphs.concentrations });
     if (graphs.fit) mainPlots.push({ name: "Fit", data: graphs.fit });
     if (graphs.eigenvalues) mainPlots.push({ name: "Eigenvalues", data: graphs.eigenvalues });
     if (graphs.efa) mainPlots.push({ name: "EFA", data: graphs.efa });
+    if (graphs.absorptivities) mainPlots.push({ name: "Absorptivities", data: graphs.absorptivities });
 
-    const secondaryPlots = [];
-    if (graphs.absorptivities) secondaryPlots.push({ name: "Absorptivities", data: graphs.absorptivities });
-
-    // Fallback: si no hay secundarias y hay más de 2 principales, mueve una
-    if (secondaryPlots.length === 0 && mainPlots.length > 2) {
-      secondaryPlots.push(mainPlots.pop());
+    // Clear secondary container explicitly (it might have old content)
+    if (plotContainers[1]) {
+      plotContainers[1].innerHTML = "";
+      plotContainers[1].style.display = "none"; // Hide it to be sure
     }
 
-    const renderList = (container, plots) => {
-      if (!plots.length) {
-        container.innerHTML = "<p style='color: #9ca3af;'>No plots</p>";
+    let slidesRef = [];
+    let currentSlideIndex = 0;
+    let updateSlide = () => {};
+
+    const attachNav = () => {
+      if (!prevBtn || !nextBtn) return;
+      const hasSlides = slidesRef.length > 0;
+      prevBtn.disabled = !hasSlides;
+      nextBtn.disabled = !hasSlides;
+
+      if (!hasSlides) {
+        prevBtn.onclick = null;
+        nextBtn.onclick = null;
         return;
       }
-      plots.forEach((plot) => {
-        const wrapper = document.createElement("div");
-        wrapper.className = "plot-wrapper";
+
+      prevBtn.onclick = () => {
+        const target = (currentSlideIndex - 1 + slidesRef.length) % slidesRef.length;
+        updateSlide(target);
+      };
+      nextBtn.onclick = () => {
+        const target = (currentSlideIndex + 1) % slidesRef.length;
+        updateSlide(target);
+      };
+    };
+
+    const renderCarousel = (container, plots) => {
+      if (!plots.length) {
+        container.innerHTML = "<p style='color: #9ca3af;'>No plots</p>";
+        disableNav();
+        return;
+      }
+
+      // Create carousel structure
+      const carouselContainer = document.createElement("div");
+      carouselContainer.className = "carousel-container";
+
+      // Slides
+      plots.forEach((plot, index) => {
+        const slide = document.createElement("div");
+        slide.className = `carousel-slide ${index === 0 ? "active" : ""}`;
+        slide.dataset.index = index;
+
         const title = document.createElement("div");
         title.className = "plot-title";
         title.textContent = plot.name;
+
         const img = document.createElement("img");
         img.src = `data:image/png;base64,${plot.data}`;
         img.alt = plot.name;
-        img.style.maxWidth = "100%";
-        img.style.height = "auto";
-        wrapper.appendChild(title);
-        wrapper.appendChild(img);
-        container.appendChild(wrapper);
+
+        slide.appendChild(title);
+        slide.appendChild(img);
+        carouselContainer.appendChild(slide);
       });
+
+      // Controls (only if more than 1 plot)
+      if (plots.length > 1) {
+        const controls = document.createElement("div");
+        controls.className = "carousel-controls";
+
+        const prevBtn = document.createElement("button");
+        prevBtn.className = "carousel-btn";
+        prevBtn.textContent = "← Prev";
+
+        const nextBtn = document.createElement("button");
+        nextBtn.className = "carousel-btn";
+        nextBtn.textContent = "Next →";
+
+        const counter = document.createElement("div");
+        counter.className = "carousel-counter";
+        counter.textContent = `1 / ${plots.length}`;
+
+        let currentIndex = 0;
+
+        const updateSlide = (newIndex) => {
+          const slides = carouselContainer.querySelectorAll(".carousel-slide");
+          slides[currentIndex].classList.remove("active");
+          currentIndex = newIndex;
+          slides[currentIndex].classList.add("active");
+          counter.textContent = `${currentIndex + 1} / ${plots.length}`;
+        };
+
+        prevBtn.addEventListener("click", () => {
+          let newIndex = currentIndex - 1;
+          if (newIndex < 0) newIndex = plots.length - 1;
+          updateSlide(newIndex);
+        });
+
+        nextBtn.addEventListener("click", () => {
+          let newIndex = currentIndex + 1;
+          if (newIndex >= plots.length) newIndex = 0;
+          updateSlide(newIndex);
+        });
+
+        controls.appendChild(prevBtn);
+        controls.appendChild(nextBtn);
+        carouselContainer.appendChild(controls);
+        carouselContainer.appendChild(counter);
+      }
+
+      container.appendChild(carouselContainer);
+
+      slidesRef = Array.from(carouselContainer.querySelectorAll(".carousel-slide"));
+      currentSlideIndex = 0;
+
+      updateSlide = (newIndex) => {
+        if (!slidesRef.length) return;
+        slidesRef[currentSlideIndex].classList.remove("active");
+        currentSlideIndex = newIndex;
+        slidesRef[currentSlideIndex].classList.add("active");
+        const counterEl = carouselContainer.querySelector(".carousel-counter");
+        if (counterEl) {
+          counterEl.textContent = `${currentSlideIndex + 1} / ${slidesRef.length}`;
+        }
+      };
+
+      updateSlide(0);
+      attachNav();
     };
 
-    renderList(plotContainers[0], mainPlots);
-    renderList(plotContainers[1], secondaryPlots);
+    renderCarousel(plotContainers[0], mainPlots);
+    // Secondary plots are now merged into mainPlots, so we don't render them separately.
   }
 }
 
