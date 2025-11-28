@@ -19,7 +19,7 @@ import timeit
 from Methods import BaseTechniquePanel
 from wx.lib.scrolledpanel import ScrolledPanel
 from errors import compute_errors_nmr_varpro
-
+import re
 
 def pinv_cs(A, rcond=1e-12):
     A = np.asarray(A)
@@ -33,6 +33,141 @@ def pinv_cs(A, rcond=1e-12):
     Y = Pr[n:2*n, :m]
     return X + 1j*Y
 
+_alias_re = re.compile(r"\(([^)]+)\)")
+
+def _aliases_from_names(names):
+    alias2idx = {}
+    for i, nm in enumerate(names):
+        s = str(nm).lower()
+        for a in _alias_re.findall(s):
+            alias2idx[a.strip().lower()] = i
+        head = s.split("(")[0].strip().split()
+        if head:
+            alias2idx[head[0]] = i
+    return alias2idx
+
+def build_D_cols(CT, conc_colnames, signal_colnames, default_idx=0):
+    """
+    CT: DataFrame o ndarray (n_i, n_comp) con las columnas marcadas.
+    conc_colnames: lista de nombres en el MISMO orden de CT.
+    signal_colnames: encabezados de señales (Chem_Shift_T.columns)
+    """
+    # --- normaliza CT a ndarray y alinea nombres ---
+    if 'pd' in globals() and isinstance(CT, pd.DataFrame):
+        CT_arr = CT.to_numpy(dtype=float)
+        if not conc_colnames or len(conc_colnames) != CT.shape[1]:
+            conc_colnames = list(CT.columns)
+    else:
+        CT_arr = onp.asarray(CT, dtype=float)
+
+    alias2idx = _aliases_from_names(conc_colnames)
+    m_sig = len(signal_colnames)
+    n_i = CT_arr.shape[0]
+
+    D_cols = onp.empty((n_i, m_sig), float)
+    parent_idx = []
+
+    for j, sname in enumerate(signal_colnames):
+        s = str(sname).lower()
+        found = None
+        # alias entre paréntesis
+        for a in _alias_re.findall(s):
+            k = a.strip().lower()
+            if k in alias2idx:
+                found = alias2idx[k]; break
+        # fallback por token
+        if found is None:
+            head = s.split("(")[0].strip().split()
+            if head:
+                found = alias2idx.get(head[-1])
+
+        if (found is None) or (found < 0) or (found >= CT_arr.shape[1]):
+            found = default_idx  # último recurso
+
+        D_cols[:, j] = CT_arr[:, found]
+        parent_idx.append(found)
+
+    return D_cols, parent_idx
+
+
+def project_coeffs_block_onp_frac(dq_block, C_block, D_cols, mask_block, rcond=1e-10, ridge=0.0):
+    """Proyección por señal usando fracción molar del 'padre' de cada señal."""
+    m, nP = dq_block.shape
+    dq_calc = onp.zeros_like(dq_block, float)
+    Xbase = onp.asarray(C_block, float)
+    finite_rows = onp.isfinite(Xbase).all(axis=1)
+    nonzero_rows = onp.linalg.norm(Xbase, axis=1) > 0.0
+    goodX = finite_rows & nonzero_rows
+    for j in range(nP):
+        D = D_cols[:, j]
+        mj = mask_block[:, j] & goodX & onp.isfinite(D) & (onp.abs(D) > 0)
+        if mj.sum() < 2: continue
+        Xj = Xbase[mj, :] / D[mj][:, None]
+        y  = dq_block[mj, j]
+        try:
+            coef, *_ = onp.linalg.lstsq(Xj, y, rcond=rcond)
+        except onp.linalg.LinAlgError:
+            if ridge > 0.0:
+                XtX = Xj.T @ Xj
+                coef = onp.linalg.solve(XtX + ridge*onp.eye(XtX.shape[0]), Xj.T @ y)
+            else:
+                coef = onp.linalg.pinv(Xj, rcond=rcond) @ y
+        dq_calc[mj, j] = Xj @ coef
+    return dq_calc
+
+
+def residuals_masked_onp(k, dq, mask, H, solver):
+    """Vector de residuales usando solo observaciones válidas (mask=True)."""
+    C = res.concentraciones(k)[0]
+    dq_cal = project_coeffs_block_onp_frac(dq, C, D_cols, mask)
+    return (dq - dq_cal)[mask].ravel()
+
+# --- a nivel de módulo, en NMR_controls.py ---
+
+def project_coeffs_block_onp(dq_block, X_block, mask_block, rcond=1e-10, ridge=0.0):
+    """
+    Ajusta coeficientes por señal usando SOLO filas válidas.
+    - Filtra también filas donde X tenga NaN/Inf o norm≈0 (p.ej. H=0).
+    - Usa pinv o ridge si lstsq falla / X es mal condicionada.
+    dq_block : (m, nP)
+    X_block  : (m, n_abs)   # = C / H[:,None] que tú ya calculas antes
+    mask_block: (m, nP)
+    """
+    m, nP = dq_block.shape
+    dq_calc = onp.zeros_like(dq_block, dtype=float)
+
+    # filas de X que son numéricamente utilizables
+    finite_rows = onp.isfinite(X_block).all(axis=1)
+    nonzero_rows = onp.linalg.norm(X_block, axis=1) > 0.0
+    good_rows_X = finite_rows & nonzero_rows
+
+    for j in range(nP):
+        mj = mask_block[:, j] & good_rows_X
+        nj = int(mj.sum())
+        if nj < 2:
+            continue  # no hay suficientes puntos para esa señal
+
+        X = X_block[mj, :]      # (nj × n_abs)
+        y = dq_block[mj, j]     # (nj,)
+
+        try:
+            # camino estable
+            coef, *_ = onp.linalg.lstsq(X, y, rcond=rcond)
+        except onp.linalg.LinAlgError:
+            if ridge > 0.0:
+                # ridge mínimo si lstsq no converge
+                XtX = X.T @ X
+                coef = onp.linalg.solve(XtX + ridge * onp.eye(XtX.shape[0]), X.T @ y)
+            else:
+                # fallback pinv
+                coef = onp.linalg.pinv(X, rcond=rcond) @ y
+
+        # predicción solo en filas observadas
+        dq_calc[mj, j] = X @ coef
+
+    return dq_calc
+
+    
 # Clase para la técnica de NMR
 class NMR_controlsPanel(BaseTechniquePanel):
     def __init__(self, parent, app_ref):
@@ -378,7 +513,6 @@ class NMR_controlsPanel(BaseTechniquePanel):
         
         C_T = concentracion[columnas_seleccionadas].to_numpy()
         
-
         # Crear un diccionario que mapea nombres de columnas a sus nuevos índices en C_T
         column_indices_in_C_T = {name: index for index, name in enumerate(columnas_seleccionadas)}
 
@@ -408,7 +542,22 @@ class NMR_controlsPanel(BaseTechniquePanel):
         C_T = pd.DataFrame(C_T)
         Chem_Shift_T = pd.DataFrame(Chem_Shift_T)
         dq1 = Chem_Shift_T - Chem_Shift_T.iloc[0]
-        dq = np.array(dq1)
+        dq  = onp.asarray(dq1.to_numpy(dtype=float))   # NumPy real
+        mask = onp.isfinite(dq)                        # True solo donde hay dato
+
+
+        signal_names = list(Chem_Shift_T.columns)        # encabezados de señales
+        # si tu lista 'columnas_seleccionadas' no existe o no coincide en longitud, usa C_T.columns
+        try:
+            nombres_conc = list(columnas_seleccionadas)
+        except NameError:
+            nombres_conc = list(C_T.columns)
+        if len(nombres_conc) != C_T.shape[1]:
+            nombres_conc = list(C_T.columns)
+
+        D_cols, parent_idx = build_D_cols(C_T, nombres_conc, signal_names, default_idx=0)
+        mask = mask & onp.isfinite(D_cols) & (onp.abs(D_cols) > 0)
+
 
         # Intentar leer desde el archivo Excel
         grid_data = self.extract_data_from_grid()
@@ -445,6 +594,20 @@ class NMR_controlsPanel(BaseTechniquePanel):
 
             res = LevenbergMarquardt(C_T, modelo, nas, model_sett) 
 
+
+        # --- chequeo de observaciones efectivas por la máscara fraccionaria ---
+        N_eff_total = int(mask.sum())
+        p = len(k)  # nº de parámetros que estás optimizando
+        n_eff_por_senal = onp.sum(mask, axis=0)
+
+        if (N_eff_total <= p) or (n_eff_por_senal < 2).all():
+            wx.MessageBox(
+                "Planteamiento degenerado: muy pocos puntos efectivos por señal tras la selección de roles/columnas.\n"
+                "Revisa qué specie es Receptor/Ligand y cuál es Guest/Titrant.",
+                "Datos insuficientes", wx.OK | wx.ICON_WARNING
+            )
+            return  # salimos sin lanzar la optimización
+
         def cal_delta(k):
             C = res.concentraciones(k)[0]
             xi = C / H[:, np.newaxis]
@@ -459,19 +622,49 @@ class NMR_controlsPanel(BaseTechniquePanel):
             return coeficientes
 
         def f_m(k):
-            dq_cal = cal_delta(k)
-            r = dq - dq_cal.T
-            rms = np.sqrt(np.mean(np.square(r)))
-            self.res_consola("f(x)", rms)
-            self.res_consola("x", k)
-            wx.Yield()
-            return rms
-        
+            try:
+                C = res.concentraciones(k)[0]
+                dq_cal = project_coeffs_block_onp_frac(
+                    dq, C, D_cols, mask, rcond=1e-10, ridge=1e-8
+                )
+                r = (dq - dq_cal)[mask].ravel()
+                if (r.size <= len(k)) or (not onp.isfinite(r).all()):
+                    return 1e9
+
+                # objetivo como RMS (compatible con lo que imprimías antes)
+                rms = float(onp.sqrt(onp.mean(r * r)))
+
+                # --- monitoreo no-bloqueante y con “throttling” ---
+                # imprime cada ~25 llamadas o cuando mejora el mejor valor
+                cnt = getattr(self, "_print_counter", 0) + 1
+                best = getattr(self, "_best_f", onp.inf)
+                should_print = (cnt % 25 == 0) or (rms < best * 0.999)
+
+                if should_print:
+                    self.res_consola("f(x)", rms)
+                    self.res_consola("x", k)
+                    self._best_f = min(best, rms)
+
+                self._print_counter = cnt
+                try:
+                    wx.Yield()
+                except Exception:
+                    pass
+
+                return rms
+            except Exception:
+                return 1e9
+
+
+
         def f_m2(k):
-            dq_cal = cal_delta(k)
-            r = dq - dq_cal.T
-            rms = np.sqrt(np.mean(np.square(r)))
+            C = res.concentraciones(k)[0]
+            X = C / H[:, None]
+            dq_cal = project_coeffs_block_onp(dq, X, mask)
+            r_vec  = residual_masked_onp(dq, dq_cal, mask)
+            rms = float(onp.sqrt(onp.mean(r_vec**2)))
             return rms
+
 
         # Registrar el tiempo de inicio
         inicio = timeit.default_timer()
@@ -527,124 +720,34 @@ class NMR_controlsPanel(BaseTechniquePanel):
         p = len(k)
         #SER = f_m2(k)
 
+
         from errors import percent_error_log10K, sensitivities_wrt_logK
         
         # --- al inicio del archivo (cabecera) asegúrate de tener:
-# from errors import pinv_cs, percent_error_log10K, sensitivities_wrt_logK
 
-        def compute_errors_common(k, res, dq, H, modelo, nas):
-            """
-            Calcula jacobiano de residuos, covarianza y métricas de ajuste
-            para NR y LM con un único flujo, usando sensibilidades implícitas.
+        # --- residual enmascarado para errores (equivalente 1 bloque) ---
+        def residuals_masked_for_errors(k):
+            C = res.concentraciones(k)[0]          # (n_i × n_abs)
+            X = C / H[:, None]                     # diseño del bloque
+            dq_cal = project_coeffs_block_onp(dq, X, mask)
+            return (dq - dq_cal)[mask].ravel()
 
-            Parámetros
-            ----------
-            k       : (p,)           parámetros óptimos (log10 K)
-            res     : solver de concentraciones (NR o LM) con método .concentraciones(k)
-            dq      : (npts × nP)    datos (Δδ) observados
-            H       : (npts,)        vector H (denominador que usas para xi)
-            modelo  : (nspec×n_comp) o (n_comp×nspec)  matriz M del balance
-            nas     : lista[int]     índices de especies NO absorbentes
 
-            Devuelve
-            --------
-            dict con claves:
-            - 'percK', 'SE_K', 'SE_log10K', 'Cov_log10K', 'rms', 'covfit',
-                'coef', 'xi', 'J'
-            """
-            import numpy as np
 
-            k = np.ravel(k)
+        
 
-            # 1) Concentraciones al óptimo (común a NR/LM)
-            C, Co = res.concentraciones(k)      # C: (npts × n_abs), Co: (npts × nspec)
-
-            # 2) Ajuste lineal en el óptimo (común a NR/LM)
-            xi   = C / H[:, None]               # (npts × n_abs)
-            coef = pinv_cs(xi) @ dq             # (n_abs × nP)
-
-            npts, n_abs = C.shape
-            nP   = dq.shape[1]                  # nº de observables/protones
-            p    = len(k)                       # nº de parámetros libres
-            nspec = Co.shape[1]
-
-            # 3) Normalizar orientación de 'modelo' y deducir n_comp
-            M_in = np.asarray(modelo, dtype=float)
-            if M_in.shape[0] == nspec:
-                Ms = M_in                       # (nspec × n_comp)
-                n_comp = Ms.shape[1]
-            elif M_in.shape[1] == nspec:
-                Ms = M_in.T                     # (nspec × n_comp)
-                n_comp = Ms.shape[1]
-            else:
-                raise ValueError(
-                    f"modelo incompatible con Co: Co has nspec={nspec}, modelo shape={M_in.shape}"
-                )
-
-            # 4) Índices de especies absorbentes (para mapear a xi)
-            abs_idx = [j for j in range(nspec) if j not in nas]
-
-            # 5) Mapeo parámetros -> columnas de especies (param_idx)
-            #    Caso estándar: parámetros K gobiernan los COMPLEJOS (columnas desde n_comp al final).
-            param_idx = list(range(n_comp, nspec))
-
-            #    Si por diseño p != nspec - n_comp (p. ej., no todos los complejos se parametrizan),
-            #    ajusta al tamaño p tomando las últimas p columnas o lanza error si prefieres.
-            if len(param_idx) != p:
-                if p <= nspec:
-                    param_idx = list(range(nspec - p, nspec))
-                else:
-                    raise ValueError(f"No hay {p} columnas en Co para mapear parámetros; nspec={nspec}")
-
-            # 6) Construir jacobiano de residuos J (p × m), m = npts*nP
-            J = np.zeros((p, npts * nP), dtype=float)
-
-            for i in range(npts):
-                # dCspec/dlog10K (nspec × p) para la fila i (común a NR/LM)
-                dC_dlog10K = sensitivities_wrt_logK(Co[i], Ms, param_idx=param_idx)  # (nspec × p)
-
-                # Sólo especies absorbentes y pasar a xi (divide por H[i])
-                dC_abs = dC_dlog10K[abs_idx, :]   # (n_abs × p)
-                dxi    = (1.0 / H[i]) * dC_abs    # (n_abs × p)
-
-                # y_i = coef.T @ xi_i  -> dy_i/dlogK = coef.T @ dxi_i
-                dyi_dk = (coef.T @ dxi).T         # (p × nP)
-
-                # residuo: r_i = dq_i - y_i -> dr_i/dlogK = -dy_i/dlogK
-                J[:, i*nP:(i+1)*nP] = -dyi_dk
-
-            # 7) Residuos y métricas
-            yfit = (coef.T @ xi.T).T             # (npts × nP)
-            r    = (dq - yfit).ravel()
-            m    = r.size
-            dof  = max(m - p, 1)
-            s2   = float((r @ r) / dof)
-
-            # Covarianza en log10K y errores
-            Cov_log10K = s2 * pinv_cs(J @ J.T)   # (p × p)
-            SE_log10K  = np.sqrt(np.clip(np.diag(Cov_log10K), 0.0, np.inf))
-            percK, SE_K, _ = percent_error_log10K(k, SE_log10K)
-
-            rms    = float(np.sqrt(np.mean(r**2)))
-            covfit = s2
-
-            return {
-                "percK": percK,
-                "SE_K": SE_K,
-                "SE_log10K": SE_log10K,
-                "Cov_log10K": Cov_log10K,
-                "rms": rms,
-                "covfit": covfit,
-                "coef": coef,
-                "xi": xi,
-                "J": J,
-            }
+        # Chequeo mínimo antes de calcular errores
+        r_test = residuals_masked_for_errors(self.r_0.x)
+        if (r_test.size <= len(self.r_0.x)) or (not onp.isfinite(r_test).all()):
+            self.res_consola("Aviso",
+                "No se pueden calcular errores: Nobs_eff ≤ p o residuales no finitos (roles/columnas).")
+            return  # salir sin calcular errores
 
 
         metrics = compute_errors_nmr_varpro(
         k=self.r_0.x, res=res, dq=dq, H=H, modelo=modelo, nas=nas,
-        rcond=1e-10, use_projector=True
-        )
+        rcond=1e-10, use_projector=True, mask=mask)
+
         percK     = metrics["percK"]
         SE_K      = metrics["SE_K"]
         rms       = metrics["rms"]
@@ -655,7 +758,7 @@ class NMR_controlsPanel(BaseTechniquePanel):
         xi        = metrics["xi"]
                 
 
-        SER = f_m2(k)
+        SER = f_m(k)
 
         C, Co = res.concentraciones(k)
         #self.entry_nc.GetValue()
@@ -664,16 +767,24 @@ class NMR_controlsPanel(BaseTechniquePanel):
             
             self.figura(H, C, ":o",  "[Species], M", "[H], M", "Perfil de concentraciones")
 
-            dq_cal = cal_delta(k).T
+            C_opt = res.concentraciones(k)[0]
+            X_opt = C_opt / H[:, None]
+            dq_fit = project_coeffs_block_onp(dq, X_opt, mask)   # (npts × nP)
 
-            self.figura2(H, dq, cal_delta(k).T, "o", ":", "$\Delta$$\delta$ (ppm)", "[H], M", 1, "Ajuste")
+            dq_cal = dq_fit                                      # para tablas/export
+            self.figura2(H, dq, dq_fit, "o", ":", "$\\Delta$\\delta (ppm)", "[H], M", 1, "Ajuste")
+
 
         else:
-                self.figura(G, C, ":o", "[Species], M", "[G], M", "Perfil de concentraciones")
+            self.figura(G, C, ":o", "[Species], M", "[G], M", "Perfil de concentraciones")
 
-                dq_cal = cal_delta(k).T
+            C_opt = res.concentraciones(k)[0]
+            X_opt = C_opt / H[:, None]
+            dq_fit = project_coeffs_block_onp(dq, X_opt, mask)   # (npts × nP)
 
-                self.figura2(G, dq, cal_delta(k).T, "o", ":", "$\Delta$$\delta$ (ppm)", "[G], M", 1, "Ajuste")
+            dq_cal = dq_fit    
+
+            self.figura2(G, dq, cal_delta(k).T, "o", ":", "$\Delta$$\delta$ (ppm)", "[G], M", 1, "Ajuste")
         
             
 
