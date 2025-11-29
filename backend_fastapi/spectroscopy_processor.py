@@ -523,6 +523,29 @@ def process_spectroscopy_data(
     ]
     results_text += "\n\nEstadísticas:\n" + "\n".join(extra_stats)
     
+    # Export payload to mimic wx save_results (DataFrames per sheet)
+    export_data = {
+        "modelo": modelo.tolist() if modelo is not None else [],
+        "C": np.asarray(C).tolist() if C is not None else [],
+        "Co": np.asarray(Co).tolist() if Co is not None else [],
+        "C_T": np.asarray(C_T).tolist() if C_T is not None else [],
+        "A": np.asarray(A).tolist() if A is not None else [],
+        "k": np.asarray(k).tolist(),
+        "k_ini": np.asarray(initial_k).tolist() if initial_k is not None else [],
+        "percK": np.asarray(percK).tolist(),
+        "SE_log10K": np.asarray(SE_log10K).tolist(),
+        "nm": nm.tolist() if hasattr(nm, "tolist") else [],
+        "Y": np.asarray(Y).tolist() if Y is not None else [],
+        "yfit": np.asarray(yfit).tolist() if yfit is not None else [],
+        "stats_table": [
+            ["RMS", float(rms)],
+            ["Error absoluto medio", float(MAE)],
+            ["Diferencia en C total (%)", float(dif_en_ct)],
+            ["covfit", float(covfit)],
+            ["optimizer", optimizer],
+        ],
+    }
+
     # Format results
     results = {
         "success": True,
@@ -548,6 +571,7 @@ def process_spectroscopy_data(
         },
         "graphs": graphs,
         "results_text": results_text,
+        "export_data": export_data,
         "optimizer_result": {
             "success": bool(r_0.success),
             "message": str(r_0.message) if hasattr(r_0, 'message') else "",

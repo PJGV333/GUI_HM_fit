@@ -959,6 +959,7 @@ function wireSpectroscopyForm() {
             constants: payload.constants || [],
             statistics: payload.statistics || {},
             results_text: resultsText,
+            export_data: payload.export_data || {},
           }),
         });
         if (!resp.ok) {
@@ -979,7 +980,8 @@ function wireSpectroscopyForm() {
           if (!savePath) return; // cancelado
           const data = await fetchXlsx();
           await window.__TAURI__.fs.writeBinaryFile({ path: savePath, contents: data });
-          appendLog(`Resultados guardados en ${savePath}`);
+          const baseText = state.latestResultsText || "";
+          diagEl.textContent = `${baseText}\n\nResultados guardados en ${savePath}`;
         } else {
           // Fallback: descarga directa del browser
           const data = await fetchXlsx();
@@ -994,10 +996,12 @@ function wireSpectroscopyForm() {
           link.click();
           document.body.removeChild(link);
           URL.revokeObjectURL(url);
-          appendLog(`Resultados descargados como ${filename}`);
+          const baseText = state.latestResultsText || "";
+          diagEl.textContent = `${baseText}\n\nResultados descargados como ${filename}`;
         }
       } catch (err) {
-        appendLog(`No se pudieron guardar los resultados: ${err.message || err}`);
+        const baseText = state.latestResultsText || "";
+        diagEl.textContent = `${baseText}\n\nNo se pudieron guardar los resultados: ${err.message || err}`;
       }
     });
   }

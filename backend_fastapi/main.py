@@ -70,6 +70,7 @@ class ExportRequest(BaseModel):
     constants: list[dict] = []
     statistics: dict = {}
     results_text: str | None = None
+    export_data: dict | None = None
 
 @app.get("/health")
 def health():
@@ -302,29 +303,89 @@ async def export_results_xlsx(payload: ExportRequest):
         constants = payload.constants or []
         statistics = payload.statistics or {}
         results_text = payload.results_text or ""
+        export_data = payload.export_data or {}
 
-        # Preparar DataFrames
-        with io.BytesIO() as buffer:
-            with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-                if constants:
-                    pd.DataFrame(constants).to_excel(writer, sheet_name="Constants", index=False)
-                if statistics:
-                    pd.DataFrame(
-                        list(statistics.items()),
-                        columns=["metric", "value"]
-                    ).to_excel(writer, sheet_name="Statistics", index=False)
-                if results_text:
-                    pd.DataFrame({"results": results_text.splitlines()}).to_excel(writer, sheet_name="Results_text", index=False)
+        buffer = io.BytesIO()
 
-            buffer.seek(0)
-            headers = {
-                "Content-Disposition": 'attachment; filename="hmfit_results.xlsx"'
-            }
-            return StreamingResponse(
-                buffer,
-                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                headers=headers,
-            )
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            if export_data:
+                def df_safe(data, index=None, columns=None):
+                    try:
+                        return pd.DataFrame(data, index=index, columns=columns)
+                    except Exception:
+                        return None
+
+                modelo = df_safe(export_data.get("modelo"))
+                if modelo is not None:
+                    modelo.to_excel(writer, sheet_name="Model", index=False)
+
+                C = df_safe(export_data.get("C"))
+                if C is not None:
+                    C.to_excel(writer, sheet_name="Absorbent_species", index=False)
+
+                Co = df_safe(export_data.get("Co"))
+                if Co is not None:
+                    Co.to_excel(writer, sheet_name="All_species", index=False)
+
+                C_T = df_safe(export_data.get("C_T"))
+                if C_T is not None:
+                    C_T.to_excel(writer, sheet_name="Tot_con_comp", index=False)
+
+                A = export_data.get("A")
+                nm = export_data.get("nm")
+                if A is not None:
+                    dfA = df_safe(A, index=nm if nm else None)
+                    if dfA is not None:
+                        dfA.to_excel(writer, sheet_name="Molar_Absortivities", index_label='nm' if nm else None)
+
+                Y = export_data.get("Y")
+                if Y is not None:
+                    dfY = df_safe(Y, index=nm if nm else None)
+                    if dfY is not None:
+                        dfY.to_excel(writer, sheet_name="Y_observed", index_label='nm' if nm else None)
+
+                yfit = export_data.get("yfit")
+                if yfit is not None:
+                    dfPhi = df_safe(yfit, index=nm if nm else None)
+                    if dfPhi is not None:
+                        dfPhi.to_excel(writer, sheet_name="Y_calculated", index_label='nm' if nm else None)
+
+                k_vals = export_data.get("k") or []
+                percK = export_data.get("percK") or []
+                if k_vals:
+                    names = [f"K{i+1}" for i in range(len(k_vals))]
+                    dfk = pd.DataFrame({"log10K": k_vals, "percK(%)": percK[:len(k_vals)]}, index=names)
+                    dfk.to_excel(writer, sheet_name="K_calculated")
+
+                k_ini = export_data.get("k_ini") or []
+                if k_ini:
+                    names_ini = [f"k{i+1}" for i in range(len(k_ini))]
+                    dfin = pd.DataFrame({"init_guess": k_ini}, index=names_ini)
+                    dfin.to_excel(writer, sheet_name="Init_guess_K")
+
+                stats_table = export_data.get("stats_table") or []
+                if stats_table:
+                    dfstats = pd.DataFrame(stats_table, columns=["metric", "value"])
+                    dfstats.to_excel(writer, sheet_name="Stats", index=False)
+
+            # Always include constants/stats/results_text as fallback sheets
+            if constants:
+                pd.DataFrame(constants).to_excel(writer, sheet_name="Constants", index=False)
+            if statistics:
+                pd.DataFrame(list(statistics.items()), columns=["metric", "value"]).to_excel(writer, sheet_name="Statistics", index=False)
+            if results_text:
+                pd.DataFrame({"results": results_text.splitlines()}).to_excel(writer, sheet_name="Results_text", index=False)
+
+        buffer.seek(0)
+        data = buffer.getvalue()
+        headers = {
+            "Content-Disposition": 'attachment; filename="hmfit_results.xlsx"'
+        }
+        return StreamingResponse(
+            io.BytesIO(data),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers=headers,
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"No se pudo generar el XLSX: {e}")
 
