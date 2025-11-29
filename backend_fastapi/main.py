@@ -251,34 +251,52 @@ async def process_nmr(
     conc_sheet: str = Form(...),
     column_names: str = Form(...),  # JSON string
     signals_sheet: str = Form(""),
+    signal_names: str = Form("[]"), # JSON string
     receptor_label: str = Form(""),
-    guest_label: str = Form("")
+    guest_label: str = Form(""),
+    modelo: str = Form("[]"),  # JSON string
+    non_abs_species: str = Form("[]"),  # JSON string
+    algorithm: str = Form("Newton-Raphson"),
+    model_settings: str = Form("Free"),
+    optimizer: str = Form("powell"),
+    initial_k: str = Form("[]"),  # JSON string
+    bounds: str = Form("[]")  # JSON string
 ):
     """
-    Lightweight placeholder to wire the Tauri NMR tab.
-
-    The function echoes back workbook selections so the frontend can be
-    connected without duplicating the numerical NMR code.  The shape of
-    the response is stable to allow swapping in the full solver later.
+    Process NMR titration data.
     """
     try:
         import json
-
+        
+        # Parse JSON strings
         column_names_list = json.loads(column_names)
-
+        signal_names_list = json.loads(signal_names)
+        modelo_list = json.loads(modelo)
+        non_abs_species_list = json.loads(non_abs_species)
+        initial_k_list = json.loads(initial_k)
+        bounds_list = json.loads(bounds)
+        
         # Save file temporarily
         temp_path = UPLOAD_DIR / f"temp_nmr_{int(time.time())}_{file.filename}"
         with open(temp_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-
-        results = nmr_processor.summarize_nmr_inputs(
+            
+        # Call the full processor
+        results = nmr_processor.process_nmr_data(
             file_path=str(temp_path),
-            spectra_sheet=spectra_sheet,
+            spectra_sheet=spectra_sheet, # This is the sheet with chemical shifts
             conc_sheet=conc_sheet,
             column_names=column_names_list,
-            signals_sheet=signals_sheet or None,
-            receptor_label=receptor_label or None,
-            guest_label=guest_label or None,
+            signal_names=signal_names_list,
+            receptor_label=receptor_label,
+            guest_label=guest_label,
+            model_matrix=modelo_list,
+            k_initial=initial_k_list,
+            k_bounds=bounds_list,
+            algorithm=algorithm,
+            optimizer=optimizer,
+            model_settings=model_settings,
+            non_absorbent_species=non_abs_species_list
         )
 
         try:
@@ -286,10 +304,15 @@ async def process_nmr(
         except Exception:
             pass
 
+        if "error" in results:
+             raise HTTPException(status_code=400, detail=results["error"])
+
         return results
 
     except Exception as e:
         error_msg = f"Error en procesamiento NMR: {str(e)}"
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=error_msg)
 
 
@@ -366,6 +389,19 @@ async def export_results_xlsx(payload: ExportRequest):
             # Keep a single stats sheet
             if statistics:
                 pd.DataFrame(list(statistics.items()), columns=["metric", "value"]).to_excel(writer, sheet_name="Statistics", index=False)
+
+            # NMR Specific Sheets
+            dq = df_safe(export_data.get("Chemical_Shifts"))
+            if dq is not None:
+                dq.to_excel(writer, sheet_name="Chemical_Shifts", index=False)
+                
+            dq_cal = df_safe(export_data.get("Calculated_Chemical_Shifts"))
+            if dq_cal is not None:
+                dq_cal.to_excel(writer, sheet_name="Calculated_Chemical_Shifts", index=False)
+                
+            coef = df_safe(export_data.get("Coefficients"))
+            if coef is not None:
+                coef.to_excel(writer, sheet_name="Coefficients", index=False)
 
         buffer.seek(0)
         data = buffer.getvalue()

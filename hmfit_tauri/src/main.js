@@ -233,12 +233,20 @@ function updateUI() {
 
   // EFA solo en Spectroscopy
   const efaRow = document.querySelector(".efa-row");
-  if (efaRow) {
-    if (state.activeModule === "nmr") {
-      efaRow.classList.add("hidden");
-    } else {
-      efaRow.classList.remove("hidden");
-    }
+  const spectraSheetRow = document.getElementById("spectra-sheet-select").closest(".field");
+  const nmrSheetRow = document.getElementById("nmr-sheet-row");
+  const nmrSignalsRow = document.getElementById("nmr-signals-row");
+
+  if (state.activeModule === "nmr") {
+    if (efaRow) efaRow.classList.add("hidden");
+    if (spectraSheetRow) spectraSheetRow.classList.add("hidden");
+    if (nmrSheetRow) nmrSheetRow.classList.remove("hidden");
+    if (nmrSignalsRow) nmrSignalsRow.classList.remove("hidden");
+  } else {
+    if (efaRow) efaRow.classList.remove("hidden");
+    if (spectraSheetRow) spectraSheetRow.classList.remove("hidden");
+    if (nmrSheetRow) nmrSheetRow.classList.add("hidden");
+    if (nmrSignalsRow) nmrSignalsRow.classList.add("hidden");
   }
 }
 
@@ -285,6 +293,21 @@ function initApp() {
                 <select id="conc-sheet-select" class="field-input">
                   <option value="">Select a file first...</option>
                 </select>
+              </div>
+            </div>
+            
+            <!-- NMR Specific Field: Chemical Shift Sheet -->
+            <div class="field hidden" id="nmr-sheet-row">
+                <label class="field-label">Chemical Shift Sheet Name</label>
+                <select id="nmr-sheet-select" class="field-input">
+                  <option value="">Select a file first...</option>
+                </select>
+            </div>
+            
+            <div class="field hidden" id="nmr-signals-row">
+              <label class="field-label">Chemical Shifts (Signals)</label>
+              <div id="nmr-signals-container" class="checkbox-grid-placeholder">
+                Select a chemical shift sheet to load signals...
               </div>
             </div>
 
@@ -562,7 +585,9 @@ function wireSpectroscopyForm() {
 
   const spectraSheetInput = document.getElementById("spectra-sheet-select");
   const concSheetInput = document.getElementById("conc-sheet-select");
+  const nmrSheetInput = document.getElementById("nmr-sheet-select");
   const columnsContainer = document.getElementById("columns-container");
+  const nmrSignalsContainer = document.getElementById("nmr-signals-container");
 
   // Dropdowns para Receptor y Guest
   const receptorInput = document.getElementById("receptor-select");
@@ -638,7 +663,7 @@ function wireSpectroscopyForm() {
       const sheets = data?.sheets || [];
 
       // Poblar dropdowns
-      [spectraSheetInput, concSheetInput].forEach(select => {
+      [spectraSheetInput, concSheetInput, nmrSheetInput].forEach(select => {
         if (!select) return;
         select.innerHTML = ""; // Limpiar
         if (sheets.length === 0) {
@@ -652,6 +677,8 @@ function wireSpectroscopyForm() {
             opt.text = sheet;
             select.add(opt);
           });
+          // Trigger change event to load columns for the default selected sheet
+          select.dispatchEvent(new Event('change'));
         }
       });
       diagEl.textContent = `Archivo cargado. ${sheets.length} hojas encontradas.`;
@@ -701,11 +728,68 @@ function wireSpectroscopyForm() {
       }
       diagEl.textContent = `Columnas cargadas de ${sheetName}.`;
 
+      // Populate Receptor/Guest dropdowns
+      [receptorInput, guestInput].forEach(select => {
+        if (!select) return;
+        select.innerHTML = "<option value=''>Select column...</option>";
+        columns.forEach(col => {
+          const opt = document.createElement("option");
+          opt.value = col;
+          opt.text = col;
+          select.add(opt);
+        });
+      });
+
     } catch (err) {
       console.error(err);
       diagEl.textContent = `Error al leer columnas: ${err.message}`;
     }
 
+  });
+
+  // --- Handler: NMR Chemical Shift Sheet Selection ---
+  nmrSheetInput?.addEventListener("change", async () => {
+    const sheetName = nmrSheetInput.value;
+    const file = fileInput.files[0];
+
+    if (!sheetName || !file) {
+      nmrSignalsContainer.innerHTML = "Select a chemical shift sheet to load signals...";
+      return;
+    }
+
+    try {
+      diagEl.textContent = `Leyendo señales de ${sheetName}...`;
+      // Reusing listColumns as it just reads headers
+      const data = await backendApi.listColumns(file, sheetName, state.activeModule);
+      const columns = data?.columns || [];
+
+      nmrSignalsContainer.innerHTML = "";
+      if (columns.length === 0) {
+        nmrSignalsContainer.textContent = "No signals found.";
+      } else {
+        columns.forEach(col => {
+          const label = document.createElement("label");
+          label.className = "checkbox-inline";
+          label.style.marginRight = "10px";
+
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.value = col;
+          cb.name = "signal_names";
+
+          const span = document.createElement("span");
+          span.textContent = col;
+
+          label.appendChild(cb);
+          label.appendChild(span);
+          nmrSignalsContainer.appendChild(label);
+        });
+      }
+      diagEl.textContent = `Señales cargadas de ${sheetName}.`;
+    } catch (err) {
+      console.error(err);
+      diagEl.textContent = `Error al leer señales: ${err.message}`;
+    }
   });
 
   // --- Handler: Define Model Dimensions (Grid Generation) ---
@@ -1046,11 +1130,20 @@ function wireSpectroscopyForm() {
     }
 
     connectWebSocket();
-    diagEl.textContent = "Procesando datos de Spectroscopy...\n";
+    diagEl.textContent = `Procesando datos de ${state.activeModule === 'nmr' ? 'NMR' : 'Spectroscopy'}...\n`;
 
     // Recolectar columnas seleccionadas
-    const selectedCols = Array.from(columnsContainer.querySelectorAll('input[type="checkbox"]:checked'))
-      .map(cb => cb.value);
+    let selectedCols = [];
+    if (state.activeModule === 'nmr') {
+      // For NMR, columns are selected from the signals container if we are in NMR mode?
+      // Actually, the UI has "Concentration Sheet" columns AND "Chemical Shift Sheet" signals.
+      // The backend expects 'column_names' for concentration columns.
+      selectedCols = Array.from(columnsContainer.querySelectorAll('input[type="checkbox"]:checked'))
+        .map(cb => cb.value);
+    } else {
+      selectedCols = Array.from(columnsContainer.querySelectorAll('input[type="checkbox"]:checked'))
+        .map(cb => cb.value);
+    }
 
     // Recolectar datos del grid del modelo
     const gridData = [];
@@ -1096,14 +1189,11 @@ function wireSpectroscopyForm() {
     // Create FormData with file and parameters
     const formData = new FormData();
     formData.append("file", state.uploadedFile);
-    formData.append("spectra_sheet", spectraSheetInput?.value || "");
     formData.append("conc_sheet", concSheetInput?.value || "");
     formData.append("column_names", JSON.stringify(selectedCols));
     formData.append("receptor_label", receptorInput?.value || "");
     formData.append("guest_label", guestInput?.value || "");
-    formData.append("signals_sheet", ""); // placeholder for NMR flow
-    formData.append("efa_enabled", efaCheckbox?.checked ? "true" : "false");
-    formData.append("efa_eigenvalues", readInt(efaEigenInput?.value).toString());
+
     formData.append("modelo", JSON.stringify(gridData));
     formData.append("non_abs_species", JSON.stringify(nonAbsSpecies));
     formData.append("algorithm", algoSelect?.value || "Newton-Raphson");
@@ -1115,9 +1205,28 @@ function wireSpectroscopyForm() {
     try {
       let data;
       if (state.activeModule === "nmr") {
+        const nmrSheet = nmrSheetInput?.value;
+        if (!nmrSheet) throw new Error("NMR Chemical Shift sheet not selected.");
+
+        const selectedSignals = Array.from(
+          nmrSignalsContainer.querySelectorAll('input[type="checkbox"]:checked')
+        ).map(cb => cb.value);
+
+        if (selectedSignals.length === 0) throw new Error("No NMR signals selected.");
+
+        formData.append("spectra_sheet", nmrSheet); // Backend expects spectra_sheet as the signal source
+        formData.append("signals_sheet", nmrSheet);
+        formData.append("signal_names", JSON.stringify(selectedSignals));
+
         data = await backendApi.processNmr(formData);
         displayNmrResults(data);
+        displayGraphs(data.graphs || {});
+
       } else {
+        formData.append("spectra_sheet", spectraSheetInput?.value || "");
+        formData.append("efa_enabled", efaCheckbox?.checked ? "true" : "false");
+        formData.append("efa_eigenvalues", readInt(efaEigenInput?.value).toString());
+
         data = await backendApi.processSpectroscopy(formData);
         displayResults(data);
         displayGraphs(data.graphs || {});
@@ -1202,25 +1311,25 @@ function wireSpectroscopyForm() {
     if (!data?.success) {
       const detail = data?.detail || data?.error || "Procesamiento NMR falló.";
       diagEl.textContent = detail;
+      state.latestResultsText = "";
+      state.latestResultsPayload = null;
       return;
     }
 
-    const lines = [];
-    lines.push("=== NMR WORKBOOK SUMMARY ===", "");
-    lines.push(`Traces (columns): ${data.n_traces}`);
-    lines.push(`Points (rows): ${data.n_points}`);
-    lines.push(`Concentration columns: ${data.n_concentrations}`);
-    lines.push(`Selected columns: ${(data.columns || []).join(', ')}`);
-    if (data.signals_sheet) {
-      lines.push(`Signals sheet: ${data.signals_sheet}`);
-      lines.push(`Signals detected: ${data.n_signals ?? 0}`);
-    }
-    if (data.receptor_label || data.guest_label) {
-      lines.push(`Receptor: ${data.receptor_label || '—'}`);
-      lines.push(`Guest: ${data.guest_label || '—'}`);
+    if (data.results_text) {
+      diagEl.textContent = data.results_text;
+      state.latestResultsText = data.results_text;
+      state.latestResultsPayload = data;
+      return;
     }
 
+    // Fallback if no text provided
+    const lines = [];
+    lines.push("=== NMR RESULTS ===", "");
+    lines.push("Processing complete.");
     diagEl.textContent = lines.join("\n");
+    state.latestResultsText = lines.join("\n");
+    state.latestResultsPayload = data;
   }
 
   function displayGraphs(graphs) {
@@ -1247,6 +1356,7 @@ function wireSpectroscopyForm() {
     const mainPlots = [];
     if (graphs.concentrations) mainPlots.push({ name: "Concentrations", data: graphs.concentrations });
     if (graphs.fit) mainPlots.push({ name: "Fit", data: graphs.fit });
+    if (graphs.residuals) mainPlots.push({ name: "Residuals", data: graphs.residuals });
     if (graphs.eigenvalues) mainPlots.push({ name: "Eigenvalues", data: graphs.eigenvalues });
     if (graphs.efa) mainPlots.push({ name: "EFA", data: graphs.efa });
     if (graphs.absorptivities) mainPlots.push({ name: "Absorptivities", data: graphs.absorptivities });

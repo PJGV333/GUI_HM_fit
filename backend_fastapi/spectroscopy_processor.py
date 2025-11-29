@@ -14,9 +14,56 @@ from matplotlib.figure import Figure
 from scipy import optimize
 from scipy.optimize import differential_evolution
 import warnings
+import re
 warnings.filterwarnings("ignore")
 from errors import compute_errors_spectro_varpro, pinv_cs, percent_error_log10K, sensitivities_wrt_logK
 from core_ad_probe import solve_A_nnls_pgd
+
+# === Shared helper utilities (used by both Spectroscopy and NMR) ===
+_alias_re = re.compile(r"\(([^)]+)\)")
+
+def _aliases_from_names(names):
+    """Build a dictionary mapping aliases to column indices from column names."""
+    alias2idx = {}
+    for i, nm in enumerate(names):
+        s = str(nm).lower()
+        # Extract aliases from parentheses
+        for a in _alias_re.findall(s):
+            alias2idx[a.strip().lower()] = i
+        # Also use first token as alias
+        head = s.split("(")[0].strip().split()
+        if head:
+            alias2idx[head[0]] = i
+    return alias2idx
+
+def _build_bounds_list(bounds):
+    """
+    Convert list of bound dicts to list of (min, max) tuples.
+    Each dict should have 'min' and 'max' keys, or be a list/tuple.
+    Empty/None values default to ±inf.
+    """
+    def _to_bound(val, default):
+        try:
+            v = float(val)
+        except (TypeError, ValueError):
+            return default
+        if onp.isnan(v):
+            return default
+        return v
+    
+    processed = []
+    for raw in bounds:
+        if isinstance(raw, dict):
+            min_val = _to_bound(raw.get('min'), -onp.inf)
+            max_val = _to_bound(raw.get('max'), onp.inf)
+        elif isinstance(raw, (list, tuple)) and len(raw) >= 2:
+            min_val = _to_bound(raw[0], -onp.inf)
+            max_val = _to_bound(raw[1], onp.inf)
+        else:
+            min_val, max_val = -onp.inf, onp.inf
+        processed.append((min_val, max_val))
+    return processed
+
 
 # === Result formatting (shared with wx reference) ===
 def format_results_table(k, SE_log10K, percK, rms, covfit, lof=None):
