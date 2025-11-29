@@ -1,3 +1,5 @@
+import { save } from '@tauri-apps/api/dialog';
+import { writeBinaryFile } from '@tauri-apps/api/fs';
 import "./style.css";
 import { BACKEND_BASE_URL, WS_BASE_URL, describeBackendTarget } from "./backend/config";
 
@@ -971,48 +973,36 @@ function wireSpectroscopyForm() {
       };
 
       try {
-        const hasTauri = !!window.__TAURI__;
-        if (hasTauri && window.__TAURI__.dialog?.save && window.__TAURI__.fs?.writeBinaryFile) {
-          const savePath = await window.__TAURI__.dialog.save({
-            defaultPath: filename,
-            filters: [{ name: "Excel", extensions: ["xlsx"] }],
-          });
-          if (!savePath) return; // cancelado
-          const data = await fetchXlsx();
-          await window.__TAURI__.fs.writeBinaryFile({ path: savePath, contents: data });
-          const baseText = state.latestResultsText || "";
-          diagEl.textContent = `${baseText}\n\nResultados guardados como ${savePath}`;
-        } else {
+        // Usar diálogo nativo de Tauri
+        const savePath = await save({
+          title: 'Guardar resultados de HM Fit',
+          defaultPath: filename,
+          filters: [{ name: 'Excel files', extensions: ['xlsx'] }]
+        });
+
+        if (!savePath) {
+          // Usuario canceló
+          return;
+        }
+
+        const data = await fetchXlsx();
+        await writeBinaryFile({ path: savePath, contents: data });
+
+        const baseText = state.latestResultsText || "";
+        diagEl.textContent = `${baseText}\n\nResultados guardados como ${savePath}`;
+
+      } catch (err) {
+        const baseText = state.latestResultsText || "";
+        diagEl.textContent = `${baseText}\n\nNo se pudieron guardar los resultados: ${err.message || err}`;
+        console.error("Save error:", err);
+
+        // Fallback: simple download anchor if native save fails
+        try {
+          console.log("Attempting fallback download...");
           const data = await fetchXlsx();
           const blob = new Blob([data], {
             type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
           });
-
-          // Prefer File System Access API when available to let user pick folder/name
-          if (window.showSaveFilePicker) {
-            try {
-              const handle = await window.showSaveFilePicker({
-                suggestedName: filename,
-                types: [
-                  {
-                    description: "Excel Workbook",
-                    accept: { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"] },
-                  },
-                ],
-              });
-              const writable = await handle.createWritable();
-              await writable.write(blob);
-              await writable.close();
-              const baseText = state.latestResultsText || "";
-              diagEl.textContent = `${baseText}\n\nResultados guardados como ${handle.name}`;
-              return;
-            } catch (err) {
-              if (err?.name === "AbortError") return; // user cancelled
-              // fall through to download link
-            }
-          }
-
-          // Fallback: simple download anchor
           const url = URL.createObjectURL(blob);
           const link = document.createElement("a");
           link.href = url;
@@ -1021,12 +1011,13 @@ function wireSpectroscopyForm() {
           link.click();
           document.body.removeChild(link);
           URL.revokeObjectURL(url);
+
           const baseText = state.latestResultsText || "";
-          diagEl.textContent = `${baseText}\n\nResultados guardados como ${filename}`;
+          diagEl.textContent = `${baseText}\n\nResultados guardados (fallback) como ${filename}`;
+        } catch (fallbackErr) {
+          const baseText = state.latestResultsText || "";
+          diagEl.textContent = `${baseText}\n\nNo se pudieron guardar los resultados (ni nativo ni fallback): ${err.message} / ${fallbackErr.message}`;
         }
-      } catch (err) {
-        const baseText = state.latestResultsText || "";
-        diagEl.textContent = `${baseText}\n\nNo se pudieron guardar los resultados: ${err.message || err}`;
       }
     });
   }
@@ -1268,7 +1259,7 @@ function wireSpectroscopyForm() {
 
     let slidesRef = [];
     let currentSlideIndex = 0;
-    let updateSlide = () => {};
+    let updateSlide = () => { };
     const updateCounter = () => {
       if (!counterEl) return;
       if (!slidesRef.length) {
