@@ -18,6 +18,61 @@ warnings.filterwarnings("ignore")
 from errors import compute_errors_spectro_varpro, pinv_cs, percent_error_log10K, sensitivities_wrt_logK
 from core_ad_probe import solve_A_nnls_pgd
 
+# === Result formatting (shared with wx reference) ===
+def format_results_table(k, SE_log10K, percK, rms, covfit, lof=None):
+    """
+    Build an ASCII table with aligned columns for constants and diagnostics.
+    Mirrors the wxPython formatting used in NMR_controls.
+    """
+    # Helper: maximum widths per column
+    def calculate_max_column_widths(headers, data_rows):
+        widths = [len(h) for h in headers]
+        for row in data_rows:
+            for i, item in enumerate(row):
+                widths[i] = max(widths[i], len(str(item)))
+        return widths
+
+    headers = [
+        "Constant",
+        "log10(K) ± SE(log10K)",
+        "% Error (K, Δ-method)",
+        "RMS",
+        "s² (var. reducida)",
+    ]
+
+    rows = [
+        [
+            f"K{i+1}",
+            f"{k[i]:.2e} ± {SE_log10K[i]:.2e}",
+            f"{percK[i]:.2f} %",
+            f"{rms:.2e}" if i == 0 else "",
+            f"{covfit:.2e}" if i == 0 else "",
+        ]
+        for i in range(len(k))
+    ]
+
+    max_widths = calculate_max_column_widths(headers, rows)
+
+    table_lines = []
+    header_line = " | ".join(f"{h.ljust(max_widths[i])}" for i, h in enumerate(headers))
+    table_lines.append("-" * len(header_line))
+    table_lines.append(header_line)
+    table_lines.append("-" * len(header_line))
+    for row in rows:
+        line = " | ".join(f"{str(item).ljust(max_widths[i])}" for i, item in enumerate(row))
+        table_lines.append(line)
+
+    table = "\n".join(table_lines)
+
+    stats_lines = [
+        f"RMS: {rms:.2e}",
+        f"s² (var. reducida): {covfit:.2e}",
+    ]
+    if lof is not None:
+        stats_lines.append(f"LOF: {lof:.2e} %")
+
+    return "=== RESULTADOS ===\n" + table + "\n\nEstadísticas:\n" + "\n".join(stats_lines)
+
 # Progress callback for WebSocket streaming
 _progress_callback = None
 _loop = None
@@ -263,6 +318,41 @@ def process_spectroscopy_data(
     C_T_df = pd.DataFrame(C_T)
     modelo = np.array(modelo).T if isinstance(modelo, list) else np.array(modelo)
     nas = non_abs_species
+
+    # ---- Inicialización de parámetros y límites (replica flujo wx) ----
+    def _safe_float_list(seq):
+        vals = []
+        for v in seq:
+            try:
+                vals.append(float(v))
+            except (TypeError, ValueError):
+                continue
+        return vals
+
+    k = np.asarray(_safe_float_list(initial_k), dtype=float)
+
+    def _to_bound(val, default):
+        try:
+            v = float(val)
+        except (TypeError, ValueError):
+            return default
+        if np.isnan(v):
+            return default
+        return v
+
+    n_params = len(k) if len(k) else len(bounds)
+    processed_bounds = []
+    for i in range(n_params):
+        raw = bounds[i] if i < len(bounds) else None
+        if isinstance(raw, (list, tuple)) and len(raw) >= 2:
+            min_raw, max_raw = raw[0], raw[1]
+        else:
+            min_raw, max_raw = None, None
+
+        # Vacíos -> ±inf (sin introducir rangos artificiales)
+        min_val = _to_bound(min_raw, -np.inf)
+        max_val = _to_bound(max_raw, np.inf)
+        processed_bounds.append((min_val, max_val))
     
     # Select algorithm
     if algorithm == "Newton-Raphson":
@@ -308,7 +398,7 @@ def process_spectroscopy_data(
             return 1e50
     
     # Best-so-far tracking
-    best_result = {"rms": float('inf'), "k": initial_k}
+    best_result = {"rms": float('inf'), "k": np.copy(k)}
 
     # Optimization callback
     def callback_log(xk, convergence=None):
@@ -324,23 +414,31 @@ def process_spectroscopy_data(
 
     # Optimization
     log_progress(f"Optimizer: {optimizer}")
-    log_progress(f"Bounds: {bounds}")
-    
-    k = initial_k
+    log_progress(f"Bounds (procesados): {processed_bounds}")  # keep visible for debugging powell with ±inf
     
     if optimizer == "differential_evolution":
-        # Check bounds
-        for (min_val, max_val) in bounds:
+        # differential_evolution requiere límites finitos
+        for (min_val, max_val) in processed_bounds:
             if np.isinf(min_val) or np.isinf(max_val):
-                raise ValueError("Los límites no deben contener valores infinitos.")
+                msg = "Differential evolution requires all bounds to be finite. Please set Min/Max for each parameter."
+                log_progress(msg)
+                raise ValueError(msg)
         
-        r_0 = differential_evolution(f_m, bounds, x0=k, strategy='best1bin',
-                                     maxiter=1000, popsize=15, tol=0.01,
-                                     mutation=(0.5, 1), recombination=0.7,
-                                     init='latinhypercube',
-                                     callback=callback_log)
+        r_0 = differential_evolution(
+            f_m,
+            processed_bounds,
+            x0=k,
+            strategy='best1bin',
+            maxiter=1000,
+            popsize=15,
+            tol=0.01,
+            mutation=(0.5, 1),
+            recombination=0.7,
+            init='latinhypercube',
+            callback=callback_log,
+        )
     else:
-        r_0 = optimize.minimize(f_m, k, method=optimizer, bounds=bounds, callback=callback_log)
+        r_0 = optimize.minimize(f_m, k, method=optimizer, bounds=processed_bounds, callback=callback_log)
     
     # Check if final result is better or worse than best seen
     final_rms = f_m(r_0.x)
@@ -420,6 +518,16 @@ def process_spectroscopy_data(
         dif_en_ct = round(max(100 - (np.sum(C, 1) * 100 / max(H))), 2)
     else:
         dif_en_ct = 0.0
+
+    # Tabla formateada para resultados (alineada como en wx)
+    results_text = format_results_table(k, SE_log10K, percK, rms, covfit, lof=lof)
+    results_text += (
+        "\n"
+        f"MAE: {MAE:.2e}\n"
+        f"Diferencia en C total (%): {dif_en_ct:.2f}\n"
+        f"Eigenvalues: {EV}\n"
+        f"Optimizer: {optimizer}"
+    )
     
     # Format results
     results = {
@@ -445,6 +553,7 @@ def process_spectroscopy_data(
             "optimizer": optimizer
         },
         "graphs": graphs,
+        "results_text": results_text,
         "optimizer_result": {
             "success": bool(r_0.success),
             "message": str(r_0.message) if hasattr(r_0, 'message') else "",

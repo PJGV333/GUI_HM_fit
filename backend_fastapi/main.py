@@ -209,14 +209,19 @@ async def process_spectroscopy(
         # Send initial message
         await broadcast_progress("Iniciando procesamiento de datos (en hilo separado)...")
         
-        # Run in executor (thread pool) to avoid blocking event loop
-        results = await loop.run_in_executor(None, run_processing_in_thread)
-        
-        # Clean up temp file
         try:
-            os.remove(temp_path)
-        except:
-            pass
+            # Run in executor (thread pool) to avoid blocking event loop
+            results = await loop.run_in_executor(None, run_processing_in_thread)
+        except ValueError as ve:
+            # Diferential_evolution bounds u otros errores validados: devolver 400
+            await broadcast_progress(str(ve))
+            raise HTTPException(status_code=400, detail=str(ve))
+        finally:
+            # Clean up temp file
+            try:
+                os.remove(temp_path)
+            except:
+                pass
         
         # Send completion message
         await broadcast_progress("Procesamiento completado!")

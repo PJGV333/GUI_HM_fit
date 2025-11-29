@@ -988,8 +988,9 @@ function wireSpectroscopyForm() {
 
           // Use Number.isNaN to check for valid numbers, allowing 0
           const finalVal = Number.isNaN(val) ? 1.0 : val;
-          const finalMin = Number.isNaN(min) ? -20 : min;
-          const finalMax = Number.isNaN(max) ? 20 : max;
+          // Mantener la semántica wx: límites vacíos -> ±inf (se traducen a null y el backend los convierte)
+          const finalMin = Number.isNaN(min) ? null : min;
+          const finalMax = Number.isNaN(max) ? null : max;
 
           kValues.push(finalVal);
           kBounds.push([finalMin, finalMax]);
@@ -1033,6 +1034,8 @@ function wireSpectroscopyForm() {
         message =
           `No se puede contactar al backend en ${BACKEND_BASE_URL}. ` +
           `Asegúrate de que el servidor FastAPI esté levantado y accesible.`;
+      } else if (err?.status && err?.body) {
+        message = `${err.body}`;
       } else if (err?.status) {
         message =
           `El backend devolvió un error (código ${err.status}). ` +
@@ -1051,6 +1054,11 @@ function wireSpectroscopyForm() {
     if (!data.success) {
       const detail = data.detail || data.error || "Procesamiento falló.";
       diagEl.textContent = detail;
+      return;
+    }
+
+    if (data.results_text) {
+      diagEl.textContent = data.results_text;
       return;
     }
 
