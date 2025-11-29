@@ -1,9 +1,10 @@
-"""FastAPI backend for HM Fit - Full version with JAX processing.
+"""FastAPI backend for HM Fit.
 
 Includes:
-- WebSocket for progress streaming
-- Direct file processing (no sessions) to avoid hangs
-- JAX-based spectroscopy processing
+- WebSocket for progress streaming.
+- Spectroscopy processing using the refactored business logic.
+- Lightweight NMR endpoints so the Tauri frontend can be wired without
+  reimplementing scientific code.
 """
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
@@ -20,15 +21,41 @@ import asyncio
 import json
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="HM Fit FastAPI prototype")
+from backend_fastapi import nmr_processor
+from backend_fastapi.config import (
+    BACKEND_HOST,
+    BACKEND_PORT,
+    CORS_ALLOW_CREDENTIALS,
+    CORS_ALLOW_HEADERS,
+    CORS_ALLOW_METHODS,
+    CORS_ALLOW_ORIGIN_REGEX,
+    CORS_ALLOW_ORIGINS,
+    HM_FIT_ENV,
+)
 
+app = FastAPI(title="HM Fit FastAPI prototype")
+app.state.hm_fit_env = HM_FIT_ENV
+
+
+def _log_cors_settings():
+    print(
+        "[HM Fit] CORS settings => env=", HM_FIT_ENV,
+        "allow_origins=", CORS_ALLOW_ORIGINS,
+        "allow_origin_regex=", CORS_ALLOW_ORIGIN_REGEX,
+    )
+
+
+# CORS configuration: in dev allow localhost variants (and a regex for any port);
+# in prod tighten to Tauri origins. See backend_fastapi/config.py for details.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=CORS_ALLOW_ORIGINS,
+    allow_origin_regex=CORS_ALLOW_ORIGIN_REGEX,
+    allow_credentials=CORS_ALLOW_CREDENTIALS,
+    allow_methods=CORS_ALLOW_METHODS,
+    allow_headers=CORS_ALLOW_HEADERS,
 )
+_log_cors_settings()
 
 # Temporary directory for uploaded files
 UPLOAD_DIR = Path(tempfile.gettempdir()) / "hmfit_uploads"
@@ -59,6 +86,27 @@ async def list_columns(file: UploadFile = File(...), sheet_name: str = Form(...)
         contents = await file.read()
         df = pd.read_excel(io.BytesIO(contents), sheet_name=sheet_name, nrows=0)
         return {"columns": list(df.columns)}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error reading columns: {str(e)}")
+
+
+@app.post("/nmr/list_sheets")
+async def nmr_list_sheets(file: UploadFile = File(...)):
+    """Expose workbook sheet names for the NMR flow (same as spectroscopy)."""
+    try:
+        contents = await file.read()
+        return {"sheets": nmr_processor.list_sheets_from_bytes(contents)}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error reading Excel file: {str(e)}")
+
+
+@app.post("/nmr/list_columns")
+async def nmr_list_columns(file: UploadFile = File(...), sheet_name: str = Form(...)):
+    """Expose sheet columns for the NMR flow."""
+    try:
+        contents = await file.read()
+        columns = nmr_processor.list_columns_from_bytes(contents, sheet_name)
+        return {"columns": columns}
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error reading columns: {str(e)}")
 
@@ -182,11 +230,59 @@ async def process_spectroscopy(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=error_msg)
 
+
+@app.post("/process_nmr")
+async def process_nmr(
+    file: UploadFile = File(...),
+    spectra_sheet: str = Form(...),
+    conc_sheet: str = Form(...),
+    column_names: str = Form(...),  # JSON string
+    signals_sheet: str = Form(""),
+    receptor_label: str = Form(""),
+    guest_label: str = Form("")
+):
+    """
+    Lightweight placeholder to wire the Tauri NMR tab.
+
+    The function echoes back workbook selections so the frontend can be
+    connected without duplicating the numerical NMR code.  The shape of
+    the response is stable to allow swapping in the full solver later.
+    """
+    try:
+        import json
+
+        column_names_list = json.loads(column_names)
+
+        # Save file temporarily
+        temp_path = UPLOAD_DIR / f"temp_nmr_{int(time.time())}_{file.filename}"
+        with open(temp_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        results = nmr_processor.summarize_nmr_inputs(
+            file_path=str(temp_path),
+            spectra_sheet=spectra_sheet,
+            conc_sheet=conc_sheet,
+            column_names=column_names_list,
+            signals_sheet=signals_sheet or None,
+            receptor_label=receptor_label or None,
+            guest_label=guest_label or None,
+        )
+
+        try:
+            os.remove(temp_path)
+        except Exception:
+            pass
+
+        return results
+
+    except Exception as e:
+        error_msg = f"Error en procesamiento NMR: {str(e)}"
+        raise HTTPException(status_code=500, detail=error_msg)
+
 if __name__ == "__main__":
-    port = int(os.environ.get("HM_BACKEND_PORT", "8000"))
     uvicorn.run(
         "backend_fastapi.main:app",
-        host="127.0.0.1",
-        port=port,
+        host=BACKEND_HOST,
+        port=BACKEND_PORT,
         reload=True,
     )
