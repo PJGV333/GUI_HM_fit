@@ -36,6 +36,26 @@ from .spectroscopy_processor import (
     generate_figure2_base64
 )
 
+# --- Progreso vía callback opcional (WebSocket en main.py) ---
+_progress_callback = None
+_loop = None
+
+
+def set_progress_callback(callback, loop=None):
+    """Registrar callback para emitir progreso (p.ej. al WebSocket)."""
+    global _progress_callback, _loop
+    _progress_callback = callback
+    _loop = loop
+
+
+def log_progress(message: str):
+    """Enviar mensaje de progreso si hay callback."""
+    if _progress_callback:
+        if _loop:
+            _loop.call_soon_threadsafe(_progress_callback, message)
+        else:
+            _progress_callback(message)
+
 def pinv_cs(A, rcond=1e-12):
     """
     Compute the Moore-Penrose pseudo-inverse of a matrix, handling complex numbers.
@@ -254,6 +274,9 @@ def process_nmr_data(
     except Exception as e:
          return {"error": f"Error preparing data matrices: {str(e)}"}
 
+    log_progress("Iniciando procesamiento NMR…")
+    log_progress(f"Optimizer: {optimizer} | Algorithm: {algorithm}")
+
     # 3. Initialize Algorithm
     try:
         # Algorithms need DataFrame, not numpy array
@@ -267,16 +290,32 @@ def process_nmr_data(
         return {"error": f"Error initializing algorithm: {str(e)}"}
 
     # 4. Define Objective Function
+    iter_state = {"cnt": 0, "best": np.inf}
+
     def f_m(k_curr):
         try:
+            iter_state["cnt"] += 1
             C = res.concentraciones(k_curr)[0]
             dq_cal = project_coeffs_block_onp_frac(
                 dq, C, D_cols, mask, rcond=1e-10, ridge=1e-8
             )
             r = (dq - dq_cal)[mask].ravel()
             if (r.size <= len(k_curr)) or (not np.isfinite(r).all()):
+                log_progress(f"Iter {iter_state['cnt']}: evaluación descartada (Nobs≤p o residuales no finitos)")
                 return 1e9
             rms = float(np.sqrt(np.mean(r * r)))
+
+            best = iter_state["best"]
+            should_log = (
+                iter_state["cnt"] == 1
+                or (iter_state["cnt"] % 5 == 0)
+                or (rms < best * 0.999)
+            )
+            if should_log:
+                log_progress(
+                    f"Iter {iter_state['cnt']}: f(x)={rms:.6e} | x={[float(xi) for xi in k_curr]}"
+                )
+                iter_state["best"] = min(best, rms)
             return rms
         except Exception:
             return 1e9
@@ -300,6 +339,7 @@ def process_nmr_data(
             
         k_opt = opt_res.x
         k_opt = np.ravel(k_opt)
+        log_progress(f"Optimización completada (iter={iter_state['cnt']}, best_f={iter_state['best']:.6e})")
         
     except Exception as e:
         return {"error": f"Optimization failed: {str(e)}"}
@@ -415,6 +455,8 @@ def process_nmr_data(
                 ["algorithm", algorithm],
             ],
         }
+
+        log_progress("Procesamiento NMR completado.")
 
         return sanitize_for_json({
             "success": True,

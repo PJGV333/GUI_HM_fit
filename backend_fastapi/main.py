@@ -23,6 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from backend_fastapi import nmr_processor
+from backend_fastapi.nmr_processor import set_progress_callback
 from backend_fastapi.config import (
     BACKEND_HOST,
     BACKEND_PORT,
@@ -280,33 +281,47 @@ async def process_nmr(
         temp_path = UPLOAD_DIR / f"temp_nmr_{int(time.time())}_{file.filename}"
         with open(temp_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-            
-        # Call the full processor
-        results = nmr_processor.process_nmr_data(
-            file_path=str(temp_path),
-            spectra_sheet=spectra_sheet, # This is the sheet with chemical shifts
-            conc_sheet=conc_sheet,
-            column_names=column_names_list,
-            signal_names=signal_names_list,
-            receptor_label=receptor_label,
-            guest_label=guest_label,
-            model_matrix=modelo_list,
-            k_initial=initial_k_list,
-            k_bounds=bounds_list,
-            algorithm=algorithm,
-            optimizer=optimizer,
-            model_settings=model_settings,
-            non_absorbent_species=non_abs_species_list
-        )
+        
+        loop = asyncio.get_running_loop()
+
+        def progress_callback_wrapper(message: str):
+            asyncio.create_task(broadcast_progress(message))
+
+        def run_processing_in_thread():
+            # Set callback with loop for thread-safety
+            set_progress_callback(progress_callback_wrapper, loop)
+            return nmr_processor.process_nmr_data(
+                file_path=str(temp_path),
+                spectra_sheet=spectra_sheet, # This is the sheet with chemical shifts
+                conc_sheet=conc_sheet,
+                column_names=column_names_list,
+                signal_names=signal_names_list,
+                receptor_label=receptor_label,
+                guest_label=guest_label,
+                model_matrix=modelo_list,
+                k_initial=initial_k_list,
+                k_bounds=bounds_list,
+                algorithm=algorithm,
+                optimizer=optimizer,
+                model_settings=model_settings,
+                non_absorbent_species=non_abs_species_list
+            )
+
+        await broadcast_progress("Iniciando procesamiento NMR (en hilo separado)...")
 
         try:
-            os.remove(temp_path)
-        except Exception:
-            pass
+            results = await loop.run_in_executor(None, run_processing_in_thread)
+        finally:
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
 
         if "error" in results:
-             raise HTTPException(status_code=400, detail=results["error"])
+            await broadcast_progress(results["error"])
+            raise HTTPException(status_code=400, detail=results["error"])
 
+        await broadcast_progress("Procesamiento NMR completado!")
         return results
 
     except Exception as e:

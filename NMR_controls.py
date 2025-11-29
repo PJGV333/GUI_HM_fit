@@ -621,31 +621,33 @@ class NMR_controlsPanel(BaseTechniquePanel):
             coeficientes = pinv_cs(xi) @ dq #se cambio np.linag.pinv por np.linalg.pinv
             return coeficientes
 
+        # Reiniciar contador para mostrar progreso de optimización en la consola
+        self._iter_nmr = 0
+
         def f_m(k):
             try:
+                # Contador para mostrar progreso en consola en cada evaluación
+                self._iter_nmr += 1
                 C = res.concentraciones(k)[0]
                 dq_cal = project_coeffs_block_onp_frac(
                     dq, C, D_cols, mask, rcond=1e-10, ridge=1e-8
                 )
                 r = (dq - dq_cal)[mask].ravel()
                 if (r.size <= len(k)) or (not onp.isfinite(r).all()):
+                    self.res_consola(f"Iter {self._iter_nmr} - f(x)", "descartado (Nobs≤p o no finito)")
+                    try:
+                        wx.Yield()
+                    except Exception:
+                        pass
                     return 1e9
 
                 # objetivo como RMS (compatible con lo que imprimías antes)
                 rms = float(onp.sqrt(onp.mean(r * r)))
 
-                # --- monitoreo no-bloqueante y con “throttling” ---
-                # imprime cada ~25 llamadas o cuando mejora el mejor valor
-                cnt = getattr(self, "_print_counter", 0) + 1
-                best = getattr(self, "_best_f", onp.inf)
-                should_print = (cnt % 25 == 0) or (rms < best * 0.999)
-
-                if should_print:
-                    self.res_consola("f(x)", rms)
-                    self.res_consola("x", k)
-                    self._best_f = min(best, rms)
-
-                self._print_counter = cnt
+                # --- monitoreo en consola durante la optimización ---
+                self.res_consola(f"Iter {self._iter_nmr} - f(x)", rms)
+                self.res_consola("x", k)
+                self._best_f = min(getattr(self, "_best_f", onp.inf), rms)
                 try:
                     wx.Yield()
                 except Exception:
@@ -913,4 +915,3 @@ class NMR_controlsPanel(BaseTechniquePanel):
         self.stats = stats
         self.C_T = C_T
         self.coef = coef
-
