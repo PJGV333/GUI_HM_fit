@@ -332,7 +332,7 @@ async def export_results_xlsx(payload: ExportRequest):
                     C_T.to_excel(writer, sheet_name="Tot_con_comp", index=False)
 
                 A = export_data.get("A")
-                nm = export_data.get("nm")
+                nm = export_data.get("A_index") or export_data.get("nm")
                 if A is not None:
                     dfA = df_safe(A, index=nm if nm else None)
                     if dfA is not None:
@@ -363,18 +363,9 @@ async def export_results_xlsx(payload: ExportRequest):
                     dfin = pd.DataFrame({"init_guess": k_ini}, index=names_ini)
                     dfin.to_excel(writer, sheet_name="Init_guess_K")
 
-                stats_table = export_data.get("stats_table") or []
-                if stats_table:
-                    dfstats = pd.DataFrame(stats_table, columns=["metric", "value"])
-                    dfstats.to_excel(writer, sheet_name="Stats", index=False)
-
-            # Always include constants/stats/results_text as fallback sheets
-            if constants:
-                pd.DataFrame(constants).to_excel(writer, sheet_name="Constants", index=False)
+            # Keep a single stats sheet
             if statistics:
                 pd.DataFrame(list(statistics.items()), columns=["metric", "value"]).to_excel(writer, sheet_name="Statistics", index=False)
-            if results_text:
-                pd.DataFrame({"results": results_text.splitlines()}).to_excel(writer, sheet_name="Results_text", index=False)
 
         buffer.seek(0)
         data = buffer.getvalue()

@@ -524,17 +524,31 @@ def process_spectroscopy_data(
     results_text += "\n\nEstadísticas:\n" + "\n".join(extra_stats)
     
     # Export payload to mimic wx save_results (DataFrames per sheet)
+    # Preparar payload de exportación (imitando wx save_results)
+    A_export = None
+    nm_list = nm.tolist() if hasattr(nm, "tolist") else []
+    if A is not None:
+        A_arr = np.asarray(A)
+        if nm_list:
+            if A_arr.shape[1] == len(nm_list):
+                A_export = A_arr.T  # filas = nm
+            else:
+                A_export = A_arr
+        else:
+            A_export = A_arr
+
     export_data = {
         "modelo": modelo.tolist() if modelo is not None else [],
         "C": np.asarray(C).tolist() if C is not None else [],
         "Co": np.asarray(Co).tolist() if Co is not None else [],
         "C_T": np.asarray(C_T).tolist() if C_T is not None else [],
-        "A": np.asarray(A).tolist() if A is not None else [],
+        "A": A_export.tolist() if A_export is not None else [],
+        "A_index": nm_list,
         "k": np.asarray(k).tolist(),
         "k_ini": np.asarray(initial_k).tolist() if initial_k is not None else [],
         "percK": np.asarray(percK).tolist(),
         "SE_log10K": np.asarray(SE_log10K).tolist(),
-        "nm": nm.tolist() if hasattr(nm, "tolist") else [],
+        "nm": nm_list,
         "Y": np.asarray(Y).tolist() if Y is not None else [],
         "yfit": np.asarray(yfit).tolist() if yfit is not None else [],
         "stats_table": [

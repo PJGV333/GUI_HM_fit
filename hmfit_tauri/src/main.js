@@ -981,13 +981,38 @@ function wireSpectroscopyForm() {
           const data = await fetchXlsx();
           await window.__TAURI__.fs.writeBinaryFile({ path: savePath, contents: data });
           const baseText = state.latestResultsText || "";
-          diagEl.textContent = `${baseText}\n\nResultados guardados en ${savePath}`;
+          diagEl.textContent = `${baseText}\n\nResultados guardados como ${savePath}`;
         } else {
-          // Fallback: descarga directa del browser
           const data = await fetchXlsx();
           const blob = new Blob([data], {
             type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
           });
+
+          // Prefer File System Access API when available to let user pick folder/name
+          if (window.showSaveFilePicker) {
+            try {
+              const handle = await window.showSaveFilePicker({
+                suggestedName: filename,
+                types: [
+                  {
+                    description: "Excel Workbook",
+                    accept: { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"] },
+                  },
+                ],
+              });
+              const writable = await handle.createWritable();
+              await writable.write(blob);
+              await writable.close();
+              const baseText = state.latestResultsText || "";
+              diagEl.textContent = `${baseText}\n\nResultados guardados como ${handle.name}`;
+              return;
+            } catch (err) {
+              if (err?.name === "AbortError") return; // user cancelled
+              // fall through to download link
+            }
+          }
+
+          // Fallback: simple download anchor
           const url = URL.createObjectURL(blob);
           const link = document.createElement("a");
           link.href = url;
@@ -997,7 +1022,7 @@ function wireSpectroscopyForm() {
           document.body.removeChild(link);
           URL.revokeObjectURL(url);
           const baseText = state.latestResultsText || "";
-          diagEl.textContent = `${baseText}\n\nResultados descargados como ${filename}`;
+          diagEl.textContent = `${baseText}\n\nResultados guardados como ${filename}`;
         }
       } catch (err) {
         const baseText = state.latestResultsText || "";
