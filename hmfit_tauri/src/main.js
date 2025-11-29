@@ -5,6 +5,7 @@ const state = {
   activeModule: "spectroscopy", // "spectroscopy" | "nmr"
   activeSubtab: "model",        // "model" | "optimization"
   uploadedFile: null,            // Currently selected file
+  latestResultsText: "",         // Cache último reporte para guardar
 };
 
 // WebSocket for progress streaming
@@ -379,6 +380,7 @@ function initApp() {
               <div class="actions-right">
                 <button id="reset-btn" class="btn secondary-btn">Reset Calculation</button>
                 <button id="process-btn" class="btn primary-btn">Process Data</button>
+                <button id="save-results-btn" class="btn ghost-btn">Save results</button>
               </div>
             </div>
           </section>
@@ -391,6 +393,7 @@ function initApp() {
               <div class="plot-toolbar">
                 <button id="plot-prev-btn" class="btn tertiary-btn">« Prev</button>
                 <h2 class="section-title">Main spectra / titration plot</h2>
+                <div id="plot-counter" class="plot-counter">—</div>
                 <button id="plot-next-btn" class="btn tertiary-btn">Next »</button>
               </div>
               <div class="plot-placeholder primary-plot scrollable-plot">
@@ -535,6 +538,7 @@ function wireSpectroscopyForm() {
   // Botones
   const processBtn = findButtonByLabel("Process Data");
   const resetBtn = findButtonByLabel("Reset Calculation");
+  const saveBtn = findButtonByLabel("Save results");
   const diagEl = document.getElementById("log-output");
 
   if (!processBtn || !resetBtn || !diagEl) {
@@ -925,7 +929,34 @@ function wireSpectroscopyForm() {
     if (optGridContainer) optGridContainer.innerHTML = "";
 
     diagEl.textContent = "Esperando...";
+    state.latestResultsText = "";
   });
+
+  // --- Handler: Save Results ---
+  if (saveBtn) {
+    saveBtn.addEventListener("click", () => {
+      const content = (state.latestResultsText || diagEl.textContent || "").trim();
+      if (!content) {
+        appendLog("No hay resultados para guardar.");
+        return;
+      }
+
+      try {
+        const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "hmfit_results.txt";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        appendLog("Resultados guardados como hmfit_results.txt");
+      } catch (err) {
+        appendLog(`No se pudieron guardar los resultados: ${err}`);
+      }
+    });
+  }
 
   // --- Handler: Process Data ---
   processBtn.addEventListener("click", async () => {
@@ -1042,6 +1073,7 @@ function wireSpectroscopyForm() {
           `Consulta la consola para más detalles.`;
       }
 
+      state.latestResultsText = "";
       diagEl.textContent = message;
       console.error(`[HM Fit] Process Data request failed (${state.activeModule}):`, err);
     } finally {
@@ -1053,12 +1085,14 @@ function wireSpectroscopyForm() {
   function displayResults(data) {
     if (!data.success) {
       const detail = data.detail || data.error || "Procesamiento falló.";
+      state.latestResultsText = "";
       diagEl.textContent = detail;
       return;
     }
 
     if (data.results_text) {
       diagEl.textContent = data.results_text;
+      state.latestResultsText = data.results_text;
       return;
     }
 
@@ -1093,6 +1127,7 @@ function wireSpectroscopyForm() {
     lines.push(`Eigenvalues: ${stats.eigenvalues ?? "—"}`);
 
     diagEl.textContent = lines.join("\n");
+    state.latestResultsText = lines.join("\n");
   }
 
   function displayNmrResults(data) {
@@ -1124,6 +1159,7 @@ function wireSpectroscopyForm() {
     const plotContainers = document.querySelectorAll(".plot-placeholder");
     const prevBtn = document.getElementById("plot-prev-btn");
     const nextBtn = document.getElementById("plot-next-btn");
+    const counterEl = document.getElementById("plot-counter");
 
     // Clear previous content
     plotContainers.forEach((container) => {
@@ -1133,6 +1169,7 @@ function wireSpectroscopyForm() {
     const disableNav = () => {
       if (prevBtn) prevBtn.disabled = true;
       if (nextBtn) nextBtn.disabled = true;
+      if (counterEl) counterEl.textContent = "—";
     };
 
     const mainPlots = [];
@@ -1151,12 +1188,21 @@ function wireSpectroscopyForm() {
     let slidesRef = [];
     let currentSlideIndex = 0;
     let updateSlide = () => {};
+    const updateCounter = () => {
+      if (!counterEl) return;
+      if (!slidesRef.length) {
+        counterEl.textContent = "—";
+        return;
+      }
+      counterEl.textContent = `${currentSlideIndex + 1} / ${slidesRef.length}`;
+    };
 
     const attachNav = () => {
       if (!prevBtn || !nextBtn) return;
       const hasSlides = slidesRef.length > 0;
       prevBtn.disabled = !hasSlides;
       nextBtn.disabled = !hasSlides;
+      updateCounter();
 
       if (!hasSlides) {
         prevBtn.onclick = null;
@@ -1204,51 +1250,6 @@ function wireSpectroscopyForm() {
         carouselContainer.appendChild(slide);
       });
 
-      // Controls (only if more than 1 plot)
-      if (plots.length > 1) {
-        const controls = document.createElement("div");
-        controls.className = "carousel-controls";
-
-        const prevBtn = document.createElement("button");
-        prevBtn.className = "carousel-btn";
-        prevBtn.textContent = "← Prev";
-
-        const nextBtn = document.createElement("button");
-        nextBtn.className = "carousel-btn";
-        nextBtn.textContent = "Next →";
-
-        const counter = document.createElement("div");
-        counter.className = "carousel-counter";
-        counter.textContent = `1 / ${plots.length}`;
-
-        let currentIndex = 0;
-
-        const updateSlide = (newIndex) => {
-          const slides = carouselContainer.querySelectorAll(".carousel-slide");
-          slides[currentIndex].classList.remove("active");
-          currentIndex = newIndex;
-          slides[currentIndex].classList.add("active");
-          counter.textContent = `${currentIndex + 1} / ${plots.length}`;
-        };
-
-        prevBtn.addEventListener("click", () => {
-          let newIndex = currentIndex - 1;
-          if (newIndex < 0) newIndex = plots.length - 1;
-          updateSlide(newIndex);
-        });
-
-        nextBtn.addEventListener("click", () => {
-          let newIndex = currentIndex + 1;
-          if (newIndex >= plots.length) newIndex = 0;
-          updateSlide(newIndex);
-        });
-
-        controls.appendChild(prevBtn);
-        controls.appendChild(nextBtn);
-        carouselContainer.appendChild(controls);
-        carouselContainer.appendChild(counter);
-      }
-
       container.appendChild(carouselContainer);
 
       slidesRef = Array.from(carouselContainer.querySelectorAll(".carousel-slide"));
@@ -1259,10 +1260,7 @@ function wireSpectroscopyForm() {
         slidesRef[currentSlideIndex].classList.remove("active");
         currentSlideIndex = newIndex;
         slidesRef[currentSlideIndex].classList.add("active");
-        const counterEl = carouselContainer.querySelector(".carousel-counter");
-        if (counterEl) {
-          counterEl.textContent = `${currentSlideIndex + 1} / ${slidesRef.length}`;
-        }
+        updateCounter();
       };
 
       updateSlide(0);

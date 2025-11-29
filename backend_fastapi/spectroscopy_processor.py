@@ -63,15 +63,7 @@ def format_results_table(k, SE_log10K, percK, rms, covfit, lof=None):
         table_lines.append(line)
 
     table = "\n".join(table_lines)
-
-    stats_lines = [
-        f"RMS: {rms:.2e}",
-        f"s² (var. reducida): {covfit:.2e}",
-    ]
-    if lof is not None:
-        stats_lines.append(f"LOF: {lof:.2e} %")
-
-    return "=== RESULTADOS ===\n" + table + "\n\nEstadísticas:\n" + "\n".join(stats_lines)
+    return "=== RESULTADOS ===\n" + table
 
 # Progress callback for WebSocket streaming
 _progress_callback = None
@@ -521,13 +513,15 @@ def process_spectroscopy_data(
 
     # Tabla formateada para resultados (alineada como en wx)
     results_text = format_results_table(k, SE_log10K, percK, rms, covfit, lof=lof)
-    results_text += (
-        "\n"
-        f"MAE: {MAE:.2e}\n"
-        f"Diferencia en C total (%): {dif_en_ct:.2f}\n"
-        f"Eigenvalues: {EV}\n"
-        f"Optimizer: {optimizer}"
-    )
+    # Estadísticas sin duplicar RMS/s² (ya aparecen en la tabla)
+    extra_stats = [
+        f"LOF: {lof:.2e} %",
+        f"MAE: {MAE:.2e}",
+        f"Diferencia en C total (%): {dif_en_ct:.2f}",
+        f"Eigenvalues: {EV}",
+        f"Optimizer: {optimizer}",
+    ]
+    results_text += "\n\nEstadísticas:\n" + "\n".join(extra_stats)
     
     # Format results
     results = {
