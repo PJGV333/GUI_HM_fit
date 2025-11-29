@@ -1,0 +1,364 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/README_TAURI_FASTAPI.md b/README_TAURI_FASTAPI.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..b258a9349690a4265a70f526154beba00f7cf9a7
+--- /dev/null
++++ b/README_TAURI_FASTAPI.md
+@@ -0,0 +1,70 @@
++# HM Fit - Prototipo Tauri + FastAPI (Fase 1)
++
++Esta fase agrega un esqueleto mínimo para probar un backend FastAPI y un frontend Tauri sin modificar la GUI wxPython existente.
++
++## Backend FastAPI
++
++1. **Crear/activar entorno Python** (ejemplos):
++   ```bash
++   # con venv
++   python -m venv .venv
++   source .venv/bin/activate
++
++   # o con conda
++   conda create -n hmfit-fastapi python=3.11
++   conda activate hmfit-fastapi
++   ```
++2. **Instalar dependencias**:
++   ```bash
++   pip install -r backend_fastapi/requirements.txt
++   ```
++3. **Arrancar el servidor** (puerto 8000):
++   ```bash
++   python -m backend_fastapi.main
++   ```
++   Endpoints disponibles:
++   - `GET /health` → `{ "status": "ok" }`
++   - `POST /dummy_fit` → `{ "sum_y": <suma de y>, "n_points": <len(y)> }`
++
++Estos endpoints están listos para conectarse más adelante con la lógica de:
++- `Simulation_controls.py` (simulación)
++- `Methods.py`, `NR_conc_algoritm.py`, `LM_conc_algoritm.py` (ajustes)
++- `errors.py`, `core_ad_probe.py`, etc.
++
++## Frontend Tauri (proyecto `hmfit_tauri/`)
++
++1. **Dependencias de sistema**: asegúrate de tener toolchain de Rust y Node instalados (en CachyOS/Arch):
++   ```bash
++   sudo pacman -S --needed rustup nodejs npm
++   rustup default stable
++   ```
++   Instala el CLI de Tauri si aún no está disponible:
++   ```bash
++   npm install -g @tauri-apps/cli
++   ```
++2. **Instalar dependencias del proyecto**:
++   ```bash
++   cd hmfit_tauri
++   npm install
++   ```
++3. **Ejecutar en modo desarrollo** (asumiendo FastAPI activo en `http://127.0.0.1:8000`):
++   ```bash
++   npm run tauri dev
++   ```
++   En la ventana verás un botón **“Probar conexión”** que hace `fetch` a `/health` y muestra la respuesta.
++
++> Nota: En esta fase el frontend no inicia el proceso de Python; levanta el backend en otra terminal antes de abrir Tauri.
++
++## Resumen rápido de comandos
++
++```bash
++# Backend
++python -m venv .venv && source .venv/bin/activate
++pip install -r backend_fastapi/requirements.txt
++python -m backend_fastapi.main
++
++# Frontend (en otra terminal)
++cd hmfit_tauri
++npm install
++npm run tauri dev
++```
+diff --git a/backend_fastapi/__init__.py b/backend_fastapi/__init__.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/backend_fastapi/main.py b/backend_fastapi/main.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..a593c718171dcc7a485275a483c20ea75f8b294a
+--- /dev/null
++++ b/backend_fastapi/main.py
+@@ -0,0 +1,38 @@
++"""Minimal FastAPI backend for HM Fit prototype.
++
++This module intentionally does not modify existing calculation logic.
++Endpoints are placeholders where we can later call functions from:
++- Simulation_controls.py (simulation routines)
++- Methods.py, NR_conc_algoritm.py, LM_conc_algoritm.py (fitting routines)
++"""
++from fastapi import FastAPI
++from pydantic import BaseModel
++import uvicorn
++
++
++class DummyFitRequest(BaseModel):
++    """Placeholder request model for testing the backend wiring."""
++
++    x: list[float]
++    y: list[float]
++
++
++app = FastAPI(title="HM Fit FastAPI prototype")
++
++
++@app.get("/health")
++def health():
++    """Health check endpoint used by the Tauri frontend."""
++
++    return {"status": "ok"}
++
++
++@app.post("/dummy_fit")
++def dummy_fit(req: DummyFitRequest):
++    """Dummy endpoint that will later delegate to HM Fit calculation modules."""
++
++    return {"sum_y": sum(req.y), "n_points": len(req.y)}
++
++
++if __name__ == "__main__":
++    uvicorn.run("backend_fastapi.main:app", host="127.0.0.1", port=8000, reload=True)
+diff --git a/backend_fastapi/requirements.txt b/backend_fastapi/requirements.txt
+new file mode 100644
+index 0000000000000000000000000000000000000000..364e2ee48ed028108fe2a2dc80d0090a5f3c4247
+--- /dev/null
++++ b/backend_fastapi/requirements.txt
+@@ -0,0 +1,2 @@
++fastapi
++uvicorn[standard]
+diff --git a/hmfit_tauri/.gitignore b/hmfit_tauri/.gitignore
+new file mode 100644
+index 0000000000000000000000000000000000000000..e16923f87e61f545acc3aebcdba5d01a8e6542d4
+--- /dev/null
++++ b/hmfit_tauri/.gitignore
+@@ -0,0 +1,6 @@
++/node_modules
++/dist
++/.vite
++/src-tauri/target
++/src-tauri/.cargo
++/src-tauri/Cargo.lock
+diff --git a/hmfit_tauri/index.html b/hmfit_tauri/index.html
+new file mode 100644
+index 0000000000000000000000000000000000000000..fd066274049ee6d1ddeb75aab5b09943ca013b43
+--- /dev/null
++++ b/hmfit_tauri/index.html
+@@ -0,0 +1,13 @@
++<!doctype html>
++<html lang="es">
++  <head>
++    <meta charset="UTF-8" />
++    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++    <title>HM Fit - Tauri Prototype</title>
++    <link rel="stylesheet" href="/src/style.css" />
++  </head>
++  <body>
++    <div id="app"></div>
++    <script type="module" src="/src/main.js"></script>
++  </body>
++</html>
+diff --git a/hmfit_tauri/package.json b/hmfit_tauri/package.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..5b8395b3dfbffdec24824f5d1eda0e62d4e662d9
+--- /dev/null
++++ b/hmfit_tauri/package.json
+@@ -0,0 +1,21 @@
++{
++  "name": "hmfit-tauri",
++  "private": true,
++  "version": "0.1.0",
++  "type": "module",
++  "scripts": {
++    "dev": "vite",
++    "build": "vite build",
++    "preview": "vite preview",
++    "tauri": "tauri",
++    "tauri:dev": "tauri dev",
++    "tauri:build": "tauri build"
++  },
++  "dependencies": {
++    "@tauri-apps/api": "^1.5.0"
++  },
++  "devDependencies": {
++    "@tauri-apps/cli": "^1.5.0",
++    "vite": "^5.0.0"
++  }
++}
+diff --git a/hmfit_tauri/src-tauri/Cargo.toml b/hmfit_tauri/src-tauri/Cargo.toml
+new file mode 100644
+index 0000000000000000000000000000000000000000..05729958b7028a08abe1ae60158e7feed7c951a3
+--- /dev/null
++++ b/hmfit_tauri/src-tauri/Cargo.toml
+@@ -0,0 +1,12 @@
++[package]
++name = "hmfit-tauri"
++version = "0.1.0"
++edition = "2021"
++
++[build-dependencies]
++tauri-build = { version = "1", features = [] }
++
++[dependencies]
++serde = { version = "1", features = ["derive"] }
++serde_json = "1"
++tauri = { version = "1", features = ["shell-open"] }
+diff --git a/hmfit_tauri/src-tauri/src/main.rs b/hmfit_tauri/src-tauri/src/main.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..d387909276ac0405d00a47c695c65062f2724614
+--- /dev/null
++++ b/hmfit_tauri/src-tauri/src/main.rs
+@@ -0,0 +1,7 @@
++#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
++
++fn main() {
++    tauri::Builder::default()
++        .run(tauri::generate_context!())
++        .expect("error while running tauri application");
++}
+diff --git a/hmfit_tauri/src-tauri/tauri.conf.json b/hmfit_tauri/src-tauri/tauri.conf.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..3c99dbbd0f39258a025c944d7277a99e5ac874dd
+--- /dev/null
++++ b/hmfit_tauri/src-tauri/tauri.conf.json
+@@ -0,0 +1,27 @@
++{
++  "build": {
++    "beforeDevCommand": "npm run dev",
++    "beforeBuildCommand": "npm run build",
++    "devPath": "http://localhost:5173",
++    "distDir": "../dist"
++  },
++  "package": {
++    "productName": "HM Fit Tauri",
++    "version": "0.1.0"
++  },
++  "tauri": {
++    "windows": [
++      {
++        "title": "HM Fit - Prototipo Tauri",
++        "width": 800,
++        "height": 600
++      }
++    ],
++    "allowlist": {
++      "shell": {
++        "all": false,
++        "open": true
++      }
++    }
++  }
++}
+diff --git a/hmfit_tauri/src/main.js b/hmfit_tauri/src/main.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..0ddb8086cf052b065a6399a726c8e325a3978503
+--- /dev/null
++++ b/hmfit_tauri/src/main.js
+@@ -0,0 +1,24 @@
++import "./style.css";
++
++document.querySelector("#app").innerHTML = `
++  <main class="container">
++    <h1>HM Fit - Prototipo Tauri</h1>
++    <p class="subtitle">Fase 1: conectar con FastAPI manualmente</p>
++    <button id="health-check">Probar conexión</button>
++    <pre id="health-result" aria-live="polite">Esperando...</pre>
++  </main>
++`;
++
++const button = document.getElementById("health-check");
++const result = document.getElementById("health-result");
++
++button.addEventListener("click", async () => {
++  result.textContent = "Consultando http://127.0.0.1:8000/health ...";
++  try {
++    const response = await fetch("http://127.0.0.1:8000/health");
++    const data = await response.json();
++    result.textContent = JSON.stringify(data, null, 2);
++  } catch (error) {
++    result.textContent = `Error: ${error}`;
++  }
++});
+diff --git a/hmfit_tauri/src/style.css b/hmfit_tauri/src/style.css
+new file mode 100644
+index 0000000000000000000000000000000000000000..2812503705a49d2351aee498a9f78ac6dea99b2e
+--- /dev/null
++++ b/hmfit_tauri/src/style.css
+@@ -0,0 +1,54 @@
++:root {
++  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
++  color: #0f172a;
++  background-color: #f8fafc;
++}
++
++body {
++  margin: 0;
++  min-height: 100vh;
++}
++
++main.container {
++  max-width: 640px;
++  margin: 0 auto;
++  padding: 2.5rem 1.5rem;
++  display: flex;
++  flex-direction: column;
++  gap: 1rem;
++}
++
++h1 {
++  margin: 0;
++  font-size: 1.8rem;
++}
++
++.subtitle {
++  margin: 0;
++  color: #475569;
++}
++
++button {
++  background-color: #2563eb;
++  color: #fff;
++  border: none;
++  padding: 0.75rem 1.25rem;
++  border-radius: 0.5rem;
++  cursor: pointer;
++  font-weight: 600;
++  font-size: 1rem;
++  transition: background-color 0.2s ease;
++}
++
++button:hover {
++  background-color: #1d4ed8;
++}
++
++pre {
++  background-color: #e2e8f0;
++  border-radius: 0.5rem;
++  padding: 1rem;
++  min-height: 3rem;
++  font-size: 0.95rem;
++  overflow: auto;
++}
+diff --git a/hmfit_tauri/vite.config.js b/hmfit_tauri/vite.config.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..fadb098e7dd5e6ddd55253e1714604b774c4fb37
+--- /dev/null
++++ b/hmfit_tauri/vite.config.js
+@@ -0,0 +1,11 @@
++import { defineConfig } from "vite";
++
++export default defineConfig({
++  root: "./",
++  build: {
++    outDir: "dist",
++  },
++  server: {
++    port: 5173,
++  },
++});
+ 
+EOF
+)

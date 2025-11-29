@@ -1,7 +1,5 @@
 import "./style.css";
-
-const BACKEND_BASE = "http://127.0.0.1:8001";
-const WS_BASE = "ws://127.0.0.1:8001";
+import { BACKEND_BASE_URL, WS_BASE_URL, describeBackendTarget } from "./backend/config";
 
 const state = {
   activeModule: "spectroscopy", // "spectroscopy" | "nmr"
@@ -13,10 +11,108 @@ const state = {
 let progressWs = null;
 let isProcessing = false;
 
+// --- Backend client (shared fetch + helpers) ---
+async function ensureBackendReachable(baseError) {
+  try {
+    const healthResp = await fetch(`${BACKEND_BASE_URL}/health`);
+    if (!healthResp.ok) {
+      const detail = await healthResp.text();
+      throw new Error(
+        `/health respondió ${healthResp.status}: ${detail || healthResp.statusText}`,
+      );
+    }
+  } catch (healthErr) {
+    throw new Error(
+      `Backend no accesible en ${BACKEND_BASE_URL}. Asegúrate de que el servidor FastAPI ` +
+      `esté levantado en ${describeBackendTarget()} y que no haya un firewall bloqueándolo. ` +
+      `Detalle: ${healthErr?.message || healthErr}`,
+    );
+  }
+
+  // Health is reachable; bubble the original error for context.
+  throw baseError;
+}
+
+async function assertBackendAvailable() {
+  try {
+    const healthResp = await fetch(`${BACKEND_BASE_URL}/health`);
+    if (!healthResp.ok) {
+      const detail = await healthResp.text();
+      throw new Error(
+        `/health respondió ${healthResp.status}: ${detail || healthResp.statusText}`,
+      );
+    }
+  } catch (err) {
+    throw new Error(
+      `Backend no accesible en ${BACKEND_BASE_URL}. ` +
+      `Asegúrate de que el servidor FastAPI esté levantado en ${describeBackendTarget()} ` +
+      `y que no haya un firewall bloqueándolo. Detalle: ${err?.message || err}`,
+    );
+  }
+}
+
+async function callBackend(path, options = {}) {
+  const { method = "GET", body } = options;
+  const url = `${BACKEND_BASE_URL}${path}`;
+  let resp;
+
+  try {
+    resp = await fetch(url, { method, body, credentials: "include", mode: "cors" });
+  } catch (err) {
+    console.error(`[HM Fit] Network/CORS error calling ${url}:`, err);
+    await ensureBackendReachable(err);
+  }
+
+  if (!resp.ok) {
+    let detail;
+    try {
+      const errJson = await resp.json();
+      detail = errJson.detail || JSON.stringify(errJson);
+    } catch (_) {
+      detail = await resp.text();
+    }
+
+    const error = new Error(`HTTP ${resp.status} ${resp.statusText}: ${detail}`);
+    error.status = resp.status;
+    error.statusText = resp.statusText;
+    error.body = detail;
+    console.error(`[HM Fit] Backend error for ${url}:`, {
+      status: resp.status,
+      statusText: resp.statusText,
+      body: detail,
+    });
+    throw error;
+  }
+
+  return resp.json();
+}
+
+const backendApi = {
+  listSheets(file, mode = "spectroscopy") {
+    const formData = new FormData();
+    formData.append("file", file);
+    const path = mode === "nmr" ? "/nmr/list_sheets" : "/list_sheets";
+    return callBackend(path, { method: "POST", body: formData });
+  },
+  listColumns(file, sheetName, mode = "spectroscopy") {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("sheet_name", sheetName);
+    const path = mode === "nmr" ? "/nmr/list_columns" : "/list_columns";
+    return callBackend(path, { method: "POST", body: formData });
+  },
+  processSpectroscopy(formData) {
+    return callBackend("/process_spectroscopy", { method: "POST", body: formData });
+  },
+  processNmr(formData) {
+    return callBackend("/process_nmr", { method: "POST", body: formData });
+  },
+};
+
 function connectWebSocket() {
   if (progressWs && progressWs.readyState === WebSocket.OPEN) return;
 
-  progressWs = new WebSocket(`${WS_BASE}/ws/progress`);
+  progressWs = new WebSocket(`${WS_BASE_URL}/ws/progress`);
 
   progressWs.onopen = () => {
     console.log("WebSocket connected");
@@ -70,7 +166,7 @@ function setProcessing(active) {
 async function pingBackend() {
   log("Consultando /health …");
   try {
-    const resp = await fetch(`${BACKEND_BASE}/health`);
+    const resp = await fetch(`${BACKEND_BASE_URL}/health`);
     const data = await resp.json();
     log(JSON.stringify(data, null, 2));
   } catch (err) {
@@ -85,7 +181,7 @@ async function dummyFit() {
       x: [0, 1, 2, 3],
       y: [0.1, 0.5, 0.9, 1.2],
     };
-    const resp = await fetch(`${BACKEND_BASE}/dummy_fit`, {
+    const resp = await fetch(`${BACKEND_BASE_URL}/dummy_fit`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -145,6 +241,8 @@ function updateUI() {
 function initApp() {
   const app = document.querySelector("#app");
   if (!app) return;
+
+  console.info("[HM Fit] Backend base URL:", BACKEND_BASE_URL);
 
   app.innerHTML = `
     <div class="root-container">
@@ -521,22 +619,10 @@ function wireSpectroscopyForm() {
     state.uploadedFile = file;
 
     // Enviar al backend para obtener hojas
-    const formData = new FormData();
-    formData.append("file", file);
-
     try {
       diagEl.textContent = "Leyendo archivo Excel...";
-      const resp = await fetch(`${BACKEND_BASE}/list_sheets`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!resp.ok) {
-        throw new Error(`Error ${resp.status}: ${await resp.text()}`);
-      }
-
-      const data = await resp.json();
-      const sheets = data.sheets || [];
+      const data = await backendApi.listSheets(file, state.activeModule);
+      const sheets = data?.sheets || [];
 
       // Poblar dropdowns
       [spectraSheetInput, concSheetInput].forEach(select => {
@@ -573,23 +659,10 @@ function wireSpectroscopyForm() {
       return;
     }
 
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("sheet_name", sheetName);
-
     try {
       diagEl.textContent = `Leyendo columnas de ${sheetName}...`;
-      const resp = await fetch(`${BACKEND_BASE}/list_columns`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!resp.ok) {
-        throw new Error(`Error ${resp.status}: ${await resp.text()}`);
-      }
-
-      const data = await resp.json();
-      const columns = data.columns || [];
+      const data = await backendApi.listColumns(file, sheetName, state.activeModule);
+      const columns = data?.columns || [];
 
       columnsContainer.innerHTML = ""; // Limpiar
       if (columns.length === 0) {
@@ -866,8 +939,18 @@ function wireSpectroscopyForm() {
       return;
     }
 
-    connectWebSocket();
     setProcessing(true);
+    diagEl.textContent = "Verificando backend...\n";
+    try {
+      await assertBackendAvailable();
+    } catch (err) {
+      diagEl.textContent = err.message || String(err);
+      setProcessing(false);
+      console.error("[HM Fit] Backend check failed before processing:", err);
+      return;
+    }
+
+    connectWebSocket();
     diagEl.textContent = "Procesando datos de Spectroscopy...\n";
 
     // Recolectar columnas seleccionadas
@@ -922,6 +1005,7 @@ function wireSpectroscopyForm() {
     formData.append("column_names", JSON.stringify(selectedCols));
     formData.append("receptor_label", receptorInput?.value || "");
     formData.append("guest_label", guestInput?.value || "");
+    formData.append("signals_sheet", ""); // placeholder for NMR flow
     formData.append("efa_enabled", efaCheckbox?.checked ? "true" : "false");
     formData.append("efa_eigenvalues", readInt(efaEigenInput?.value).toString());
     formData.append("modelo", JSON.stringify(gridData));
@@ -933,34 +1017,30 @@ function wireSpectroscopyForm() {
     formData.append("bounds", JSON.stringify(kBounds));
 
     try {
-      const resp = await fetch(`${BACKEND_BASE}/process_spectroscopy`, {
-        method: "POST",
-        body: formData,  // Send as FormData, not JSON
-      });
-
-      if (!resp.ok) {
-        let text;
-        try {
-          const errJson = await resp.json();
-          text = errJson.detail || JSON.stringify(errJson);
-        } catch (_) {
-          text = await resp.text();
-        }
-        diagEl.textContent = `Error HTTP ${resp.status}: ${text}`;
-        return;
+      let data;
+      if (state.activeModule === "nmr") {
+        data = await backendApi.processNmr(formData);
+        displayNmrResults(data);
+      } else {
+        data = await backendApi.processSpectroscopy(formData);
+        displayResults(data);
+        displayGraphs(data.graphs || {});
       }
 
-      const data = await resp.json();
-
-      // Display results
-      displayResults(data);
-      displayGraphs(data.graphs);
-
     } catch (err) {
-      diagEl.textContent =
-        "Error de red: backend no disponible o petición bloqueada.\nDetalle: " +
-        (err?.message || err);
-      console.error("Process Data request failed:", err);
+      let message = `No se pudo procesar la solicitud. Detalle: ${err?.message || err}`;
+      if (err?.message?.includes("Backend no accesible")) {
+        message =
+          `No se puede contactar al backend en ${BACKEND_BASE_URL}. ` +
+          `Asegúrate de que el servidor FastAPI esté levantado y accesible.`;
+      } else if (err?.status) {
+        message =
+          `El backend devolvió un error (código ${err.status}). ` +
+          `Consulta la consola para más detalles.`;
+      }
+
+      diagEl.textContent = message;
+      console.error(`[HM Fit] Process Data request failed (${state.activeModule}):`, err);
     } finally {
       setProcessing(false);
     }
@@ -1003,6 +1083,31 @@ function wireSpectroscopyForm() {
     lines.push(`MAE: ${fmt(stats.MAE)}`);
     lines.push(`Optimizer: ${stats.optimizer || "—"}`);
     lines.push(`Eigenvalues: ${stats.eigenvalues ?? "—"}`);
+
+    diagEl.textContent = lines.join("\n");
+  }
+
+  function displayNmrResults(data) {
+    if (!data?.success) {
+      const detail = data?.detail || data?.error || "Procesamiento NMR falló.";
+      diagEl.textContent = detail;
+      return;
+    }
+
+    const lines = [];
+    lines.push("=== NMR WORKBOOK SUMMARY ===", "");
+    lines.push(`Traces (columns): ${data.n_traces}`);
+    lines.push(`Points (rows): ${data.n_points}`);
+    lines.push(`Concentration columns: ${data.n_concentrations}`);
+    lines.push(`Selected columns: ${(data.columns || []).join(', ')}`);
+    if (data.signals_sheet) {
+      lines.push(`Signals sheet: ${data.signals_sheet}`);
+      lines.push(`Signals detected: ${data.n_signals ?? 0}`);
+    }
+    if (data.receptor_label || data.guest_label) {
+      lines.push(`Receptor: ${data.receptor_label || '—'}`);
+      lines.push(`Guest: ${data.guest_label || '—'}`);
+    }
 
     diagEl.textContent = lines.join("\n");
   }
