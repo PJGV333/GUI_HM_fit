@@ -20,6 +20,7 @@ from typing import Dict, Optional
 import asyncio
 import json
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 from backend_fastapi import nmr_processor
 from backend_fastapi.config import (
@@ -63,6 +64,12 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 # WebSocket connections
 active_connections: list[WebSocket] = []
+
+
+class ExportRequest(BaseModel):
+    constants: list[dict] = []
+    statistics: dict = {}
+    results_text: str | None = None
 
 @app.get("/health")
 def health():
@@ -283,6 +290,43 @@ async def process_nmr(
     except Exception as e:
         error_msg = f"Error en procesamiento NMR: {str(e)}"
         raise HTTPException(status_code=500, detail=error_msg)
+
+
+@app.post("/export_results_xlsx")
+async def export_results_xlsx(payload: ExportRequest):
+    """
+    Construye un archivo XLSX con las constantes y estadísticas enviadas desde el frontend.
+    Sigue la idea del guardado en wx: hojas separadas para constants/stats y el reporte plano.
+    """
+    try:
+        constants = payload.constants or []
+        statistics = payload.statistics or {}
+        results_text = payload.results_text or ""
+
+        # Preparar DataFrames
+        with io.BytesIO() as buffer:
+            with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+                if constants:
+                    pd.DataFrame(constants).to_excel(writer, sheet_name="Constants", index=False)
+                if statistics:
+                    pd.DataFrame(
+                        list(statistics.items()),
+                        columns=["metric", "value"]
+                    ).to_excel(writer, sheet_name="Statistics", index=False)
+                if results_text:
+                    pd.DataFrame({"results": results_text.splitlines()}).to_excel(writer, sheet_name="Results_text", index=False)
+
+            buffer.seek(0)
+            headers = {
+                "Content-Disposition": 'attachment; filename="hmfit_results.xlsx"'
+            }
+            return StreamingResponse(
+                buffer,
+                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                headers=headers,
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"No se pudo generar el XLSX: {e}")
 
 if __name__ == "__main__":
     uvicorn.run(

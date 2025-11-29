@@ -6,6 +6,7 @@ const state = {
   activeSubtab: "model",        // "model" | "optimization"
   uploadedFile: null,            // Currently selected file
   latestResultsText: "",         // Cache último reporte para guardar
+  latestResultsPayload: null,    // Última respuesta de backend para exportar XLSX
 };
 
 // WebSocket for progress streaming
@@ -396,8 +397,14 @@ function initApp() {
                 <div id="plot-counter" class="plot-counter">—</div>
                 <button id="plot-next-btn" class="btn tertiary-btn">Next »</button>
               </div>
+              <div class="plot-side-nav left">
+                <button id="plot-prev-side" class="plot-side-btn" title="Anterior">‹</button>
+              </div>
               <div class="plot-placeholder primary-plot scrollable-plot">
                 Plot placeholder (aquí irán las gráficas principales).
+              </div>
+              <div class="plot-side-nav right">
+                <button id="plot-next-side" class="plot-side-btn" title="Siguiente">›</button>
               </div>
               <div class="plot-placeholder secondary-plot" style="margin-top: 1rem;">
                  <!-- Placeholder for secondary plots -->
@@ -930,30 +937,67 @@ function wireSpectroscopyForm() {
 
     diagEl.textContent = "Esperando...";
     state.latestResultsText = "";
+    state.latestResultsPayload = null;
   });
 
   // --- Handler: Save Results ---
   if (saveBtn) {
-    saveBtn.addEventListener("click", () => {
-      const content = (state.latestResultsText || diagEl.textContent || "").trim();
-      if (!content) {
+    saveBtn.addEventListener("click", async () => {
+      const payload = state.latestResultsPayload;
+      const resultsText = (state.latestResultsText || diagEl.textContent || "").trim();
+      if (!payload || !payload.success) {
         appendLog("No hay resultados para guardar.");
         return;
       }
+      const filename = "hmfit_results.xlsx";
+
+      const fetchXlsx = async () => {
+        const resp = await fetch(`${BACKEND_BASE_URL}/export_results_xlsx`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            constants: payload.constants || [],
+            statistics: payload.statistics || {},
+            results_text: resultsText,
+          }),
+        });
+        if (!resp.ok) {
+          const detail = await resp.text();
+          throw new Error(detail || `HTTP ${resp.status}`);
+        }
+        const ab = await resp.arrayBuffer();
+        return new Uint8Array(ab);
+      };
 
       try {
-        const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = "hmfit_results.txt";
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        appendLog("Resultados guardados como hmfit_results.txt");
+        const hasTauri = !!window.__TAURI__;
+        if (hasTauri && window.__TAURI__.dialog?.save && window.__TAURI__.fs?.writeBinaryFile) {
+          const savePath = await window.__TAURI__.dialog.save({
+            defaultPath: filename,
+            filters: [{ name: "Excel", extensions: ["xlsx"] }],
+          });
+          if (!savePath) return; // cancelado
+          const data = await fetchXlsx();
+          await window.__TAURI__.fs.writeBinaryFile({ path: savePath, contents: data });
+          appendLog(`Resultados guardados en ${savePath}`);
+        } else {
+          // Fallback: descarga directa del browser
+          const data = await fetchXlsx();
+          const blob = new Blob([data], {
+            type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          appendLog(`Resultados descargados como ${filename}`);
+        }
       } catch (err) {
-        appendLog(`No se pudieron guardar los resultados: ${err}`);
+        appendLog(`No se pudieron guardar los resultados: ${err.message || err}`);
       }
     });
   }
@@ -1074,6 +1118,7 @@ function wireSpectroscopyForm() {
       }
 
       state.latestResultsText = "";
+      state.latestResultsPayload = null;
       diagEl.textContent = message;
       console.error(`[HM Fit] Process Data request failed (${state.activeModule}):`, err);
     } finally {
@@ -1086,6 +1131,7 @@ function wireSpectroscopyForm() {
     if (!data.success) {
       const detail = data.detail || data.error || "Procesamiento falló.";
       state.latestResultsText = "";
+      state.latestResultsPayload = null;
       diagEl.textContent = detail;
       return;
     }
@@ -1093,6 +1139,7 @@ function wireSpectroscopyForm() {
     if (data.results_text) {
       diagEl.textContent = data.results_text;
       state.latestResultsText = data.results_text;
+      state.latestResultsPayload = data;
       return;
     }
 
@@ -1128,6 +1175,7 @@ function wireSpectroscopyForm() {
 
     diagEl.textContent = lines.join("\n");
     state.latestResultsText = lines.join("\n");
+    state.latestResultsPayload = data;
   }
 
   function displayNmrResults(data) {
@@ -1160,6 +1208,8 @@ function wireSpectroscopyForm() {
     const prevBtn = document.getElementById("plot-prev-btn");
     const nextBtn = document.getElementById("plot-next-btn");
     const counterEl = document.getElementById("plot-counter");
+    const sidePrev = document.getElementById("plot-prev-side");
+    const sideNext = document.getElementById("plot-next-side");
 
     // Clear previous content
     plotContainers.forEach((container) => {
@@ -1169,6 +1219,8 @@ function wireSpectroscopyForm() {
     const disableNav = () => {
       if (prevBtn) prevBtn.disabled = true;
       if (nextBtn) nextBtn.disabled = true;
+      if (sidePrev) sidePrev.disabled = true;
+      if (sideNext) sideNext.disabled = true;
       if (counterEl) counterEl.textContent = "—";
     };
 
@@ -1202,11 +1254,15 @@ function wireSpectroscopyForm() {
       const hasSlides = slidesRef.length > 0;
       prevBtn.disabled = !hasSlides;
       nextBtn.disabled = !hasSlides;
+      if (sidePrev) sidePrev.disabled = !hasSlides;
+      if (sideNext) sideNext.disabled = !hasSlides;
       updateCounter();
 
       if (!hasSlides) {
         prevBtn.onclick = null;
         nextBtn.onclick = null;
+        if (sidePrev) sidePrev.onclick = null;
+        if (sideNext) sideNext.onclick = null;
         return;
       }
 
@@ -1218,6 +1274,8 @@ function wireSpectroscopyForm() {
         const target = (currentSlideIndex + 1) % slidesRef.length;
         updateSlide(target);
       };
+      if (sidePrev) sidePrev.onclick = prevBtn.onclick;
+      if (sideNext) sideNext.onclick = nextBtn.onclick;
     };
 
     const renderCarousel = (container, plots) => {
