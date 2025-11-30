@@ -1,6 +1,6 @@
 """
-Spectroscopy processor module - refactored from Spectroscopy_controls.py
-Extracted business logic without wx dependencies for use in FastAPI backend.
+Spectroscopy processor module.
+Extracted business logic for use in FastAPI backend.
 """
 import io
 import base64
@@ -18,6 +18,24 @@ import re
 warnings.filterwarnings("ignore")
 from errors import compute_errors_spectro_varpro, pinv_cs, percent_error_log10K, sensitivities_wrt_logK
 from core_ad_probe import solve_A_nnls_pgd
+
+# === Progress tracking (WebSocket support) ===
+_progress_callback = None
+_loop = None
+
+def set_progress_callback(callback, loop=None):
+    """Registrar callback para emitir progreso (p.ej. al WebSocket)."""
+    global _progress_callback, _loop
+    _progress_callback = callback
+    _loop = loop
+
+def log_progress(message: str):
+    """Enviar mensaje de progreso si hay callback."""
+    if _progress_callback:
+        if _loop:
+            _loop.call_soon_threadsafe(_progress_callback, message)
+        else:
+            _progress_callback(message)
 
 # === Shared helper utilities (used by both Spectroscopy and NMR) ===
 _alias_re = re.compile(r"\(([^)]+)\)")
@@ -69,7 +87,7 @@ def _build_bounds_list(bounds):
 def format_results_table(k, SE_log10K, percK, rms, covfit, lof=None):
     """
     Build an ASCII table with aligned columns for constants and diagnostics.
-    Mirrors the wxPython formatting used in NMR_controls.
+    Build an ASCII table with aligned columns for constants and diagnostics.
     """
     # Helper: maximum widths per column
     def calculate_max_column_widths(headers, data_rows):
@@ -276,7 +294,7 @@ def process_spectroscopy_data(
     bounds
 ):
     """
-    Main processing function refactored from Spectroscopy_controls.process_data
+    Main processing function.
     Returns dict with results and base64-encoded graphs.
     """
     log_progress("Iniciando procesamiento...")

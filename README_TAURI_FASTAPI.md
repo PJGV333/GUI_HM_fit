@@ -27,8 +27,7 @@ Esta fase agrega un esqueleto mínimo para probar un backend FastAPI y un fronte
    - `POST /dummy_fit` → `{ "sum_y": <suma de y>, "n_points": <len(y)> }`
 
 Estos endpoints están listos para conectarse más adelante con la lógica de:
-- `Simulation_controls.py` (simulación)
-- `Methods.py`, `NR_conc_algoritm.py`, `LM_conc_algoritm.py` (ajustes)
+- `NR_conc_algoritm.py`, `LM_conc_algoritm.py` (ajustes)
 - `errors.py`, `core_ad_probe.py`, etc.
 
 ## Frontend Tauri (proyecto `hmfit_tauri/`)

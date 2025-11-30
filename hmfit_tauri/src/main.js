@@ -1,5 +1,5 @@
-import { save } from '@tauri-apps/api/dialog';
-import { writeBinaryFile } from '@tauri-apps/api/fs';
+import { save, open } from '@tauri-apps/api/dialog';
+import { writeBinaryFile, writeTextFile, readTextFile } from '@tauri-apps/api/fs';
 import "./style.css";
 import { BACKEND_BASE_URL, WS_BASE_URL, describeBackendTarget } from "./backend/config";
 
@@ -144,18 +144,24 @@ function connectWebSocket() {
   };
 }
 
-function log(text) {
+function appendToConsole(text) {
   const pre = document.getElementById("log-output");
   if (!pre) return;
-  pre.textContent = text;
+  // Ensure we append a newline if the previous content didn't end with one
+  if (pre.textContent && !pre.textContent.endsWith('\n')) {
+    pre.textContent += '\n';
+  }
+  pre.textContent += text;
+  // Auto-scroll to bottom
+  pre.scrollTop = pre.scrollHeight;
+}
+
+function log(text) {
+  appendToConsole(text + "\n");
 }
 
 function appendLog(text) {
-  const pre = document.getElementById("log-output");
-  if (!pre) return;
-  pre.textContent += text + "\n";
-  // Auto-scroll to bottom
-  pre.scrollTop = pre.scrollHeight;
+  appendToConsole(text + "\n");
 }
 
 function setProcessing(active) {
@@ -402,6 +408,8 @@ function initApp() {
             <div class="actions-row">
               <div class="actions-left">
                 <button id="backend-health" class="btn ghost-btn">Probar backend</button>
+                <button id="import-config-btn" class="btn tertiary-btn">Import Config</button>
+                <button id="export-config-btn" class="btn tertiary-btn">Export Config</button>
               </div>
               <div class="actions-right">
                 <button id="reset-btn" class="btn secondary-btn">Reset Calculation</button>
@@ -728,18 +736,6 @@ function wireSpectroscopyForm() {
       }
       diagEl.textContent = `Columnas cargadas de ${sheetName}.`;
 
-      // Populate Receptor/Guest dropdowns
-      [receptorInput, guestInput].forEach(select => {
-        if (!select) return;
-        select.innerHTML = "<option value=''>Select column...</option>";
-        columns.forEach(col => {
-          const opt = document.createElement("option");
-          opt.value = col;
-          opt.text = col;
-          select.add(opt);
-        });
-      });
-
     } catch (err) {
       console.error(err);
       diagEl.textContent = `Error al leer columnas: ${err.message}`;
@@ -792,26 +788,20 @@ function wireSpectroscopyForm() {
     }
   });
 
-  // --- Handler: Define Model Dimensions (Grid Generation) ---
-  defineModelBtn?.addEventListener("click", () => {
-    const nComp = readInt(nCompInput?.value);
-    const nSpecies = readInt(nSpeciesInput?.value);
-
-    if (nComp <= 0 || nSpecies <= 0) {
-      diagEl.textContent = "Please enter valid Number of Components and Species (>0).";
-      return;
-    }
-
-    // Generar tabla
+  // --- Helper: Grid Generation ---
+  function generateModelGrid(nComp, nSpecies) {
+    if (!modelGridContainer) return;
     modelGridContainer.innerHTML = "";
+
+    if (nComp <= 0 || nSpecies <= 0) return;
+
     const table = document.createElement("table");
     table.className = "model-grid-table";
 
     // Header
     const thead = document.createElement("thead");
     const headerRow = document.createElement("tr");
-    // Empty corner cell
-    headerRow.appendChild(document.createElement("th"));
+    headerRow.appendChild(document.createElement("th")); // Empty corner
     for (let c = 1; c <= nComp; c++) {
       const th = document.createElement("th");
       th.textContent = `C${c}`;
@@ -826,41 +816,30 @@ function wireSpectroscopyForm() {
 
     for (let s = 1; s <= totalRows; s++) {
       const tr = document.createElement("tr");
-      tr.dataset.species = `sp${s}`; // Identificador de especie
+      tr.dataset.species = `sp${s}`;
 
-      // Label cell
       const tdLabel = document.createElement("td");
       tdLabel.textContent = `sp${s}`;
       tdLabel.className = "species-label";
       tr.appendChild(tdLabel);
 
-      // Input cells
       for (let c = 1; c <= nComp; c++) {
         const td = document.createElement("td");
         const input = document.createElement("input");
         input.type = "number";
         input.className = "grid-input";
-
-        // Logic: First nComp rows are identity matrix
+        // Default identity matrix for first nComp rows
         if (s <= nComp) {
           input.value = (c === s) ? "1.0" : "0.0";
         } else {
-          // Remaining rows are 0
           input.value = "0";
         }
-
         td.appendChild(input);
         tr.appendChild(td);
       }
 
-      // Click listener for row selection
       tr.addEventListener("click", (e) => {
-        // Evitar que el click en el input dispare la selección de fila si se desea
-        // Pero el usuario pidió "cuando se selecciona una fila".
-        // Si hacemos click en el input, queremos editar, no necesariamente seleccionar la fila entera para borrarla.
-        // Vamos a permitir seleccionar haciendo click en la etiqueta o en el padding, pero no interferir con el input.
         if (e.target.tagName.toLowerCase() === "input") return;
-
         tr.classList.toggle("selected");
       });
 
@@ -868,74 +847,81 @@ function wireSpectroscopyForm() {
     }
     table.appendChild(tbody);
     modelGridContainer.appendChild(table);
+  }
 
-    // --- Generar Grid de Optimización ---
-    if (optGridContainer) {
-      optGridContainer.innerHTML = "";
-      const nConstants = nSpecies; // K por cada especie adicional (complejo)
+  function generateOptGrid(nSpecies) {
+    if (!optGridContainer) return;
+    optGridContainer.innerHTML = "";
+    const nConstants = nSpecies;
 
-      if (nConstants > 0) {
-        const optTable = document.createElement("table");
-        optTable.className = "model-grid-table";
+    if (nConstants > 0) {
+      const optTable = document.createElement("table");
+      optTable.className = "model-grid-table";
 
-        // Header
-        const optThead = document.createElement("thead");
-        const optHeaderRow = document.createElement("tr");
-        ["Parameter", "Value", "Min", "Max"].forEach(text => {
-          const th = document.createElement("th");
-          th.textContent = text;
-          optHeaderRow.appendChild(th);
-        });
-        optThead.appendChild(optHeaderRow);
-        optTable.appendChild(optThead);
+      const optThead = document.createElement("thead");
+      const optHeaderRow = document.createElement("tr");
+      ["Parameter", "Value", "Min", "Max"].forEach(text => {
+        const th = document.createElement("th");
+        th.textContent = text;
+        optHeaderRow.appendChild(th);
+      });
+      optThead.appendChild(optHeaderRow);
+      optTable.appendChild(optThead);
 
-        // Body
-        const optTbody = document.createElement("tbody");
-        for (let k = 1; k <= nConstants; k++) {
-          const tr = document.createElement("tr");
+      const optTbody = document.createElement("tbody");
+      for (let k = 1; k <= nConstants; k++) {
+        const tr = document.createElement("tr");
 
-          // Parameter Label
-          const tdParam = document.createElement("td");
-          tdParam.textContent = `K${k}`;
-          tdParam.className = "species-label"; // Reusing style
-          tr.appendChild(tdParam);
+        const tdParam = document.createElement("td");
+        tdParam.textContent = `K${k}`;
+        tdParam.className = "species-label";
+        tr.appendChild(tdParam);
 
-          // Value Input
-          const tdVal = document.createElement("td");
-          const inputVal = document.createElement("input");
-          inputVal.type = "number";
-          inputVal.className = "grid-input";
-          inputVal.placeholder = "Value";
-          tdVal.appendChild(inputVal);
-          tr.appendChild(tdVal);
+        const tdVal = document.createElement("td");
+        const inputVal = document.createElement("input");
+        inputVal.type = "number";
+        inputVal.className = "grid-input";
+        inputVal.placeholder = "Value";
+        tdVal.appendChild(inputVal);
+        tr.appendChild(tdVal);
 
-          // Min Input
-          const tdMin = document.createElement("td");
-          const inputMin = document.createElement("input");
-          inputMin.type = "number";
-          inputMin.className = "grid-input";
-          inputMin.placeholder = "Min";
-          tdMin.appendChild(inputMin);
-          tr.appendChild(tdMin);
+        const tdMin = document.createElement("td");
+        const inputMin = document.createElement("input");
+        inputMin.type = "number";
+        inputMin.className = "grid-input";
+        inputMin.placeholder = "Min";
+        tdMin.appendChild(inputMin);
+        tr.appendChild(tdMin);
 
-          // Max Input
-          const tdMax = document.createElement("td");
-          const inputMax = document.createElement("input");
-          inputMax.type = "number";
-          inputMax.className = "grid-input";
-          inputMax.placeholder = "Max";
-          tdMax.appendChild(inputMax);
-          tr.appendChild(tdMax);
+        const tdMax = document.createElement("td");
+        const inputMax = document.createElement("input");
+        inputMax.type = "number";
+        inputMax.className = "grid-input";
+        inputMax.placeholder = "Max";
+        tdMax.appendChild(inputMax);
+        tr.appendChild(tdMax);
 
-          optTbody.appendChild(tr);
-        }
-        optTable.appendChild(optTbody);
-        optGridContainer.appendChild(optTable);
-      } else {
-        optGridContainer.textContent = "No species defined.";
+        optTbody.appendChild(tr);
       }
+      optTable.appendChild(optTbody);
+      optGridContainer.appendChild(optTable);
+    } else {
+      optGridContainer.textContent = "No species defined.";
+    }
+  }
+
+  // --- Handler: Define Model Dimensions (Grid Generation) ---
+  defineModelBtn?.addEventListener("click", () => {
+    const nComp = readInt(nCompInput?.value);
+    const nSpecies = readInt(nSpeciesInput?.value);
+
+    if (nComp <= 0 || nSpecies <= 0) {
+      diagEl.textContent = "Please enter valid Number of Components and Species (>0).";
+      return;
     }
 
+    generateModelGrid(nComp, nSpecies);
+    generateOptGrid(nSpecies);
     diagEl.textContent = `Grid generado: ${nComp} Componentes x ${nSpecies} Especies.`;
   });
 
@@ -943,21 +929,17 @@ function wireSpectroscopyForm() {
   function updateDropdowns() {
     if (!receptorInput || !guestInput) return;
 
-    // Guardar selección actual para intentar mantenerla
     const currentReceptor = receptorInput.value;
     const currentGuest = guestInput.value;
 
-    // Obtener columnas seleccionadas
     const selectedCols = Array.from(columnsContainer.querySelectorAll('input[type="checkbox"]:checked'))
       .map(cb => cb.value);
 
-    // Limpiar y repoblar
     [receptorInput, guestInput].forEach(select => {
       select.innerHTML = "";
-      // Opción vacía por defecto
       const defaultOpt = document.createElement("option");
       defaultOpt.value = "";
-      defaultOpt.text = ""; // O "Select..."
+      defaultOpt.text = "";
       select.add(defaultOpt);
 
       selectedCols.forEach(col => {
@@ -968,43 +950,37 @@ function wireSpectroscopyForm() {
       });
     });
 
-    // Restaurar selección si aún existe
-    if (selectedCols.includes(currentReceptor)) {
-      receptorInput.value = currentReceptor;
-    }
-    if (selectedCols.includes(currentGuest)) {
-      guestInput.value = currentGuest;
-    }
+    if (selectedCols.includes(currentReceptor)) receptorInput.value = currentReceptor;
+    if (selectedCols.includes(currentGuest)) guestInput.value = currentGuest;
   }
 
-  // Escuchar cambios en los checkboxes para actualizar dropdowns
+  // Listen for checkbox changes
   columnsContainer.addEventListener("change", (e) => {
     if (e.target.matches('input[type="checkbox"]')) {
       updateDropdowns();
     }
   });
 
-  // También actualizar cuando se cargan las columnas (dentro del fetch de list_columns)
-  // ...pero como list_columns es asíncrono y ya tiene su lógica, lo mejor es llamar updateDropdowns()
-  // al final de la carga exitosa de columnas.
-  // Modificamos el listener de concSheetInput para llamar a updateDropdowns al final?
-  // Mejor usamos un MutationObserver o simplemente lo llamamos explícitamente si pudiéramos.
-  // Dado que no puedo editar fácilmente el bloque anterior sin hacerlo gigante,
-  // voy a usar un MutationObserver en columnsContainer para detectar cuando se añaden los checkboxes.
-
+  // Also observe DOM changes (when checkboxes are added)
   const observer = new MutationObserver(() => {
     updateDropdowns();
   });
   observer.observe(columnsContainer, { childList: true, subtree: true });
 
-  // --- Handler: Reset ---
-  resetBtn.addEventListener("click", () => {
-    if (spectraSheetInput) spectraSheetInput.innerHTML = '<option value="">Select a file first...</option>';
-    if (concSheetInput) concSheetInput.innerHTML = '<option value="">Select a file first...</option>';
+  // --- Scoped Reset Functions ---
+  function resetSpectroscopyTab() {
+    // Clear file input and status
     if (fileInput) fileInput.value = "";
     if (fileStatus) fileStatus.textContent = "No file selected";
 
+    // Clear sheet selects
+    if (spectraSheetInput) spectraSheetInput.innerHTML = '<option value="">Select a file first...</option>';
+    if (concSheetInput) concSheetInput.innerHTML = '<option value="">Select a file first...</option>';
+
+    // Clear column checkboxes
     if (columnsContainer) columnsContainer.innerHTML = "Select a concentration sheet to load columns...";
+
+    // Clear dropdowns
     if (receptorInput) {
       receptorInput.innerHTML = '<option value="">Select columns first...</option>';
       receptorInput.value = "";
@@ -1013,17 +989,81 @@ function wireSpectroscopyForm() {
       guestInput.innerHTML = '<option value="">Select columns first...</option>';
       guestInput.value = "";
     }
+
+    // Clear EFA
     if (efaEigenInput) efaEigenInput.value = "0";
+    if (efaCheckbox) efaCheckbox.checked = false;
+
+    // Clear model inputs
     if (nCompInput) nCompInput.value = "0";
     if (nSpeciesInput) nSpeciesInput.value = "0";
-    if (efaCheckbox) efaCheckbox.checked = false;
-    if (efaCheckbox) efaCheckbox.checked = false;
+
+    // Clear grids
     if (modelGridContainer) modelGridContainer.innerHTML = "";
     if (optGridContainer) optGridContainer.innerHTML = "";
 
-    diagEl.textContent = "Esperando...";
+    // Clear plots
+    const plotContainers = document.querySelectorAll(".plot-placeholder");
+    plotContainers.forEach(c => c.innerHTML = "");
+
+    // Clear state
+    state.uploadedFile = null;
     state.latestResultsText = "";
     state.latestResultsPayload = null;
+    diagEl.textContent = "Spectroscopy reset.";
+  }
+
+  function resetNmrTab() {
+    // Clear file input and status
+    if (fileInput) fileInput.value = "";
+    if (fileStatus) fileStatus.textContent = "No file selected";
+
+    // Clear sheet selects
+    if (concSheetInput) concSheetInput.innerHTML = '<option value="">Select a file first...</option>';
+    if (nmrSheetInput) nmrSheetInput.innerHTML = '<option value="">Select a file first...</option>';
+
+    // Clear signal checkboxes
+    if (nmrSignalsContainer) nmrSignalsContainer.innerHTML = "Select a chemical shift sheet to load signals...";
+
+    // Clear column checkboxes
+    if (columnsContainer) columnsContainer.innerHTML = "Select a concentration sheet to load columns...";
+
+    // Clear dropdowns
+    if (receptorInput) {
+      receptorInput.innerHTML = '<option value="">Select columns first...</option>';
+      receptorInput.value = "";
+    }
+    if (guestInput) {
+      guestInput.innerHTML = '<option value="">Select columns first...</option>';
+      guestInput.value = "";
+    }
+
+    // Clear model inputs
+    if (nCompInput) nCompInput.value = "0";
+    if (nSpeciesInput) nSpeciesInput.value = "0";
+
+    // Clear grids
+    if (modelGridContainer) modelGridContainer.innerHTML = "";
+    if (optGridContainer) optGridContainer.innerHTML = "";
+
+    // Clear plots
+    const plotContainers = document.querySelectorAll(".plot-placeholder");
+    plotContainers.forEach(c => c.innerHTML = "");
+
+    // Clear state
+    state.uploadedFile = null;
+    state.latestResultsText = "";
+    state.latestResultsPayload = null;
+    diagEl.textContent = "NMR reset.";
+  }
+
+  // --- Handler: Reset ---
+  resetBtn.addEventListener("click", () => {
+    if (state.activeModule === 'nmr') {
+      resetNmrTab();
+    } else {
+      resetSpectroscopyTab();
+    }
   });
 
   // --- Handler: Save Results ---
@@ -1458,11 +1498,307 @@ function wireSpectroscopyForm() {
     renderCarousel(plotContainers[0], mainPlots);
     // Secondary plots are now merged into mainPlots, so we don't render them separately.
   }
+  // --- Helper: Build Config Objects ---
+  function buildSpecConfigFromState() {
+    const selectedCols = Array.from(columnsContainer.querySelectorAll('input[type="checkbox"]:checked'))
+      .map(cb => cb.value);
+
+    const gridData = [];
+    if (modelGridContainer) {
+      const rows = modelGridContainer.querySelectorAll("tbody tr");
+      rows.forEach(row => {
+        const inputs = row.querySelectorAll(".grid-input");
+        const rowData = Array.from(inputs).map(inp => parseFloat(inp.value) || 0);
+        gridData.push(rowData);
+      });
+    }
+
+    const nonAbsSpecies = modelGridContainer
+      ? Array.from(modelGridContainer.querySelectorAll("tr.selected"))
+        .map(tr => parseInt(tr.dataset.species.replace('sp', '')) - 1)
+      : [];
+
+    const kValues = [];
+    const kBounds = [];
+    if (optGridContainer) {
+      const rows = optGridContainer.querySelectorAll("tbody tr");
+      rows.forEach(row => {
+        const inputs = row.querySelectorAll(".grid-input");
+        if (inputs.length >= 3) {
+          const val = parseFloat(inputs[0].value);
+          const min = parseFloat(inputs[1].value);
+          const max = parseFloat(inputs[2].value);
+          const finalVal = Number.isNaN(val) ? 1.0 : val;
+          const finalMin = Number.isNaN(min) ? null : min;
+          const finalMax = Number.isNaN(max) ? null : max;
+          kValues.push(finalVal);
+          kBounds.push([finalMin, finalMax]);
+        }
+      });
+    }
+
+    return {
+      type: 'Spectroscopy',
+      version: 1,
+      model: {
+        nComp: readInt(nCompInput?.value),
+        nSpecies: readInt(nSpeciesInput?.value),
+        stoichiometry: gridData,
+        nonAbsorbingSpecies: nonAbsSpecies,
+        efaEnabled: efaCheckbox?.checked || false,
+        efaEigenvalues: readInt(efaEigenInput?.value)
+      },
+      roles: {
+        receptor: receptorInput?.value || "",
+        guest: guestInput?.value || ""
+      },
+      columns: {
+        conc: selectedCols,
+        spectraSheet: spectraSheetInput?.value || "",
+        concSheet: concSheetInput?.value || ""
+      },
+      optimization: {
+        algorithm: algoSelect?.value,
+        modelSettings: modelSettingsSelect?.value,
+        optimizer: optimizerSelect?.value,
+        initialK: kValues,
+        bounds: kBounds
+      }
+    };
+  }
+
+  function buildNmrConfigFromState() {
+    // Reuse similar logic but for NMR specific fields
+    const selectedSignals = Array.from(nmrSignalsContainer.querySelectorAll('input[type="checkbox"]:checked'))
+      .map(cb => cb.value);
+
+    const selectedCols = Array.from(columnsContainer.querySelectorAll('input[type="checkbox"]:checked'))
+      .map(cb => cb.value);
+
+    const gridData = [];
+    if (modelGridContainer) {
+      const rows = modelGridContainer.querySelectorAll("tbody tr");
+      rows.forEach(row => {
+        const inputs = row.querySelectorAll(".grid-input");
+        const rowData = Array.from(inputs).map(inp => parseFloat(inp.value) || 0);
+        gridData.push(rowData);
+      });
+    }
+
+    const nonAbsSpecies = modelGridContainer
+      ? Array.from(modelGridContainer.querySelectorAll("tr.selected"))
+        .map(tr => parseInt(tr.dataset.species.replace('sp', '')) - 1)
+      : [];
+
+    const kValues = [];
+    const kBounds = [];
+    if (optGridContainer) {
+      const rows = optGridContainer.querySelectorAll("tbody tr");
+      rows.forEach(row => {
+        const inputs = row.querySelectorAll(".grid-input");
+        if (inputs.length >= 3) {
+          const val = parseFloat(inputs[0].value);
+          const min = parseFloat(inputs[1].value);
+          const max = parseFloat(inputs[2].value);
+          const finalVal = Number.isNaN(val) ? 1.0 : val;
+          const finalMin = Number.isNaN(min) ? null : min;
+          const finalMax = Number.isNaN(max) ? null : max;
+          kValues.push(finalVal);
+          kBounds.push([finalMin, finalMax]);
+        }
+      });
+    }
+
+    return {
+      type: 'NMR',
+      version: 1,
+      model: {
+        nComp: readInt(nCompInput?.value),
+        nSpecies: readInt(nSpeciesInput?.value),
+        stoichiometry: gridData,
+        nonAbsorbingSpecies: nonAbsSpecies
+      },
+      roles: {
+        receptor: receptorInput?.value || "",
+        guest: guestInput?.value || ""
+      },
+      columns: {
+        conc: selectedCols,
+        signals: selectedSignals,
+        nmrSheet: nmrSheetInput?.value || "",
+        concSheet: concSheetInput?.value || ""
+      },
+      optimization: {
+        algorithm: algoSelect?.value,
+        modelSettings: modelSettingsSelect?.value,
+        optimizer: optimizerSelect?.value,
+        initialK: kValues,
+        bounds: kBounds
+      }
+    };
+  }
+
+  // --- Helper: Apply Config ---
+  function applyConfigToGui(cfg) {
+    // 1. Set Module
+    if (cfg.type === 'NMR') {
+      state.activeModule = 'nmr';
+      document.querySelector('[data-module-tab="nmr"]')?.click();
+    } else {
+      state.activeModule = 'spectroscopy';
+      document.querySelector('[data-module-tab="spectroscopy"]')?.click();
+    }
+
+    // 2. Set Model Inputs & Generate Grid
+    if (nCompInput) nCompInput.value = cfg.model.nComp;
+    if (nSpeciesInput) nSpeciesInput.value = cfg.model.nSpecies;
+
+    // Trigger grid generation
+    generateModelGrid(cfg.model.nComp, cfg.model.nSpecies);
+    generateOptGrid(cfg.model.nSpecies);
+
+    // 3. Fill Model Grid
+    if (modelGridContainer && cfg.model.stoichiometry) {
+      const rows = modelGridContainer.querySelectorAll("tbody tr");
+      rows.forEach((row, i) => {
+        if (i < cfg.model.stoichiometry.length) {
+          const inputs = row.querySelectorAll(".grid-input");
+          const rowData = cfg.model.stoichiometry[i];
+          inputs.forEach((inp, j) => {
+            if (j < rowData.length) inp.value = rowData[j];
+          });
+        }
+        // Mark non-absorbing
+        if (cfg.model.nonAbsorbingSpecies && cfg.model.nonAbsorbingSpecies.includes(i)) {
+          row.classList.add("selected");
+        }
+      });
+    }
+
+    // 4. Fill Optimization Grid
+    if (optGridContainer && cfg.optimization.initialK) {
+      const rows = optGridContainer.querySelectorAll("tbody tr");
+      rows.forEach((row, i) => {
+        if (i < cfg.optimization.initialK.length) {
+          const inputs = row.querySelectorAll(".grid-input");
+          if (inputs.length >= 3) {
+            inputs[0].value = cfg.optimization.initialK[i];
+            if (cfg.optimization.bounds && cfg.optimization.bounds[i]) {
+              inputs[1].value = cfg.optimization.bounds[i][0] ?? "";
+              inputs[2].value = cfg.optimization.bounds[i][1] ?? "";
+            }
+          }
+        }
+      });
+    }
+
+    // 5. Set Dropdowns (Algorithm, etc)
+    if (algoSelect) algoSelect.value = cfg.optimization.algorithm;
+    if (modelSettingsSelect) modelSettingsSelect.value = cfg.optimization.modelSettings;
+    if (optimizerSelect) optimizerSelect.value = cfg.optimization.optimizer;
+
+    // 6. EFA (Spectroscopy only)
+    if (cfg.type === 'Spectroscopy') {
+      if (efaCheckbox) efaCheckbox.checked = cfg.model.efaEnabled;
+      if (efaEigenInput) efaEigenInput.value = cfg.model.efaEigenvalues;
+    }
+
+    // 7. Attempt to restore column selections IF sheets match
+    // This is tricky because we might not have the file loaded or sheets might differ.
+    // We will try to check boxes if they exist.
+
+    // Helper to check boxes
+    const checkBoxes = (container, values) => {
+      if (!container || !values) return;
+      const boxes = container.querySelectorAll('input[type="checkbox"]');
+      boxes.forEach(cb => {
+        if (values.includes(cb.value)) {
+          cb.checked = true;
+        } else {
+          cb.checked = false;
+        }
+      });
+      // Trigger change to update dropdowns
+      container.dispatchEvent(new Event('change'));
+    };
+
+    if (cfg.type === 'Spectroscopy') {
+      checkBoxes(columnsContainer, cfg.columns.conc);
+    } else {
+      checkBoxes(columnsContainer, cfg.columns.conc);
+      checkBoxes(nmrSignalsContainer, cfg.columns.signals);
+    }
+
+    // 8. Restore Receptor/Guest (after dropdowns update)
+    // We need to wait for dropdowns to populate (which happens on change event above)
+    // But since that's synchronous for existing DOM elements, we can try setting values now.
+    setTimeout(() => {
+      if (receptorInput) receptorInput.value = cfg.roles.receptor;
+      if (guestInput) guestInput.value = cfg.roles.guest;
+    }, 50);
+
+    diagEl.textContent = `Configuration loaded (${cfg.type}).`;
+  }
+
+  // --- Export Config ---
+  async function exportCurrentConfig() {
+    let cfg;
+    if (state.activeModule === 'nmr') {
+      cfg = buildNmrConfigFromState();
+    } else {
+      cfg = buildSpecConfigFromState();
+    }
+
+    try {
+      const savePath = await save({
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+        defaultPath: 'hmfit_config.json'
+      });
+      if (!savePath) return;
+
+      await writeTextFile(savePath, JSON.stringify(cfg, null, 2));
+      appendLog(`Configuration exported to ${savePath}`);
+    } catch (err) {
+      console.error(err);
+      appendLog(`Error exporting config: ${err.message}`);
+    }
+  }
+
+  // --- Import Config ---
+  async function importConfig() {
+    try {
+      const openPath = await open({
+        multiple: false,
+        filters: [{ name: 'JSON', extensions: ['json'] }]
+      });
+      if (!openPath) return;
+
+      const content = await readTextFile(openPath);
+      const cfg = JSON.parse(content);
+
+      applyConfigToGui(cfg);
+      appendLog(`Configuration imported from ${openPath}`);
+    } catch (err) {
+      console.error(err);
+      appendLog(`Error importing config: ${err.message}`);
+    }
+  }
+
+  // --- Wire up Import/Export Buttons ---
+  // We need to find or create them. The plan said to add them to HTML, 
+  // but we can also inject them here if they don't exist, or assume they are added to HTML.
+  // Let's look for them by ID.
+  const exportBtn = document.getElementById("export-config-btn");
+  const importBtn = document.getElementById("import-config-btn");
+
+  if (exportBtn) exportBtn.addEventListener("click", exportCurrentConfig);
+  if (importBtn) importBtn.addEventListener("click", importConfig);
+
 }
 
 // Ejecutar una vez que el HTML ya está montado
-// Ejecutar una vez que el HTML ya está montado
-// wireSpectroscopyForm(); // MOVED TO RENDER
+// initApp(); // Already called at bottom
+
 
 
 // Primera renderización

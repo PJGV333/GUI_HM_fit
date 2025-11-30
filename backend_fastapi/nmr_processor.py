@@ -2,7 +2,7 @@
 NMR Processor Module
 --------------------
 Handles the loading, processing, and fitting of NMR titration data.
-Mirrors the logic from `NMR_controls.py` in the wxPython application.
+Handles the loading, processing, and fitting of NMR titration data.
 """
 from __future__ import annotations
 
