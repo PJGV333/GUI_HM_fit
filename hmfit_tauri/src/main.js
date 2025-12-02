@@ -1306,8 +1306,9 @@ function wireSpectroscopyForm() {
     }
 
     if (data.results_text) {
-      diagEl.textContent = data.results_text;
-      state.latestResultsText = data.results_text;
+      const normalized = (data.results_text ?? '').replace(/\r\n/g, '\n');
+      diagEl.textContent = normalized;
+      state.latestResultsText = normalized;
       state.latestResultsPayload = data;
       return;
     }
@@ -1357,8 +1358,9 @@ function wireSpectroscopyForm() {
     }
 
     if (data.results_text) {
-      diagEl.textContent = data.results_text;
-      state.latestResultsText = data.results_text;
+      const normalized = (data.results_text ?? '').replace(/\r\n/g, '\n');
+      diagEl.textContent = normalized;
+      state.latestResultsText = normalized;
       state.latestResultsPayload = data;
       return;
     }
