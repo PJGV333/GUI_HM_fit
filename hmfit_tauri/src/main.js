@@ -5,11 +5,16 @@ import { BACKEND_BASE_URL, WS_BASE_URL, describeBackendTarget } from "./backend/
 
 const state = {
   activeModule: "spectroscopy", // "spectroscopy" | "nmr"
-  activeSubtab: "model",        // "model" | "optimization"
+  activeSubtab: "model",        // "model" | "optimization" | "plots"
   uploadedFile: null,            // Currently selected file
   latestResultsText: "",         // Cache último reporte para guardar
   latestResultsPayload: null,    // Última respuesta de backend para exportar XLSX
 };
+
+// Datos de plot dinámicos (nuevo flujo)
+window.spectroPlotData = null;
+let spectroCurrentSeries = [];
+let spectroPlotLayout = null;
 
 // WebSocket for progress streaming
 let progressWs = null;
@@ -162,6 +167,12 @@ function log(text) {
 
 function appendLog(text) {
   appendToConsole(text + "\n");
+}
+
+function scrollDiagnosticsToBottom() {
+  const pre = document.getElementById("log-output");
+  if (!pre) return;
+  pre.scrollTop = pre.scrollHeight;
 }
 
 function setProcessing(active) {
@@ -356,6 +367,7 @@ function initApp() {
             <nav class="sub-tabs">
               <button class="subtab-btn" data-subtab="model">Model</button>
               <button class="subtab-btn" data-subtab="optimization">Optimization</button>
+              <button class="subtab-btn" data-subtab="plots">Plots</button>
             </nav>
 
             <div class="subtab-panel" data-subtab-panel="model">
@@ -402,6 +414,49 @@ function initApp() {
                 <div id="optimization-grid-container" class="model-grid-container">
                   <!-- Grid will be generated here -->
                 </div>
+              </div>
+            </div>
+
+            <div class="subtab-panel" data-subtab-panel="plots">
+              <div class="field-grid">
+                <div class="field">
+                  <label class="field-label">Preset</label>
+                  <select id="spectro-plot-preset-select" class="field-input">
+                    <option value="">Select a preset...</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label class="field-label">X axis</label>
+                  <select id="spectro-x-axis-select" class="field-input">
+                    <option value="">Select X axis...</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="field-grid">
+                <div class="field">
+                  <label class="field-label">Y series</label>
+                  <select id="spectro-y-series-select" class="field-input" multiple size="4">
+                    <option value="">Select series...</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label class="field-label">Vary along</label>
+                  <select id="spectro-vary-along-select" class="field-input">
+                    <option value="">Auto</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="actions-row" style="margin-top: 0.5rem;">
+                <div class="actions-left">
+                  <button id="spectro-export-png" class="btn tertiary-btn">Export PNG</button>
+                  <button id="spectro-export-csv" class="btn tertiary-btn">Export CSV</button>
+                </div>
+              </div>
+
+              <div id="spectro-plot-container" class="plot-placeholder scrollable-plot" style="min-height: 240px;">
+                Select a preset to render plots.
               </div>
             </div>
 
@@ -623,6 +678,12 @@ function wireSpectroscopyForm() {
   const algoSelect = document.getElementById("algorithm-select");
   const modelSettingsSelect = document.getElementById("model-settings-select");
   const optimizerSelect = document.getElementById("optimizer-select");
+  const plotPresetSelect = document.getElementById("spectro-plot-preset-select");
+  const plotXAxisSelect = document.getElementById("spectro-x-axis-select");
+  const plotYSeriesSelect = document.getElementById("spectro-y-series-select");
+  const plotVarySelect = document.getElementById("spectro-vary-along-select");
+  const plotExportPngBtn = document.getElementById("spectro-export-png");
+  const plotExportCsvBtn = document.getElementById("spectro-export-csv");
 
   // Poblar dropdowns de optimización
   if (algoSelect) {
@@ -649,6 +710,15 @@ function wireSpectroscopyForm() {
       optimizerSelect.add(el);
     });
   }
+
+  [plotPresetSelect, plotXAxisSelect, plotYSeriesSelect, plotVarySelect].forEach((el) => {
+    el?.addEventListener("change", () => {
+      buildSpectroPlotFromSelection();
+    });
+  });
+  plotExportPngBtn?.addEventListener("click", exportSpectroPlotPNG);
+  plotExportCsvBtn?.addEventListener("click", exportSpectroPlotCSV);
+  initSpectroPlotControls(null);
 
   // --- Handler: File Selection ---
   const fileInput = document.getElementById("excel-file");
@@ -1003,8 +1073,16 @@ function wireSpectroscopyForm() {
     if (optGridContainer) optGridContainer.innerHTML = "";
 
     // Clear plots
-    const plotContainers = document.querySelectorAll(".plot-placeholder");
+    const plotContainers = Array.from(document.querySelectorAll(".plot-placeholder")).filter(
+      (el) => el.id !== "spectro-plot-container"
+    );
+    if (!plotContainers.length) return;
     plotContainers.forEach(c => c.innerHTML = "");
+    window.spectroPlotData = null;
+    spectroCurrentSeries = [];
+    initSpectroPlotControls(null);
+    const plotsPanel = document.getElementById("spectro-plot-container");
+    if (plotsPanel) plotsPanel.textContent = "Select a preset to render plots.";
 
     // Clear state
     state.uploadedFile = null;
@@ -1269,7 +1347,8 @@ function wireSpectroscopyForm() {
 
         data = await backendApi.processSpectroscopy(formData);
         displayResults(data);
-        displayGraphs(data.graphs || {});
+        const graphs = data.legacy_graphs || data.graphs || {};
+        displayGraphs(graphs);
       }
 
     } catch (err) {
@@ -1288,6 +1367,10 @@ function wireSpectroscopyForm() {
 
       state.latestResultsText = "";
       state.latestResultsPayload = null;
+      if (state.activeModule === 'spectroscopy') {
+        window.spectroPlotData = null;
+        initSpectroPlotControls(null);
+      }
       diagEl.textContent = message;
       console.error(`[HM Fit] Process Data request failed (${state.activeModule}):`, err);
     } finally {
@@ -1301,21 +1384,15 @@ function wireSpectroscopyForm() {
       const detail = data.detail || data.error || "Procesamiento falló.";
       state.latestResultsText = "";
       state.latestResultsPayload = null;
+      window.spectroPlotData = null;
+      initSpectroPlotControls(null);
       diagEl.textContent = detail;
+      scrollDiagnosticsToBottom();
       return;
     }
 
-    if (data.results_text) {
-      const normalized = (data.results_text ?? '').replace(/\r\n/g, '\n');
-      diagEl.textContent = normalized;
-      state.latestResultsText = normalized;
-      state.latestResultsPayload = data;
-      return;
-    }
-
-    // Display constants and statistics
-    const constants = data.constants || [];
-    const stats = data.statistics || {};
+    window.spectroPlotData = data.plot_data || null;
+    initSpectroPlotControls(window.spectroPlotData);
 
     const fmt = (n, opts = {}) => {
       if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -1323,29 +1400,50 @@ function wireSpectroscopyForm() {
       return Number(n).toExponential(opts.exp ?? 3);
     };
 
-    const lines = [];
-    lines.push("=== RESULTADOS ===", "");
-    lines.push("Constantes:");
-    constants.forEach((c) => {
-      const name = c.name || "";
-      lines.push(
-        `${name}: log10(K) = ${fmt(c.log10K)} ± ${fmt(c.SE_log10K)}`
-      );
-      lines.push(
-        `    K = ${fmt(c.K)} ± ${fmt(c.SE_K)} (${fmt(c.percent_error, { fixed: 2 })}%)`
-      );
-    });
+    let finalText;
+    if (data.results_text) {
+      finalText = (data.results_text ?? '').replace(/\r\n/g, '\n');
+    } else {
+      // Build a simple table if the backend didn't send a formatted one
+      const constants = data.constants || [];
+      const stats = data.statistics || {};
 
-    lines.push("", "Estadísticas:");
-    lines.push(`RMS: ${fmt(stats.RMS)}`);
-    lines.push(`Lack of fit: ${fmt(stats.lof)}%`);
-    lines.push(`MAE: ${fmt(stats.MAE)}`);
-    lines.push(`Optimizer: ${stats.optimizer || "—"}`);
-    lines.push(`Eigenvalues: ${stats.eigenvalues ?? "—"}`);
+      const lines = [];
+      lines.push("=== RESULTADOS ===", "");
+      lines.push("Constantes:");
+      constants.forEach((c) => {
+        const name = c.name || "";
+        lines.push(
+          `${name}: log10(K) = ${fmt(c.log10K)} ± ${fmt(c.SE_log10K)}`
+        );
+        lines.push(
+          `    K = ${fmt(c.K)} ± ${fmt(c.SE_K)} (${fmt(c.percent_error, { fixed: 2 })}%)`
+        );
+      });
 
-    diagEl.textContent = lines.join("\n");
-    state.latestResultsText = lines.join("\n");
+      lines.push("", "Estadísticas:");
+      lines.push(`RMS: ${fmt(stats.RMS)}`);
+      lines.push(`Lack of fit: ${fmt(stats.lof)}%`);
+      lines.push(`MAE: ${fmt(stats.MAE)}`);
+      lines.push(`Optimizer: ${stats.optimizer || "—"}`);
+      lines.push(`Eigenvalues: ${stats.eigenvalues ?? "—"}`);
+
+      finalText = lines.join("\n");
+    }
+
+    const logText = (data.log_output ?? "").trim();
+    if (logText) {
+      const base = diagEl.textContent ? `${diagEl.textContent}\n` : "";
+      diagEl.textContent = `${base}${logText}`;
+    } else {
+      const base = diagEl.textContent ? `${diagEl.textContent}\n\n` : "";
+      diagEl.textContent = `${base}${finalText}`;
+    }
+    state.latestResultsText = finalText;
+
     state.latestResultsPayload = data;
+    buildSpectroPlotFromSelection();
+    scrollDiagnosticsToBottom();
   }
 
   function displayNmrResults(data) {
@@ -1354,14 +1452,17 @@ function wireSpectroscopyForm() {
       diagEl.textContent = detail;
       state.latestResultsText = "";
       state.latestResultsPayload = null;
+      scrollDiagnosticsToBottom();
       return;
     }
 
     if (data.results_text) {
       const normalized = (data.results_text ?? '').replace(/\r\n/g, '\n');
-      diagEl.textContent = normalized;
+      const base = diagEl.textContent ? `${diagEl.textContent}\n\n` : "";
+      diagEl.textContent = `${base}${normalized}`;
       state.latestResultsText = normalized;
       state.latestResultsPayload = data;
+      scrollDiagnosticsToBottom();
       return;
     }
 
@@ -1372,6 +1473,7 @@ function wireSpectroscopyForm() {
     diagEl.textContent = lines.join("\n");
     state.latestResultsText = lines.join("\n");
     state.latestResultsPayload = data;
+    scrollDiagnosticsToBottom();
   }
 
   function displayGraphs(graphs) {
@@ -1499,6 +1601,304 @@ function wireSpectroscopyForm() {
 
     renderCarousel(plotContainers[0], mainPlots);
     // Secondary plots are now merged into mainPlots, so we don't render them separately.
+  }
+  // === Plot builder helpers (spectroscopy) ===
+  function initSpectroPlotControls(plotData) {
+    const presetSelect = document.getElementById("spectro-plot-preset-select");
+    const xAxisSelect = document.getElementById("spectro-x-axis-select");
+    const ySeriesSelect = document.getElementById("spectro-y-series-select");
+    const varySelect = document.getElementById("spectro-vary-along-select");
+    const container = document.getElementById("spectro-plot-container");
+
+    const resetSelect = (select, placeholder) => {
+      if (!select) return;
+      select.innerHTML = "";
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.text = placeholder;
+      select.appendChild(opt);
+    };
+
+    if (!presetSelect || !xAxisSelect || !ySeriesSelect || !varySelect || !container) return;
+
+    if (!plotData) {
+      resetSelect(presetSelect, "Select a preset...");
+      resetSelect(xAxisSelect, "Select X axis...");
+      resetSelect(ySeriesSelect, "Select series...");
+      resetSelect(varySelect, "Auto");
+      container.textContent = "No plot data available.";
+      spectroCurrentSeries = [];
+      return;
+    }
+
+    const meta = plotData.plot_meta || {};
+    const presets = meta.presets || [];
+    const axes = meta.axes || {};
+    const series = meta.series || {};
+
+    resetSelect(presetSelect, "Select a preset...");
+    presets.forEach((p) => {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.text = p.name || p.id;
+      presetSelect.appendChild(opt);
+    });
+
+    resetSelect(xAxisSelect, "Select X axis...");
+    Object.values(axes).forEach((ax) => {
+      const opt = document.createElement("option");
+      opt.value = ax.id;
+      opt.text = ax.label ? `${ax.label} (${ax.unit || ''})`.trim() : ax.id;
+      xAxisSelect.appendChild(opt);
+    });
+
+    ySeriesSelect.innerHTML = "";
+    Object.values(series).forEach((s) => {
+      const opt = document.createElement("option");
+      opt.value = s.id;
+      opt.text = s.label || s.id;
+      ySeriesSelect.appendChild(opt);
+    });
+    if (!ySeriesSelect.options.length) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.text = "No series";
+      ySeriesSelect.appendChild(opt);
+    }
+
+    resetSelect(varySelect, "Auto");
+    const varyOptions = new Set();
+    Object.values(series).forEach((s) => {
+      (s.dims || []).forEach((d) => varyOptions.add(d));
+    });
+    ["titration_step", "species"].forEach((d) => varyOptions.add(d));
+    varyOptions.forEach((v) => {
+      if (!v) return;
+      const opt = document.createElement("option");
+      opt.value = v;
+      opt.text = v;
+      varySelect.appendChild(opt);
+    });
+
+    if (presets.length) {
+      const first = presets[0];
+      presetSelect.value = first.id;
+      xAxisSelect.value = first.x_axis;
+      Array.from(ySeriesSelect.options).forEach((opt) => {
+        opt.selected = (first.y_series || []).includes(opt.value);
+      });
+      varySelect.value = first.vary_along || "";
+    }
+
+    buildSpectroPlotFromSelection();
+  }
+
+  function buildSpectroPlotFromSelection() {
+    const container = document.getElementById("spectro-plot-container");
+    const presetSelect = document.getElementById("spectro-plot-preset-select");
+    const xAxisSelect = document.getElementById("spectro-x-axis-select");
+    const ySeriesSelect = document.getElementById("spectro-y-series-select");
+    const varySelect = document.getElementById("spectro-vary-along-select");
+
+    if (!container || !window.spectroPlotData) return [];
+
+    const plotData = window.spectroPlotData;
+    const meta = plotData.plot_meta || {};
+    const numerics = plotData.numerics || {};
+
+    const presetId = presetSelect?.value || "";
+    let xAxisId = xAxisSelect?.value || "";
+    let ySeriesIds = Array.from(ySeriesSelect?.selectedOptions || []).map((o) => o.value).filter(Boolean);
+    let varyAlong = varySelect?.value || "";
+
+    if (presetId) {
+      const preset = (meta.presets || []).find((p) => p.id === presetId);
+      if (preset) {
+        xAxisId = preset.x_axis;
+        ySeriesIds = (preset.y_series || []).slice();
+        varyAlong = preset.vary_along || "";
+        if (xAxisSelect) xAxisSelect.value = xAxisId;
+        if (varySelect) varySelect.value = varyAlong;
+        if (ySeriesSelect) {
+          Array.from(ySeriesSelect.options).forEach((opt) => {
+            opt.selected = ySeriesIds.includes(opt.value);
+          });
+        }
+      }
+    }
+
+    if (!xAxisId) {
+      container.textContent = "Select an X axis to render a plot.";
+      spectroCurrentSeries = [];
+      return [];
+    }
+    if (!ySeriesIds.length) {
+      container.textContent = "Select at least one Y series.";
+      spectroCurrentSeries = [];
+      return [];
+    }
+
+    const axisMeta = (meta.axes || {})[xAxisId];
+    if (!axisMeta) {
+      container.textContent = "Axis metadata not found.";
+      spectroCurrentSeries = [];
+      return [];
+    }
+
+    let x = [];
+    if (axisMeta.values_key && numerics[axisMeta.values_key] !== undefined) {
+      if (axisMeta.values_key === "Ct" && typeof axisMeta.column === "number") {
+        const matrix = numerics.Ct || [];
+        x = matrix.map((row) => (row ? row[axisMeta.column] : null));
+      } else {
+        x = numerics[axisMeta.values_key] || [];
+      }
+    }
+
+    if (!x || !x.length) {
+      container.textContent = "X data not available for this axis.";
+      spectroCurrentSeries = [];
+      return [];
+    }
+
+    const seriesData = [];
+    ySeriesIds.forEach((seriesId) => {
+      const sMeta = (meta.series || {})[seriesId];
+      if (!sMeta) return;
+      const raw = numerics[sMeta.data_key];
+      if (!raw) return;
+
+      if ((sMeta.dims || []).join(",") === "wavelength,titration_step") {
+        const steps = raw[0] ? raw[0].length : 0;
+        const varying = varyAlong || "titration_step";
+        if (varying === "titration_step") {
+          for (let step = 0; step < steps; step++) {
+            const y = raw.map((row) => row[step]);
+            seriesData.push({
+              name: `${sMeta.label || seriesId} · step ${step + 1}`,
+              x,
+              y,
+            });
+          }
+        } else {
+          const y = raw.map((row) => row[0]);
+          seriesData.push({ name: sMeta.label || seriesId, x, y });
+        }
+      } else if ((sMeta.dims || []).join(",") === "titration_step,species") {
+        const nSpecies = raw[0] ? raw[0].length : 0;
+        const nSteps = raw.length;
+        const varying = varyAlong || "species";
+
+        if (varying === "species") {
+          for (let sp = 0; sp < nSpecies; sp++) {
+            const y = raw.map((row) => row[sp]);
+            const name = (sMeta.categories && sMeta.categories[sp]) ? sMeta.categories[sp] : `Species ${sp + 1}`;
+            seriesData.push({ name, x, y });
+          }
+        } else if (varying === "titration_step") {
+          for (let step = 0; step < nSteps; step++) {
+            const row = raw[step] || [];
+            seriesData.push({
+              name: `Step ${step + 1}`,
+              x,
+              y: row,
+            });
+          }
+        }
+      } else if ((sMeta.dims || []).includes("eigenvalue_index")) {
+        const y = raw || [];
+        const ex = Array.from({ length: y.length }, (_, idx) => idx + 1);
+        seriesData.push({ name: sMeta.label || seriesId, x: ex, y });
+      } else {
+        const y = Array.isArray(raw) ? raw : [raw];
+        seriesData.push({ name: sMeta.label || seriesId, x, y });
+      }
+    });
+
+    spectroCurrentSeries = seriesData;
+    renderSpectroPlot(seriesData, axisMeta.label || axisMeta.id || "X", (ySeriesIds || []).join(", "));
+    return seriesData;
+  }
+
+  function renderSpectroPlot(seriesData, xLabel, yLabel) {
+    const container = document.getElementById("spectro-plot-container");
+    if (!container) return;
+
+    if (!seriesData || !seriesData.length) {
+      container.textContent = "No data to plot.";
+      spectroPlotLayout = null;
+      return;
+    }
+
+    if (window.Plotly) {
+      const traces = seriesData.map((s) => ({
+        x: s.x,
+        y: s.y,
+        mode: "lines",
+        name: s.name,
+      }));
+      const layout = {
+        margin: { t: 24, r: 12, b: 48, l: 64 },
+        xaxis: { title: xLabel || "X" },
+        yaxis: { title: yLabel || "Y" },
+        legend: { orientation: "h" },
+      };
+      window.Plotly.newPlot(container, traces, layout, { displaylogo: false, responsive: true });
+      spectroPlotLayout = { traces, layout };
+    } else {
+      const summary = seriesData.map((s) => `${s.name}: ${s.y.length} pts`).join("\n");
+      container.innerHTML = `<pre class="log-output">Plotly no está disponible.\n\n${summary}</pre>`;
+      spectroPlotLayout = null;
+    }
+  }
+
+  function exportSpectroPlotPNG() {
+    const container = document.getElementById("spectro-plot-container");
+    if (!container) return;
+    if (!spectroCurrentSeries.length) {
+      appendLog("No hay datos de plot para exportar.");
+      return;
+    }
+    if (window.Plotly && container.data) {
+      window.Plotly.toImage(container, { format: "png", height: 600, width: 900 }).then((url) => {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "spectroscopy_plot.png";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }).catch((err) => appendLog(`No se pudo exportar PNG: ${err?.message || err}`));
+    } else {
+      appendLog("Plotly no está disponible para exportar PNG.");
+    }
+  }
+
+  function exportSpectroPlotCSV() {
+    if (!spectroCurrentSeries.length) {
+      appendLog("No hay datos de plot para exportar.");
+      return;
+    }
+    const baseX = spectroCurrentSeries[0].x || [];
+    const headers = ["x", ...spectroCurrentSeries.map((s, idx) => s.name || `serie_${idx + 1}`)];
+    const rows = [headers.join(",")];
+
+    for (let i = 0; i < baseX.length; i++) {
+      const cols = [baseX[i]];
+      spectroCurrentSeries.forEach((s) => {
+        cols.push((s.y && s.y[i] !== undefined) ? s.y[i] : "");
+      });
+      rows.push(cols.join(","));
+    }
+
+    const blob = new Blob([rows.join("\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "spectroscopy_plot.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   }
   // --- Helper: Build Config Objects ---
   function buildSpecConfigFromState() {

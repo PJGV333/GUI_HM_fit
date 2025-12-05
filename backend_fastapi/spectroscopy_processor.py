@@ -15,9 +15,12 @@ from scipy import optimize
 from scipy.optimize import differential_evolution
 import warnings
 import re
+import logging
 warnings.filterwarnings("ignore")
 from errors import compute_errors_spectro_varpro, pinv_cs, percent_error_log10K, sensitivities_wrt_logK
 from core_ad_probe import solve_A_nnls_pgd
+
+logger = logging.getLogger(__name__)
 
 # === Progress tracking (WebSocket support) ===
 _progress_callback = None
@@ -276,6 +279,148 @@ def generate_figure2_base64(x, y, y2, mark1, mark2, ylabel, xlabel, alpha, title
     
     return img_base64
 
+def build_spectroscopy_plot_data(
+    nm,
+    Ct,
+    ct_columns,
+    Y_exp,
+    Y_fit,
+    residuals,
+    C,
+    species_labels,
+    eigenvalues=None,
+    efa_forward=None,
+    efa_backward=None,
+):
+    """
+    Construye una estructura genérica de datos para gráficas
+    que la GUI pueda usar de forma flexible.
+    """
+    import numpy as np
+    ct_columns = list(ct_columns) if ct_columns is not None else []
+
+    numerics = {
+        "nm": np.asarray(nm).tolist(),           # eje espectral
+        "Ct": np.asarray(Ct).tolist(),           # concentraciones totales
+        "Y_exp": np.asarray(Y_exp).tolist(),     # espectros exp.
+        "Y_fit": np.asarray(Y_fit).tolist(),     # espectros ajustados
+        "residuals": np.asarray(residuals).tolist(),
+        "species_conc": np.asarray(C).tolist(),  # concentraciones de especies
+    }
+
+    if eigenvalues is not None:
+        numerics["eigenvalues"] = np.asarray(eigenvalues).tolist()
+    if efa_forward is not None:
+        numerics["efa_forward"] = np.asarray(efa_forward).tolist()
+    if efa_backward is not None:
+        numerics["efa_backward"] = np.asarray(efa_backward).tolist()
+
+    # Metadatos de ejes
+    axes = {
+        "wavelength": {
+            "id": "wavelength",
+            "label": "λ",
+            "unit": "nm",
+            "values_key": "nm",
+        },
+        "titration_step": {
+            "id": "titration_step",
+            "label": "Titration step",
+            "unit": None,
+            "length": len(numerics["Y_exp"][0]) if numerics["Y_exp"] else 0,
+        },
+    }
+
+    # Añadir cada columna de Ct como eje posible
+    for idx, col in enumerate(ct_columns):
+        axes[f"Ct_{idx}"] = {
+            "id": f"Ct_{idx}",
+            "label": str(col),
+            "unit": "M",
+            "values_key": "Ct",
+            "column": idx,
+        }
+
+    # Metadatos de series
+    series = {
+        "Y_exp": {
+            "id": "Y_exp",
+            "label": "Experimental spectra",
+            "data_key": "Y_exp",
+            "dims": ["wavelength", "titration_step"],
+        },
+        "Y_fit": {
+            "id": "Y_fit",
+            "label": "Fitted spectra",
+            "data_key": "Y_fit",
+            "dims": ["wavelength", "titration_step"],
+        },
+        "residuals": {
+            "id": "residuals",
+            "label": "Residuals",
+            "data_key": "residuals",
+            "dims": ["wavelength", "titration_step"],
+        },
+        "species_conc": {
+            "id": "species_conc",
+            "label": "Species concentrations",
+            "data_key": "species_conc",
+            "dims": ["titration_step", "species"],
+            "categories": list(species_labels),
+        },
+    }
+
+    if "eigenvalues" in numerics:
+        series["eigenvalues"] = {
+            "id": "eigenvalues",
+            "label": "EFA eigenvalues",
+            "data_key": "eigenvalues",
+            "dims": ["eigenvalue_index"],
+        }
+
+    presets = [
+        {
+            "id": "main_spectra",
+            "name": "Experimental vs fitted spectra",
+            "x_axis": "wavelength",
+            "y_series": ["Y_exp", "Y_fit"],
+            "vary_along": "titration_step",
+        },
+        {
+            "id": "residuals_vs_wavelength",
+            "name": "Residuals vs λ",
+            "x_axis": "wavelength",
+            "y_series": ["residuals"],
+            "vary_along": "titration_step",
+        },
+        {
+            "id": "species_vs_titrant",
+            "name": "Species distribution vs titrant",
+            "x_axis": "Ct_0",  # luego mapearemos esto al huésped real
+            "y_series": ["species_conc"],
+            "vary_along": "species",
+        },
+    ]
+
+    plot_meta = {"axes": axes, "series": series, "presets": presets}
+    return {"numerics": numerics, "plot_meta": plot_meta}
+
+def _sanitize_for_json(obj):
+    """
+    Replace NaN/Inf with None so Starlette's JSON encoder doesn't explode.
+    Works recursively on dicts/lists/tuples.
+    """
+    import math
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [ _sanitize_for_json(v) for v in obj ]
+    if isinstance(obj, (float, int)):
+        if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+            return None
+        return obj
+    return obj
+
 def process_spectroscopy_data(
     file_path,
     spectra_sheet,
@@ -297,6 +442,15 @@ def process_spectroscopy_data(
     Main processing function.
     Returns dict with results and base64-encoded graphs.
     """
+    log_lines = []
+
+    def log(msg: str):
+        try:
+            log_lines.append(str(msg))
+        except Exception:
+            pass
+        log_progress(str(msg))
+
     log_progress("Iniciando procesamiento...")
     
     # Read Excel data
@@ -364,10 +518,13 @@ def process_spectroscopy_data(
         log_progress(f"Eigenvalues used: {EV}")
         
         Y = u[:,0:EV] @ np.diag(s[0:EV:]) @ v[0:EV:]
-        return Y, EV
+        return Y, EV, s, ev_s0, ev_s10
     
+    eigenvalues = None
+    efa_forward = None
+    efa_backward = None
     if efa_enabled:
-        Y, EV = SVD_EFA(spec, nc)
+        Y, EV, eigenvalues, efa_forward, efa_backward = SVD_EFA(spec, nc)
     else:
         Y = np.array(spec)
         EV = nc
@@ -467,11 +624,11 @@ def process_spectroscopy_data(
             best_result["rms"] = val
             best_result["k"] = np.copy(xk)
             
-        log_progress(f"Iter: f(x)={val:.6e} | x={[float(xi) for xi in xk]}")
+            log(f"Iter: f(x)={val:.6e} | x={[float(xi) for xi in xk]}")
 
     # Optimization
-    log_progress(f"Optimizer: {optimizer}")
-    log_progress(f"Bounds (procesados): {processed_bounds}")  # keep visible for debugging powell with ±inf
+    log(f"Optimizer: {optimizer}")
+    log(f"Bounds (procesados): {processed_bounds}")  # keep visible for debugging powell with ±inf
     
     if optimizer == "differential_evolution":
         # differential_evolution requiere límites finitos
@@ -507,7 +664,7 @@ def process_spectroscopy_data(
 
     k = np.ravel(k)
     
-    log_progress("Optimización completada")
+    log("Optimización completada")
     
     # Compute errors
     metrics = compute_errors_spectro_varpro(
@@ -524,6 +681,7 @@ def process_spectroscopy_data(
     yfit = metrics["yfit"]
     
     C, Co = res.concentraciones(k)
+    species_labels = [f"sp{i+1}" for i in range(C.shape[1])] if C is not None else []
     
     # Generate concentration and spectra plots
     if n_comp == 1 and H is not None:
@@ -563,6 +721,9 @@ def process_spectroscopy_data(
             )
     
     ssq, r0 = f_m2(k)
+    residuals_matrix = onp.asarray(r0).T if r0 is not None else []
+    Y_exp = onp.asarray(Y)
+    Y_fit_arr = onp.asarray(yfit) if yfit is not None else []
     
     # Statistics
     Yvec = Y.T
@@ -625,6 +786,27 @@ def process_spectroscopy_data(
         ],
     }
 
+    plot_data = None
+    try:
+        plot_data = build_spectroscopy_plot_data(
+            nm=nm,
+            Ct=C_T,
+            ct_columns=column_names,
+            Y_exp=Y_exp,
+            Y_fit=Y_fit_arr,
+            residuals=residuals_matrix,
+            C=C,
+            species_labels=species_labels,
+            eigenvalues=eigenvalues,
+            efa_forward=efa_forward,
+            efa_backward=efa_backward,
+        )
+    except Exception as exc:
+        # No interrumpir la respuesta por errores de plot_data
+        logger.exception("Error construyendo plot_data: %s", exc)
+        plot_data = None
+    legacy_graphs = graphs
+
     # Format results
     results = {
         "success": True,
@@ -648,7 +830,9 @@ def process_spectroscopy_data(
             "covfit": float(covfit),
             "optimizer": optimizer
         },
-        "graphs": graphs,
+        "graphs": legacy_graphs,
+        "legacy_graphs": legacy_graphs,
+        "plot_data": plot_data,
         "results_text": results_text,
         "export_data": export_data,
         "optimizer_result": {
@@ -660,4 +844,9 @@ def process_spectroscopy_data(
     
     log_progress("Procesamiento completado exitosamente")
     
-    return results
+    try:
+        log(results_text)
+    except Exception:
+        pass
+    results["log_output"] = "\n".join(log_lines)
+    return _sanitize_for_json(results)
