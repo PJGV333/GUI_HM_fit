@@ -297,9 +297,8 @@ body {
   white-space: pre;
   overflow-y: auto;
   overflow-x: auto;
-  max-height: 340px;
-  min-height: 220px;
-  height: auto;
+  flex: 1;
+  min-height: 0;
   border: 1px solid #111827;
 }
 
@@ -481,6 +480,8 @@ body {
   height: 160px;
   /* Default height */
   min-height: 120px;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 

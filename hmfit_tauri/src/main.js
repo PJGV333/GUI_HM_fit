@@ -1457,7 +1457,7 @@ function wireSpectroscopyForm() {
       state.latestResultsPayload = null;
       mainCanvasState.availablePlots = [];
       mainCanvasState.plotData = {};
-      diagEl.textContent = detail;
+      appendToConsole(`\nError: ${detail}`);
       scrollDiagnosticsToBottom();
       return;
     }
@@ -1501,14 +1501,16 @@ function wireSpectroscopyForm() {
 
     const logText = (data.log_output ?? "").trim();
     if (logText) {
-      const base = diagEl.textContent ? `${diagEl.textContent}\n` : "";
-      diagEl.textContent = `${base}${logText}`;
-    } else {
-      const base = diagEl.textContent ? `${diagEl.textContent}\n\n` : "";
-      diagEl.textContent = `${base}${finalText}`;
+      // If log_output is present, it usually contains the full log including results
+      // But since we are streaming logs, we might just want to append the final table if it's not in the logs
+      // For now, let's trust results_text which is the formatted table
     }
-    state.latestResultsText = finalText;
 
+    if (finalText) {
+      appendToConsole(`\n${finalText}`);
+    }
+
+    state.latestResultsText = finalText;
     state.latestResultsPayload = data;
     scrollDiagnosticsToBottom();
   }
@@ -1516,7 +1518,7 @@ function wireSpectroscopyForm() {
   function displayNmrResults(data) {
     if (!data?.success) {
       const detail = data?.detail || data?.error || "Procesamiento NMR falló.";
-      diagEl.textContent = detail;
+      appendToConsole(`\nError: ${detail}`);
       state.latestResultsText = "";
       state.latestResultsPayload = null;
       scrollDiagnosticsToBottom();
@@ -1525,8 +1527,7 @@ function wireSpectroscopyForm() {
 
     if (data.results_text) {
       const normalized = (data.results_text ?? '').replace(/\r\n/g, '\n');
-      const base = diagEl.textContent ? `${diagEl.textContent}\n\n` : "";
-      diagEl.textContent = `${base}${normalized}`;
+      appendToConsole(`\n${normalized}`);
       state.latestResultsText = normalized;
       state.latestResultsPayload = data;
       scrollDiagnosticsToBottom();
@@ -1537,8 +1538,9 @@ function wireSpectroscopyForm() {
     const lines = [];
     lines.push("=== NMR RESULTS ===", "");
     lines.push("Processing complete.");
-    diagEl.textContent = lines.join("\n");
-    state.latestResultsText = lines.join("\n");
+    const fallbackText = lines.join("\n");
+    appendToConsole(`\n${fallbackText}`);
+    state.latestResultsText = fallbackText;
     state.latestResultsPayload = data;
     scrollDiagnosticsToBottom();
   }
