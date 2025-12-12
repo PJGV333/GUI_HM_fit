@@ -298,20 +298,20 @@ function initApp() {
 
   app.innerHTML = `
     <div class="root-container">
-      <header class="hmfit-header">
-        <div>
-          <h1 class="hmfit-title">HM Fit</h1>
-          <p class="hmfit-subtitle">Hard Modeling · Spectroscopy &amp; NMR</p>
-        </div>
-      </header>
+      <!-- Left Column: Header + Tabs + Controls -->
+      <div class="left-column-wrapper">
+        <header class="hmfit-header">
+          <div>
+            <h1 class="hmfit-title">HM Fit</h1>
+            <p class="hmfit-subtitle">Hard Modeling · Spectroscopy &amp; NMR</p>
+          </div>
+        </header>
 
-      <nav class="top-tabs">
-        <button class="tab-btn" data-module-tab="spectroscopy">Spectroscopy</button>
-        <button class="tab-btn" data-module-tab="nmr">NMR</button>
-      </nav>
+        <nav class="top-tabs">
+          <button class="tab-btn" data-module-tab="spectroscopy">Spectroscopy</button>
+          <button class="tab-btn" data-module-tab="nmr">NMR</button>
+        </nav>
 
-      <section class="layout">
-        <!-- Panel izquierdo -->
         <div class="left-panel">
           <!-- Selección de archivo -->
           <section class="panel file-panel">
@@ -493,35 +493,35 @@ function initApp() {
             </div>
           </section>
         </div>
+      </div>
 
-        <!-- Panel derecho: gráficos + log -->
-        <div class="right-panel">
-          <section class="panel plot-panel split-panel">
-            <div class="split-top">
-              <div class="plot-toolbar">
-                <button id="plot-prev-btn" class="btn tertiary-btn">« Prev</button>
-                <h2 class="section-title">Main spectra / titration plot</h2>
-                <div id="plot-counter" class="plot-counter">—</div>
-                <button id="plot-next-btn" class="btn tertiary-btn">Next »</button>
-              </div>
-              <div class="plot-side-nav left">
-                <button id="plot-prev-side" class="plot-side-btn" title="Anterior">‹</button>
-              </div>
-              <div class="plot-placeholder primary-plot">
-                <!-- Main plot area -->
-              </div>
-              <div class="plot-side-nav right">
-                <button id="plot-next-side" class="plot-side-btn" title="Siguiente">›</button>
-              </div>
+      <!-- Right Column: Full Height Plot Panel -->
+      <div class="right-panel">
+        <section class="panel plot-panel split-panel">
+          <div class="split-top">
+            <div class="plot-toolbar">
+              <button id="plot-prev-btn" class="btn tertiary-btn">« Prev</button>
+              <h2 class="section-title">Main spectra / titration plot</h2>
+              <div id="plot-counter" class="plot-counter">—</div>
+              <button id="plot-next-btn" class="btn tertiary-btn">Next »</button>
             </div>
-            <div class="split-resizer" title="Arrastra para redimensionar"></div>
-            <div class="split-bottom">
-              <h2 class="section-title">Residuals / component spectra / diagnostics</h2>
-              <pre id="log-output" class="log-output">Esperando...</pre>
+            <div class="plot-side-nav left">
+              <button id="plot-prev-side" class="plot-side-btn" title="Anterior">‹</button>
             </div>
-          </section>
-        </div>
-      </section>
+            <div class="plot-placeholder primary-plot">
+              <!-- Main plot area -->
+            </div>
+            <div class="plot-side-nav right">
+              <button id="plot-next-side" class="plot-side-btn" title="Siguiente">›</button>
+            </div>
+          </div>
+          <div class="split-resizer" title="Arrastra para redimensionar"></div>
+          <div class="split-bottom">
+            <h2 class="section-title">Residuals / component spectra / diagnostics</h2>
+            <pre id="log-output" class="log-output">Esperando...</pre>
+          </div>
+        </section>
+      </div>
     </div>
   `;
 
@@ -626,7 +626,22 @@ function initSplitPanel() {
 
     bottom.style.height = `${newBottomHeight}px`;
     // Top automatically adjusts due to flex: 1
+
+    // Resize Plotly if present
+    requestAnimationFrame(resizeMainPlotIfNeeded);
   });
+
+  // Also resize on window resize
+  window.addEventListener("resize", () => requestAnimationFrame(resizeMainPlotIfNeeded));
+}
+
+function resizeMainPlotIfNeeded() {
+  // Plotly
+  const plotlyDiv = document.querySelector(".primary-plot .main-plotly");
+  if (plotlyDiv && window.Plotly) {
+    try { window.Plotly.Plots.resize(plotlyDiv); } catch (_) { }
+  }
+  // Images handle themselves via CSS object-fit: contain
 }
 
 // Encuentra un botón por su texto visible
