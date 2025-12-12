@@ -11,10 +11,31 @@ const state = {
   latestResultsPayload: null,    // Última respuesta de backend para exportar XLSX
 };
 
-// Datos de plot dinámicos (nuevo flujo)
-window.spectroPlotData = null;
-let spectroCurrentSeries = [];
-let spectroPlotLayout = null;
+// Main canvas state for carousel navigation and interactive plot controls
+const mainCanvasState = {
+  availablePlots: [],   // [{id, title, kind}, ...]
+  plotData: {},         // {spec: {...}, nmr: {...}}
+  activePlotIndex: 0,
+  controls: {
+    distXAxisId: "titrant_total",     // species distribution X axis
+    distYSelected: new Set(),         // species selected for Y axis
+    nmrSignalsSelected: new Set(),    // NMR shifts fit - signals to display
+    nmrResidSelected: new Set(),      // NMR residuals - signals to display
+  }
+};
+
+// Helper functions for consistent data access
+function getActivePlot() {
+  return mainCanvasState.availablePlots[mainCanvasState.activePlotIndex] || null;
+}
+
+function getActivePlotData() {
+  const plot = getActivePlot();
+  if (!plot) return null;
+  const modKey = state.activeModule === 'nmr' ? 'nmr' : 'spec';
+  const moduleData = mainCanvasState.plotData?.[modKey] || {};
+  return moduleData?.[plot.id] || null;
+}
 
 // WebSocket for progress streaming
 let progressWs = null;
@@ -454,10 +475,6 @@ function initApp() {
                   <button id="spectro-export-csv" class="btn tertiary-btn">Export CSV</button>
                 </div>
               </div>
-
-              <div id="spectro-plot-container" class="plot-placeholder scrollable-plot" style="min-height: 240px;">
-                Select a preset to render plots.
-              </div>
             </div>
 
             <div class="actions-row">
@@ -488,14 +505,11 @@ function initApp() {
               <div class="plot-side-nav left">
                 <button id="plot-prev-side" class="plot-side-btn" title="Anterior">‹</button>
               </div>
-              <div class="plot-placeholder primary-plot scrollable-plot">
-                Plot placeholder (aquí irán las gráficas principales).
+              <div class="plot-placeholder primary-plot">
+                <!-- Main plot area -->
               </div>
               <div class="plot-side-nav right">
                 <button id="plot-next-side" class="plot-side-btn" title="Siguiente">›</button>
-              </div>
-              <div class="plot-placeholder secondary-plot" style="margin-top: 1rem;">
-                 <!-- Placeholder for secondary plots -->
               </div>
             </div>
             <div class="split-resizer" title="Arrastra para redimensionar"></div>
@@ -513,6 +527,24 @@ function initApp() {
   document.querySelectorAll("[data-module-tab]").forEach((btn) => {
     const mod = btn.dataset.moduleTab;
     btn.addEventListener("click", () => {
+      if (state.activeModule !== mod) {
+        // Clear main canvas when switching modules to avoid showing wrong data
+        mainCanvasState.availablePlots = [];
+        mainCanvasState.plotData = {};
+        mainCanvasState.activePlotIndex = 0;
+        mainCanvasState.controls.distYSelected.clear();
+        mainCanvasState.controls.nmrSignalsSelected.clear();
+        mainCanvasState.controls.nmrResidSelected.clear();
+
+        const primaryPlot = document.querySelector('.primary-plot');
+        if (primaryPlot) primaryPlot.innerHTML = '<p style="color: #9ca3af;">Process data to see plots</p>';
+
+        const counterEl = document.getElementById('plot-counter');
+        if (counterEl) counterEl.textContent = '—';
+
+        const presetSelect = document.getElementById('spectro-plot-preset-select');
+        if (presetSelect) presetSelect.innerHTML = '<option value="">Select a preset...</option>';
+      }
       state.activeModule = mod;
       updateUI();
     });
@@ -711,14 +743,52 @@ function wireSpectroscopyForm() {
     });
   }
 
-  [plotPresetSelect, plotXAxisSelect, plotYSeriesSelect, plotVarySelect].forEach((el) => {
-    el?.addEventListener("change", () => {
-      buildSpectroPlotFromSelection();
-    });
+  // Preset dropdown: jump to selected plot in main canvas
+  plotPresetSelect?.addEventListener("change", () => {
+    const selectedId = plotPresetSelect.value;
+    if (!selectedId) return;
+
+    const index = mainCanvasState.availablePlots.findIndex(p => p.id === selectedId);
+    if (index >= 0) {
+      mainCanvasState.activePlotIndex = index;
+      renderMainCanvasPlot();
+    }
   });
-  plotExportPngBtn?.addEventListener("click", exportSpectroPlotPNG);
-  plotExportCsvBtn?.addEventListener("click", exportSpectroPlotCSV);
-  initSpectroPlotControls(null);
+
+  // X axis dropdown: update controls and re-render
+  plotXAxisSelect?.addEventListener("change", () => {
+    const plot = mainCanvasState.availablePlots[mainCanvasState.activePlotIndex];
+    if (plot?.id === 'spec_species_distribution' || plot?.id === 'nmr_species_distribution') {
+      mainCanvasState.controls.distXAxisId = plotXAxisSelect.value;
+      renderMainCanvasPlot();
+    }
+  });
+
+  // Y series dropdown: update selected species/signals and re-render
+  plotYSeriesSelect?.addEventListener("change", () => {
+    const plot = mainCanvasState.availablePlots[mainCanvasState.activePlotIndex];
+    const selected = Array.from(plotYSeriesSelect.selectedOptions).map(o => o.value);
+
+    if (plot?.id === 'spec_species_distribution' || plot?.id === 'nmr_species_distribution') {
+      mainCanvasState.controls.distYSelected = new Set(selected);
+    } else if (plot?.id === 'nmr_shifts_fit') {
+      mainCanvasState.controls.nmrSignalsSelected = new Set(selected);
+    } else if (plot?.id === 'nmr_residuals') {
+      mainCanvasState.controls.nmrResidSelected = new Set(selected);
+    }
+
+    renderMainCanvasPlot();
+  });
+
+  // Export PNG from main canvas (the current carousel page)
+  plotExportPngBtn?.addEventListener("click", exportMainCanvasPNG);
+  plotExportCsvBtn?.addEventListener("click", exportMainCanvasCSV);
+
+  // Navigation buttons for main canvas
+  document.getElementById('plot-prev-btn')?.addEventListener('click', () => navigateMainCanvas(-1));
+  document.getElementById('plot-next-btn')?.addEventListener('click', () => navigateMainCanvas(1));
+  document.getElementById('plot-prev-side')?.addEventListener('click', () => navigateMainCanvas(-1));
+  document.getElementById('plot-next-side')?.addEventListener('click', () => navigateMainCanvas(1));
 
   // --- Handler: File Selection ---
   const fileInput = document.getElementById("excel-file");
@@ -1073,16 +1143,16 @@ function wireSpectroscopyForm() {
     if (optGridContainer) optGridContainer.innerHTML = "";
 
     // Clear plots
-    const plotContainers = Array.from(document.querySelectorAll(".plot-placeholder")).filter(
-      (el) => el.id !== "spectro-plot-container"
-    );
-    if (!plotContainers.length) return;
+    const plotContainers = Array.from(document.querySelectorAll(".plot-placeholder"));
     plotContainers.forEach(c => c.innerHTML = "");
-    window.spectroPlotData = null;
-    spectroCurrentSeries = [];
-    initSpectroPlotControls(null);
-    const plotsPanel = document.getElementById("spectro-plot-container");
-    if (plotsPanel) plotsPanel.textContent = "Select a preset to render plots.";
+    // Reset main canvas state
+    mainCanvasState.availablePlots = [];
+    mainCanvasState.plotData = {};
+    mainCanvasState.activePlotIndex = 0;
+    mainCanvasState.controls.distYSelected.clear();
+    mainCanvasState.controls.nmrSignalsSelected.clear();
+    mainCanvasState.controls.nmrResidSelected.clear();
+    updatePresetDropdownFromResults();
 
     // Clear state
     state.uploadedFile = null;
@@ -1338,7 +1408,7 @@ function wireSpectroscopyForm() {
 
         data = await backendApi.processNmr(formData);
         displayNmrResults(data);
-        displayGraphs(data.graphs || {});
+        displayGraphs(data.graphs || {}, data);
 
       } else {
         formData.append("spectra_sheet", spectraSheetInput?.value || "");
@@ -1348,7 +1418,7 @@ function wireSpectroscopyForm() {
         data = await backendApi.processSpectroscopy(formData);
         displayResults(data);
         const graphs = data.legacy_graphs || data.graphs || {};
-        displayGraphs(graphs);
+        displayGraphs(graphs, data);
       }
 
     } catch (err) {
@@ -1367,10 +1437,9 @@ function wireSpectroscopyForm() {
 
       state.latestResultsText = "";
       state.latestResultsPayload = null;
-      if (state.activeModule === 'spectroscopy') {
-        window.spectroPlotData = null;
-        initSpectroPlotControls(null);
-      }
+      // Reset main canvas on error
+      mainCanvasState.availablePlots = [];
+      mainCanvasState.plotData = {};
       diagEl.textContent = message;
       console.error(`[HM Fit] Process Data request failed (${state.activeModule}):`, err);
     } finally {
@@ -1384,15 +1453,12 @@ function wireSpectroscopyForm() {
       const detail = data.detail || data.error || "Procesamiento falló.";
       state.latestResultsText = "";
       state.latestResultsPayload = null;
-      window.spectroPlotData = null;
-      initSpectroPlotControls(null);
+      mainCanvasState.availablePlots = [];
+      mainCanvasState.plotData = {};
       diagEl.textContent = detail;
       scrollDiagnosticsToBottom();
       return;
     }
-
-    window.spectroPlotData = data.plot_data || null;
-    initSpectroPlotControls(window.spectroPlotData);
 
     const fmt = (n, opts = {}) => {
       if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -1442,7 +1508,6 @@ function wireSpectroscopyForm() {
     state.latestResultsText = finalText;
 
     state.latestResultsPayload = data;
-    buildSpectroPlotFromSelection();
     scrollDiagnosticsToBottom();
   }
 
@@ -1476,7 +1541,503 @@ function wireSpectroscopyForm() {
     scrollDiagnosticsToBottom();
   }
 
-  function displayGraphs(graphs) {
+  // === Main Canvas Functions ===
+  function setMainCanvasResults(resultPayload) {
+    // Extract availablePlots and plotData from backend response
+    mainCanvasState.availablePlots = resultPayload.availablePlots || [];
+    mainCanvasState.plotData = resultPayload.plotData || {};
+    mainCanvasState.activePlotIndex = 0;
+
+    // Reset interactive controls (will be auto-populated on first render)
+    mainCanvasState.controls.distXAxisId = 'titrant_total';
+    mainCanvasState.controls.distYSelected.clear();
+    mainCanvasState.controls.nmrSignalsSelected.clear();
+    mainCanvasState.controls.nmrResidSelected.clear();
+
+    renderMainCanvasPlot();
+    updatePresetDropdownFromResults();
+  }
+
+  function renderMainCanvasPlot() {
+    const container = document.querySelector('.primary-plot');
+    const counterEl = document.getElementById('plot-counter');
+    const prevBtn = document.getElementById('plot-prev-btn');
+    const nextBtn = document.getElementById('plot-next-btn');
+    const sidePrev = document.getElementById('plot-prev-side');
+    const sideNext = document.getElementById('plot-next-side');
+
+    const plots = mainCanvasState.availablePlots;
+    const index = mainCanvasState.activePlotIndex;
+
+    // Helper to enable/disable nav
+    const setNavEnabled = (enabled) => {
+      if (prevBtn) prevBtn.disabled = !enabled;
+      if (nextBtn) nextBtn.disabled = !enabled;
+      if (sidePrev) sidePrev.disabled = !enabled;
+      if (sideNext) sideNext.disabled = !enabled;
+    };
+
+    if (!plots.length) {
+      if (container) container.innerHTML = '<p style="color: #9ca3af; padding: 2rem;">No plots available</p>';
+      if (counterEl) counterEl.textContent = '—';
+      setNavEnabled(false);
+      return;
+    }
+
+    const plot = getActivePlot();
+    const data = getActivePlotData();
+
+    if (counterEl) counterEl.textContent = `${index + 1} / ${plots.length}`;
+    setNavEnabled(true);
+
+    if (!container) return;
+
+    // Render based on plot kind
+    if (plot.kind === 'image' && data?.png_base64) {
+      container.innerHTML = `
+        <div class="plot-title">${plot.title}</div>
+        <img src="data:image/png;base64,${data.png_base64}" alt="${plot.title}" />
+      `;
+    } else if (plot.kind === 'plotly') {
+      container.innerHTML = `
+        <div class="plot-title">${plot.title}</div>
+        <div class="main-plotly"></div>
+      `;
+      const plotDiv = container.querySelector('.main-plotly');
+
+      if (!window.Plotly) {
+        appendLog("ERROR: Plotly not loaded");
+        if (plotDiv) plotDiv.innerHTML = '<p style="color: #ef4444; padding: 2rem;">Plotly not available</p>';
+        return;
+      }
+
+      if (!data) {
+        if (plotDiv) plotDiv.innerHTML = '<p style="color: #9ca3af; padding: 2rem;">No data for this plot</p>';
+        return;
+      }
+
+      // Build traces based on plot type
+      const traces = buildPlotlyTraces(plot.id, data);
+      const layout = buildPlotlyLayout(plot.id, data);
+
+      if (traces.length === 0) {
+        if (plotDiv) plotDiv.innerHTML = '<p style="color: #f59e0b; padding: 2rem;">No series selected or no data found (check selection)</p>';
+        appendLog(`WARN: empty traces for ${plot.id}`);
+        return;
+      }
+
+      window.Plotly.react(plotDiv, traces, layout, { displaylogo: false, responsive: true });
+
+      // Resize after render for Tauri
+      requestAnimationFrame(() => {
+        if (window.Plotly?.Plots?.resize) {
+          window.Plotly.Plots.resize(plotDiv);
+        }
+      });
+    } else {
+      container.innerHTML = `<p style="color: #9ca3af; padding: 2rem;">Plot data not available: ${plot.id}</p>`;
+    }
+
+    // Sync controls for this plot
+    syncPlotControlsForActivePlot();
+  }
+
+  // Build Plotly traces based on plot type
+  // Build Plotly traces based on plot type
+  function buildPlotlyTraces(plotId, data) {
+    const traces = [];
+    const controls = mainCanvasState.controls;
+
+    if (plotId === 'spec_species_distribution' || plotId === 'nmr_species_distribution') {
+      // Species distribution plot
+      const xAxisId = controls.distXAxisId || 'titrant_total';
+      const x = data.axisVectors?.[xAxisId] || data.x_default || [];
+      const speciesOptions = data.speciesOptions || [];
+      const C_by_species = data.C_by_species || {};
+
+      // If no species selected, select all
+      if (controls.distYSelected.size === 0) {
+        speciesOptions.forEach(opt => controls.distYSelected.add(opt.id));
+      }
+
+      speciesOptions.forEach(opt => {
+        if (controls.distYSelected.has(opt.id)) {
+          const y = C_by_species[opt.id] || [];
+          if (y.length > 0) {
+            traces.push({
+              x: x,
+              y: y,
+              mode: 'lines+markers',
+              name: opt.label,
+              line: { width: 2 },
+              marker: { size: 6 }
+            });
+          }
+        }
+      });
+    } else if (plotId === 'nmr_shifts_fit') {
+      // NMR chemical shifts fit
+      const x = data.x || [];
+      const signalOptions = data.signalOptions || [];
+      const signals = data.signals || {};
+
+      // If no signals selected, select all
+      if (controls.nmrSignalsSelected.size === 0) {
+        signalOptions.forEach(opt => controls.nmrSignalsSelected.add(opt.id));
+      }
+
+      signalOptions.forEach(opt => {
+        if (controls.nmrSignalsSelected.has(opt.id) && signals[opt.id]) {
+          // Observed points
+          traces.push({
+            x: x,
+            y: signals[opt.id].obs,
+            mode: 'markers',
+            name: `${opt.label} obs`,
+            marker: { size: 8 }
+          });
+          // Fit line
+          traces.push({
+            x: x,
+            y: signals[opt.id].fit,
+            mode: 'lines',
+            name: `${opt.label} fit`,
+            line: { width: 2, dash: 'dot' }
+          });
+        }
+      });
+    } else if (plotId === 'nmr_residuals') {
+      // NMR residuals
+      const x = data.x || [];
+      const signalOptions = data.signalOptions || [];
+      const signals = data.signals || {};
+
+      // If no signals selected, select all
+      if (controls.nmrResidSelected.size === 0) {
+        signalOptions.forEach(opt => controls.nmrResidSelected.add(opt.id));
+      }
+
+      signalOptions.forEach(opt => {
+        if (controls.nmrResidSelected.has(opt.id) && signals[opt.id]) {
+          traces.push({
+            x: x,
+            y: signals[opt.id].resid,
+            mode: 'markers',
+            name: `${opt.label} resid`,
+            marker: { size: 6 }
+          });
+        }
+      });
+    }
+
+    return traces;
+  }
+
+  // Build Plotly layout based on plot type
+  function buildPlotlyLayout(plotId, data) {
+    const layout = {
+      margin: { t: 24, r: 24, b: 48, l: 64 },
+      legend: { orientation: 'h', y: -0.2 },
+      xaxis: { title: '' },
+      yaxis: { title: '' }
+    };
+
+    if (plotId === 'spec_species_distribution' || plotId === 'nmr_species_distribution') {
+      const xAxisId = mainCanvasState.controls.distXAxisId || 'titrant_total';
+      const axisOption = (data.axisOptions || []).find(a => a.id === xAxisId);
+      layout.xaxis.title = axisOption?.label || 'Concentration';
+      layout.yaxis.title = '[Species], M';
+    } else if (plotId === 'nmr_shifts_fit') {
+      layout.xaxis.title = data.xLabel || 'Concentration';
+      layout.yaxis.title = 'Δδ (ppm)';
+    } else if (plotId === 'nmr_residuals') {
+      layout.xaxis.title = data.xLabel || 'Concentration';
+      layout.yaxis.title = 'Residuals (ppm)';
+    }
+
+    return layout;
+  }
+
+  // Sync plot controls in Plots tab based on active plot
+  // Sync plot controls in Plots tab based on active plot
+  function syncPlotControlsForActivePlot() {
+    const xAxisSelect = document.getElementById('spectro-x-axis-select');
+    const ySeriesSelect = document.getElementById('spectro-y-series-select');
+    const varySelect = document.getElementById('spectro-vary-along-select');
+
+    const plot = getActivePlot();
+    const data = getActivePlotData();
+
+    if (!plot) return;
+
+    // Hide controls for non-interactive plots
+    const isInteractive = plot.kind === 'plotly';
+    if (xAxisSelect?.closest('.field')) xAxisSelect.closest('.field').style.display = isInteractive ? '' : 'none';
+    if (ySeriesSelect?.closest('.field')) ySeriesSelect.closest('.field').style.display = isInteractive ? '' : 'none';
+    if (varySelect?.closest('.field')) varySelect.closest('.field').style.display = 'none'; // Always hide vary for now
+
+    if (!isInteractive || !data) return;
+
+    if (plot.id === 'spec_species_distribution' || plot.id === 'nmr_species_distribution') {
+      // Populate X axis dropdown
+      if (xAxisSelect) {
+        xAxisSelect.innerHTML = '';
+        (data.axisOptions || []).forEach(opt => {
+          const el = document.createElement('option');
+          el.value = opt.id;
+          el.text = opt.label;
+          xAxisSelect.add(el);
+        });
+        xAxisSelect.value = mainCanvasState.controls.distXAxisId || 'titrant_total';
+        const labelEl = xAxisSelect.closest('.field')?.querySelector('.field-label');
+        if (labelEl) labelEl.textContent = 'X axis';
+      }
+
+      // Populate Y series (species) using speciesOptions
+      if (ySeriesSelect) {
+        ySeriesSelect.innerHTML = '';
+        (data.speciesOptions || []).forEach(opt => {
+          const el = document.createElement('option');
+          el.value = opt.id;
+          el.text = opt.label;
+          el.selected = mainCanvasState.controls.distYSelected.has(opt.id);
+          ySeriesSelect.add(el);
+        });
+        const labelEl = ySeriesSelect.closest('.field')?.querySelector('.field-label');
+        if (labelEl) labelEl.textContent = 'Y species';
+      }
+    } else if (plot.id === 'nmr_shifts_fit') {
+      // Hide X axis for NMR shifts
+      if (xAxisSelect?.closest('.field')) xAxisSelect.closest('.field').style.display = 'none';
+
+      // Populate signals using signalOptions
+      if (ySeriesSelect) {
+        ySeriesSelect.innerHTML = '';
+        (data.signalOptions || []).forEach(opt => {
+          const el = document.createElement('option');
+          el.value = opt.id;
+          el.text = opt.label;
+          el.selected = mainCanvasState.controls.nmrSignalsSelected.has(opt.id);
+          ySeriesSelect.add(el);
+        });
+        const labelEl = ySeriesSelect.closest('.field')?.querySelector('.field-label');
+        if (labelEl) labelEl.textContent = 'Signals to display';
+      }
+    } else if (plot.id === 'nmr_residuals') {
+      // Hide X axis for NMR residuals
+      if (xAxisSelect?.closest('.field')) xAxisSelect.closest('.field').style.display = 'none';
+
+      // Populate residual signals using signalOptions
+      if (ySeriesSelect) {
+        ySeriesSelect.innerHTML = '';
+        (data.signalOptions || []).forEach(opt => {
+          const el = document.createElement('option');
+          el.value = opt.id;
+          el.text = opt.label;
+          el.selected = mainCanvasState.controls.nmrResidSelected.has(opt.id);
+          ySeriesSelect.add(el);
+        });
+        const labelEl = ySeriesSelect.closest('.field')?.querySelector('.field-label');
+        if (labelEl) labelEl.textContent = 'Residual signals';
+      }
+    }
+  }
+
+  function navigateMainCanvas(delta) {
+    const total = mainCanvasState.availablePlots.length;
+    if (total === 0) return;
+
+    mainCanvasState.activePlotIndex = (mainCanvasState.activePlotIndex + delta + total) % total;
+    renderMainCanvasPlot();
+
+    // Sync preset dropdown
+    const presetSelect = document.getElementById('spectro-plot-preset-select');
+    if (presetSelect && mainCanvasState.availablePlots[mainCanvasState.activePlotIndex]) {
+      presetSelect.value = mainCanvasState.availablePlots[mainCanvasState.activePlotIndex].id;
+    }
+  }
+
+  function updatePresetDropdownFromResults() {
+    const presetSelect = document.getElementById('spectro-plot-preset-select');
+    if (!presetSelect) return;
+
+    presetSelect.innerHTML = '';
+
+    const defaultOpt = document.createElement('option');
+    defaultOpt.value = '';
+    defaultOpt.text = 'Select a preset...';
+    presetSelect.add(defaultOpt);
+
+    mainCanvasState.availablePlots.forEach(plot => {
+      const opt = document.createElement('option');
+      opt.value = plot.id;
+      opt.text = plot.title;
+      presetSelect.add(opt);
+    });
+
+    // Select first plot by default
+    if (mainCanvasState.availablePlots.length > 0) {
+      presetSelect.value = mainCanvasState.availablePlots[0].id;
+    }
+  }
+
+  function exportMainCanvasPNG() {
+    const currentPlot = mainCanvasState.availablePlots[mainCanvasState.activePlotIndex];
+    const filename = `${currentPlot?.id || 'plot'}.png`;
+
+    if (currentPlot?.kind === 'plotly') {
+      // Export Plotly chart as PNG
+      const plotDiv = document.querySelector('.primary-plot .main-plotly');
+      if (plotDiv && window.Plotly) {
+        window.Plotly.toImage(plotDiv, { format: 'png', width: 1200, height: 800 })
+          .then(dataUrl => {
+            const link = document.createElement('a');
+            link.href = dataUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            appendLog(`Exported: ${filename}`);
+          })
+          .catch(err => appendLog(`Export failed: ${err.message}`));
+      } else {
+        appendLog('Cannot export: Plotly not available');
+      }
+    } else {
+      // Export image plot
+      const imgEl = document.querySelector('.primary-plot img');
+      if (!imgEl || !imgEl.src) {
+        appendLog('No image to export');
+        return;
+      }
+      const link = document.createElement('a');
+      link.href = imgEl.src;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      appendLog(`Exported: ${filename}`);
+    }
+  }
+
+  function exportMainCanvasCSV() {
+    const currentPlot = mainCanvasState.availablePlots[mainCanvasState.activePlotIndex];
+
+    if (!currentPlot || currentPlot.kind !== 'plotly') {
+      appendLog('CSV export only available for interactive plots');
+      return;
+    }
+
+    const dataSource = state.activeModule === 'nmr'
+      ? mainCanvasState.plotData?.nmr
+      : mainCanvasState.plotData?.spec;
+    const data = dataSource?.[currentPlot.id];
+
+    if (!data) {
+      appendLog('No data to export');
+      return;
+    }
+
+    let csv = '';
+    const controls = mainCanvasState.controls;
+
+    if (currentPlot.id === 'spec_species_distribution' || currentPlot.id === 'nmr_species_distribution') {
+      // Species distribution CSV
+      const xAxisId = controls.distXAxisId || 'titrant_total';
+      const x = data.axisVectors?.[xAxisId] || data.x_default || [];
+      const speciesNames = data.speciesNames || [];
+      const C = data.C || [];
+      const selectedSpecies = controls.distYSelected.size > 0
+        ? speciesNames.filter(sp => controls.distYSelected.has(sp))
+        : speciesNames;
+
+      // Header
+      const axisOption = (data.axisOptions || []).find(a => a.id === xAxisId);
+      csv = `${axisOption?.label || 'X'},${selectedSpecies.join(',')}\n`;
+
+      // Data rows
+      for (let i = 0; i < x.length; i++) {
+        const row = [x[i]];
+        selectedSpecies.forEach(sp => {
+          const spIndex = speciesNames.indexOf(sp);
+          row.push(C[i]?.[spIndex] ?? '');
+        });
+        csv += row.join(',') + '\n';
+      }
+    } else if (currentPlot.id === 'nmr_shifts_fit') {
+      // NMR shifts fit CSV
+      const x = data.x || [];
+      const signalNames = data.signalNames || [];
+      const signals = data.signals || {};
+      const selectedSignals = controls.nmrSignalsSelected.size > 0
+        ? signalNames.filter(sig => controls.nmrSignalsSelected.has(sig))
+        : signalNames;
+
+      // Header
+      const headers = ['X'];
+      selectedSignals.forEach(sig => {
+        headers.push(`${sig}_obs`, `${sig}_fit`);
+      });
+      csv = headers.join(',') + '\n';
+
+      // Data rows
+      for (let i = 0; i < x.length; i++) {
+        const row = [x[i]];
+        selectedSignals.forEach(sig => {
+          row.push(signals[sig]?.obs?.[i] ?? '', signals[sig]?.fit?.[i] ?? '');
+        });
+        csv += row.join(',') + '\n';
+      }
+    } else if (currentPlot.id === 'nmr_residuals') {
+      // NMR residuals CSV
+      const x = data.x || [];
+      const signalNames = data.signalNames || [];
+      const signals = data.signals || {};
+      const selectedSignals = controls.nmrResidSelected.size > 0
+        ? signalNames.filter(sig => controls.nmrResidSelected.has(sig))
+        : signalNames;
+
+      // Header
+      csv = `X,${selectedSignals.map(s => `${s}_resid`).join(',')}\n`;
+
+      // Data rows
+      for (let i = 0; i < x.length; i++) {
+        const row = [x[i]];
+        selectedSignals.forEach(sig => {
+          row.push(signals[sig]?.resid?.[i] ?? '');
+        });
+        csv += row.join(',') + '\n';
+      }
+    }
+
+    if (!csv) {
+      appendLog('No data to export');
+      return;
+    }
+
+    const filename = `${currentPlot.id}.csv`;
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    appendLog(`Exported: ${filename}`);
+  }
+
+  // Legacy displayGraphs for backward compatibility (uses old format if availablePlots not present)
+  function displayGraphs(graphs, resultPayload) {
+    // If we have the new format, use it
+    if (resultPayload?.availablePlots && resultPayload.availablePlots.length > 0) {
+      setMainCanvasResults(resultPayload);
+      return;
+    }
+
+    // Fallback to legacy carousel rendering
     const plotContainers = document.querySelectorAll(".plot-placeholder");
     const prevBtn = document.getElementById("plot-prev-btn");
     const nextBtn = document.getElementById("plot-next-btn");
@@ -1600,7 +2161,6 @@ function wireSpectroscopyForm() {
     };
 
     renderCarousel(plotContainers[0], mainPlots);
-    // Secondary plots are now merged into mainPlots, so we don't render them separately.
   }
   // === Plot builder helpers (spectroscopy) ===
   function initSpectroPlotControls(plotData) {

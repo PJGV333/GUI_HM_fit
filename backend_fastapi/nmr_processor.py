@@ -458,10 +458,100 @@ def process_nmr_data(
 
         log_progress("Procesamiento NMR completado.")
 
+        # Build availablePlots list (ordered pages for carousel navigation)
+        availablePlots = []
+        
+        # Chemical shifts fit - interactive (kind: plotly)
+        if dq is not None:
+            availablePlots.append({
+                "id": "nmr_shifts_fit",
+                "title": "Chemical shifts fit",
+                "kind": "plotly"
+            })
+        
+        # Species distribution - interactive (kind: plotly)
+        if C_opt is not None and len(C_opt) > 0:
+            availablePlots.append({
+                "id": "nmr_species_distribution",
+                "title": "Species distribution",
+                "kind": "plotly"
+            })
+        
+        # Residuals - interactive (kind: plotly)
+        if dq is not None:
+            availablePlots.append({
+                "id": "nmr_residuals",
+                "title": "Residuals",
+                "kind": "plotly"
+            })
+        
+        # X axis for all plots
+        x_axis_values = (G if G is not None else H).tolist() if (G is not None or H is not None) else []
+        x_label = f"[{guest_label}] Total (M)" if G is not None else f"[{receptor_label}] Total (M)"
+        
+        # Build signal options with stable IDs and labels
+        def make_signal_id(name):
+            """Create stable ID from signal name"""
+            return name.replace(' ', '_').replace('(', '').replace(')', '').replace('-', '_')
+        
+        residuals_arr = (dq - dq_fit) if dq is not None and dq_fit is not None else np.zeros_like(dq)
+        signal_options = []
+        signals_data = {}
+        for i, sig_name in enumerate(signal_names):
+            sig_id = make_signal_id(sig_name)
+            signal_options.append({"id": sig_id, "label": sig_name})
+            signals_data[sig_id] = {
+                "obs": dq[:, i].tolist() if dq is not None else [],
+                "fit": dq_fit[:, i].tolist() if dq_fit is not None else [],
+                "resid": residuals_arr[:, i].tolist() if residuals_arr is not None else [],
+            }
+        
+        # Build species options with id/label for species distribution
+        species_labels = [f"sp{j+1}" for j in range(C_opt.shape[1])] if C_opt is not None else []
+        species_options = [{"id": sp, "label": sp} for sp in species_labels]
+        
+        # Build C_by_species for direct lookup
+        C_by_species = {}
+        for j, sp_label in enumerate(species_labels):
+            C_by_species[sp_label] = C_opt[:, j].tolist() if C_opt is not None else []
+        
+        # Build axis options for species distribution
+        axis_options = [{"id": "titrant_total", "label": x_label}]
+        axis_vectors = {"titrant_total": x_axis_values}
+        
+        for j, sp_label in enumerate(species_labels):
+            axis_options.append({"id": f"species:{sp_label}", "label": f"[{sp_label}]"})
+            axis_vectors[f"species:{sp_label}"] = C_opt[:, j].tolist() if C_opt is not None else []
+        
+        # Build plotData with arrays for interactive plots
+        nmr_plot_data = {
+            "nmr_shifts_fit": {
+                "x": x_axis_values,
+                "xLabel": x_label,
+                "signalOptions": signal_options,
+                "signals": signals_data,
+            },
+            "nmr_species_distribution": {
+                "axisOptions": axis_options,
+                "axisVectors": axis_vectors,
+                "speciesOptions": species_options,
+                "C_by_species": C_by_species,
+                "x_default": x_axis_values,
+            },
+            "nmr_residuals": {
+                "x": x_axis_values,
+                "xLabel": x_label,
+                "signalOptions": signal_options,
+                "signals": signals_data,
+            },
+        }
+
         return sanitize_for_json({
             "success": True,
             "results_text": results_text,
-            "graphs": graphs,
+            "graphs": graphs,  # legacy PNG graphs
+            "availablePlots": availablePlots,
+            "plotData": {"nmr": nmr_plot_data},
             "export_data": export_data
         })
 

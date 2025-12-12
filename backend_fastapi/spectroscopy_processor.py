@@ -807,6 +807,75 @@ def process_spectroscopy_data(
         plot_data = None
     legacy_graphs = graphs
 
+    # Build availablePlots list (ordered pages for carousel navigation)
+    availablePlots = []
+    
+    # Always add these core plots if data is available
+    if graphs.get('fit'):
+        availablePlots.append({
+            "id": "spec_fit_overlay",
+            "title": "Experimental vs fitted spectra",
+            "kind": "image"
+        })
+    
+    # Species distribution - interactive (kind: plotly)
+    if C is not None and len(C) > 0:
+        availablePlots.append({
+            "id": "spec_species_distribution",
+            "title": "Species distribution",
+            "kind": "plotly"
+        })
+    
+    if graphs.get('absorptivities'):
+        availablePlots.append({
+            "id": "spec_molar_absorptivities",
+            "title": "Molar absorptivities",
+            "kind": "image"
+        })
+    
+    # EFA plots only when EFA is enabled
+    if efa_enabled:
+        if graphs.get('eigenvalues'):
+            availablePlots.append({
+                "id": "spec_efa_eigenvalues",
+                "title": "EFA eigenvalues",
+                "kind": "image"
+            })
+        if graphs.get('efa'):
+            availablePlots.append({
+                "id": "spec_efa_components",
+                "title": "EFA forward/backward",
+                "kind": "image"
+            })
+    
+    # Build axis options for species distribution
+    axis_options = [{"id": "titrant_total", "label": f"[{guest_label}] total"}]
+    axis_vectors = {"titrant_total": (G if G is not None else H).tolist() if (G is not None or H is not None) else []}
+    
+    # Build species options with id/label and C_by_species for direct lookup
+    species_options = [{"id": sp, "label": sp} for sp in species_labels]
+    C_by_species = {}
+    for i, sp_label in enumerate(species_labels):
+        C_by_species[sp_label] = np.asarray(C[:, i]).tolist() if C is not None else []
+        # Also add species as potential X axis
+        axis_options.append({"id": f"species:{sp_label}", "label": f"[{sp_label}]"})
+        axis_vectors[f"species:{sp_label}"] = C_by_species[sp_label]
+    
+    # Build plotData with PNG base64 keyed by plot ID (images) and arrays (plotly)
+    spec_plot_data = {
+        "spec_fit_overlay": {"png_base64": graphs.get('fit', '')},
+        "spec_species_distribution": {
+            "axisOptions": axis_options,
+            "axisVectors": axis_vectors,
+            "speciesOptions": species_options,
+            "C_by_species": C_by_species,
+            "x_default": axis_vectors.get("titrant_total", []),
+        },
+        "spec_molar_absorptivities": {"png_base64": graphs.get('absorptivities', '')},
+        "spec_efa_eigenvalues": {"png_base64": graphs.get('eigenvalues', '')},
+        "spec_efa_components": {"png_base64": graphs.get('efa', '')},
+    }
+
     # Format results
     results = {
         "success": True,
@@ -833,6 +902,8 @@ def process_spectroscopy_data(
         "graphs": legacy_graphs,
         "legacy_graphs": legacy_graphs,
         "plot_data": plot_data,
+        "availablePlots": availablePlots,
+        "plotData": {"spec": spec_plot_data},
         "results_text": results_text,
         "export_data": export_data,
         "optimizer_result": {
