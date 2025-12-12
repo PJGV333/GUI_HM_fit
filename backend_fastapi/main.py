@@ -346,77 +346,189 @@ async def export_results_xlsx(payload: ExportRequest):
         buffer = io.BytesIO()
 
         with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-            if export_data:
-                def df_safe(data, index=None, columns=None):
-                    try:
-                        return pd.DataFrame(data, index=index, columns=columns)
-                    except Exception:
-                        return None
+            def as_dataframe(name: str, data, *, allow_none: bool = True) -> pd.DataFrame | None:
+                if data is None:
+                    return None if allow_none else pd.DataFrame()
+                if isinstance(data, pd.DataFrame):
+                    return data
+                if isinstance(data, pd.Series):
+                    return data.to_frame()
+                if isinstance(data, dict):
+                    return pd.DataFrame(list(data.items()), columns=["key", "value"])
+                return pd.DataFrame(data)
 
-                modelo = df_safe(export_data.get("modelo"))
-                if modelo is not None:
-                    modelo.to_excel(writer, sheet_name="Model", index=False)
+            def write_sheet(name: str, df: pd.DataFrame) -> None:
+                df.to_excel(writer, sheet_name=name, index=True)
 
-                C = df_safe(export_data.get("C"))
-                if C is not None:
-                    C.to_excel(writer, sheet_name="Absorbent_species", index=False)
+            is_nmr_export = any(
+                key in export_data
+                for key in (
+                    "Chemical_Shifts",
+                    "Calculated_Chemical_Shifts",
+                    "signal_names",
+                )
+            )
 
-                Co = df_safe(export_data.get("Co"))
-                if Co is not None:
-                    Co.to_excel(writer, sheet_name="All_species", index=False)
+            if is_nmr_export:
+                import numpy as np
 
-                C_T = df_safe(export_data.get("C_T"))
-                if C_T is not None:
-                    C_T.to_excel(writer, sheet_name="Tot_con_comp", index=False)
-
-                A = export_data.get("A")
-                nm = export_data.get("A_index") or export_data.get("nm")
-                if A is not None:
-                    dfA = df_safe(A, index=nm if nm else None)
-                    if dfA is not None:
-                        dfA.to_excel(writer, sheet_name="Molar_Absortivities", index_label='nm' if nm else None)
-
-                Y = export_data.get("Y")
-                if Y is not None:
-                    dfY = df_safe(Y, index=nm if nm else None)
-                    if dfY is not None:
-                        dfY.to_excel(writer, sheet_name="Y_observed", index_label='nm' if nm else None)
-
-                yfit = export_data.get("yfit")
-                if yfit is not None:
-                    dfPhi = df_safe(yfit, index=nm if nm else None)
-                    if dfPhi is not None:
-                        dfPhi.to_excel(writer, sheet_name="Y_calculated", index_label='nm' if nm else None)
+                modelo = as_dataframe("Model", export_data.get("modelo"), allow_none=False)
+                Co = as_dataframe("Absorbent_species", export_data.get("Co"), allow_none=False)
+                C = as_dataframe("All_species", export_data.get("C"), allow_none=False)
+                C_T = as_dataframe("Tot_con_comp", export_data.get("C_T"), allow_none=False)
+                dq = as_dataframe("Chemical_Shifts", export_data.get("Chemical_Shifts"), allow_none=False)
+                dq_cal = as_dataframe(
+                    "Calculated_Chemical_Shifts",
+                    export_data.get("Calculated_Chemical_Shifts"),
+                    allow_none=False,
+                )
 
                 k_vals = export_data.get("k") or []
                 percK = export_data.get("percK") or []
-                if k_vals:
-                    names = [f"K{i+1}" for i in range(len(k_vals))]
-                    dfk = pd.DataFrame({"log10K": k_vals, "percK(%)": percK[:len(k_vals)]}, index=names)
-                    dfk.to_excel(writer, sheet_name="K_calculated")
+                k_nombres = [f"K{i+1}" for i in range(len(k_vals))]
+                k = pd.DataFrame(
+                    {
+                        "Constants": list(k_vals),
+                        "Error (%)": list(percK)[: len(k_vals)],
+                    },
+                    index=k_nombres,
+                )
 
-                k_ini = export_data.get("k_ini") or []
-                if k_ini:
-                    names_ini = [f"k{i+1}" for i in range(len(k_ini))]
-                    dfin = pd.DataFrame({"init_guess": k_ini}, index=names_ini)
-                    dfin.to_excel(writer, sheet_name="Init_guess_K")
+                k_ini_vals = export_data.get("k_ini") or []
+                k_ini_nombres = [f"K{i+1}" for i in range(len(k_ini_vals))]
+                k_ini = pd.DataFrame({"Constants": list(k_ini_vals)}, index=k_ini_nombres)
 
-            # Keep a single stats sheet
-            if statistics:
-                pd.DataFrame(list(statistics.items()), columns=["metric", "value"]).to_excel(writer, sheet_name="Statistics", index=False)
+                stats_table = export_data.get("stats_table")
+                if stats_table:
+                    stats = pd.DataFrame(stats_table, columns=["metric", "Stats"]).set_index("metric")
+                else:
+                    stats = pd.DataFrame(list(statistics.items()), columns=["metric", "Stats"]).set_index("metric")
+                if "covfit" in stats.index:
+                    stats.loc["covfit", "Stats"] = str(stats.loc["covfit", "Stats"])
 
-            # NMR Specific Sheets
-            dq = df_safe(export_data.get("Chemical_Shifts"))
-            if dq is not None:
-                dq.to_excel(writer, sheet_name="Chemical_Shifts", index=False)
-                
-            dq_cal = df_safe(export_data.get("Calculated_Chemical_Shifts"))
-            if dq_cal is not None:
-                dq_cal.to_excel(writer, sheet_name="Calculated_Chemical_Shifts", index=False)
-                
-            coef = df_safe(export_data.get("Coefficients"))
-            if coef is not None:
-                coef.to_excel(writer, sheet_name="Coefficients", index=False)
+                coef = as_dataframe("Coefficients", export_data.get("Coefficients"), allow_none=True)
+                if coef is None or coef.empty:
+                    # Reconstruir coeficientes SOLO para exportación (no afecta cálculo ni plots).
+                    try:
+                        dq_arr = np.asarray(export_data.get("Chemical_Shifts"), dtype=float)
+                        C_arr = np.asarray(export_data.get("C"), dtype=float)
+                        C_T_arr = np.asarray(export_data.get("C_T"), dtype=float)
+                        column_names = list(export_data.get("column_names") or [])
+                        signal_names = list(export_data.get("signal_names") or [])
+
+                        C_T_df = pd.DataFrame(C_T_arr, columns=column_names) if column_names else pd.DataFrame(C_T_arr)
+                        D_cols, _ = nmr_processor.build_D_cols(C_T_df, column_names, signal_names, default_idx=0)
+
+                        coef_mat = np.full((C_arr.shape[1], dq_arr.shape[1]), np.nan, dtype=float)
+                        Xbase = np.asarray(C_arr, float)
+                        finite_rows = np.isfinite(Xbase).all(axis=1)
+                        nonzero_rows = np.linalg.norm(Xbase, axis=1) > 0.0
+                        goodX = finite_rows & nonzero_rows
+                        mask = np.isfinite(dq_arr) & np.isfinite(D_cols) & (np.abs(D_cols) > 0)
+
+                        for j in range(dq_arr.shape[1]):
+                            D = D_cols[:, j]
+                            mj = mask[:, j] & goodX & np.isfinite(D) & (np.abs(D) > 0)
+                            if int(mj.sum()) < 2:
+                                continue
+                            Xj = Xbase[mj, :] / D[mj][:, None]
+                            y = dq_arr[mj, j]
+                            coef_vec, *_ = np.linalg.lstsq(Xj, y, rcond=1e-10)
+                            coef_mat[:, j] = coef_vec
+
+                        coef = pd.DataFrame(coef_mat)
+                    except Exception as e:
+                        print("DEBUG coef reconstruction failed:", e)
+                        coef = pd.DataFrame()
+
+                # Logs solicitados (solo backend)
+                print("DEBUG coef shape:", getattr(coef, "shape", None))
+                print("DEBUG coef head:\n", coef.head() if hasattr(coef, "head") else coef)
+
+                # Forzar a DataFrame numérico si vienen tipos raros
+                if not isinstance(coef, pd.DataFrame):
+                    coef = pd.DataFrame(np.asarray(coef))
+
+                if coef.shape[1] > 0 and all(isinstance(c, (int, np.integer)) for c in coef.columns):
+                    coef.columns = [f"coef_{i}" for i in range(1, coef.shape[1] + 1)]
+
+                sheets = {
+                    "Model": modelo,
+                    "Absorbent_species": Co,
+                    "All_species": C,
+                    "Tot_con_comp": C_T,
+                    "Chemical_Shifts": dq,
+                    "Calculated_Chemical_Shifts": dq_cal,
+                    "Coefficients": coef,
+                    "K_calculated": k,
+                    "Init_guess_K": k_ini,
+                    "Stats": stats,
+                }
+
+                for name, df in sheets.items():
+                    if df is None:
+                        df = pd.DataFrame()
+                    write_sheet(name, df)
+            else:
+                if export_data:
+                    modelo = as_dataframe("Model", export_data.get("modelo"))
+                    if modelo is not None:
+                        modelo.to_excel(writer, sheet_name="Model", index=False)
+
+                    C = as_dataframe("Absorbent_species", export_data.get("C"))
+                    if C is not None:
+                        C.to_excel(writer, sheet_name="Absorbent_species", index=False)
+
+                    Co = as_dataframe("All_species", export_data.get("Co"))
+                    if Co is not None:
+                        Co.to_excel(writer, sheet_name="All_species", index=False)
+
+                    C_T = as_dataframe("Tot_con_comp", export_data.get("C_T"))
+                    if C_T is not None:
+                        C_T.to_excel(writer, sheet_name="Tot_con_comp", index=False)
+
+                    A = export_data.get("A")
+                    nm = export_data.get("A_index") or export_data.get("nm")
+                    if A is not None:
+                        dfA = as_dataframe("Molar_Absortivities", A, allow_none=True)
+                        if dfA is not None:
+                            if nm:
+                                dfA.index = nm
+                            dfA.to_excel(writer, sheet_name="Molar_Absortivities", index_label='nm' if nm else None)
+
+                    Y = export_data.get("Y")
+                    if Y is not None:
+                        dfY = as_dataframe("Y_observed", Y, allow_none=True)
+                        if dfY is not None:
+                            if nm:
+                                dfY.index = nm
+                            dfY.to_excel(writer, sheet_name="Y_observed", index_label='nm' if nm else None)
+
+                    yfit = export_data.get("yfit")
+                    if yfit is not None:
+                        dfPhi = as_dataframe("Y_calculated", yfit, allow_none=True)
+                        if dfPhi is not None:
+                            if nm:
+                                dfPhi.index = nm
+                            dfPhi.to_excel(writer, sheet_name="Y_calculated", index_label='nm' if nm else None)
+
+                    k_vals = export_data.get("k") or []
+                    percK = export_data.get("percK") or []
+                    if k_vals:
+                        names = [f"K{i+1}" for i in range(len(k_vals))]
+                        dfk = pd.DataFrame({"log10K": k_vals, "percK(%)": percK[:len(k_vals)]}, index=names)
+                        dfk.to_excel(writer, sheet_name="K_calculated")
+
+                    k_ini = export_data.get("k_ini") or []
+                    if k_ini:
+                        names_ini = [f"k{i+1}" for i in range(len(k_ini))]
+                        dfin = pd.DataFrame({"init_guess": k_ini}, index=names_ini)
+                        dfin.to_excel(writer, sheet_name="Init_guess_K")
+
+                if statistics:
+                    pd.DataFrame(list(statistics.items()), columns=["metric", "value"]).to_excel(
+                        writer, sheet_name="Statistics", index=False
+                    )
 
         buffer.seek(0)
         data = buffer.getvalue()
