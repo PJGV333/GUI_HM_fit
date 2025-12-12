@@ -2,6 +2,8 @@ import { save, open } from '@tauri-apps/api/dialog';
 import { writeBinaryFile, writeTextFile, readTextFile } from '@tauri-apps/api/fs';
 import "./style.css";
 import { BACKEND_BASE_URL, WS_BASE_URL, describeBackendTarget } from "./backend/config";
+import Plotly from "plotly.js-dist-min";
+window.Plotly = Plotly;
 
 const state = {
   activeModule: "spectroscopy", // "spectroscopy" | "nmr"
@@ -1759,7 +1761,6 @@ function wireSpectroscopyForm() {
   }
 
   // Sync plot controls in Plots tab based on active plot
-  // Sync plot controls in Plots tab based on active plot
   function syncPlotControlsForActivePlot() {
     const xAxisSelect = document.getElementById('spectro-x-axis-select');
     const ySeriesSelect = document.getElementById('spectro-y-series-select');
@@ -1768,7 +1769,18 @@ function wireSpectroscopyForm() {
     const plot = getActivePlot();
     const data = getActivePlotData();
 
-    if (!plot) return;
+    // Handle no plot or no data: show placeholder and disable
+    if (!plot) {
+      if (xAxisSelect) {
+        xAxisSelect.innerHTML = '<option value="">No data (run process first)</option>';
+        xAxisSelect.disabled = true;
+      }
+      if (ySeriesSelect) {
+        ySeriesSelect.innerHTML = '<option value="">No data (run process first)</option>';
+        ySeriesSelect.disabled = true;
+      }
+      return;
+    }
 
     // Hide controls for non-interactive plots
     const isInteractive = plot.kind === 'plotly';
@@ -1776,7 +1788,24 @@ function wireSpectroscopyForm() {
     if (ySeriesSelect?.closest('.field')) ySeriesSelect.closest('.field').style.display = isInteractive ? '' : 'none';
     if (varySelect?.closest('.field')) varySelect.closest('.field').style.display = 'none'; // Always hide vary for now
 
-    if (!isInteractive || !data) return;
+    // Handle null data for interactive plots
+    if (!isInteractive) return;
+
+    if (!data) {
+      if (xAxisSelect) {
+        xAxisSelect.innerHTML = '<option value="">No data for this plot (check plotData keys)</option>';
+        xAxisSelect.disabled = true;
+      }
+      if (ySeriesSelect) {
+        ySeriesSelect.innerHTML = '<option value="">No data for this plot (check plotData keys)</option>';
+        ySeriesSelect.disabled = true;
+      }
+      return;
+    }
+
+    // Enable selects since we have data
+    if (xAxisSelect) xAxisSelect.disabled = false;
+    if (ySeriesSelect) ySeriesSelect.disabled = false;
 
     if (plot.id === 'spec_species_distribution' || plot.id === 'nmr_species_distribution') {
       // Populate X axis dropdown

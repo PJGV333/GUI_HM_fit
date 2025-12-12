@@ -12,7 +12,8 @@
     "tauri:build": "tauri build"
   },
   "dependencies": {
-    "@tauri-apps/api": "^1.5.0"
+    "@tauri-apps/api": "^1.5.0",
+    "plotly.js-dist-min": "^3.3.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^1.6.3",
