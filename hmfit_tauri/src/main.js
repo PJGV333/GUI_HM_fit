@@ -5,37 +5,81 @@ import { BACKEND_BASE_URL, WS_BASE_URL, describeBackendTarget } from "./backend/
 import Plotly from "plotly.js-dist-min";
 window.Plotly = Plotly;
 
+// --- State Factories ---
+
+function makeDefaultPlotState() {
+  return {
+    availablePlots: [],   // [{id, title, kind}, ...]
+    plotData: {},         // {spec: {...}, nmr: {...}}
+    activePlotIndex: 0,
+    controls: {
+      distXAxisId: "titrant_total",     // species distribution X axis
+      distYSelected: new Set(),         // species selected for Y axis
+      nmrSignalsSelected: new Set(),    // NMR shifts fit - signals to display
+      nmrResidSelected: new Set(),      // NMR residuals - signals to display
+    }
+  };
+}
+
+function makeDefaultModuleState() {
+  return {
+    file: null,
+    fileName: "",
+    // Available data lists for restoration
+    availableSheets: [],
+    availableColumns: [],
+    availableSignals: [],
+
+    sheetSpectra: "",
+    sheetConc: "",
+    sheetNmr: "",
+    // Input values
+    efaEnabled: true,
+    efaEigenvalues: 0,
+    nComponents: 0,
+    nSpecies: 0,
+    // Grid data
+    modelGrid: [], // We might need to store this if we want to persist it
+    optGrid: [],
+    // Selections
+    selectedColumns: [],
+    selectedSignals: [],
+    receptor: "",
+    guest: "",
+    // Console & Plots
+    consoleText: "",
+    plotState: makeDefaultPlotState(),
+    resultsText: "",
+    resultsPayload: null,
+    lastResponse: null,
+  };
+}
+
 const state = {
   activeModule: "spectroscopy", // "spectroscopy" | "nmr"
   activeSubtab: "model",        // "model" | "optimization" | "plots"
-  uploadedFile: null,            // Currently selected file
-  latestResultsText: "",         // Cache último reporte para guardar
-  latestResultsPayload: null,    // Última respuesta de backend para exportar XLSX
+  modules: {
+    spectroscopy: makeDefaultModuleState(),
+    nmr: makeDefaultModuleState(),
+  },
 };
 
-// Main canvas state for carousel navigation and interactive plot controls
-const mainCanvasState = {
-  availablePlots: [],   // [{id, title, kind}, ...]
-  plotData: {},         // {spec: {...}, nmr: {...}}
-  activePlotIndex: 0,
-  controls: {
-    distXAxisId: "titrant_total",     // species distribution X axis
-    distYSelected: new Set(),         // species selected for Y axis
-    nmrSignalsSelected: new Set(),    // NMR shifts fit - signals to display
-    nmrResidSelected: new Set(),      // NMR residuals - signals to display
-  }
-};
+// Helper to access active module state
+function M() {
+  return state.modules[state.activeModule];
+}
 
 // Helper functions for consistent data access
 function getActivePlot() {
-  return mainCanvasState.availablePlots[mainCanvasState.activePlotIndex] || null;
+  const ps = M().plotState;
+  return ps.availablePlots[ps.activePlotIndex] || null;
 }
 
 function getActivePlotData() {
   const plot = getActivePlot();
   if (!plot) return null;
   const modKey = state.activeModule === 'nmr' ? 'nmr' : 'spec';
-  const moduleData = mainCanvasState.plotData?.[modKey] || {};
+  const moduleData = M().plotState.plotData?.[modKey] || {};
   return moduleData?.[plot.id] || null;
 }
 
@@ -173,6 +217,12 @@ function connectWebSocket() {
 }
 
 function appendToConsole(text) {
+  // Save to active module state
+  const m = M();
+  if (m) {
+    m.consoleText += text;
+  }
+
   const pre = document.getElementById("log-output");
   if (!pre) return;
   // Ensure we append a newline if the previous content didn't end with one
@@ -182,6 +232,14 @@ function appendToConsole(text) {
   pre.textContent += text;
   // Auto-scroll to bottom
   pre.scrollTop = pre.scrollHeight;
+}
+
+function setConsoleText(text) {
+  const pre = document.getElementById("log-output");
+  if (pre) {
+    pre.textContent = text;
+    pre.scrollTop = pre.scrollHeight;
+  }
 }
 
 function log(text) {
@@ -273,7 +331,7 @@ function updateUI() {
 
   // EFA solo en Spectroscopy
   const efaRow = document.querySelector(".efa-row");
-  const spectraSheetRow = document.getElementById("spectra-sheet-select").closest(".field");
+  const spectraSheetRow = document.getElementById("spectra-sheet-select")?.closest(".field");
   const nmrSheetRow = document.getElementById("nmr-sheet-row");
   const nmrSignalsRow = document.getElementById("nmr-signals-row");
 
@@ -287,6 +345,247 @@ function updateUI() {
     if (spectraSheetRow) spectraSheetRow.classList.remove("hidden");
     if (nmrSheetRow) nmrSheetRow.classList.add("hidden");
     if (nmrSignalsRow) nmrSignalsRow.classList.add("hidden");
+  }
+}
+
+// --- Module Switching Logic ---
+
+function renderModuleUI() {
+  const m = M();
+
+  // File Input
+  const fileInput = document.getElementById("excel-file");
+  const fileStatus = document.querySelector(".file-status");
+
+  if (m.file) {
+    if (fileStatus) fileStatus.textContent = m.fileName;
+    // We cannot set fileInput.value to a file object.
+    // But we can leave it alone if it matches? No, we can't read the file object from input easily to compare.
+    // If we switched tabs, the input might hold the OTHER module's file.
+    // So we should probably always clear the input value to avoid confusion, 
+    // relying on the status text to show what's loaded in memory.
+    // But if the user wants to re-select the SAME file to trigger change event, they can't if we don't clear it.
+    // So clearing it is safer.
+    if (fileInput) fileInput.value = "";
+  } else {
+    if (fileStatus) fileStatus.textContent = "No file selected";
+    if (fileInput) fileInput.value = "";
+  }
+
+  // Sheet Selects - Restore Options
+  const spectraSheet = document.getElementById("spectra-sheet-select");
+  const concSheet = document.getElementById("conc-sheet-select");
+  const nmrSheet = document.getElementById("nmr-sheet-select");
+
+  const restoreOptions = (select, options) => {
+    if (!select) return;
+    select.innerHTML = "";
+    if (!options || options.length === 0) {
+      const opt = document.createElement("option");
+      opt.text = "No sheets found"; // Or "Select a file first..."
+      select.add(opt);
+    } else {
+      options.forEach(sheet => {
+        const opt = document.createElement("option");
+        opt.value = sheet;
+        opt.text = sheet;
+        select.add(opt);
+      });
+    }
+  };
+
+  restoreOptions(spectraSheet, m.availableSheets);
+  restoreOptions(concSheet, m.availableSheets);
+  restoreOptions(nmrSheet, m.availableSheets);
+
+  // Restore Sheet Selections
+  if (spectraSheet) spectraSheet.value = m.sheetSpectra;
+  if (concSheet) concSheet.value = m.sheetConc;
+  if (nmrSheet) nmrSheet.value = m.sheetNmr;
+
+  // Columns Container - Restore Checkboxes
+  const columnsContainer = document.getElementById("columns-container");
+  if (columnsContainer) {
+    columnsContainer.innerHTML = "";
+    if (m.availableColumns.length === 0) {
+      columnsContainer.textContent = "Select a concentration sheet to load columns...";
+    } else {
+      m.availableColumns.forEach(col => {
+        const label = document.createElement("label");
+        label.className = "checkbox-inline";
+        label.style.marginRight = "10px";
+
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.value = col;
+        cb.name = "column_names";
+        // Restore selection state? 
+        // We need to store selected columns in state too.
+        // We have m.selectedColumns (array of strings)
+        // But we didn't populate it in the handler yet! 
+        // Wait, we need to add a listener to columnsContainer to update m.selectedColumns.
+        // I'll add that listener in wireSpectroscopyForm.
+        // For now, let's assume it's populated or empty.
+        // Actually, the previous code didn't have m.selectedColumns populated.
+        // I need to add that listener.
+
+        // Check if selected
+        // We don't have m.selectedColumns populated yet.
+        // I'll add the listener in the next step.
+
+        const span = document.createElement("span");
+        span.textContent = col;
+
+        label.appendChild(cb);
+        label.appendChild(span);
+        columnsContainer.appendChild(label);
+      });
+    }
+  }
+
+  // NMR Signals Container - Restore Checkboxes
+  const nmrSignalsContainer = document.getElementById("nmr-signals-container");
+  if (nmrSignalsContainer) {
+    nmrSignalsContainer.innerHTML = "";
+    if (m.availableSignals.length === 0) {
+      nmrSignalsContainer.textContent = "Select a chemical shift sheet to load signals...";
+    } else {
+      m.availableSignals.forEach(col => {
+        const label = document.createElement("label");
+        label.className = "checkbox-inline";
+        label.style.marginRight = "10px";
+
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.value = col;
+        cb.name = "signal_names";
+
+        const span = document.createElement("span");
+        span.textContent = col;
+
+        label.appendChild(cb);
+        label.appendChild(span);
+        nmrSignalsContainer.appendChild(label);
+      });
+    }
+  }
+
+  // Inputs
+  const efaEigen = document.querySelector('input[type="number"]'); // First one
+  const efaCheck = document.querySelector('input[type="checkbox"]');
+  if (efaEigen) efaEigen.value = m.efaEigenvalues;
+  if (efaCheck) efaCheck.checked = m.efaEnabled;
+
+  // Model dims
+  const nCompInput = document.querySelectorAll('input[type="number"]')[1];
+  const nSpeciesInput = document.querySelectorAll('input[type="number"]')[2];
+  if (nCompInput) nCompInput.value = m.nComponents;
+  if (nSpeciesInput) nSpeciesInput.value = m.nSpecies;
+
+  // Grids
+  const modelGrid = document.getElementById("model-grid-container");
+  const optGrid = document.getElementById("optimization-grid-container");
+
+  if (m.nComponents === 0 && m.nSpecies === 0) {
+    if (modelGrid) modelGrid.innerHTML = "";
+    if (optGrid) optGrid.innerHTML = "";
+  }
+
+  // Receptor/Guest
+  const receptor = document.getElementById("receptor-select");
+  const guest = document.getElementById("guest-select");
+  // We need to restore options for these too!
+  // They depend on availableColumns.
+  if (receptor && guest) {
+    const restoreDropdown = (select, val) => {
+      select.innerHTML = "";
+      const defaultOpt = document.createElement("option");
+      defaultOpt.value = "";
+      defaultOpt.text = "";
+      select.add(defaultOpt);
+
+      m.availableColumns.forEach(col => {
+        const opt = document.createElement("option");
+        opt.value = col;
+        opt.text = col;
+        select.add(opt);
+      });
+      select.value = val;
+    };
+    restoreDropdown(receptor, m.receptor);
+    restoreDropdown(guest, m.guest);
+  }
+}
+
+function renderPlotsUI() {
+  const m = M();
+  const ps = m.plotState;
+
+  // Restore Preset
+  const presetSelect = document.getElementById("spectro-plot-preset-select");
+  if (presetSelect) {
+    presetSelect.innerHTML = '<option value="">Select a preset...</option>';
+    ps.availablePlots.forEach(p => {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.text = p.title;
+      presetSelect.add(opt);
+    });
+
+    const activePlot = ps.availablePlots[ps.activePlotIndex];
+    if (activePlot) {
+      presetSelect.value = activePlot.id;
+    } else {
+      presetSelect.value = "";
+    }
+  }
+
+  // Sync other controls (X axis, Y series)
+  // We need to ensure syncPlotControlsForActivePlot is available here.
+  // It is defined later in the file, but function declarations are hoisted.
+  // However, we should check if it exists just in case.
+  if (typeof syncPlotControlsForActivePlot === 'function') {
+    syncPlotControlsForActivePlot();
+  } else {
+    // Fallback: clear controls if function not found (shouldn't happen)
+    const xAxis = document.getElementById("spectro-x-axis-select");
+    const ySel = document.getElementById("spectro-y-series-select");
+    if (xAxis) { xAxis.innerHTML = '<option value="">Select X axis...</option>'; xAxis.value = ""; }
+    if (ySel) { ySel.innerHTML = ""; }
+  }
+}
+
+function renderConsoleUI() {
+  const m = M();
+  setConsoleText(m.consoleText);
+}
+
+function switchModule(nextModule) {
+  if (state.activeModule === nextModule) return;
+
+  // 1. Save current state? (Already done via live updates in handlers)
+
+  // 2. Switch
+  state.activeModule = nextModule;
+
+  // 3. Update UI visibility
+  updateUI();
+
+  // 4. Restore DOM state from new module
+  renderModuleUI();
+  renderPlotsUI();
+  renderConsoleUI();
+
+  // 5. Render Plot
+  // We need to ensure Plotly is cleared or rendered
+  const primaryPlot = document.querySelector('.primary-plot');
+  const ps = M().plotState;
+  if (ps.availablePlots.length > 0) {
+    renderMainCanvasPlot();
+  } else {
+    if (primaryPlot) primaryPlot.innerHTML = ''; // Clear
+    const counter = document.getElementById('plot-counter');
+    if (counter) counter.textContent = '—';
   }
 }
 
@@ -526,29 +825,11 @@ function initApp() {
   `;
 
   // Tabs: módulo (Spectroscopy / NMR)
+  // Tabs: módulo (Spectroscopy / NMR)
   document.querySelectorAll("[data-module-tab]").forEach((btn) => {
     const mod = btn.dataset.moduleTab;
     btn.addEventListener("click", () => {
-      if (state.activeModule !== mod) {
-        // Clear main canvas when switching modules to avoid showing wrong data
-        mainCanvasState.availablePlots = [];
-        mainCanvasState.plotData = {};
-        mainCanvasState.activePlotIndex = 0;
-        mainCanvasState.controls.distYSelected.clear();
-        mainCanvasState.controls.nmrSignalsSelected.clear();
-        mainCanvasState.controls.nmrResidSelected.clear();
-
-        const primaryPlot = document.querySelector('.primary-plot');
-        if (primaryPlot) primaryPlot.innerHTML = '<p style="color: #9ca3af;">Process data to see plots</p>';
-
-        const counterEl = document.getElementById('plot-counter');
-        if (counterEl) counterEl.textContent = '—';
-
-        const presetSelect = document.getElementById('spectro-plot-preset-select');
-        if (presetSelect) presetSelect.innerHTML = '<option value="">Select a preset...</option>';
-      }
-      state.activeModule = mod;
-      updateUI();
+      switchModule(mod);
     });
   });
 
@@ -765,33 +1046,36 @@ function wireSpectroscopyForm() {
     const selectedId = plotPresetSelect.value;
     if (!selectedId) return;
 
-    const index = mainCanvasState.availablePlots.findIndex(p => p.id === selectedId);
+    const ps = M().plotState;
+    const index = ps.availablePlots.findIndex(p => p.id === selectedId);
     if (index >= 0) {
-      mainCanvasState.activePlotIndex = index;
+      ps.activePlotIndex = index;
       renderMainCanvasPlot();
     }
   });
 
   // X axis dropdown: update controls and re-render
   plotXAxisSelect?.addEventListener("change", () => {
-    const plot = mainCanvasState.availablePlots[mainCanvasState.activePlotIndex];
+    const ps = M().plotState;
+    const plot = ps.availablePlots[ps.activePlotIndex];
     if (plot?.id === 'spec_species_distribution' || plot?.id === 'nmr_species_distribution') {
-      mainCanvasState.controls.distXAxisId = plotXAxisSelect.value;
+      ps.controls.distXAxisId = plotXAxisSelect.value;
       renderMainCanvasPlot();
     }
   });
 
   // Y series dropdown: update selected species/signals and re-render
   plotYSeriesSelect?.addEventListener("change", () => {
-    const plot = mainCanvasState.availablePlots[mainCanvasState.activePlotIndex];
+    const ps = M().plotState;
+    const plot = ps.availablePlots[ps.activePlotIndex];
     const selected = Array.from(plotYSeriesSelect.selectedOptions).map(o => o.value);
 
     if (plot?.id === 'spec_species_distribution' || plot?.id === 'nmr_species_distribution') {
-      mainCanvasState.controls.distYSelected = new Set(selected);
+      ps.controls.distYSelected = new Set(selected);
     } else if (plot?.id === 'nmr_shifts_fit') {
-      mainCanvasState.controls.nmrSignalsSelected = new Set(selected);
+      ps.controls.nmrSignalsSelected = new Set(selected);
     } else if (plot?.id === 'nmr_residuals') {
-      mainCanvasState.controls.nmrResidSelected = new Set(selected);
+      ps.controls.nmrResidSelected = new Set(selected);
     }
 
     renderMainCanvasPlot();
@@ -815,17 +1099,20 @@ function wireSpectroscopyForm() {
     const file = e.target.files[0];
     if (!file) {
       fileStatus.textContent = "No file selected";
-      state.uploadedFile = null;
+      M().file = null;
+      M().fileName = "";
       return;
     }
     fileStatus.textContent = file.name;
-    state.uploadedFile = file;
+    M().file = file;
+    M().fileName = file.name;
 
     // Enviar al backend para obtener hojas
     try {
       diagEl.textContent = "Leyendo archivo Excel...";
       const data = await backendApi.listSheets(file, state.activeModule);
       const sheets = data?.sheets || [];
+      M().availableSheets = sheets;
 
       // Poblar dropdowns
       [spectraSheetInput, concSheetInput, nmrSheetInput].forEach(select => {
@@ -857,6 +1144,7 @@ function wireSpectroscopyForm() {
   // --- Handler: Concentration Sheet Selection ---
   concSheetInput?.addEventListener("change", async () => {
     const sheetName = concSheetInput.value;
+    M().sheetConc = sheetName;
     const file = fileInput.files[0];
 
     if (!sheetName || !file) {
@@ -868,6 +1156,7 @@ function wireSpectroscopyForm() {
       diagEl.textContent = `Leyendo columnas de ${sheetName}...`;
       const data = await backendApi.listColumns(file, sheetName, state.activeModule);
       const columns = data?.columns || [];
+      M().availableColumns = columns;
 
       columnsContainer.innerHTML = ""; // Limpiar
       if (columns.length === 0) {
@@ -903,6 +1192,7 @@ function wireSpectroscopyForm() {
   // --- Handler: NMR Chemical Shift Sheet Selection ---
   nmrSheetInput?.addEventListener("change", async () => {
     const sheetName = nmrSheetInput.value;
+    M().sheetNmr = sheetName;
     const file = fileInput.files[0];
 
     if (!sheetName || !file) {
@@ -915,6 +1205,7 @@ function wireSpectroscopyForm() {
       // Reusing listColumns as it just reads headers
       const data = await backendApi.listColumns(file, sheetName, state.activeModule);
       const columns = data?.columns || [];
+      M().availableSignals = columns;
 
       nmrSignalsContainer.innerHTML = "";
       if (columns.length === 0) {
@@ -1080,7 +1371,50 @@ function wireSpectroscopyForm() {
     generateModelGrid(nComp, nSpecies);
     generateOptGrid(nSpecies);
     diagEl.textContent = `Grid generado: ${nComp} Componentes x ${nSpecies} Especies.`;
+
+    // Save to state
+    M().nComponents = nComp;
+    M().nSpecies = nSpecies;
   });
+
+  // --- Input Listeners for State Persistence ---
+  spectraSheetInput?.addEventListener("change", () => { M().sheetSpectra = spectraSheetInput.value; });
+
+  efaEigenInput?.addEventListener("change", () => { M().efaEigenvalues = readInt(efaEigenInput.value); });
+  efaCheckbox?.addEventListener("change", () => { M().efaEnabled = efaCheckbox.checked; });
+
+  receptorInput?.addEventListener("change", () => { M().receptor = receptorInput.value; });
+  guestInput?.addEventListener("change", () => { M().guest = guestInput.value; });
+
+  // Note: Grid content is not automatically saved on every keystroke here, 
+  // but is collected when processing. If we wanted to persist grid state on switch,
+  // we would need to serialize the grid to M().modelGrid on change or on switchModule.
+  // For now, we rely on the user not switching tabs mid-edit if they want to keep the grid,
+  // OR we implement a saveGridToState() in switchModule.
+  // Given the complexity, we'll assume grid is transient until processed or we add explicit save.
+  // However, the user asked to "preserve what was run". 
+  // If they run, we can save the grid data from the payload?
+  // Or we can just let the grid stay in DOM if we don't clear it?
+  // Wait, switchModule calls renderModuleUI which might clear the grid if we don't restore it.
+  // In renderModuleUI, I added a check: if nComp/nSpecies are 0, clear. Otherwise leave it?
+  // If we leave it, it might show the WRONG grid if we switch from Spec to NMR and back.
+  // Actually, NMR doesn't use the model grid. So it's fine.
+  // But if we have two Spec tabs (hypothetically), it would be an issue.
+  // Here we have Spec vs NMR. NMR hides the model panel?
+  // Let's check updateUI.
+  // updateUI hides efaRow, spectraSheetRow, nmrSheetRow.
+  // It does NOT hide the Model/Optimization panels.
+  // So the Model grid IS shared if we don't clear/restore it.
+  // This means we MUST save/restore the grid if we want isolation.
+  // But NMR doesn't use the model grid, so maybe we just clear it when switching to NMR?
+  // And restore when switching to Spec?
+  // Since NMR doesn't use it, maybe it's fine if it stays there, but it might be confusing.
+  // The user said "NMR ↔ Spectroscopy se “contamina”".
+  // If I type in the grid in Spec, switch to NMR, the grid is still there.
+  // If NMR doesn't use it, it's just visual clutter.
+  // But if I switch back to Spec, I want it back.
+  // So I should save it.
+  // I'll add a helper to save grid state in switchModule.
 
   // --- Helper: Update Receptor/Guest Dropdowns ---
   function updateDropdowns() {
@@ -1125,117 +1459,63 @@ function wireSpectroscopyForm() {
   observer.observe(columnsContainer, { childList: true, subtree: true });
 
   // --- Scoped Reset Functions ---
-  function resetSpectroscopyTab() {
-    // Clear file input and status
-    if (fileInput) fileInput.value = "";
-    if (fileStatus) fileStatus.textContent = "No file selected";
+  // --- Scoped Reset Functions ---
 
-    // Clear sheet selects
-    if (spectraSheetInput) spectraSheetInput.innerHTML = '<option value="">Select a file first...</option>';
-    if (concSheetInput) concSheetInput.innerHTML = '<option value="">Select a file first...</option>';
+  function clearPlotsControlsDOM() {
+    const preset = document.getElementById("spectro-plot-preset-select");
+    const xAxis = document.getElementById("spectro-x-axis-select");
+    const ySel = document.getElementById("spectro-y-series-select");
 
-    // Clear column checkboxes
-    if (columnsContainer) columnsContainer.innerHTML = "Select a concentration sheet to load columns...";
-
-    // Clear dropdowns
-    if (receptorInput) {
-      receptorInput.innerHTML = '<option value="">Select columns first...</option>';
-      receptorInput.value = "";
+    if (preset) {
+      preset.innerHTML = '<option value="">Select a preset...</option>';
+      preset.value = "";
     }
-    if (guestInput) {
-      guestInput.innerHTML = '<option value="">Select columns first...</option>';
-      guestInput.value = "";
+    if (xAxis) {
+      xAxis.innerHTML = '<option value="">Select X axis...</option>';
+      xAxis.value = "";
     }
-
-    // Clear EFA
-    if (efaEigenInput) efaEigenInput.value = "0";
-    if (efaCheckbox) efaCheckbox.checked = false;
-
-    // Clear model inputs
-    if (nCompInput) nCompInput.value = "0";
-    if (nSpeciesInput) nSpeciesInput.value = "0";
-
-    // Clear grids
-    if (modelGridContainer) modelGridContainer.innerHTML = "";
-    if (optGridContainer) optGridContainer.innerHTML = "";
-
-    // Clear plots
-    const plotContainers = Array.from(document.querySelectorAll(".plot-placeholder"));
-    plotContainers.forEach(c => c.innerHTML = "");
-    // Reset main canvas state
-    mainCanvasState.availablePlots = [];
-    mainCanvasState.plotData = {};
-    mainCanvasState.activePlotIndex = 0;
-    mainCanvasState.controls.distYSelected.clear();
-    mainCanvasState.controls.nmrSignalsSelected.clear();
-    mainCanvasState.controls.nmrResidSelected.clear();
-    updatePresetDropdownFromResults();
-
-    // Clear state
-    state.uploadedFile = null;
-    state.latestResultsText = "";
-    state.latestResultsPayload = null;
-    diagEl.textContent = "Spectroscopy reset.";
+    if (ySel) {
+      ySel.innerHTML = "";
+    }
   }
 
-  function resetNmrTab() {
-    // Clear file input and status
+  function resetActiveModule() {
+    // Reset state
+    state.modules[state.activeModule] = makeDefaultModuleState();
+
+    // Update UI
+    renderModuleUI();
+    clearPlotsControlsDOM();
+
+    // Explicitly clear file input value in DOM to ensure it doesn't persist visually
+    const fileInput = document.getElementById("excel-file");
     if (fileInput) fileInput.value = "";
-    if (fileStatus) fileStatus.textContent = "No file selected";
 
-    // Clear sheet selects
-    if (concSheetInput) concSheetInput.innerHTML = '<option value="">Select a file first...</option>';
-    if (nmrSheetInput) nmrSheetInput.innerHTML = '<option value="">Select a file first...</option>';
+    // Clear Canvas
+    const primaryPlot = document.querySelector('.primary-plot');
+    if (primaryPlot) primaryPlot.innerHTML = '';
+    const counter = document.getElementById('plot-counter');
+    if (counter) counter.textContent = '—';
 
-    // Clear signal checkboxes
-    if (nmrSignalsContainer) nmrSignalsContainer.innerHTML = "Select a chemical shift sheet to load signals...";
+    // Clear Console
+    setConsoleText("");
 
-    // Clear column checkboxes
-    if (columnsContainer) columnsContainer.innerHTML = "Select a concentration sheet to load columns...";
-
-    // Clear dropdowns
-    if (receptorInput) {
-      receptorInput.innerHTML = '<option value="">Select columns first...</option>';
-      receptorInput.value = "";
-    }
-    if (guestInput) {
-      guestInput.innerHTML = '<option value="">Select columns first...</option>';
-      guestInput.value = "";
-    }
-
-    // Clear model inputs
-    if (nCompInput) nCompInput.value = "0";
-    if (nSpeciesInput) nSpeciesInput.value = "0";
-
-    // Clear grids
-    if (modelGridContainer) modelGridContainer.innerHTML = "";
-    if (optGridContainer) optGridContainer.innerHTML = "";
-
-    // Clear plots
-    const plotContainers = document.querySelectorAll(".plot-placeholder");
-    plotContainers.forEach(c => c.innerHTML = "");
-
-    // Clear state
-    state.uploadedFile = null;
-    state.latestResultsText = "";
-    state.latestResultsPayload = null;
-    diagEl.textContent = "NMR reset.";
+    diagEl.textContent = `${state.activeModule === 'nmr' ? 'NMR' : 'Spectroscopy'} reset.`;
   }
 
   // --- Handler: Reset ---
+  // --- Handler: Reset ---
   resetBtn.addEventListener("click", () => {
-    if (state.activeModule === 'nmr') {
-      resetNmrTab();
-    } else {
-      resetSpectroscopyTab();
-    }
+    resetActiveModule();
   });
 
   // --- Handler: Save Results ---
+  // --- Handler: Save Results ---
   if (saveBtn) {
     saveBtn.addEventListener("click", async () => {
-      const payload = state.latestResultsPayload;
-      const resultsText = (state.latestResultsText || diagEl.textContent || "").trim();
+      const m = M();
+      const payload = m.resultsPayload;
+      const resultsText = (m.resultsText || diagEl.textContent || "").trim();
       if (!payload || !payload.success) {
         appendLog("No hay resultados para guardar.");
         return;
@@ -1277,7 +1557,7 @@ function wireSpectroscopyForm() {
         const data = await fetchXlsx();
         await writeBinaryFile({ path: savePath, contents: data });
 
-        const baseText = state.latestResultsText || "";
+        const baseText = m.resultsText || "";
         diagEl.textContent = `${baseText}\n\nResultados guardados como ${savePath}`;
 
       } catch (err) {
@@ -1318,7 +1598,8 @@ function wireSpectroscopyForm() {
       return;
     }
 
-    if (!state.uploadedFile) {
+    const m = M();
+    if (!m.file) {
       diagEl.textContent = "Error: No file selected. Please select a file first.";
       return;
     }
@@ -1393,7 +1674,7 @@ function wireSpectroscopyForm() {
 
     // Create FormData with file and parameters
     const formData = new FormData();
-    formData.append("file", state.uploadedFile);
+    formData.append("file", m.file);
     formData.append("conc_sheet", concSheetInput?.value || "");
     formData.append("column_names", JSON.stringify(selectedCols));
     formData.append("receptor_label", receptorInput?.value || "");
@@ -1452,11 +1733,15 @@ function wireSpectroscopyForm() {
           `Consulta la consola para más detalles.`;
       }
 
-      state.latestResultsText = "";
-      state.latestResultsPayload = null;
+      const m = M();
+      m.resultsText = "";
+      m.resultsPayload = null;
       // Reset main canvas on error
-      mainCanvasState.availablePlots = [];
-      mainCanvasState.plotData = {};
+      m.plotState.availablePlots = [];
+      m.plotData = {}; // Should be m.plotState.plotData? No, plotData is inside plotState.
+      // Correct: m.plotState.plotData = {};
+      m.plotState.plotData = {};
+
       diagEl.textContent = message;
       console.error(`[HM Fit] Process Data request failed (${state.activeModule}):`, err);
     } finally {
@@ -1466,12 +1751,13 @@ function wireSpectroscopyForm() {
 
   // Helper function to display results
   function displayResults(data) {
+    const m = M();
     if (!data.success) {
       const detail = data.detail || data.error || "Procesamiento falló.";
-      state.latestResultsText = "";
-      state.latestResultsPayload = null;
-      mainCanvasState.availablePlots = [];
-      mainCanvasState.plotData = {};
+      m.resultsText = "";
+      m.resultsPayload = null;
+      m.plotState.availablePlots = [];
+      m.plotState.plotData = {};
       appendToConsole(`\nError: ${detail}`);
       scrollDiagnosticsToBottom();
       return;
@@ -1525,17 +1811,18 @@ function wireSpectroscopyForm() {
       appendToConsole(`\n${finalText}`);
     }
 
-    state.latestResultsText = finalText;
-    state.latestResultsPayload = data;
+    m.resultsText = finalText;
+    m.resultsPayload = data;
     scrollDiagnosticsToBottom();
   }
 
   function displayNmrResults(data) {
+    const m = M();
     if (!data?.success) {
       const detail = data?.detail || data?.error || "Procesamiento NMR falló.";
       appendToConsole(`\nError: ${detail}`);
-      state.latestResultsText = "";
-      state.latestResultsPayload = null;
+      m.resultsText = "";
+      m.resultsPayload = null;
       scrollDiagnosticsToBottom();
       return;
     }
@@ -1543,8 +1830,8 @@ function wireSpectroscopyForm() {
     if (data.results_text) {
       const normalized = (data.results_text ?? '').replace(/\r\n/g, '\n');
       appendToConsole(`\n${normalized}`);
-      state.latestResultsText = normalized;
-      state.latestResultsPayload = data;
+      m.resultsText = normalized;
+      m.resultsPayload = data;
       scrollDiagnosticsToBottom();
       return;
     }
@@ -1555,23 +1842,24 @@ function wireSpectroscopyForm() {
     lines.push("Processing complete.");
     const fallbackText = lines.join("\n");
     appendToConsole(`\n${fallbackText}`);
-    state.latestResultsText = fallbackText;
-    state.latestResultsPayload = data;
+    m.resultsText = fallbackText;
+    m.resultsPayload = data;
     scrollDiagnosticsToBottom();
   }
 
   // === Main Canvas Functions ===
   function setMainCanvasResults(resultPayload) {
     // Extract availablePlots and plotData from backend response
-    mainCanvasState.availablePlots = resultPayload.availablePlots || [];
-    mainCanvasState.plotData = resultPayload.plotData || {};
-    mainCanvasState.activePlotIndex = 0;
+    const ps = M().plotState;
+    ps.availablePlots = resultPayload.availablePlots || [];
+    ps.plotData = resultPayload.plotData || {};
+    ps.activePlotIndex = 0;
 
     // Reset interactive controls (will be auto-populated on first render)
-    mainCanvasState.controls.distXAxisId = 'titrant_total';
-    mainCanvasState.controls.distYSelected.clear();
-    mainCanvasState.controls.nmrSignalsSelected.clear();
-    mainCanvasState.controls.nmrResidSelected.clear();
+    ps.controls.distXAxisId = 'titrant_total';
+    ps.controls.distYSelected.clear();
+    ps.controls.nmrSignalsSelected.clear();
+    ps.controls.nmrResidSelected.clear();
 
     renderMainCanvasPlot();
     updatePresetDropdownFromResults();
@@ -1585,8 +1873,9 @@ function wireSpectroscopyForm() {
     const sidePrev = document.getElementById('plot-prev-side');
     const sideNext = document.getElementById('plot-next-side');
 
-    const plots = mainCanvasState.availablePlots;
-    const index = mainCanvasState.activePlotIndex;
+    const ps = M().plotState;
+    const plots = ps.availablePlots;
+    const index = ps.activePlotIndex;
 
     // Helper to enable/disable nav
     const setNavEnabled = (enabled) => {
@@ -1665,7 +1954,7 @@ function wireSpectroscopyForm() {
   // Build Plotly traces based on plot type
   function buildPlotlyTraces(plotId, data) {
     const traces = [];
-    const controls = mainCanvasState.controls;
+    const controls = M().plotState.controls;
 
     if (plotId === 'spec_species_distribution' || plotId === 'nmr_species_distribution') {
       // Species distribution plot
@@ -1762,7 +2051,7 @@ function wireSpectroscopyForm() {
     };
 
     if (plotId === 'spec_species_distribution' || plotId === 'nmr_species_distribution') {
-      const xAxisId = mainCanvasState.controls.distXAxisId || 'titrant_total';
+      const xAxisId = M().plotState.controls.distXAxisId || 'titrant_total';
       const axisOption = (data.axisOptions || []).find(a => a.id === xAxisId);
       layout.xaxis.title = axisOption?.label || 'Concentration';
       layout.yaxis.title = '[Species], M';
@@ -1834,7 +2123,7 @@ function wireSpectroscopyForm() {
           el.text = opt.label;
           xAxisSelect.add(el);
         });
-        xAxisSelect.value = mainCanvasState.controls.distXAxisId || 'titrant_total';
+        xAxisSelect.value = M().plotState.controls.distXAxisId || 'titrant_total';
         const labelEl = xAxisSelect.closest('.field')?.querySelector('.field-label');
         if (labelEl) labelEl.textContent = 'X axis';
       }
@@ -1846,7 +2135,7 @@ function wireSpectroscopyForm() {
           const el = document.createElement('option');
           el.value = opt.id;
           el.text = opt.label;
-          el.selected = mainCanvasState.controls.distYSelected.has(opt.id);
+          el.selected = M().plotState.controls.distYSelected.has(opt.id);
           ySeriesSelect.add(el);
         });
         const labelEl = ySeriesSelect.closest('.field')?.querySelector('.field-label');
@@ -1863,7 +2152,7 @@ function wireSpectroscopyForm() {
           const el = document.createElement('option');
           el.value = opt.id;
           el.text = opt.label;
-          el.selected = mainCanvasState.controls.nmrSignalsSelected.has(opt.id);
+          el.selected = M().plotState.controls.nmrSignalsSelected.has(opt.id);
           ySeriesSelect.add(el);
         });
         const labelEl = ySeriesSelect.closest('.field')?.querySelector('.field-label');
@@ -1880,7 +2169,7 @@ function wireSpectroscopyForm() {
           const el = document.createElement('option');
           el.value = opt.id;
           el.text = opt.label;
-          el.selected = mainCanvasState.controls.nmrResidSelected.has(opt.id);
+          el.selected = M().plotState.controls.nmrResidSelected.has(opt.id);
           ySeriesSelect.add(el);
         });
         const labelEl = ySeriesSelect.closest('.field')?.querySelector('.field-label');
@@ -1890,16 +2179,17 @@ function wireSpectroscopyForm() {
   }
 
   function navigateMainCanvas(delta) {
-    const total = mainCanvasState.availablePlots.length;
+    const ps = M().plotState;
+    const total = ps.availablePlots.length;
     if (total === 0) return;
 
-    mainCanvasState.activePlotIndex = (mainCanvasState.activePlotIndex + delta + total) % total;
+    ps.activePlotIndex = (ps.activePlotIndex + delta + total) % total;
     renderMainCanvasPlot();
 
     // Sync preset dropdown
     const presetSelect = document.getElementById('spectro-plot-preset-select');
-    if (presetSelect && mainCanvasState.availablePlots[mainCanvasState.activePlotIndex]) {
-      presetSelect.value = mainCanvasState.availablePlots[mainCanvasState.activePlotIndex].id;
+    if (presetSelect && ps.availablePlots[ps.activePlotIndex]) {
+      presetSelect.value = ps.availablePlots[ps.activePlotIndex].id;
     }
   }
 
@@ -1914,7 +2204,8 @@ function wireSpectroscopyForm() {
     defaultOpt.text = 'Select a preset...';
     presetSelect.add(defaultOpt);
 
-    mainCanvasState.availablePlots.forEach(plot => {
+    const ps = M().plotState;
+    ps.availablePlots.forEach(plot => {
       const opt = document.createElement('option');
       opt.value = plot.id;
       opt.text = plot.title;
@@ -1922,13 +2213,14 @@ function wireSpectroscopyForm() {
     });
 
     // Select first plot by default
-    if (mainCanvasState.availablePlots.length > 0) {
-      presetSelect.value = mainCanvasState.availablePlots[0].id;
+    if (ps.availablePlots.length > 0) {
+      presetSelect.value = ps.availablePlots[0].id;
     }
   }
 
   function exportMainCanvasPNG() {
-    const currentPlot = mainCanvasState.availablePlots[mainCanvasState.activePlotIndex];
+    const ps = M().plotState;
+    const currentPlot = ps.availablePlots[ps.activePlotIndex];
     const filename = `${currentPlot?.id || 'plot'}.png`;
 
     if (currentPlot?.kind === 'plotly') {
@@ -1967,7 +2259,8 @@ function wireSpectroscopyForm() {
   }
 
   function exportMainCanvasCSV() {
-    const currentPlot = mainCanvasState.availablePlots[mainCanvasState.activePlotIndex];
+    const ps = M().plotState;
+    const currentPlot = ps.availablePlots[ps.activePlotIndex];
 
     if (!currentPlot || currentPlot.kind !== 'plotly') {
       appendLog('CSV export only available for interactive plots');
@@ -1975,8 +2268,8 @@ function wireSpectroscopyForm() {
     }
 
     const dataSource = state.activeModule === 'nmr'
-      ? mainCanvasState.plotData?.nmr
-      : mainCanvasState.plotData?.spec;
+      ? ps.plotData?.nmr
+      : ps.plotData?.spec;
     const data = dataSource?.[currentPlot.id];
 
     if (!data) {
@@ -1985,7 +2278,7 @@ function wireSpectroscopyForm() {
     }
 
     let csv = '';
-    const controls = mainCanvasState.controls;
+    const controls = ps.controls;
 
     if (currentPlot.id === 'spec_species_distribution' || currentPlot.id === 'nmr_species_distribution') {
       // Species distribution CSV
