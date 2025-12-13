@@ -2604,6 +2604,7 @@ function wireSpectroscopyForm() {
       const A = data.A || [];
       const speciesOptions = data.speciesOptions || [];
       const nSpecies = Array.isArray(A?.[0]) ? A[0].length : 0;
+      const isSpectrum = Array.isArray(nm) && nm.length > 10;
 
       for (let s = 0; s < nSpecies; s++) {
         const y = A.map(row => row?.[s]).filter(v => v !== undefined);
@@ -2611,10 +2612,12 @@ function wireSpectroscopyForm() {
         traces.push({
           x: nm,
           y,
-          mode: 'lines+markers',
+          mode: isSpectrum ? 'lines' : 'lines+markers',
           name: label,
-          line: { width: 2 },
-          marker: { size: 5 },
+          line: isSpectrum
+            ? { width: 2, shape: 'spline', smoothing: 1.2 }
+            : { width: 2, shape: 'linear' },
+          marker: isSpectrum ? { size: 0 } : { size: 6 },
         });
       }
     } else if (plotId === 'spec_efa_eigenvalues') {
@@ -2633,6 +2636,8 @@ function wireSpectroscopyForm() {
       const fwd = data.efaForward || [];
       const bwd = data.efaBackward || [];
       const nComp = Array.isArray(fwd?.[0]) ? fwd[0].length : 0;
+      let shownForward = false;
+      let shownBackward = false;
       for (let c = 0; c < nComp; c++) {
         const yF = fwd.map(row => {
           const v = row?.[c];
@@ -2645,18 +2650,23 @@ function wireSpectroscopyForm() {
         traces.push({
           x,
           y: yF,
-          mode: 'lines+markers',
-          name: `fwd ${c + 1}`,
-          marker: { size: 6 },
+          mode: 'lines',
+          name: 'Forward',
+          legendgroup: 'forward',
+          showlegend: !shownForward,
+          line: { width: 2, color: '#1f77b4' },
         });
+        shownForward = true;
         traces.push({
           x,
           y: yB,
-          mode: 'lines+markers',
-          name: `bwd ${c + 1}`,
-          marker: { size: 6 },
-          line: { dash: 'dot' },
+          mode: 'lines',
+          name: 'Backward',
+          legendgroup: 'backward',
+          showlegend: !shownBackward,
+          line: { width: 2, dash: 'dot', color: '#ff7f0e' },
         });
+        shownBackward = true;
       }
     }
 
