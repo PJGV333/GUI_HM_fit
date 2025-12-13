@@ -42,6 +42,14 @@ function makeDefaultModuleState() {
     channelsRaw: "All",
     channelsResolved: [],
     channelsMode: "all",
+    dataMapping: {
+      conc: {
+        selected: [],
+        receptor: "",
+        guest: "",
+      },
+      signals: [],
+    },
     // Input values
     efaEnabled: true,
     efaEigenvalues: 0,
@@ -711,21 +719,6 @@ function initApp() {
               </div>
             </div>
 
-            <div class="field-grid">
-              <div class="field">
-                <label class="field-label">Receptor or Ligand</label>
-                <select id="receptor-select" class="field-input">
-                  <option value="">Select columns first...</option>
-                </select>
-              </div>
-              <div class="field">
-                <label class="field-label">Guest, Metal or Titrant</label>
-                <select id="guest-select" class="field-input">
-                  <option value="">Select columns first...</option>
-                </select>
-              </div>
-            </div>
-
             <div class="field efa-row">
               <label class="field-label">EFA Eigenvalues</label>
               <div class="efa-inline">
@@ -794,6 +787,21 @@ function initApp() {
             </div>
 
             <div class="subtab-panel" data-subtab-panel="plots">
+              <div class="field-grid">
+                <div class="field">
+                  <label class="field-label">Receptor or Ligand</label>
+                  <select id="receptor-select" class="field-input">
+                    <option value="">Auto</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label class="field-label">Guest, Metal or Titrant</label>
+                  <select id="guest-select" class="field-input">
+                    <option value="">Auto</option>
+                  </select>
+                </div>
+              </div>
+
               <div class="field-grid">
                 <div class="field">
                   <label class="field-label">Preset</label>
@@ -1045,6 +1053,26 @@ function readList(text) {
   const v = String(text ?? "").trim();
   if (!v) return [];
   return v.split(/[,\s]+/).filter(Boolean);
+}
+
+function ensureDefaultRoleMapping(moduleState, selectedCols) {
+  if (!moduleState?.dataMapping) return;
+  const dm = moduleState.dataMapping;
+  dm.conc = dm.conc || { selected: [], receptor: "", guest: "" };
+  dm.conc.selected = Array.isArray(selectedCols) ? selectedCols : [];
+
+  const receptor = String(dm.conc.receptor || "").trim();
+  const guest = String(dm.conc.guest || "").trim();
+
+  if (!receptor && dm.conc.selected.length >= 1) dm.conc.receptor = dm.conc.selected[0];
+  if (!guest && dm.conc.selected.length >= 2) dm.conc.guest = dm.conc.selected[1];
+}
+
+function getEffectiveRoleLabels(moduleState, selectedCols) {
+  ensureDefaultRoleMapping(moduleState, selectedCols);
+  const receptor = String(moduleState?.dataMapping?.conc?.receptor || "").trim();
+  const guest = String(moduleState?.dataMapping?.conc?.guest || "").trim();
+  return { receptor, guest };
 }
 
 function parseChannelsInput(input) {
@@ -1787,8 +1815,14 @@ function wireSpectroscopyForm() {
   efaEigenInput?.addEventListener("change", () => { M().efaEigenvalues = readInt(efaEigenInput.value); });
   efaCheckbox?.addEventListener("change", () => { M().efaEnabled = efaCheckbox.checked; });
 
-  receptorInput?.addEventListener("change", () => { M().receptor = receptorInput.value; });
-  guestInput?.addEventListener("change", () => { M().guest = guestInput.value; });
+  receptorInput?.addEventListener("change", () => {
+    M().receptor = receptorInput.value;
+    M().dataMapping.conc.receptor = receptorInput.value || "";
+  });
+  guestInput?.addEventListener("change", () => {
+    M().guest = guestInput.value;
+    M().dataMapping.conc.guest = guestInput.value || "";
+  });
 
   // Note: Grid content is not automatically saved on every keystroke here, 
   // but is collected when processing. If we wanted to persist grid state on switch,
@@ -1824,17 +1858,23 @@ function wireSpectroscopyForm() {
   function updateDropdowns() {
     if (!receptorInput || !guestInput) return;
 
-    const currentReceptor = receptorInput.value;
-    const currentGuest = guestInput.value;
-
     const selectedCols = Array.from(columnsContainer.querySelectorAll('input[type="checkbox"]:checked'))
       .map(cb => cb.value);
+
+    // Sync mapping and ensure defaults
+    M().dataMapping.conc.selected = selectedCols;
+    M().dataMapping.conc.receptor = receptorInput.value || M().dataMapping.conc.receptor || "";
+    M().dataMapping.conc.guest = guestInput.value || M().dataMapping.conc.guest || "";
+    ensureDefaultRoleMapping(M(), selectedCols);
+
+    const currentReceptor = M().dataMapping.conc.receptor || receptorInput.value;
+    const currentGuest = M().dataMapping.conc.guest || guestInput.value;
 
     [receptorInput, guestInput].forEach(select => {
       select.innerHTML = "";
       const defaultOpt = document.createElement("option");
       defaultOpt.value = "";
-      defaultOpt.text = "";
+      defaultOpt.text = "Auto";
       select.add(defaultOpt);
 
       selectedCols.forEach(col => {
@@ -1847,6 +1887,10 @@ function wireSpectroscopyForm() {
 
     if (selectedCols.includes(currentReceptor)) receptorInput.value = currentReceptor;
     if (selectedCols.includes(currentGuest)) guestInput.value = currentGuest;
+
+    // Persist back into mapping after restore
+    M().dataMapping.conc.receptor = receptorInput.value || M().dataMapping.conc.receptor || "";
+    M().dataMapping.conc.guest = guestInput.value || M().dataMapping.conc.guest || "";
   }
 
   // Listen for checkbox changes
@@ -2044,6 +2088,12 @@ function wireSpectroscopyForm() {
         .map(cb => cb.value);
     }
 
+    // Single source of truth: dataMapping
+    m.dataMapping.conc.selected = selectedCols;
+    const roles = getEffectiveRoleLabels(m, selectedCols);
+    if (receptorInput && roles.receptor) receptorInput.value = roles.receptor;
+    if (guestInput && roles.guest) guestInput.value = roles.guest;
+
     // Recolectar datos del grid del modelo
     const gridData = [];
     if (modelGridContainer) {
@@ -2090,8 +2140,8 @@ function wireSpectroscopyForm() {
     formData.append("file", m.file);
     formData.append("conc_sheet", concSheetInput?.value || "");
     formData.append("column_names", JSON.stringify(selectedCols));
-    formData.append("receptor_label", receptorInput?.value || "");
-    formData.append("guest_label", guestInput?.value || "");
+    formData.append("receptor_label", roles.receptor || "");
+    formData.append("guest_label", roles.guest || "");
 
     formData.append("modelo", JSON.stringify(gridData));
     formData.append("non_abs_species", JSON.stringify(nonAbsSpecies));
@@ -3536,6 +3586,7 @@ function wireSpectroscopyForm() {
   function buildSpecConfigFromState() {
     const selectedCols = Array.from(columnsContainer.querySelectorAll('input[type="checkbox"]:checked'))
       .map(cb => cb.value);
+    const roles = getEffectiveRoleLabels(M(), selectedCols);
 
     const gridData = [];
     if (modelGridContainer) {
@@ -3577,6 +3628,7 @@ function wireSpectroscopyForm() {
       plots: {
         plotOverrides: state.plotOverrides.spectroscopy || {},
       },
+      dataMapping: M().dataMapping || {},
       model: {
         nComp: readInt(nCompInput?.value),
         nSpecies: readInt(nSpeciesInput?.value),
@@ -3586,9 +3638,10 @@ function wireSpectroscopyForm() {
         efaEigenvalues: readInt(efaEigenInput?.value)
       },
       roles: {
-        receptor: receptorInput?.value || "",
-        guest: guestInput?.value || ""
+        receptor: roles.receptor || "",
+        guest: roles.guest || ""
       },
+      dataMapping: M().dataMapping || {},
       columns: {
         conc: selectedCols,
         spectraSheet: spectraSheetInput?.value || "",
@@ -3611,6 +3664,7 @@ function wireSpectroscopyForm() {
 
     const selectedCols = Array.from(columnsContainer.querySelectorAll('input[type="checkbox"]:checked'))
       .map(cb => cb.value);
+    const roles = getEffectiveRoleLabels(M(), selectedCols);
 
     const gridData = [];
     if (modelGridContainer) {
@@ -3652,6 +3706,7 @@ function wireSpectroscopyForm() {
       plots: {
         plotOverrides: state.plotOverrides.nmr || {},
       },
+      dataMapping: M().dataMapping || {},
       model: {
         nComp: readInt(nCompInput?.value),
         nSpecies: readInt(nSpeciesInput?.value),
@@ -3659,9 +3714,10 @@ function wireSpectroscopyForm() {
         nonAbsorbingSpecies: nonAbsSpecies
       },
       roles: {
-        receptor: receptorInput?.value || "",
-        guest: guestInput?.value || ""
+        receptor: roles.receptor || "",
+        guest: roles.guest || ""
       },
+      dataMapping: M().dataMapping || {},
       columns: {
         conc: selectedCols,
         signals: selectedSignals,
@@ -3752,6 +3808,14 @@ function wireSpectroscopyForm() {
       }
     }
 
+    if (cfg?.dataMapping) {
+      if (cfg.type === 'NMR') {
+        state.modules.nmr.dataMapping = cfg.dataMapping;
+      } else {
+        state.modules.spectroscopy.dataMapping = cfg.dataMapping;
+      }
+    }
+
     // 7. Attempt to restore column selections IF sheets match
     // This is tricky because we might not have the file loaded or sheets might differ.
     // We will try to check boxes if they exist.
@@ -3784,6 +3848,12 @@ function wireSpectroscopyForm() {
     setTimeout(() => {
       if (receptorInput) receptorInput.value = cfg.roles.receptor;
       if (guestInput) guestInput.value = cfg.roles.guest;
+      if (cfg?.dataMapping && M()?.dataMapping) {
+        M().dataMapping = cfg.dataMapping;
+      }
+      // Ensure defaults exist even if config omitted roles or only 1 col is selected
+      const selectedCols = Array.from(columnsContainer.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
+      ensureDefaultRoleMapping(M(), selectedCols);
     }, 50);
 
     diagEl.textContent = `Configuration loaded (${cfg.type}).`;
