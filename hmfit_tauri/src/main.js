@@ -3,6 +3,7 @@ import { writeBinaryFile, writeTextFile, readTextFile } from '@tauri-apps/api/fs
 import "./style.css";
 import { BACKEND_BASE_URL, WS_BASE_URL, describeBackendTarget } from "./backend/config";
 import Plotly from "plotly.js-dist-min";
+import { renderPlotly, applyPlotOverrides } from "./plotlyRender";
 window.Plotly = Plotly;
 
 // --- State Factories ---
@@ -69,6 +70,14 @@ const state = {
   modules: {
     spectroscopy: makeDefaultModuleState(),
     nmr: makeDefaultModuleState(),
+  },
+  plotOverrides: {
+    spectroscopy: {},
+    nmr: {},
+  },
+  plotDefaults: {
+    spectroscopy: {},
+    nmr: {},
   },
 };
 
@@ -815,6 +824,42 @@ function initApp() {
                 </div>
               </div>
 
+              <div class="field" style="margin-top: 0.75rem;">
+                <label class="field-label">Edit plot</label>
+                <div class="field-grid">
+                  <div class="field">
+                    <label class="field-label">Title</label>
+                    <input id="plot-edit-title" class="field-input" placeholder="Title" />
+                  </div>
+                  <div class="field">
+                    <label class="field-label">X axis label</label>
+                    <input id="plot-edit-xlabel" class="field-input" placeholder="X axis label" />
+                  </div>
+                </div>
+                <div class="field-grid">
+                  <div class="field">
+                    <label class="field-label">Y axis label</label>
+                    <input id="plot-edit-ylabel" class="field-input" placeholder="Y axis label" />
+                  </div>
+                  <div class="field">
+                    <label class="field-label">Trace</label>
+                    <select id="plot-edit-trace-select" class="field-input">
+                      <option value="">Select trace...</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="field-grid">
+                  <div class="field">
+                    <label class="field-label">New trace name</label>
+                    <input id="plot-edit-trace-name" class="field-input" placeholder="New trace name" />
+                  </div>
+                  <div class="field" style="display:flex; gap: 0.5rem; align-items: end;">
+                    <button id="plot-edit-apply" class="btn tertiary-btn" style="flex:1;">Apply</button>
+                    <button id="plot-edit-reset" class="btn tertiary-btn" style="flex:1;">Reset</button>
+                  </div>
+                </div>
+              </div>
+
               <div class="actions-row" style="margin-top: 0.5rem;">
                 <div class="actions-left">
                   <button id="spectro-export-png" class="btn tertiary-btn">Export PNG</button>
@@ -1168,6 +1213,13 @@ function wireSpectroscopyForm() {
   const plotVarySelect = document.getElementById("spectro-vary-along-select");
   const plotExportPngBtn = document.getElementById("spectro-export-png");
   const plotExportCsvBtn = document.getElementById("spectro-export-csv");
+  const plotEditTitleInput = document.getElementById("plot-edit-title");
+  const plotEditXLabelInput = document.getElementById("plot-edit-xlabel");
+  const plotEditYLabelInput = document.getElementById("plot-edit-ylabel");
+  const plotEditTraceSelect = document.getElementById("plot-edit-trace-select");
+  const plotEditTraceNameInput = document.getElementById("plot-edit-trace-name");
+  const plotEditApplyBtn = document.getElementById("plot-edit-apply");
+  const plotEditResetBtn = document.getElementById("plot-edit-reset");
 
   // Poblar dropdowns de optimización
   if (algoSelect) {
@@ -1206,6 +1258,79 @@ function wireSpectroscopyForm() {
       ps.activePlotIndex = index;
       renderMainCanvasPlot();
     }
+  });
+
+  plotEditTraceSelect?.addEventListener('change', () => {
+    const plotDiv = document.querySelector('.primary-plot .main-plotly');
+    const idx = Number(plotEditTraceSelect.value);
+    if (!plotDiv || !plotEditTraceNameInput || !Number.isFinite(idx)) return;
+    const name = plotDiv?.data?.[idx]?.name ?? '';
+    plotEditTraceNameInput.value = name;
+  });
+
+  plotEditApplyBtn?.addEventListener('click', () => {
+    const plot = getActivePlot();
+    const plotDiv = document.querySelector('.primary-plot .main-plotly');
+    if (!plot || plot.kind !== 'plotly' || !plotDiv || !window.Plotly) return;
+
+    const modKey = state.activeModule;
+    const presetId = plot.id;
+    const ov = state.plotOverrides[modKey]?.[presetId] || { traceNames: {} };
+
+    const titleText = String(plotEditTitleInput?.value ?? '').trim();
+    const xLabel = String(plotEditXLabelInput?.value ?? '').trim();
+    const yLabel = String(plotEditYLabelInput?.value ?? '').trim();
+
+    ov.titleText = titleText;
+    ov.xLabel = xLabel;
+    ov.yLabel = yLabel;
+
+    const relayout = {
+      "title.text": titleText,
+      "xaxis.title.text": xLabel,
+      "yaxis.title.text": yLabel,
+    };
+    window.Plotly.relayout(plotDiv, relayout);
+
+    const traceIdx = Number(plotEditTraceSelect?.value);
+    const newTraceName = String(plotEditTraceNameInput?.value ?? '').trim();
+    if (Number.isFinite(traceIdx) && newTraceName) {
+      ov.traceNames = ov.traceNames || {};
+      ov.traceNames[String(traceIdx)] = newTraceName;
+      window.Plotly.restyle(plotDiv, { name: newTraceName }, [traceIdx]);
+    }
+
+    state.plotOverrides[modKey][presetId] = ov;
+    syncEditPlotPanelFromDiv(plotDiv);
+    appendLog(`Applied plot edits for ${presetId}.`);
+  });
+
+  plotEditResetBtn?.addEventListener('click', () => {
+    const plot = getActivePlot();
+    const plotDiv = document.querySelector('.primary-plot .main-plotly');
+    if (!plot || plot.kind !== 'plotly' || !plotDiv || !window.Plotly) return;
+
+    const modKey = state.activeModule;
+    const presetId = plot.id;
+    const defaults = state.plotDefaults?.[modKey]?.[presetId];
+    if (!defaults) return;
+
+    window.Plotly.relayout(plotDiv, {
+      "title.text": defaults.titleText ?? '',
+      "xaxis.title.text": defaults.xLabel ?? '',
+      "yaxis.title.text": defaults.yLabel ?? '',
+    });
+
+    const names = defaults.traceNames || {};
+    for (const [idx, name] of Object.entries(names)) {
+      const i = Number(idx);
+      if (!Number.isFinite(i)) continue;
+      window.Plotly.restyle(plotDiv, { name }, [i]);
+    }
+
+    if (state.plotOverrides?.[modKey]) delete state.plotOverrides[modKey][presetId];
+    syncEditPlotPanelFromDiv(plotDiv);
+    appendLog(`Reset plot edits for ${presetId}.`);
   });
 
   // X axis dropdown: update controls and re-render
@@ -2158,6 +2283,78 @@ function wireSpectroscopyForm() {
     ps.plotData = resultPayload.plotData || {};
     ps.activePlotIndex = 0;
 
+    // Clear plot overrides/defaults on new calculation (per module)
+    const modKey = state.activeModule;
+    state.plotOverrides[modKey] = {};
+    state.plotDefaults[modKey] = {};
+
+    // Spectroscopy: convert legacy image plots to Plotly + build numeric-backed data objects
+    if (modKey === 'spectroscopy') {
+      ps.availablePlots = ps.availablePlots.map(p => (
+        p?.kind === 'image' ? { ...p, kind: 'plotly' } : p
+      ));
+
+      const specData = ps.plotData?.spec || {};
+      const plotData = resultPayload?.plot_data || {};
+      const numerics = plotData?.numerics || {};
+      const exportData = resultPayload?.export_data || {};
+
+      const dist = specData?.spec_species_distribution || {};
+      const xTitrant = dist?.axisVectors?.titrant_total || [];
+      const xLabel = (dist?.axisOptions || []).find(a => a.id === 'titrant_total')?.label || '[X]';
+
+      const nm = numerics.nm || exportData.nm || [];
+      const transpose2d = (m) => {
+        if (!Array.isArray(m) || !Array.isArray(m[0])) return m;
+        const rows = m.length;
+        const cols = m[0].length;
+        const out = Array.from({ length: cols }, () => Array(rows));
+        for (let i = 0; i < rows; i++) for (let j = 0; j < cols; j++) out[j][i] = m[i][j];
+        return out;
+      };
+
+      let Yexp = numerics.Y_exp || exportData.Y || [];
+      let Yfit = numerics.Y_fit || exportData.yfit || [];
+      if (Array.isArray(nm) && nm.length && Array.isArray(Yexp) && Array.isArray(Yexp[0])) {
+        if (Yexp.length !== nm.length && Yexp[0].length === nm.length) Yexp = transpose2d(Yexp);
+        if (Array.isArray(Yfit) && Array.isArray(Yfit[0]) && Yfit.length !== nm.length && Yfit[0].length === nm.length) {
+          Yfit = transpose2d(Yfit);
+        }
+      }
+
+      let A = exportData.A || [];
+      const A_nm = exportData.A_index || exportData.nm || nm;
+      if (Array.isArray(A_nm) && A_nm.length && Array.isArray(A) && Array.isArray(A[0])) {
+        if (A.length !== A_nm.length && A[0].length === A_nm.length) A = transpose2d(A);
+      }
+
+      ps.plotData.spec = {
+        ...specData,
+        spec_fit_overlay: {
+          plotMode: resultPayload?.plot_mode || 'spectra',
+          xTitrant,
+          xLabel,
+          nm,
+          Yexp,
+          Yfit,
+        },
+        spec_molar_absorptivities: {
+          nm: A_nm,
+          A,
+          speciesOptions: dist?.speciesOptions || [],
+        },
+        spec_efa_eigenvalues: {
+          eigenvalues: numerics.eigenvalues || [],
+        },
+        spec_efa_components: {
+          xTitrant,
+          xLabel,
+          efaForward: numerics.efa_forward || [],
+          efaBackward: numerics.efa_backward || [],
+        },
+      };
+    }
+
     // Reset interactive controls (will be auto-populated on first render)
     ps.controls.distXAxisId = 'titrant_total';
     ps.controls.distYSelected.clear();
@@ -2204,12 +2401,7 @@ function wireSpectroscopyForm() {
     if (!container) return;
 
     // Render based on plot kind
-    if (plot.kind === 'image' && data?.png_base64) {
-      container.innerHTML = `
-        <div class="plot-title">${plot.title}</div>
-        <img src="data:image/png;base64,${data.png_base64}" alt="${plot.title}" />
-      `;
-    } else if (plot.kind === 'plotly') {
+    if (plot.kind === 'plotly') {
       container.innerHTML = `
         <div class="plot-title">${plot.title}</div>
         <div class="main-plotly"></div>
@@ -2227,17 +2419,27 @@ function wireSpectroscopyForm() {
         return;
       }
 
-      // Build traces based on plot type
-      const traces = buildPlotlyTraces(plot.id, data);
-      const layout = buildPlotlyLayout(plot.id, data);
+      const figure = buildPlotlyFigure(plot.id, data, plot.title);
+      figure.layout = figure.layout || {};
+      figure.layout.uirevision = `hmfit-uirev:${state.activeModule}:${plot.id}`;
 
-      if (traces.length === 0) {
-        if (plotDiv) plotDiv.innerHTML = '<p style="color: #f59e0b; padding: 2rem;">No series selected or no data found (check selection)</p>';
-        appendLog(`WARN: empty traces for ${plot.id}`);
+      // Snapshot defaults (first render per preset)
+      const modKey = state.activeModule;
+      if (!state.plotDefaults[modKey]?.[plot.id]) {
+        state.plotDefaults[modKey][plot.id] = snapshotFigureDefaults(figure);
+      }
+
+      try {
+        renderPlotly(plotDiv, figure);
+      } catch (err) {
+        console.error(err);
+        if (plotDiv) plotDiv.innerHTML = `<p style="color: #ef4444; padding: 2rem;">Plotly render failed: ${err.message}</p>`;
         return;
       }
 
-      window.Plotly.react(plotDiv, traces, layout, { displaylogo: false, responsive: true });
+      // Apply overrides after base render
+      const ov = state.plotOverrides?.[modKey]?.[plot.id];
+      if (ov) applyPlotOverrides(plotDiv, ov);
 
       // Resize after render for Tauri
       requestAnimationFrame(() => {
@@ -2245,6 +2447,9 @@ function wireSpectroscopyForm() {
           window.Plotly.Plots.resize(plotDiv);
         }
       });
+
+      // Sync edit panel inputs for the active Plotly chart
+      requestAnimationFrame(() => syncEditPlotPanelFromDiv(plotDiv));
     } else {
       container.innerHTML = `<p style="color: #9ca3af; padding: 2rem;">Plot data not available: ${plot.id}</p>`;
     }
@@ -2339,6 +2544,120 @@ function wireSpectroscopyForm() {
           });
         }
       });
+    } else if (plotId === 'spec_fit_overlay') {
+      const plotMode = data.plotMode || 'spectra';
+      const nm = data.nm || [];
+      const Yexp = data.Yexp || [];
+      const Yfit = data.Yfit || [];
+      const xT = data.xTitrant || [];
+
+      if (plotMode === 'isotherms') {
+        const k = Math.min(Array.isArray(nm) ? nm.length : 0, 10);
+        for (let i = 0; i < k; i++) {
+          const yObs = Yexp?.[i] || [];
+          const yFit = Yfit?.[i] || [];
+          const wl = nm?.[i];
+          traces.push({
+            x: xT,
+            y: yObs,
+            mode: 'markers',
+            name: `${wl} obs`,
+            marker: { size: 7 },
+          });
+          traces.push({
+            x: xT,
+            y: yFit,
+            mode: 'lines',
+            name: `${wl} fit`,
+            line: { width: 2, dash: 'dot' },
+          });
+        }
+      } else {
+        const nSteps = (Array.isArray(Yexp) && Array.isArray(Yexp[0])) ? Yexp[0].length : 0;
+        for (let j = 0; j < nSteps; j++) {
+          const yObs = Yexp.map(row => row?.[j]).filter(v => v !== undefined);
+          const yFit = Yfit.map(row => row?.[j]).filter(v => v !== undefined);
+          traces.push({
+            x: nm,
+            y: yObs,
+            mode: 'lines',
+            name: `exp ${j + 1}`,
+            line: { width: 1, color: 'rgba(0,0,0,0.35)' },
+            legendgroup: 'exp',
+            showlegend: j === 0,
+            hoverinfo: 'x+y',
+          });
+          traces.push({
+            x: nm,
+            y: yFit,
+            mode: 'lines',
+            name: `fit ${j + 1}`,
+            line: { width: 1.5, dash: 'dot', color: 'rgba(239,68,68,0.8)' },
+            legendgroup: 'fit',
+            showlegend: j === 0,
+            hoverinfo: 'x+y',
+          });
+        }
+      }
+    } else if (plotId === 'spec_molar_absorptivities') {
+      const nm = data.nm || [];
+      const A = data.A || [];
+      const speciesOptions = data.speciesOptions || [];
+      const nSpecies = Array.isArray(A?.[0]) ? A[0].length : 0;
+
+      for (let s = 0; s < nSpecies; s++) {
+        const y = A.map(row => row?.[s]).filter(v => v !== undefined);
+        const label = speciesOptions?.[s]?.label || `sp${s + 1}`;
+        traces.push({
+          x: nm,
+          y,
+          mode: 'lines+markers',
+          name: label,
+          line: { width: 2 },
+          marker: { size: 5 },
+        });
+      }
+    } else if (plotId === 'spec_efa_eigenvalues') {
+      const ev = data.eigenvalues || [];
+      if (Array.isArray(ev) && ev.length) {
+        traces.push({
+          x: ev.map((_, i) => i + 1),
+          y: ev.map(v => (v > 0 ? Math.log10(v) : null)),
+          mode: 'markers+lines',
+          name: 'log10(EV)',
+          marker: { size: 7 },
+        });
+      }
+    } else if (plotId === 'spec_efa_components') {
+      const x = data.xTitrant || [];
+      const fwd = data.efaForward || [];
+      const bwd = data.efaBackward || [];
+      const nComp = Array.isArray(fwd?.[0]) ? fwd[0].length : 0;
+      for (let c = 0; c < nComp; c++) {
+        const yF = fwd.map(row => {
+          const v = row?.[c];
+          return (v > 0 ? Math.log10(v) : null);
+        });
+        const yB = bwd.map(row => {
+          const v = row?.[c];
+          return (v > 0 ? Math.log10(v) : null);
+        });
+        traces.push({
+          x,
+          y: yF,
+          mode: 'lines+markers',
+          name: `fwd ${c + 1}`,
+          marker: { size: 6 },
+        });
+        traces.push({
+          x,
+          y: yB,
+          mode: 'lines+markers',
+          name: `bwd ${c + 1}`,
+          marker: { size: 6 },
+          line: { dash: 'dot' },
+        });
+      }
     }
 
     return traces;
@@ -2349,24 +2668,112 @@ function wireSpectroscopyForm() {
     const layout = {
       margin: { t: 24, r: 24, b: 48, l: 64 },
       legend: { orientation: 'h', y: -0.2 },
-      xaxis: { title: '' },
-      yaxis: { title: '' }
+      xaxis: { title: { text: '' } },
+      yaxis: { title: { text: '' } }
     };
 
     if (plotId === 'spec_species_distribution' || plotId === 'nmr_species_distribution') {
       const xAxisId = M().plotState.controls.distXAxisId || 'titrant_total';
       const axisOption = (data.axisOptions || []).find(a => a.id === xAxisId);
-      layout.xaxis.title = axisOption?.label || 'Concentration';
-      layout.yaxis.title = '[Species], M';
+      layout.xaxis.title.text = axisOption?.label || 'Concentration';
+      layout.yaxis.title.text = '[Species], M';
     } else if (plotId === 'nmr_shifts_fit') {
-      layout.xaxis.title = data.xLabel || 'Concentration';
-      layout.yaxis.title = 'Δδ (ppm)';
+      layout.xaxis.title.text = data.xLabel || 'Concentration';
+      layout.yaxis.title.text = 'Δδ (ppm)';
     } else if (plotId === 'nmr_residuals') {
-      layout.xaxis.title = data.xLabel || 'Concentration';
-      layout.yaxis.title = 'Residuals (ppm)';
+      layout.xaxis.title.text = data.xLabel || 'Concentration';
+      layout.yaxis.title.text = 'Residuals (ppm)';
+    } else if (plotId === 'spec_fit_overlay') {
+      const plotMode = data.plotMode || 'spectra';
+      layout.xaxis.title.text = plotMode === 'isotherms' ? (data.xLabel || '[X]') : 'λ (nm)';
+      layout.yaxis.title.text = 'Y observed (u. a.)';
+    } else if (plotId === 'spec_molar_absorptivities') {
+      layout.xaxis.title.text = 'λ (nm)';
+      layout.yaxis.title.text = 'Epsilon (u. a.)';
+    } else if (plotId === 'spec_efa_eigenvalues') {
+      layout.xaxis.title.text = '# eigenvalues';
+      layout.yaxis.title.text = 'log10(EV)';
+    } else if (plotId === 'spec_efa_components') {
+      layout.xaxis.title.text = data.xLabel || '[X]';
+      layout.yaxis.title.text = 'log10(EV)';
     }
 
     return layout;
+  }
+
+  function buildPlotlyFigure(plotId, data, title) {
+    const traces = buildPlotlyTraces(plotId, data);
+    const layout = buildPlotlyLayout(plotId, data);
+    layout.title = { text: title || plotId };
+    if (!traces.length) {
+      return {
+        data: [],
+        layout: {
+          ...layout,
+          annotations: [{
+            text: 'No data',
+            xref: 'paper',
+            yref: 'paper',
+            x: 0.5,
+            y: 0.5,
+            showarrow: false,
+          }],
+        },
+      };
+    }
+    return { data: traces, layout };
+  }
+
+  function snapshotFigureDefaults(figure) {
+    const layout = figure?.layout || {};
+    const data = figure?.data || [];
+    const titleText = layout?.title?.text ?? '';
+    const xLabel = layout?.xaxis?.title?.text ?? '';
+    const yLabel = layout?.yaxis?.title?.text ?? '';
+    const traceNames = {};
+    data.forEach((t, idx) => {
+      traceNames[String(idx)] = t?.name ?? '';
+    });
+    return { titleText, xLabel, yLabel, traceNames };
+  }
+
+  function getActivePlotDiv() {
+    return document.querySelector('.primary-plot .main-plotly');
+  }
+
+  function syncEditPlotPanelFromDiv(plotDiv) {
+    const titleInput = document.getElementById('plot-edit-title');
+    const xInput = document.getElementById('plot-edit-xlabel');
+    const yInput = document.getElementById('plot-edit-ylabel');
+    const traceSelect = document.getElementById('plot-edit-trace-select');
+    const traceNameInput = document.getElementById('plot-edit-trace-name');
+
+    const plot = getActivePlot();
+    if (!plot || plot.kind !== 'plotly' || !plotDiv || !plotDiv.layout) return;
+
+    const titleText = plotDiv.layout?.title?.text ?? '';
+    const xLabel = plotDiv.layout?.xaxis?.title?.text ?? '';
+    const yLabel = plotDiv.layout?.yaxis?.title?.text ?? '';
+
+    if (titleInput) titleInput.value = titleText;
+    if (xInput) xInput.value = xLabel;
+    if (yInput) yInput.value = yLabel;
+
+    if (traceSelect) {
+      traceSelect.innerHTML = '';
+      const defaultOpt = document.createElement('option');
+      defaultOpt.value = '';
+      defaultOpt.text = 'Select trace...';
+      traceSelect.add(defaultOpt);
+      const traces = plotDiv.data || [];
+      traces.forEach((t, idx) => {
+        const opt = document.createElement('option');
+        opt.value = String(idx);
+        opt.text = `${idx}: ${t?.name ?? ''}`;
+        traceSelect.add(opt);
+      });
+      if (traceNameInput) traceNameInput.value = '';
+    }
   }
 
   // Sync plot controls in Plots tab based on active plot
@@ -2391,11 +2798,24 @@ function wireSpectroscopyForm() {
       return;
     }
 
-    // Hide controls for non-interactive plots
+    // Only show axis/series controls for plots that support them
+    const supportsControls = (
+      plot.id === 'spec_species_distribution' ||
+      plot.id === 'nmr_species_distribution' ||
+      plot.id === 'nmr_shifts_fit' ||
+      plot.id === 'nmr_residuals'
+    );
     const isInteractive = plot.kind === 'plotly';
     if (xAxisSelect?.closest('.field')) xAxisSelect.closest('.field').style.display = isInteractive ? '' : 'none';
     if (ySeriesSelect?.closest('.field')) ySeriesSelect.closest('.field').style.display = isInteractive ? '' : 'none';
     if (varySelect?.closest('.field')) varySelect.closest('.field').style.display = 'none'; // Always hide vary for now
+
+    // Hide controls for Plotly plots without controls
+    if (isInteractive && !supportsControls) {
+      if (xAxisSelect?.closest('.field')) xAxisSelect.closest('.field').style.display = 'none';
+      if (ySeriesSelect?.closest('.field')) ySeriesSelect.closest('.field').style.display = 'none';
+      return;
+    }
 
     // Handle null data for interactive plots
     if (!isInteractive) return;
@@ -3144,6 +3564,9 @@ function wireSpectroscopyForm() {
     return {
       type: 'Spectroscopy',
       version: 1,
+      plots: {
+        plotOverrides: state.plotOverrides.spectroscopy || {},
+      },
       model: {
         nComp: readInt(nCompInput?.value),
         nSpecies: readInt(nSpeciesInput?.value),
@@ -3216,6 +3639,9 @@ function wireSpectroscopyForm() {
     return {
       type: 'NMR',
       version: 1,
+      plots: {
+        plotOverrides: state.plotOverrides.nmr || {},
+      },
       model: {
         nComp: readInt(nCompInput?.value),
         nSpecies: readInt(nSpeciesInput?.value),
@@ -3307,6 +3733,15 @@ function wireSpectroscopyForm() {
       if (efaEigenInput) efaEigenInput.value = cfg.model.efaEigenvalues;
     }
 
+    // 6b. Plot overrides (optional)
+    if (cfg?.plots?.plotOverrides) {
+      if (cfg.type === 'NMR') {
+        state.plotOverrides.nmr = cfg.plots.plotOverrides || {};
+      } else {
+        state.plotOverrides.spectroscopy = cfg.plots.plotOverrides || {};
+      }
+    }
+
     // 7. Attempt to restore column selections IF sheets match
     // This is tricky because we might not have the file loaded or sheets might differ.
     // We will try to check boxes if they exist.
@@ -3342,6 +3777,8 @@ function wireSpectroscopyForm() {
     }, 50);
 
     diagEl.textContent = `Configuration loaded (${cfg.type}).`;
+    // If plots exist, re-render active plot to apply overrides
+    try { renderMainCanvasPlot(); } catch (_) { }
   }
 
   // --- Export Config ---
