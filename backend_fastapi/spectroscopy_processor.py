@@ -436,7 +436,10 @@ def process_spectroscopy_data(
     model_settings,
     optimizer,
     initial_k,
-    bounds
+    bounds,
+    channels_raw=None,
+    channels_mode=None,
+    channels_resolved=None,
 ):
     """
     Main processing function.
@@ -455,6 +458,29 @@ def process_spectroscopy_data(
     
     # Read Excel data
     spec = pd.read_excel(file_path, spectra_sheet, header=0, index_col=0)
+    axis_numeric = pd.to_numeric(spec.index, errors="coerce")
+    spec = spec.loc[axis_numeric.notna()].copy()
+    spec.index = axis_numeric[axis_numeric.notna()].astype(float)
+
+    channels_total = int(len(spec))
+    warnings_list = []
+
+    resolved = channels_resolved or []
+    if isinstance(resolved, (list, tuple)) and len(resolved) > 0:
+        resolved = [float(x) for x in resolved]
+        axis_vals = spec.index.to_numpy(dtype=float)
+        mask = onp.zeros_like(axis_vals, dtype=bool)
+        for target in resolved:
+            mask |= onp.isclose(axis_vals, float(target), rtol=0.0, atol=1e-8)
+        if not mask.any():
+            raise ValueError("No matching channels found in Spectra axis for the provided channels_resolved.")
+        spec = spec.iloc[mask].copy()
+
+    # Guardrail: EFA needs at least 2 spectral channels
+    if efa_enabled and int(len(spec)) < 2:
+        efa_enabled = False
+        warnings_list.append("EFA disabled: requires at least 2 channels.")
+
     nm = spec.index.to_numpy()
     
     concentracion = pd.read_excel(file_path, conc_sheet, header=0)
@@ -476,6 +502,7 @@ def process_spectroscopy_data(
     nc = len(C_T)
     n_comp = len(C_T.T)
     nw = len(spec)
+    channels_used = int(nw)
     
     graphs = {}
     
@@ -683,6 +710,14 @@ def process_spectroscopy_data(
     C, Co = res.concentraciones(k)
     species_labels = [f"sp{i+1}" for i in range(C.shape[1])] if C is not None else []
     
+    # Decide "main plot" mode based on channels actually used
+    channels_used_values = nm.tolist() if hasattr(nm, "tolist") else list(nm)
+    k_used = int(len(channels_used_values))
+    plot_mode = "isotherms" if k_used <= 10 else "spectra"
+    x_titrant = G if G is not None else H
+    if x_titrant is None:
+        plot_mode = "spectra"
+
     # Generate concentration and spectra plots
     if n_comp == 1 and H is not None:
         graphs['concentrations'] = generate_figure_base64(
@@ -693,12 +728,19 @@ def process_spectroscopy_data(
         ssq, r0 = f_m2(k)
         A_plot = solve_A_nnls_pgd(C, Y.T, ridge=0.0, max_iters=300)
         
+        eps_mark = "-" if k_used > 1 else "o-"
         graphs['absorptivities'] = generate_figure_base64(
-            nm, A_plot.T, "-", "Epsilon (u. a.)", "$\\lambda$ (nm)", "Absortividades molares"
+            nm, A_plot.T, eps_mark, "Epsilon (u. a.)", "$\\lambda$ (nm)", "Absortividades molares"
         )
-        graphs['fit'] = generate_figure2_base64(
-            nm, Y, y_cal.T, "-k", "k:", "Y observada (u. a.)", "$\\lambda$ (nm)", 0.5, "Ajuste"
-        )
+        if plot_mode == "isotherms":
+            idx = slice(0, min(k_used, 10))
+            graphs['fit'] = generate_figure2_base64(
+                x_titrant, Y.T[:, idx], y_cal[:, idx], "ko", ":", "Y observada (u. a.)", "[X], M", 1, "Ajuste"
+            )
+        else:
+            graphs['fit'] = generate_figure2_base64(
+                nm, Y, y_cal.T, "-k", "k:", "Y observada (u. a.)", "$\\lambda$ (nm)", 0.5, "Ajuste"
+            )
     elif G is not None:
         graphs['concentrations'] = generate_figure_base64(
             G, C, ":o", "[Species], M", "[G], M", "Perfil de concentraciones"
@@ -707,10 +749,15 @@ def process_spectroscopy_data(
         y_cal = C @ np.linalg.pinv(C) @ Y.T
         ssq, r0 = f_m2(k)
         A_plot = solve_A_nnls_pgd(C, Y.T, ridge=0.0, max_iters=300)
-        
-        if not efa_enabled:
+
+        if plot_mode == "isotherms":
+            eps_mark = "-" if k_used > 1 else "o-"
+            graphs['absorptivities'] = generate_figure_base64(
+                nm, A_plot.T, eps_mark, "Epsilon (u. a.)", "$\\lambda$ (nm)", "Absortividades molares"
+            )
+            idx = slice(0, min(k_used, 10))
             graphs['fit'] = generate_figure2_base64(
-                G, Y.T, y_cal, "ko", ":", "Y observada (u. a.)", "[X], M", 1, "Ajuste"
+                G, Y.T[:, idx], y_cal[:, idx], "ko", ":", "Y observada (u. a.)", "[X], M", 1, "Ajuste"
             )
         else:
             graphs['absorptivities'] = generate_figure_base64(
@@ -910,7 +957,12 @@ def process_spectroscopy_data(
             "success": bool(r_0.success),
             "message": str(r_0.message) if hasattr(r_0, 'message') else "",
             "nfev": int(r_0.nfev) if hasattr(r_0, 'nfev') else 0
-        }
+        },
+        "channels_total": int(channels_total),
+        "channels_used": int(channels_used),
+        "channels_mode": "custom" if (isinstance(resolved, (list, tuple)) and len(resolved) > 0) else "all",
+        "plot_mode": plot_mode,
+        "warnings": warnings_list,
     }
     
     log_progress("Procesamiento completado exitosamente")

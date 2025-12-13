@@ -99,6 +99,36 @@ async def list_columns(file: UploadFile = File(...), sheet_name: str = Form(...)
         raise HTTPException(status_code=400, detail=f"Error reading columns: {str(e)}")
 
 
+@app.post("/spectroscopy/list_axis")
+async def spectroscopy_list_axis(file: UploadFile = File(...), sheet_name: str = Form(...)):
+    """Given an Excel and Spectra sheet name, return axis (first column) as floats."""
+    try:
+        contents = await file.read()
+        df = pd.read_excel(io.BytesIO(contents), sheet_name=sheet_name, header=0)
+        if df is None or df.shape[1] == 0:
+            raise ValueError("Empty sheet or no columns.")
+
+        col0 = df.columns[0]
+        axis_raw = df[col0]
+        axis = (
+            pd.to_numeric(axis_raw, errors="coerce")
+            .dropna()
+            .astype(float)
+            .tolist()
+        )
+        if not axis:
+            raise ValueError("No se pudo leer el eje (primera columna) del sheet.")
+
+        return {
+            "axis_values": axis,
+            "min": float(min(axis)),
+            "max": float(max(axis)),
+            "count": int(len(axis)),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error reading axis: {str(e)}")
+
+
 @app.post("/nmr/list_sheets")
 async def nmr_list_sheets(file: UploadFile = File(...)):
     """Expose workbook sheet names for the NMR flow (same as spectroscopy)."""
@@ -149,6 +179,9 @@ async def process_spectroscopy(
     guest_label: str = Form(""),
     efa_enabled: str = Form("false"),
     efa_eigenvalues: str = Form("0"),
+    channels_raw: str = Form("All"),
+    channels_mode: str = Form("all"),
+    channels_resolved: str = Form("[]"),
     modelo: str = Form("[]"),  # JSON string
     non_abs_species: str = Form("[]"),  # JSON string
     algorithm: str = Form("Newton-Raphson"),
@@ -167,8 +200,25 @@ async def process_spectroscopy(
         non_abs_species_list = json.loads(non_abs_species)
         initial_k_list = json.loads(initial_k)
         bounds_list = json.loads(bounds)
+        try:
+            channels_resolved_list = json.loads(channels_resolved)
+        except Exception:
+            channels_resolved_list = []
+
+        parsed_channels = channels_resolved_list if isinstance(channels_resolved_list, list) else []
+        channels_resolved_list = []
+        for x in parsed_channels:
+            try:
+                channels_resolved_list.append(float(x))
+            except (TypeError, ValueError):
+                continue
         efa_enabled_bool = efa_enabled.lower() == "true"
         efa_eigenvalues_int = int(efa_eigenvalues)
+
+        warnings_list = []
+        if channels_resolved_list and efa_enabled_bool:
+            efa_enabled_bool = False
+            warnings_list.append("EFA fue desactivado automáticamente: requiere espectro completo (Channels=All).")
         
         # Save file temporarily
         temp_path = UPLOAD_DIR / f"temp_{int(time.time())}_{file.filename}"
@@ -206,6 +256,9 @@ async def process_spectroscopy(
                 guest_label=guest_label if guest_label else None,
                 efa_enabled=efa_enabled_bool,
                 efa_eigenvalues=efa_eigenvalues_int,
+                channels_raw=channels_raw,
+                channels_mode=channels_mode,
+                channels_resolved=channels_resolved_list,
                 modelo=modelo_list,
                 non_abs_species=non_abs_species_list,
                 algorithm=algorithm,
@@ -234,7 +287,13 @@ async def process_spectroscopy(
         
         # Send completion message
         await broadcast_progress("Procesamiento completado!")
-        
+
+        if isinstance(results, dict):
+            results.setdefault("warnings", [])
+            if warnings_list:
+                results["warnings"] = list(results.get("warnings") or []) + warnings_list
+            results["efa_forced_off"] = bool(warnings_list)
+
         return results
         
     except Exception as e:

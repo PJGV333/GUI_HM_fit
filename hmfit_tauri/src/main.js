@@ -33,6 +33,14 @@ function makeDefaultModuleState() {
     sheetSpectra: "",
     sheetConc: "",
     sheetNmr: "",
+    // Spectroscopy axis + channels
+    axisValues: [],
+    axisMin: null,
+    axisMax: null,
+    axisCount: null,
+    channelsRaw: "All",
+    channelsResolved: [],
+    channelsMode: "all",
     // Input values
     efaEnabled: true,
     efaEigenvalues: 0,
@@ -176,6 +184,12 @@ const backendApi = {
     formData.append("sheet_name", sheetName);
     const path = mode === "nmr" ? "/nmr/list_columns" : "/list_columns";
     return callBackend(path, { method: "POST", body: formData });
+  },
+  listSpectroscopyAxis(file, sheetName) {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("sheet_name", sheetName);
+    return callBackend("/spectroscopy/list_axis", { method: "POST", body: formData });
   },
   processSpectroscopy(formData) {
     return callBackend("/process_spectroscopy", { method: "POST", body: formData });
@@ -332,17 +346,20 @@ function updateUI() {
   // EFA solo en Spectroscopy
   const efaRow = document.querySelector(".efa-row");
   const spectraSheetRow = document.getElementById("spectra-sheet-select")?.closest(".field");
+  const channelsRow = document.getElementById("spectroscopy-channels-row");
   const nmrSheetRow = document.getElementById("nmr-sheet-row");
   const nmrSignalsRow = document.getElementById("nmr-signals-row");
 
   if (state.activeModule === "nmr") {
     if (efaRow) efaRow.classList.add("hidden");
     if (spectraSheetRow) spectraSheetRow.classList.add("hidden");
+    if (channelsRow) channelsRow.classList.add("hidden");
     if (nmrSheetRow) nmrSheetRow.classList.remove("hidden");
     if (nmrSignalsRow) nmrSignalsRow.classList.remove("hidden");
   } else {
     if (efaRow) efaRow.classList.remove("hidden");
     if (spectraSheetRow) spectraSheetRow.classList.remove("hidden");
+    if (channelsRow) channelsRow.classList.remove("hidden");
     if (nmrSheetRow) nmrSheetRow.classList.add("hidden");
     if (nmrSignalsRow) nmrSignalsRow.classList.add("hidden");
   }
@@ -402,6 +419,27 @@ function renderModuleUI() {
   if (spectraSheet) spectraSheet.value = m.sheetSpectra;
   if (concSheet) concSheet.value = m.sheetConc;
   if (nmrSheet) nmrSheet.value = m.sheetNmr;
+
+  // Spectroscopy channels
+  const channelsInput = document.getElementById("spectroscopy-channels-input");
+  const channelsRangeEl = document.getElementById("spectroscopy-channels-range");
+  const channelsUsageEl = document.getElementById("spectroscopy-channels-usage");
+  const channelsFeedbackEl = document.getElementById("spectroscopy-channels-feedback");
+  if (channelsInput) channelsInput.value = m.channelsRaw ?? "All";
+  if (channelsRangeEl && m.axisCount) {
+    const minTxt = (m.axisMin ?? "") === "" ? "" : String(m.axisMin);
+    const maxTxt = (m.axisMax ?? "") === "" ? "" : String(m.axisMax);
+    channelsRangeEl.textContent = `${minTxt}–${maxTxt} (${m.axisCount})`;
+  } else if (channelsRangeEl) {
+    channelsRangeEl.textContent = "";
+  }
+  if (channelsUsageEl && m.axisCount) {
+    const used = (m.channelsMode === "custom" && Array.isArray(m.channelsResolved)) ? m.channelsResolved.length : m.axisCount;
+    channelsUsageEl.textContent = `Using ${used} / ${m.axisCount} channels`;
+  } else if (channelsUsageEl) {
+    channelsUsageEl.textContent = "";
+  }
+  if (channelsFeedbackEl) channelsFeedbackEl.textContent = "";
 
   // Columns Container - Restore Checkboxes
   const columnsContainer = document.getElementById("columns-container");
@@ -633,6 +671,13 @@ function initApp() {
                   <option value="">Select a file first...</option>
                 </select>
               </div>
+            </div>
+
+            <div class="field" id="spectroscopy-channels-row">
+              <label class="field-label">Channels <span id="spectroscopy-channels-range" class="hint"></span></label>
+              <input id="spectroscopy-channels-input" class="field-input" value="All" />
+              <div id="spectroscopy-channels-usage" class="hint"></div>
+              <div id="spectroscopy-channels-feedback" class="hint"></div>
             </div>
             
             <!-- NMR Specific Field: Chemical Shift Sheet -->
@@ -957,6 +1002,108 @@ function readList(text) {
   return v.split(/[,\s]+/).filter(Boolean);
 }
 
+function parseChannelsInput(input) {
+  const raw = String(input ?? "").trim();
+  if (!raw) {
+    return { mode: "custom", tokens: [], errors: ["Channels is empty. Use 'All' or a list like 450,650."] };
+  }
+
+  if (raw.toLowerCase() === "all") {
+    return { mode: "all", tokens: [], errors: [] };
+  }
+
+  const parts = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  const tokens = [];
+  const errors = [];
+
+  for (const part of parts) {
+    const m = part.match(/^(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)$/);
+    if (m) {
+      const a = Number(m[1]);
+      const b = Number(m[2]);
+      if (!Number.isFinite(a) || !Number.isFinite(b)) {
+        errors.push(`Invalid range: '${part}'.`);
+      } else {
+        tokens.push({ type: "range", min: a, max: b, raw: part });
+      }
+      continue;
+    }
+
+    const v = Number(part);
+    if (!Number.isFinite(v)) {
+      errors.push(`Invalid channel value: '${part}'.`);
+      continue;
+    }
+    tokens.push({ type: "value", value: v, raw: part });
+  }
+
+  if (tokens.length === 0 && errors.length === 0) {
+    errors.push("No channels parsed. Use 'All' or values like 450,650.");
+  }
+
+  return { mode: "custom", tokens, errors };
+}
+
+function resolveChannels(tokens, axisValues, tol = 0.5) {
+  const errors = [];
+  const mappingLines = [];
+
+  const axis = Array.isArray(axisValues) ? axisValues.filter((v) => Number.isFinite(v)) : [];
+  if (axis.length === 0) {
+    return { resolved: [], mappingLines, errors: ["Axis not loaded yet. Select a Spectra sheet first."] };
+  }
+
+  const resolvedSet = new Set();
+
+  const nearest = (target) => {
+    let best = null;
+    let bestDiff = Infinity;
+    for (const a of axis) {
+      const d = Math.abs(a - target);
+      if (d < bestDiff) {
+        best = a;
+        bestDiff = d;
+      }
+    }
+    return { value: best, diff: bestDiff };
+  };
+
+  for (const tok of tokens) {
+    if (tok.type === "value") {
+      const { value: nearestVal, diff } = nearest(tok.value);
+      if (nearestVal === null || !Number.isFinite(nearestVal)) {
+        errors.push(`No axis values available to resolve '${tok.raw}'.`);
+        continue;
+      }
+      if (diff > tol) {
+        errors.push(`'${tok.raw}' is not within tolerance (tol=${tol}) of any axis value.`);
+        continue;
+      }
+      resolvedSet.add(nearestVal);
+      mappingLines.push(`${tok.raw} → ${nearestVal}`);
+      continue;
+    }
+
+    if (tok.type === "range") {
+      const lo = Math.min(tok.min, tok.max);
+      const hi = Math.max(tok.min, tok.max);
+      const inRange = axis.filter((v) => v >= lo && v <= hi);
+      if (inRange.length === 0) {
+        errors.push(`Range '${tok.raw}' matched 0 axis values.`);
+        continue;
+      }
+      for (const v of inRange) resolvedSet.add(v);
+      mappingLines.push(`${tok.raw} → ${inRange.length} channels`);
+      continue;
+    }
+
+    errors.push(`Unsupported token '${tok?.raw ?? ""}'.`);
+  }
+
+  const resolved = axis.filter((v) => resolvedSet.has(v));
+  return { resolved, mappingLines, errors };
+}
+
 // === Wire-up de Spectroscopy ===
 
 function wireSpectroscopyForm() {
@@ -982,6 +1129,12 @@ function wireSpectroscopyForm() {
   const columnsContainer = document.getElementById("columns-container");
   const nmrSignalsContainer = document.getElementById("nmr-signals-container");
 
+  // Spectroscopy channels UI
+  const channelsInput = document.getElementById("spectroscopy-channels-input");
+  const channelsRangeEl = document.getElementById("spectroscopy-channels-range");
+  const channelsUsageEl = document.getElementById("spectroscopy-channels-usage");
+  const channelsFeedbackEl = document.getElementById("spectroscopy-channels-feedback");
+
   // Dropdowns para Receptor y Guest
   const receptorInput = document.getElementById("receptor-select");
   const guestInput = document.getElementById("guest-select");
@@ -996,6 +1149,7 @@ function wireSpectroscopyForm() {
 
   // Único checkbox de EFA
   const efaCheckbox = document.querySelector('input[type="checkbox"]');
+  const efaOriginalTitle = efaCheckbox?.title || "";
 
   // Botón para definir dimensiones
   const defineModelBtn = document.getElementById("define-model-btn");
@@ -1378,7 +1532,132 @@ function wireSpectroscopyForm() {
   });
 
   // --- Input Listeners for State Persistence ---
-  spectraSheetInput?.addEventListener("change", () => { M().sheetSpectra = spectraSheetInput.value; });
+  const formatAxisVal = (v) => {
+    if (!Number.isFinite(v)) return String(v ?? "");
+    const rounded = Math.round(v);
+    if (Math.abs(v - rounded) < 1e-9) return String(rounded);
+    return String(v);
+  };
+
+  const CHANNEL_TOL = 0.5;
+  const MIN_CUSTOM_CHANNELS = 5;
+
+  function revalidateSpectroscopyChannels() {
+    if (state.activeModule !== "spectroscopy") return { ok: true, mode: "all", resolved: [] };
+    const m = M();
+
+    const raw = String(channelsInput?.value ?? m.channelsRaw ?? "All");
+    m.channelsRaw = raw;
+
+    if (!channelsUsageEl || !channelsFeedbackEl) return { ok: true, mode: "all", resolved: [] };
+
+    const axisCount = m.axisCount ?? (Array.isArray(m.axisValues) ? m.axisValues.length : 0);
+
+    const parsed = parseChannelsInput(raw);
+    if (parsed.mode === "all") {
+      m.channelsMode = "all";
+      m.channelsResolved = [];
+      channelsFeedbackEl.textContent = "";
+      channelsUsageEl.textContent = axisCount ? `Using ${axisCount} / ${axisCount} channels` : "";
+
+      if (efaCheckbox) {
+        efaCheckbox.disabled = false;
+        efaCheckbox.title = efaOriginalTitle;
+      }
+
+      return { ok: true, mode: "all", resolved: [] };
+    }
+
+    m.channelsMode = "custom";
+    const resolvedInfo = resolveChannels(parsed.tokens, m.axisValues, CHANNEL_TOL);
+    const errors = [...(parsed.errors || []), ...(resolvedInfo.errors || [])];
+
+    const resolved = resolvedInfo.resolved || [];
+    m.channelsResolved = resolved;
+
+    channelsUsageEl.textContent = axisCount ? `Using ${resolved.length} / ${axisCount} channels` : "";
+
+    const lines = [];
+    if (resolvedInfo.mappingLines?.length) lines.push(...resolvedInfo.mappingLines);
+    if (errors.length) {
+      lines.push("", "Errors:", ...errors.map((e) => `- ${e}`));
+    }
+
+    if (!errors.length && resolved.length > 0 && resolved.length < MIN_CUSTOM_CHANNELS) {
+      lines.push("", `Warning: con pocos canales (k=${resolved.length}) puede haber mala identificabilidad / ajuste inestable.`);
+    }
+
+    channelsFeedbackEl.textContent = lines.join("\n").trim();
+
+    if (efaCheckbox) {
+      if (resolved.length > 0) {
+        efaCheckbox.checked = false;
+        efaCheckbox.disabled = true;
+        efaCheckbox.title = "EFA requiere espectro completo (All).";
+        m.efaEnabled = false;
+      } else {
+        efaCheckbox.disabled = false;
+        efaCheckbox.title = efaOriginalTitle;
+      }
+    }
+
+    return { ok: errors.length === 0 && resolved.length > 0, mode: "custom", resolved, errors };
+  }
+
+  async function loadSpectroscopyAxis() {
+    if (state.activeModule !== "spectroscopy") return;
+    if (!spectraSheetInput || !channelsRangeEl || !channelsUsageEl || !channelsFeedbackEl) return;
+
+    const m = M();
+    const sheetName = spectraSheetInput.value;
+    m.sheetSpectra = sheetName;
+
+    channelsFeedbackEl.textContent = "";
+
+    if (!sheetName || !m.file) {
+      m.axisValues = [];
+      m.axisMin = null;
+      m.axisMax = null;
+      m.axisCount = null;
+      channelsRangeEl.textContent = "";
+      channelsUsageEl.textContent = "";
+      return;
+    }
+
+    try {
+      const data = await backendApi.listSpectroscopyAxis(m.file, sheetName);
+      m.axisValues = data?.axis_values || [];
+      m.axisMin = data?.min ?? null;
+      m.axisMax = data?.max ?? null;
+      m.axisCount = data?.count ?? (m.axisValues?.length || 0);
+
+      if (m.axisCount) {
+        channelsRangeEl.textContent = `${formatAxisVal(m.axisMin)}–${formatAxisVal(m.axisMax)} (${m.axisCount})`;
+      } else {
+        channelsRangeEl.textContent = "";
+      }
+
+      if (channelsInput) {
+        channelsInput.value = "All";
+        m.channelsRaw = "All";
+        m.channelsMode = "all";
+        m.channelsResolved = [];
+      }
+      revalidateSpectroscopyChannels();
+    } catch (err) {
+      m.axisValues = [];
+      m.axisMin = null;
+      m.axisMax = null;
+      m.axisCount = null;
+      channelsRangeEl.textContent = "";
+      channelsUsageEl.textContent = "";
+      channelsFeedbackEl.textContent = `Error reading axis: ${err?.message || err}`;
+    }
+  }
+
+  spectraSheetInput?.addEventListener("change", () => { void loadSpectroscopyAxis(); });
+  channelsInput?.addEventListener("input", () => { void revalidateSpectroscopyChannels(); });
+  channelsInput?.addEventListener("change", () => { void revalidateSpectroscopyChannels(); });
 
   efaEigenInput?.addEventListener("change", () => { M().efaEigenvalues = readInt(efaEigenInput.value); });
   efaCheckbox?.addEventListener("change", () => { M().efaEnabled = efaCheckbox.checked; });
@@ -1604,6 +1883,15 @@ function wireSpectroscopyForm() {
       return;
     }
 
+    if (state.activeModule === "spectroscopy") {
+      const chan = revalidateSpectroscopyChannels();
+      if (chan?.mode === "custom" && !chan.ok) {
+        const errs = chan?.errors || [];
+        diagEl.textContent = `Channels inválido:\n${errs.join("\n") || "Revisa el campo Channels."}`;
+        return;
+      }
+    }
+
     setProcessing(true);
     diagEl.textContent = "Verificando backend...\n";
     try {
@@ -1710,7 +1998,12 @@ function wireSpectroscopyForm() {
 
       } else {
         formData.append("spectra_sheet", spectraSheetInput?.value || "");
-        formData.append("efa_enabled", efaCheckbox?.checked ? "true" : "false");
+        formData.append("channels_raw", m.channelsRaw ?? (channelsInput?.value || "All"));
+        formData.append("channels_mode", m.channelsMode || "all");
+        formData.append("channels_resolved", JSON.stringify(m.channelsResolved || []));
+
+        const efaToSend = (m.channelsMode === "all") ? (efaCheckbox?.checked ? "true" : "false") : "false";
+        formData.append("efa_enabled", efaToSend);
         formData.append("efa_eigenvalues", readInt(efaEigenInput?.value).toString());
 
         data = await backendApi.processSpectroscopy(formData);
@@ -1809,6 +2102,16 @@ function wireSpectroscopyForm() {
 
     if (finalText) {
       appendToConsole(`\n${finalText}`);
+    }
+
+    const warnings = Array.isArray(data.warnings) ? data.warnings : [];
+    if (warnings.length) {
+      appendToConsole(`\nWarnings:\n${warnings.map((w) => `- ${w}`).join("\n")}`);
+    }
+    if (data.plot_mode) {
+      const used = (data.channels_used ?? "—");
+      const total = (data.channels_total ?? "—");
+      appendToConsole(`\nPlot mode: ${data.plot_mode} (channels ${used} / ${total})`);
     }
 
     m.resultsText = finalText;
