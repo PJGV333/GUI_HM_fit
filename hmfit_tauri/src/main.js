@@ -16,6 +16,10 @@ function makeDefaultPlotState() {
     lastPlotSpec: null,   // cache for last rendered plot spec (per module)
     overrides: {},        // { [plotId]: {titleText?, xLabel?, yLabel?, traceNames?} }
     defaults: {},         // { [plotId]: {titleText, xLabel, yLabel, traceNames} }
+    columnCatalog: {
+      columns: [], // [{id, raw, label, kind, source, enabled}]
+      byId: {},    // { [id]: column }
+    },
     edit: {
       title: "",
       xLabel: "",
@@ -55,9 +59,9 @@ function makeDefaultModuleState() {
     channelsMode: "all",
     dataMapping: {
       conc: {
-        selected: [],
-        receptor: "",
-        guest: "",
+        selectedIds: [],
+        receptorId: "",
+        guestId: "",
       },
       signals: [],
     },
@@ -485,41 +489,59 @@ function renderModuleUI() {
   // Columns Container - Restore Checkboxes
   const columnsContainer = document.getElementById("columns-container");
   if (columnsContainer) {
+    refreshColumnCatalog(state.activeModule);
+    const concCols = (m.plots.columnCatalog?.columns || []).filter(c => c.kind === 'conc');
+    const selectedIds = new Set(m.dataMapping?.conc?.selectedIds || []);
     columnsContainer.innerHTML = "";
     if (m.availableColumns.length === 0) {
       columnsContainer.textContent = "Select a concentration sheet to load columns...";
     } else {
-      m.availableColumns.forEach(col => {
+      concCols.forEach(col => {
         const label = document.createElement("label");
         label.className = "checkbox-inline";
         label.style.marginRight = "10px";
 
         const cb = document.createElement("input");
         cb.type = "checkbox";
-        cb.value = col;
+        cb.value = col.id;
         cb.name = "column_names";
-        // Restore selection state? 
-        // We need to store selected columns in state too.
-        // We have m.selectedColumns (array of strings)
-        // But we didn't populate it in the handler yet! 
-        // Wait, we need to add a listener to columnsContainer to update m.selectedColumns.
-        // I'll add that listener in wireSpectroscopyForm.
-        // For now, let's assume it's populated or empty.
-        // Actually, the previous code didn't have m.selectedColumns populated.
-        // I need to add that listener.
-
-        // Check if selected
-        // We don't have m.selectedColumns populated yet.
-        // I'll add the listener in the next step.
+        cb.checked = selectedIds.has(col.id);
 
         const span = document.createElement("span");
-        span.textContent = col;
+        span.textContent = col.label;
 
         label.appendChild(cb);
         label.appendChild(span);
         columnsContainer.appendChild(label);
       });
     }
+  }
+
+  // Role dropdowns (in Plots tab): rebuild options per module to avoid contamination
+  const receptorSelect = document.getElementById("receptor-select");
+  const guestSelect = document.getElementById("guest-select");
+  if (receptorSelect && guestSelect) {
+    const byId = m.plots.columnCatalog?.byId || {};
+    const selectedIds = Array.isArray(m.dataMapping?.conc?.selectedIds) ? m.dataMapping.conc.selectedIds : [];
+    const concEnabled = selectedIds.map(id => byId[id]).filter(Boolean);
+
+    [receptorSelect, guestSelect].forEach(sel => {
+      sel.innerHTML = "";
+      const opt0 = document.createElement("option");
+      opt0.value = "";
+      opt0.text = "Auto";
+      sel.add(opt0);
+      concEnabled.forEach(col => {
+        const opt = document.createElement("option");
+        opt.value = col.id;
+        opt.text = col.label;
+        sel.add(opt);
+      });
+    });
+
+    resolveMapping(state.activeModule, { receptorId: m.dataMapping?.conc?.receptorId, guestId: m.dataMapping?.conc?.guestId });
+    receptorSelect.value = m.dataMapping?.conc?.receptorId || "";
+    guestSelect.value = m.dataMapping?.conc?.guestId || "";
   }
 
   // NMR Signals Container - Restore Checkboxes
@@ -1083,30 +1105,119 @@ function readList(text) {
   return v.split(/[,\s]+/).filter(Boolean);
 }
 
-function normalizeColumnName(name) {
-  return String(name ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "_");
+function slugifyAscii(s) {
+  return String(s ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toLowerCase();
 }
 
-function pickFirstMatchingColumn(columns, patterns) {
+function makeStableId(kind, raw, used) {
+  const base = `${kind}__${slugifyAscii(raw) || "col"}`;
+  let id = base;
+  let k = 2;
+  while (used.has(id)) id = `${base}__${k++}`;
+  used.add(id);
+  return id;
+}
+
+function normalizeColumnName(name) {
+  return String(name ?? "").trim().toLowerCase().replace(/\s+/g, "_");
+}
+
+function pickFirstMatchingId(columns, patterns) {
   for (const col of columns) {
-    const norm = normalizeColumnName(col);
-    if (patterns.some((p) => p.test(norm))) return col;
+    const norm = normalizeColumnName(col.raw);
+    if (patterns.some((p) => p.test(norm))) return col.id;
   }
   return "";
 }
 
-function resolveMapping(moduleKey, rawColumns, uiSelection) {
-  const columns = Array.isArray(rawColumns) ? rawColumns.map(String) : [];
-  const selection = uiSelection || {};
+function refreshColumnCatalog(modKey) {
+  const mod = state.modules[modKey];
+  if (!mod || !mod.plots) return;
 
-  const uiReceptor = String(selection.receptor ?? "").trim();
-  const uiGuest = String(selection.guest ?? "").trim();
+  const used = new Set();
+  const cols = [];
 
-  const hasUiReceptor = uiReceptor && columns.includes(uiReceptor);
-  const hasUiGuest = uiGuest && columns.includes(uiGuest);
+  const selectedIds = new Set(mod.dataMapping?.conc?.selectedIds || []);
+
+  // Concentration columns (conc_sheet headers)
+  for (const raw of (mod.availableColumns || [])) {
+    const id = makeStableId("conc", raw, used);
+    cols.push({
+      id,
+      raw: String(raw),
+      label: String(raw),
+      kind: "conc",
+      source: "conc_sheet",
+      enabled: selectedIds.size ? selectedIds.has(id) : true,
+    });
+  }
+
+  // NMR signals (shifts_sheet headers)
+  for (const raw of (mod.availableSignals || [])) {
+    const id = makeStableId("signal", raw, used);
+    cols.push({
+      id,
+      raw: String(raw),
+      label: String(raw),
+      kind: "signal",
+      source: "shifts_sheet",
+      enabled: true,
+    });
+  }
+
+  // Solver species (if available from plotData)
+  const plotKey = modKey === "nmr" ? "nmr" : "spec";
+  const spOpts = mod.plots.plotData?.[plotKey]?.[`${plotKey}_species_distribution`]?.speciesOptions || [];
+  for (const sp of spOpts) {
+    cols.push({
+      id: String(sp.id),
+      raw: String(sp.id),
+      label: String(sp.label || sp.id),
+      kind: "species",
+      source: "solver",
+      enabled: true,
+    });
+  }
+
+  const byId = {};
+  cols.forEach((c) => { byId[c.id] = c; });
+  mod.plots.columnCatalog = { columns: cols, byId };
+}
+
+function selectedConcIdsFromDOM(columnsContainer) {
+  if (!columnsContainer) return [];
+  return Array.from(columnsContainer.querySelectorAll('input[type="checkbox"]:checked'))
+    .map(cb => cb.value)
+    .filter(Boolean);
+}
+
+function concRawsFromIds(mod, ids) {
+  const byId = mod?.plots?.columnCatalog?.byId || {};
+  return (ids || [])
+    .map((id) => byId[id]?.raw)
+    .filter(Boolean);
+}
+
+function resolveMapping(modKey, uiSelection = {}) {
+  const mod = state.modules[modKey];
+  refreshColumnCatalog(modKey);
+
+  const byId = mod?.plots?.columnCatalog?.byId || {};
+  const selectedIds = mod?.dataMapping?.conc?.selectedIds || [];
+  const enabledConc = selectedIds
+    .map((id) => byId[id])
+    .filter((c) => c && c.kind === "conc");
+
+  const uiReceptorId = String(uiSelection.receptorId || "").trim();
+  const uiGuestId = String(uiSelection.guestId || "").trim();
+
+  const hasUiReceptor = uiReceptorId && enabledConc.some((c) => c.id === uiReceptorId);
+  const hasUiGuest = uiGuestId && enabledConc.some((c) => c.id === uiGuestId);
 
   const receptorPatterns = [
     /^h$/,
@@ -1122,6 +1233,7 @@ function resolveMapping(moduleKey, rawColumns, uiSelection) {
     /^p$/,
     /^prot$/,
     /^protein$/,
+    /^x1$/,
   ].map((r) => new RegExp(r.source, "i"));
 
   const guestPatterns = [
@@ -1136,38 +1248,104 @@ function resolveMapping(moduleKey, rawColumns, uiSelection) {
     /^metal_/,
     /_metal$/,
     /^q$/,
-    /^x$/,
+    /^x2$/,
     /^x\\d+$/,
   ].map((r) => new RegExp(r.source, "i"));
 
-  let receptor = hasUiReceptor ? uiReceptor : "";
-  let guest = hasUiGuest ? uiGuest : "";
+  let receptorId = hasUiReceptor ? uiReceptorId : "";
+  let guestId = hasUiGuest ? uiGuestId : "";
 
-  if (!receptor) receptor = pickFirstMatchingColumn(columns, receptorPatterns);
-  if (!guest) guest = pickFirstMatchingColumn(columns, guestPatterns);
+  if (!receptorId) receptorId = pickFirstMatchingId(enabledConc, receptorPatterns);
+  if (!guestId) guestId = pickFirstMatchingId(enabledConc, guestPatterns);
 
-  // Fallbacks: deterministic order of selected columns.
-  if (!receptor && columns.length >= 1) receptor = columns[0];
-  if (!guest && columns.length >= 2) guest = columns[1];
+  if (!receptorId && enabledConc.length >= 1) receptorId = enabledConc[0].id;
+  if (!guestId && enabledConc.length >= 2) guestId = enabledConc[1].id;
 
-  // Ensure distinct mapping when possible.
-  if (receptor && guest && receptor === guest) {
-    const alt = columns.find((c) => c !== receptor) || "";
-    guest = alt || guest;
+  if (receptorId && guestId && receptorId === guestId) {
+    const alt = enabledConc.find((c) => c.id !== receptorId)?.id || "";
+    guestId = alt || guestId;
   }
 
-  return { moduleKey, receptor, guest };
+  mod.dataMapping.conc.receptorId = receptorId;
+  mod.dataMapping.conc.guestId = guestId;
+  return { receptorId, guestId };
 }
 
-function getEffectiveRoleLabels(moduleState, selectedCols, uiSelection) {
-  if (!moduleState?.dataMapping) moduleState.dataMapping = { conc: { selected: [], receptor: "", guest: "" }, signals: [] };
-  moduleState.dataMapping.conc = moduleState.dataMapping.conc || { selected: [], receptor: "", guest: "" };
-  moduleState.dataMapping.conc.selected = Array.isArray(selectedCols) ? selectedCols : [];
+function getEffectiveRoleRaws(modKey, uiSelection = {}) {
+  const mod = state.modules[modKey];
+  const { receptorId, guestId } = resolveMapping(modKey, uiSelection);
+  const byId = mod?.plots?.columnCatalog?.byId || {};
+  return { receptor: byId[receptorId]?.raw || "", guest: byId[guestId]?.raw || "" };
+}
 
-  const resolved = resolveMapping(state.activeModule, moduleState.dataMapping.conc.selected, uiSelection);
-  moduleState.dataMapping.conc.receptor = resolved.receptor;
-  moduleState.dataMapping.conc.guest = resolved.guest;
-  return { receptor: resolved.receptor, guest: resolved.guest };
+function getExportConcSeries(exportData, rawName) {
+  const cols = exportData?.column_names || exportData?.columnNames || [];
+  const C_T = exportData?.C_T || exportData?.concentrations || [];
+  if (!rawName || !Array.isArray(cols) || !Array.isArray(C_T)) return null;
+  const idx = cols.indexOf(rawName);
+  if (idx < 0) return null;
+  return C_T.map(row => row?.[idx]).filter(v => v !== undefined);
+}
+
+function updatePlotsFromMapping() {
+  const modKey = state.activeModule;
+  const mod = state.modules[modKey];
+  const payload = mod?.resultsPayload;
+  if (!payload?.success) return;
+
+  refreshColumnCatalog(modKey);
+
+  const exportData = payload.export_data || {};
+  const rolesRaw = getEffectiveRoleRaws(modKey, {
+    receptorId: mod?.dataMapping?.conc?.receptorId,
+    guestId: mod?.dataMapping?.conc?.guestId,
+  });
+
+  const xGuest = getExportConcSeries(exportData, rolesRaw.guest);
+  const xReceptor = getExportConcSeries(exportData, rolesRaw.receptor);
+  const x = xGuest || xReceptor;
+  const xLabel = xGuest ? `[${rolesRaw.guest}] Total (M)` : (rolesRaw.receptor ? `[${rolesRaw.receptor}] Total (M)` : "Concentration");
+  if (!x || !Array.isArray(x) || x.length === 0) return;
+
+  if (modKey === 'spectroscopy') {
+    const spec = mod.plots.plotData?.spec || {};
+    if (spec?.spec_fit_overlay) {
+      spec.spec_fit_overlay.xTitrant = x;
+      spec.spec_fit_overlay.xLabel = xLabel;
+    }
+    if (spec?.spec_efa_components) {
+      spec.spec_efa_components.xTitrant = x;
+      spec.spec_efa_components.xLabel = xLabel;
+    }
+    if (spec?.spec_species_distribution) {
+      spec.spec_species_distribution.axisVectors = spec.spec_species_distribution.axisVectors || {};
+      spec.spec_species_distribution.axisVectors.titrant_total = x;
+      spec.spec_species_distribution.x_default = x;
+      spec.spec_species_distribution.axisOptions = spec.spec_species_distribution.axisOptions || [];
+      const opt = spec.spec_species_distribution.axisOptions.find(a => a.id === 'titrant_total');
+      if (opt) opt.label = xLabel;
+    }
+    mod.plots.plotData.spec = spec;
+  } else {
+    const nmr = mod.plots.plotData?.nmr || {};
+    if (nmr?.nmr_shifts_fit) {
+      nmr.nmr_shifts_fit.x = x;
+      nmr.nmr_shifts_fit.xLabel = xLabel;
+    }
+    if (nmr?.nmr_residuals) {
+      nmr.nmr_residuals.x = x;
+      nmr.nmr_residuals.xLabel = xLabel;
+    }
+    if (nmr?.nmr_species_distribution) {
+      nmr.nmr_species_distribution.axisVectors = nmr.nmr_species_distribution.axisVectors || {};
+      nmr.nmr_species_distribution.axisVectors.titrant_total = x;
+      nmr.nmr_species_distribution.x_default = x;
+      nmr.nmr_species_distribution.axisOptions = nmr.nmr_species_distribution.axisOptions || [];
+      const opt = nmr.nmr_species_distribution.axisOptions.find(a => a.id === 'titrant_total');
+      if (opt) opt.label = xLabel;
+    }
+    mod.plots.plotData.nmr = nmr;
+  }
 }
 
 function parseChannelsInput(input) {
@@ -1574,23 +1752,27 @@ function wireSpectroscopyForm() {
       const data = await backendApi.listColumns(file, sheetName, state.activeModule);
       const columns = data?.columns || [];
       M().availableColumns = columns;
+      refreshColumnCatalog(state.activeModule);
+      const concCols = (M().plots.columnCatalog?.columns || []).filter(c => c.kind === 'conc');
+      const selectedIds = new Set(M().dataMapping?.conc?.selectedIds || []);
 
       columnsContainer.innerHTML = ""; // Limpiar
       if (columns.length === 0) {
         columnsContainer.textContent = "No columns found.";
       } else {
-        columns.forEach(col => {
+        concCols.forEach(col => {
           const label = document.createElement("label");
           label.className = "checkbox-inline";
           label.style.marginRight = "10px";
 
           const cb = document.createElement("input");
           cb.type = "checkbox";
-          cb.value = col;
+          cb.value = col.id;
           cb.name = "column_names"; // Para facilitar recolección si se desea
+          cb.checked = selectedIds.has(col.id);
 
           const span = document.createElement("span");
-          span.textContent = col;
+          span.textContent = col.label;
 
           label.appendChild(cb);
           label.appendChild(span);
@@ -1927,15 +2109,17 @@ function wireSpectroscopyForm() {
 
   receptorInput?.addEventListener("change", () => {
     M().receptor = receptorInput.value;
-    M().dataMapping.conc.receptor = receptorInput.value || "";
+    M().dataMapping.conc.receptorId = receptorInput.value || "";
     if (M().resultsPayload && (M().plots.availablePlots?.length || 0) > 0) {
+      try { updatePlotsFromMapping(); } catch (_) { }
       try { renderMainCanvasPlot(); } catch (_) { }
     }
   });
   guestInput?.addEventListener("change", () => {
     M().guest = guestInput.value;
-    M().dataMapping.conc.guest = guestInput.value || "";
+    M().dataMapping.conc.guestId = guestInput.value || "";
     if (M().resultsPayload && (M().plots.availablePlots?.length || 0) > 0) {
+      try { updatePlotsFromMapping(); } catch (_) { }
       try { renderMainCanvasPlot(); } catch (_) { }
     }
   });
@@ -1974,11 +2158,15 @@ function wireSpectroscopyForm() {
   function updateDropdowns() {
     if (!receptorInput || !guestInput) return;
 
-    const selectedCols = Array.from(columnsContainer.querySelectorAll('input[type="checkbox"]:checked'))
-      .map(cb => cb.value);
+    const selectedIds = selectedConcIdsFromDOM(columnsContainer);
+    M().dataMapping.conc.selectedIds = selectedIds;
+    refreshColumnCatalog(state.activeModule);
 
-    const currentReceptor = receptorInput.value;
-    const currentGuest = guestInput.value;
+    const byId = M().plots.columnCatalog?.byId || {};
+    const concEnabled = selectedIds.map(id => byId[id]).filter(Boolean);
+
+    const currentReceptorId = receptorInput.value;
+    const currentGuestId = guestInput.value;
 
     [receptorInput, guestInput].forEach(select => {
       select.innerHTML = "";
@@ -1987,24 +2175,21 @@ function wireSpectroscopyForm() {
       defaultOpt.text = "Auto";
       select.add(defaultOpt);
 
-      selectedCols.forEach(col => {
+      concEnabled.forEach(col => {
         const opt = document.createElement("option");
-        opt.value = col;
-        opt.text = col;
+        opt.value = col.id;
+        opt.text = col.label;
         select.add(opt);
       });
     });
 
     // Resolve mapping (Auto + heuristics) and persist into module state.
-    const roles = getEffectiveRoleLabels(M(), selectedCols, {
-      receptor: currentReceptor,
-      guest: currentGuest,
-    });
-
-    if (roles.receptor && selectedCols.includes(roles.receptor)) receptorInput.value = roles.receptor;
-    if (roles.guest && selectedCols.includes(roles.guest)) guestInput.value = roles.guest;
+    resolveMapping(state.activeModule, { receptorId: currentReceptorId, guestId: currentGuestId });
+    receptorInput.value = M().dataMapping.conc.receptorId || "";
+    guestInput.value = M().dataMapping.conc.guestId || "";
 
     if (M().resultsPayload && (M().plots.availablePlots?.length || 0) > 0) {
+      try { updatePlotsFromMapping(); } catch (_) { }
       try { renderMainCanvasPlot(); } catch (_) { }
     }
   }
@@ -2210,24 +2395,20 @@ function wireSpectroscopyForm() {
     connectWebSocket();
     diagEl.textContent = `Procesando datos de ${state.activeModule === 'nmr' ? 'NMR' : 'Spectroscopy'}...\n`;
 
-    // Recolectar columnas seleccionadas
-    let selectedCols = [];
-    if (state.activeModule === 'nmr') {
-      // For NMR, columns are selected from the signals container if we are in NMR mode?
-      // Actually, the UI has "Concentration Sheet" columns AND "Chemical Shift Sheet" signals.
-      // The backend expects 'column_names' for concentration columns.
-      selectedCols = Array.from(columnsContainer.querySelectorAll('input[type="checkbox"]:checked'))
-        .map(cb => cb.value);
-    } else {
-      selectedCols = Array.from(columnsContainer.querySelectorAll('input[type="checkbox"]:checked'))
-        .map(cb => cb.value);
-    }
+    // Recolectar columnas seleccionadas (IDs estables)
+    const selectedConcIds = selectedConcIdsFromDOM(columnsContainer);
+    m.dataMapping.conc.selectedIds = selectedConcIds;
+    refreshColumnCatalog(state.activeModule);
 
-    // Single source of truth: dataMapping
-    m.dataMapping.conc.selected = selectedCols;
-    const roles = getEffectiveRoleLabels(m, selectedCols, { receptor: receptorInput?.value, guest: guestInput?.value });
-    if (receptorInput && roles.receptor) receptorInput.value = roles.receptor;
-    if (guestInput && roles.guest) guestInput.value = roles.guest;
+    const selectedColsRaw = concRawsFromIds(m, selectedConcIds);
+    const rolesRaw = getEffectiveRoleRaws(state.activeModule, {
+      receptorId: receptorInput?.value,
+      guestId: guestInput?.value,
+    });
+
+    // Sync dropdowns to resolved mapping (Auto)
+    if (receptorInput) receptorInput.value = m.dataMapping.conc.receptorId || "";
+    if (guestInput) guestInput.value = m.dataMapping.conc.guestId || "";
 
     // Recolectar datos del grid del modelo
     const gridData = [];
@@ -2274,9 +2455,9 @@ function wireSpectroscopyForm() {
     const formData = new FormData();
     formData.append("file", m.file);
     formData.append("conc_sheet", concSheetInput?.value || "");
-    formData.append("column_names", JSON.stringify(selectedCols));
-    formData.append("receptor_label", roles.receptor || "");
-    formData.append("guest_label", roles.guest || "");
+    formData.append("column_names", JSON.stringify(selectedColsRaw));
+    formData.append("receptor_label", rolesRaw.receptor || "");
+    formData.append("guest_label", rolesRaw.guest || "");
 
     formData.append("modelo", JSON.stringify(gridData));
     formData.append("non_abs_species", JSON.stringify(nonAbsSpecies));
@@ -2537,6 +2718,9 @@ function wireSpectroscopyForm() {
         },
       };
     }
+
+    // Apply current data-mapping (roles/x-axis) to plotData without re-running optimization
+    try { updatePlotsFromMapping(); } catch (_) { }
 
     // Reset interactive controls (will be auto-populated on first render)
     ps.controls.distXAxisId = 'titrant_total';
@@ -3731,9 +3915,11 @@ function wireSpectroscopyForm() {
   }
   // --- Helper: Build Config Objects ---
   function buildSpecConfigFromState() {
-    const selectedCols = Array.from(columnsContainer.querySelectorAll('input[type="checkbox"]:checked'))
-      .map(cb => cb.value);
-    const roles = getEffectiveRoleLabels(M(), selectedCols, { receptor: receptorInput?.value, guest: guestInput?.value });
+    const selectedIds = selectedConcIdsFromDOM(columnsContainer);
+    M().dataMapping.conc.selectedIds = selectedIds;
+    refreshColumnCatalog('spectroscopy');
+    const selectedRaws = concRawsFromIds(M(), selectedIds);
+    const roles = getEffectiveRoleRaws('spectroscopy', { receptorId: receptorInput?.value, guestId: guestInput?.value });
 
     const gridData = [];
     if (modelGridContainer) {
@@ -3775,7 +3961,6 @@ function wireSpectroscopyForm() {
       plots: {
         plotOverrides: state.modules.spectroscopy?.plots?.overrides || {},
       },
-      dataMapping: M().dataMapping || {},
       model: {
         nComp: readInt(nCompInput?.value),
         nSpecies: readInt(nSpeciesInput?.value),
@@ -3790,7 +3975,8 @@ function wireSpectroscopyForm() {
       },
       dataMapping: M().dataMapping || {},
       columns: {
-        conc: selectedCols,
+        concIds: selectedIds,
+        concRaws: selectedRaws,
         spectraSheet: spectraSheetInput?.value || "",
         concSheet: concSheetInput?.value || ""
       },
@@ -3809,9 +3995,11 @@ function wireSpectroscopyForm() {
     const selectedSignals = Array.from(nmrSignalsContainer.querySelectorAll('input[type="checkbox"]:checked'))
       .map(cb => cb.value);
 
-    const selectedCols = Array.from(columnsContainer.querySelectorAll('input[type="checkbox"]:checked'))
-      .map(cb => cb.value);
-    const roles = getEffectiveRoleLabels(M(), selectedCols, { receptor: receptorInput?.value, guest: guestInput?.value });
+    const selectedIds = selectedConcIdsFromDOM(columnsContainer);
+    M().dataMapping.conc.selectedIds = selectedIds;
+    refreshColumnCatalog('nmr');
+    const selectedRaws = concRawsFromIds(M(), selectedIds);
+    const roles = getEffectiveRoleRaws('nmr', { receptorId: receptorInput?.value, guestId: guestInput?.value });
 
     const gridData = [];
     if (modelGridContainer) {
@@ -3853,7 +4041,6 @@ function wireSpectroscopyForm() {
       plots: {
         plotOverrides: state.modules.nmr?.plots?.overrides || {},
       },
-      dataMapping: M().dataMapping || {},
       model: {
         nComp: readInt(nCompInput?.value),
         nSpecies: readInt(nSpeciesInput?.value),
@@ -3866,7 +4053,8 @@ function wireSpectroscopyForm() {
       },
       dataMapping: M().dataMapping || {},
       columns: {
-        conc: selectedCols,
+        concIds: selectedIds,
+        concRaws: selectedRaws,
         signals: selectedSignals,
         nmrSheet: nmrSheetInput?.value || "",
         concSheet: concSheetInput?.value || ""
@@ -3982,10 +4170,16 @@ function wireSpectroscopyForm() {
       container.dispatchEvent(new Event('change'));
     };
 
+    const concIdsForConfig = cfg?.columns?.concIds || [];
+    const concRawsForConfig = cfg?.columns?.concRaws || [];
+    const concValues = (Array.isArray(concIdsForConfig) && concIdsForConfig.length)
+      ? concIdsForConfig
+      : concRawsForConfig;
+
     if (cfg.type === 'Spectroscopy') {
-      checkBoxes(columnsContainer, cfg.columns.conc);
+      checkBoxes(columnsContainer, concValues);
     } else {
-      checkBoxes(columnsContainer, cfg.columns.conc);
+      checkBoxes(columnsContainer, concValues);
       checkBoxes(nmrSignalsContainer, cfg.columns.signals);
     }
 
@@ -3993,14 +4187,51 @@ function wireSpectroscopyForm() {
     // We need to wait for dropdowns to populate (which happens on change event above)
     // But since that's synchronous for existing DOM elements, we can try setting values now.
     setTimeout(() => {
-      if (receptorInput) receptorInput.value = cfg.roles.receptor;
-      if (guestInput) guestInput.value = cfg.roles.guest;
       if (cfg?.dataMapping && M()?.dataMapping) {
         M().dataMapping = cfg.dataMapping;
       }
-      // Ensure defaults exist even if config omitted roles or only 1 col is selected
-      const selectedCols = Array.from(columnsContainer.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
-      getEffectiveRoleLabels(M(), selectedCols, { receptor: receptorInput?.value, guest: guestInput?.value });
+
+      // Sync selected IDs from DOM into mapping, then resolve Auto and update dropdowns
+      // If importing legacy config with concRaws, try to check them by mapping to current IDs
+      if ((!Array.isArray(cfg?.columns?.concIds) || cfg.columns.concIds.length === 0) && Array.isArray(cfg?.columns?.concRaws) && cfg.columns.concRaws.length) {
+        refreshColumnCatalog(state.activeModule);
+        const byId0 = M().plots.columnCatalog?.byId || {};
+        const wanted = new Set(cfg.columns.concRaws);
+        const boxes = columnsContainer?.querySelectorAll('input[type="checkbox"]') || [];
+        boxes.forEach(cb => {
+          const raw = byId0[cb.value]?.raw;
+          cb.checked = raw ? wanted.has(raw) : false;
+        });
+        columnsContainer?.dispatchEvent(new Event('change'));
+      }
+
+      const selectedIds = selectedConcIdsFromDOM(columnsContainer);
+      M().dataMapping.conc.selectedIds = selectedIds;
+      refreshColumnCatalog(state.activeModule);
+
+      // If config stored legacy raw roles, try to map them to IDs
+      const byId = M().plots.columnCatalog?.byId || {};
+      const concCols = Object.values(byId).filter(c => c.kind === 'conc');
+      const findIdByRaw = (raw) => concCols.find(c => c.raw === raw)?.id || "";
+
+      if (M().dataMapping?.conc) {
+        if (!M().dataMapping.conc.receptorId && cfg?.roles?.receptor) {
+          M().dataMapping.conc.receptorId = findIdByRaw(cfg.roles.receptor);
+        }
+        if (!M().dataMapping.conc.guestId && cfg?.roles?.guest) {
+          M().dataMapping.conc.guestId = findIdByRaw(cfg.roles.guest);
+        }
+      }
+
+      resolveMapping(state.activeModule, {
+        receptorId: M().dataMapping.conc.receptorId,
+        guestId: M().dataMapping.conc.guestId,
+      });
+      if (receptorInput) receptorInput.value = M().dataMapping.conc.receptorId || "";
+      if (guestInput) guestInput.value = M().dataMapping.conc.guestId || "";
+
+      try { updatePlotsFromMapping(); } catch (_) { }
+      try { renderMainCanvasPlot(); } catch (_) { }
     }, 50);
 
     diagEl.textContent = `Configuration loaded (${cfg.type}).`;
