@@ -113,66 +113,70 @@ def build_D_cols(CT, conc_colnames, signal_colnames, default_idx=0):
     return D_cols, parent_idx
 
 def project_coeffs_block_onp_frac(dq_block, C_block, D_cols, mask_block, rcond=1e-10, ridge=0.0):
-    """Proyección por señal usando fracción molar del 'padre' de cada señal."""
+    """
+    Proyección por señal usando fracción molar del 'padre' de cada señal.
+    Calcula los desplazamientos químicos de las especies (delta_species) y predice dq_calc.
+    
+    Args:
+        dq_block: (n_points, n_signals) Observed chemical shifts (absolute).
+        C_block: (n_points, n_species) Concentrations of all species.
+        D_cols: (n_points, n_signals) Total concentration of the nucleus parent (e.g. H or G).
+        mask_block: (n_points, n_signals) Boolean mask of observed data.
+        
+    Returns:
+        dq_calc: (n_points, n_signals) Calculated chemical shifts.
+    """
     m, nP = dq_block.shape
-    dq_calc = np.zeros_like(dq_block, float)
-    Xbase = np.asarray(C_block, float)
-    finite_rows = np.isfinite(Xbase).all(axis=1)
-    nonzero_rows = np.linalg.norm(Xbase, axis=1) > 0.0
-    goodX = finite_rows & nonzero_rows
+    dq_calc = np.full_like(dq_block, np.nan, dtype=float) # Default to NaN
+    
+    # Calculate fractions: F = C / D_cols
+    # Note: D_cols is (n_points, n_signals), C_block is (n_points, n_species)
+    # We need to handle this per signal because D_cols varies per signal (could be H or G)
+    
     for j in range(nP):
+        # Select valid points for this signal
+        # Valid means:
+        # 1. Observed in dq_block (mask_block)
+        # 2. Parent concentration D_cols is finite and > 0
+        # 3. Concentrations C_block are finite
+        
         D = D_cols[:, j]
-        mj = mask_block[:, j] & goodX & np.isfinite(D) & (np.abs(D) > 0)
-        if mj.sum() < 2: continue
-        Xj = Xbase[mj, :] / D[mj][:, None]
-        y  = dq_block[mj, j]
+        valid_C = np.isfinite(C_block).all(axis=1)
+        mj = mask_block[:, j] & valid_C & np.isfinite(D) & (np.abs(D) > 1e-12)
+        
+        nj = mj.sum()
+        if nj < 2: # Need at least 2 points to fit? Or just > number of species?
+             # If not enough points, we can't fit deltas for this signal.
+             # Leave as NaN or 0? 
+             continue
+
+        # F_j = C[mj] / D[mj]  -> shape (nj, n_species)
+        F_j = C_block[mj, :] / D[mj][:, None]
+        
+        y = dq_block[mj, j] # (nj,)
+        
+        # Solve F_j * delta_species = y
         try:
-            coef, *_ = np.linalg.lstsq(Xj, y, rcond=rcond)
+            delta_species, _, _, _ = np.linalg.lstsq(F_j, y, rcond=rcond)
         except np.linalg.LinAlgError:
-            if ridge > 0.0:
-                XtX = Xj.T @ Xj
-                coef = np.linalg.solve(XtX + ridge*np.eye(XtX.shape[0]), Xj.T @ y)
-            else:
-                coef = np.linalg.pinv(Xj, rcond=rcond) @ y
-        dq_calc[mj, j] = Xj @ coef
-    return dq_calc
-
-def project_coeffs_block_onp(dq_block, X_block, mask_block, rcond=1e-10, ridge=0.0):
-    """
-    Ajusta coeficientes por señal usando SOLO filas válidas.
-    """
-    m, nP = dq_block.shape
-    dq_calc = np.zeros_like(dq_block, dtype=float)
-
-    # filas de X que son numéricamente utilizables
-    finite_rows = np.isfinite(X_block).all(axis=1)
-    nonzero_rows = np.linalg.norm(X_block, axis=1) > 0.0
-    good_rows_X = finite_rows & nonzero_rows
-
-    for j in range(nP):
-        mj = mask_block[:, j] & good_rows_X
-        nj = int(mj.sum())
-        if nj < 2:
-            continue  # no hay suficientes puntos para esa señal
-
-        X = X_block[mj, :]      # (nj × n_abs)
-        y = dq_block[mj, j]     # (nj,)
-
-        try:
-            # camino estable
-            coef, *_ = np.linalg.lstsq(X, y, rcond=rcond)
-        except np.linalg.LinAlgError:
-            if ridge > 0.0:
-                # ridge mínimo si lstsq no converge
-                XtX = X.T @ X
-                coef = np.linalg.solve(XtX + ridge * np.eye(XtX.shape[0]), X.T @ y)
-            else:
-                # fallback pinv
-                coef = np.linalg.pinv(X, rcond=rcond) @ y
-
-        # predicción solo en filas observadas
-        dq_calc[mj, j] = X @ coef
-
+             # Fallback
+             if ridge > 0.0:
+                 XtX = F_j.T @ F_j
+                 delta_species = np.linalg.solve(XtX + ridge*np.eye(XtX.shape[0]), F_j.T @ y)
+             else:
+                 delta_species = np.linalg.pinv(F_j, rcond=rcond) @ y
+        
+        # Calculate predicted values for ALL points where we have concentrations
+        # But we need D to be valid to calculate F
+        # We can predict even where dq is missing, as long as we have C and D.
+        
+        # Prediction mask: where C and D are valid (regardless of dq observation)
+        pred_mask = valid_C & np.isfinite(D) & (np.abs(D) > 1e-12)
+        
+        if pred_mask.any():
+            F_pred = C_block[pred_mask, :] / D[pred_mask][:, None]
+            dq_calc[pred_mask, j] = F_pred @ delta_species
+            
     return dq_calc
 
 
@@ -223,8 +227,12 @@ def process_nmr_data(
     try:
         # Chemical Shifts (dq)
         Chem_Shift_T = chemshift_data[signal_names]
-        dq1 = Chem_Shift_T - Chem_Shift_T.iloc[0]
-        dq = np.asarray(dq1.to_numpy(dtype=float))
+        # dq1 = Chem_Shift_T - Chem_Shift_T.iloc[0] # REMOVED: Do not subtract first row
+        
+        # Convert to numeric, coercing errors to NaN
+        Chem_Shift_T = Chem_Shift_T.apply(pd.to_numeric, errors='coerce')
+        
+        dq = np.asarray(Chem_Shift_T.to_numpy(dtype=float))
         mask = np.isfinite(dq)
 
         # Concentrations (C_T)
@@ -299,7 +307,16 @@ def process_nmr_data(
             dq_cal = project_coeffs_block_onp_frac(
                 dq, C, D_cols, mask, rcond=1e-10, ridge=1e-8
             )
-            r = (dq - dq_cal)[mask].ravel()
+            
+            # Residuals only on observed points
+            # dq and dq_cal should match on mask
+            # Note: dq_cal might be NaN where mask is False, or even where mask is True if fit failed for that signal
+            
+            diff = dq - dq_cal
+            # Filter by mask AND where we actually got a calculation
+            valid_residuals = mask & np.isfinite(dq_cal)
+            
+            r = diff[valid_residuals].ravel()
             if (r.size <= len(k_curr)) or (not np.isfinite(r).all()):
                 log_progress(f"Iter {iter_state['cnt']}: evaluación descartada (Nobs≤p o residuales no finitos)")
                 return 1e9
@@ -354,16 +371,78 @@ def process_nmr_data(
         dq_fit = project_coeffs_block_onp_frac(dq, C_opt, D_cols, mask)
         
         # Calculate Errors
-        metrics = compute_errors_nmr_varpro(
-            k=k_opt, res=res, dq=dq, H=H, modelo=modelo, nas=nas,
-            rcond=1e-10, use_projector=True, mask=mask
-        )
+        # We need to adapt compute_errors_nmr_varpro or implement a custom one here
+        # because we changed how residuals are calculated (absolute shifts)
         
-        # Extract metrics
-        percK = metrics.get("percK", np.zeros_like(k_opt))
-        SE_log10K = metrics.get("SE_log10K", np.zeros_like(k_opt))
-        rms = metrics.get("rms", 0.0)
-        covfit = metrics.get("covfit", 0.0)
+        # Custom Error Calculation for NMR (HypNMR style)
+        # 1. Jacobian J = d(residual)/dK
+        # 2. Residuals vector r
+        # 3. s^2 = r.T @ r / (N_res - N_par)
+        # 4. Cov = s^2 * (J.T @ J)^-1
+        
+        # Re-calculate residuals for final K
+        diff_final = dq - dq_fit
+        valid_residuals_final = mask & np.isfinite(dq_fit)
+        residuals_vec = diff_final[valid_residuals_final].ravel()
+        
+        N_res = residuals_vec.size
+        N_par = len(k_opt)
+        dof = N_res - N_par
+        
+        if dof > 0:
+            # Numerical Jacobian
+            eps = 1e-8
+            J = np.zeros((N_res, N_par))
+            
+            # Base residuals are already calculated: residuals_vec
+            
+            for i in range(N_par):
+                k_temp = k_opt.copy()
+                k_temp[i] += eps * max(abs(k_temp[i]), 1.0)
+                step = k_temp[i] - k_opt[i]
+                
+                try:
+                    C_temp, _ = res.concentraciones(k_temp)
+                    dq_fit_temp = project_coeffs_block_onp_frac(dq, C_temp, D_cols, mask)
+                    diff_temp = dq - dq_fit_temp
+                    # Must use SAME mask as base
+                    r_temp = diff_temp[valid_residuals_final].ravel()
+                    J[:, i] = (r_temp - residuals_vec) / step
+                except:
+                    J[:, i] = 0.0 # Should not happen often
+            
+            # Covariance
+            try:
+                JtJ = J.T @ J
+                cov_k = np.linalg.pinv(JtJ)
+                
+                SS_res = np.sum(residuals_vec**2)
+                s2 = SS_res / dof
+                
+                covfit_mat = s2 * cov_k
+                sigma_k = np.sqrt(np.diag(covfit_mat))
+                
+                # Convert to log10 units for reporting
+                # K = 10^logK -> dK = ln(10) * K * d(logK)
+                # d(logK) = dK / (ln(10) * K)
+                # SE_log10K = sigma_k / (ln(10) * k_opt)
+                
+                SE_log10K = sigma_k / (np.log(10) * np.abs(k_opt))
+                percK = (sigma_k / np.abs(k_opt)) * 100.0
+                
+                covfit_val = s2 # Scalar for table
+                
+            except Exception as e:
+                log_progress(f"Error calculando errores: {e}")
+                SE_log10K = np.full_like(k_opt, np.nan)
+                percK = np.full_like(k_opt, np.nan)
+                covfit_val = np.nan
+        else:
+            SE_log10K = np.full_like(k_opt, np.nan)
+            percK = np.full_like(k_opt, np.nan)
+            covfit_val = np.nan
+            
+        rms = np.sqrt(np.mean(residuals_vec**2)) if residuals_vec.size > 0 else 0.0
         
         # Calculate additional statistics
         # LOF (Lack of Fit) calculation
@@ -372,10 +451,17 @@ def process_nmr_data(
         residuals = dq_vec - dq_fit_vec
         
         # Filter by mask
-        residuals_masked = (dq - dq_fit)[mask].ravel()
+        residuals_masked = residuals_vec # Already computed above
         
         SS_res = float(np.sum(residuals_masked**2))
-        SS_tot = float(np.sum((dq[mask].ravel() - np.mean(dq[mask].ravel()))**2))
+        # LOF: compare to variance of data? Or just SS_res?
+        # Standard LOF definition usually requires replicates. 
+        # Here we just use SS_res / SS_tot as a % of unexplained variance
+        
+        # SS_tot should be calculated on the observed data
+        dq_obs = dq[valid_residuals_final]
+        SS_tot = float(np.sum((dq_obs - np.mean(dq_obs))**2))
+        
         lof = 0.0 if SS_tot <= 1e-30 else 100.0 * SS_res / SS_tot
         
         MAE = float(np.mean(np.abs(residuals_masked)))
@@ -389,7 +475,7 @@ def process_nmr_data(
         
         # Format Text Report
         results_text = format_results_table(
-            k_opt, SE_log10K, percK, rms, covfit, lof=lof
+            k_opt, SE_log10K, percK, rms, covfit_val, lof=lof
         )
         
         # Add extra statistics to results text
@@ -422,7 +508,7 @@ def process_nmr_data(
         # Here we have multiple signals. generate_figure2_base64 handles matrices.
         
         graphs['fit'] = generate_figure2_base64(
-            x_axis_conc, dq, dq_fit, "o", ":", "Δδ (ppm)", x_label_conc, 0.5, "Chemical Shifts Fit"
+            x_axis_conc, dq, dq_fit, "o", ":", "δ (ppm)", x_label_conc, 0.5, "Chemical Shifts Fit"
         )
         
         # Graph 3: Residuals
@@ -449,7 +535,7 @@ def process_nmr_data(
                 ["RMS", float(rms)],
                 ["Error absoluto medio", float(MAE)],
                 ["Diferencia en C total (%)", float(dif_en_ct)],
-                ["covfit", float(covfit)],
+                ["covfit", float(covfit_val)],
                 ["LOF", float(lof)],
                 ["optimizer", optimizer],
                 ["algorithm", algorithm],

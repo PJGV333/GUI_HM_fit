@@ -1,5 +1,5 @@
-from np_backend import xp as np, jacrev, jit
-from jax import lax
+from np_backend import xp as np, jacrev, jit, lax, USE_JAX
+# from jax import lax # Removed direct import
 
 @jit
 def _nnls_step(C, Y, A, ridge, step):
@@ -80,4 +80,7 @@ def residuals(k, Y, conc_fn):
     r = C @ A - Y.T                       # residuos por columna
     return r.ravel()
 
-jacobian_r = jit(jacrev(lambda kk, Y, conc_fn: residuals(kk, Y, conc_fn), argnums=0))
+if USE_JAX:
+    jacobian_r = jit(jacrev(lambda kk, Y, conc_fn: residuals(kk, Y, conc_fn), argnums=0))
+else:
+    jacobian_r = None
