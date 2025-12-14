@@ -661,6 +661,37 @@ function renderConsoleUI() {
   setConsoleText(m.consoleText);
 }
 
+function purgeMainPlotCanvas() {
+  const container = document.querySelector('.primary-plot');
+  const plotDiv = document.querySelector('.primary-plot .main-plotly');
+
+  if (plotDiv && window.Plotly?.purge) {
+    try { window.Plotly.purge(plotDiv); } catch (_) { }
+  }
+  if (plotDiv) plotDiv.innerHTML = "";
+  if (container) {
+    container.innerHTML = '<p style="color: #9ca3af; padding: 2rem;">No plots available</p>';
+  }
+}
+
+function resetEditPlotPanel() {
+  const titleInput = document.getElementById("plot-edit-title");
+  const xLabelInput = document.getElementById("plot-edit-xlabel");
+  const yLabelInput = document.getElementById("plot-edit-ylabel");
+  const traceSelect = document.getElementById("plot-edit-trace-select");
+  const traceNameInput = document.getElementById("plot-edit-trace-name");
+
+  if (titleInput) titleInput.value = "";
+  if (xLabelInput) xLabelInput.value = "";
+  if (yLabelInput) yLabelInput.value = "";
+  if (traceNameInput) traceNameInput.value = "";
+
+  if (traceSelect) {
+    traceSelect.innerHTML = '<option value="">Select trace...</option>';
+    traceSelect.value = "";
+  }
+}
+
 function switchModule(nextModule) {
   if (state.activeModule === nextModule) return;
 
@@ -677,18 +708,16 @@ function switchModule(nextModule) {
   renderPlotsUI();
   renderConsoleUI();
 
+  // Hard clear visual remnants from previous module
+  purgeMainPlotCanvas();
+  resetEditPlotPanel();
+
   // 5. Render Plot
   // We need to ensure Plotly is cleared or rendered
-  const primaryPlot = document.querySelector('.primary-plot');
   const ps = M().plots;
   if (ps.availablePlots.length > 0) {
     renderMainCanvasPlot();
   } else {
-    const plotDiv = document.querySelector('.primary-plot .main-plotly');
-    if (plotDiv && window.Plotly?.purge) {
-      try { window.Plotly.purge(plotDiv); } catch (_) { }
-    }
-    if (primaryPlot) primaryPlot.innerHTML = '<p style="color: #9ca3af; padding: 2rem;">No plots available</p>';
     const counter = document.getElementById('plot-counter');
     if (counter) counter.textContent = '—';
   }
@@ -2752,12 +2781,13 @@ function wireSpectroscopyForm() {
       if (sideNext) sideNext.disabled = !enabled;
     };
 
-    if (!plots.length) {
-      if (container) container.innerHTML = '<p style="color: #9ca3af; padding: 2rem;">No plots available</p>';
-      if (counterEl) counterEl.textContent = '—';
-      setNavEnabled(false);
-      return;
-    }
+	    if (!plots.length) {
+	      if (container) container.innerHTML = '<p style="color: #9ca3af; padding: 2rem;">No plots available</p>';
+	      if (counterEl) counterEl.textContent = '—';
+	      setNavEnabled(false);
+	      resetEditPlotPanel();
+	      return;
+	    }
 
     const plot = getActivePlot();
     const data = getActivePlotData();
