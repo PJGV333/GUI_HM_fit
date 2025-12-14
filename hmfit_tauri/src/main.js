@@ -11,13 +11,24 @@ window.Plotly = Plotly;
 function makeDefaultPlotState() {
   return {
     availablePlots: [],   // [{id, title, kind}, ...]
-    plotData: {},         // {spec: {...}, nmr: {...}}
+    plotData: {},         // {spec: {...}} | {nmr: {...}} (backend format)
     activePlotIndex: 0,
+    lastPlotSpec: null,   // cache for last rendered plot spec (per module)
+    overrides: {},        // { [plotId]: {titleText?, xLabel?, yLabel?, traceNames?} }
+    defaults: {},         // { [plotId]: {titleText, xLabel, yLabel, traceNames} }
+    edit: {
+      title: "",
+      xLabel: "",
+      yLabel: "",
+      traceIdx: "",
+      traceName: "",
+    },
     controls: {
-      distXAxisId: "titrant_total",     // species distribution X axis
+      distXAxisId: "",                 // species distribution X axis ("" => Auto/default)
       distYSelected: new Set(),         // species selected for Y axis
       nmrSignalsSelected: new Set(),    // NMR shifts fit - signals to display
       nmrResidSelected: new Set(),      // NMR residuals - signals to display
+      varyAlong: "",                   // generic "Vary along" selection (if/when used)
     }
   };
 }
@@ -65,7 +76,7 @@ function makeDefaultModuleState() {
     guest: "",
     // Console & Plots
     consoleText: "",
-    plotState: makeDefaultPlotState(),
+    plots: makeDefaultPlotState(),
     resultsText: "",
     resultsPayload: null,
     lastResponse: null,
@@ -79,32 +90,45 @@ const state = {
     spectroscopy: makeDefaultModuleState(),
     nmr: makeDefaultModuleState(),
   },
-  plotOverrides: {
-    spectroscopy: {},
-    nmr: {},
-  },
-  plotDefaults: {
-    spectroscopy: {},
-    nmr: {},
-  },
 };
+
+function getActiveModuleKey() {
+  const key = state.activeModule === "nmr" ? "nmr" : "spectroscopy";
+  if (state.modules?.[key]) return key;
+  if (state.modules?.spectroscopy) return "spectroscopy";
+  if (state.modules?.nmr) return "nmr";
+  const first = Object.keys(state.modules || {})[0];
+  return first || "spectroscopy";
+}
+
+function getModuleState(moduleKey) {
+  const key = moduleKey === "nmr" ? "nmr" : moduleKey === "spectroscopy" ? "spectroscopy" : "spectroscopy";
+  if (moduleKey !== "nmr" && moduleKey !== "spectroscopy") {
+    console.error("[HM Fit] Invalid module key:", moduleKey);
+  }
+  if (!state.modules) state.modules = {};
+  if (!state.modules[key]) state.modules[key] = makeDefaultModuleState();
+  const mod = state.modules[key];
+  if (!mod.plots) mod.plots = makeDefaultPlotState();
+  return mod;
+}
 
 // Helper to access active module state
 function M() {
-  return state.modules[state.activeModule];
+  return getModuleState(getActiveModuleKey());
 }
 
 // Helper functions for consistent data access
 function getActivePlot() {
-  const ps = M().plotState;
+  const ps = M().plots;
   return ps.availablePlots[ps.activePlotIndex] || null;
 }
 
 function getActivePlotData() {
   const plot = getActivePlot();
   if (!plot) return null;
-  const modKey = state.activeModule === 'nmr' ? 'nmr' : 'spec';
-  const moduleData = M().plotState.plotData?.[modKey] || {};
+  const plotDataKey = getActiveModuleKey() === 'nmr' ? 'nmr' : 'spec';
+  const moduleData = M().plots.plotData?.[plotDataKey] || {};
   return moduleData?.[plot.id] || null;
 }
 
@@ -556,7 +580,7 @@ function renderModuleUI() {
       select.innerHTML = "";
       const defaultOpt = document.createElement("option");
       defaultOpt.value = "";
-      defaultOpt.text = "";
+      defaultOpt.text = "Auto";
       select.add(defaultOpt);
 
       m.availableColumns.forEach(col => {
@@ -574,7 +598,7 @@ function renderModuleUI() {
 
 function renderPlotsUI() {
   const m = M();
-  const ps = m.plotState;
+  const ps = m.plots;
 
   // Restore Preset
   const presetSelect = document.getElementById("spectro-plot-preset-select");
@@ -634,11 +658,15 @@ function switchModule(nextModule) {
   // 5. Render Plot
   // We need to ensure Plotly is cleared or rendered
   const primaryPlot = document.querySelector('.primary-plot');
-  const ps = M().plotState;
+  const ps = M().plots;
   if (ps.availablePlots.length > 0) {
     renderMainCanvasPlot();
   } else {
-    if (primaryPlot) primaryPlot.innerHTML = ''; // Clear
+    const plotDiv = document.querySelector('.primary-plot .main-plotly');
+    if (plotDiv && window.Plotly?.purge) {
+      try { window.Plotly.purge(plotDiv); } catch (_) { }
+    }
+    if (primaryPlot) primaryPlot.innerHTML = '<p style="color: #9ca3af; padding: 2rem;">No plots available</p>';
     const counter = document.getElementById('plot-counter');
     if (counter) counter.textContent = '—';
   }
@@ -1055,24 +1083,91 @@ function readList(text) {
   return v.split(/[,\s]+/).filter(Boolean);
 }
 
-function ensureDefaultRoleMapping(moduleState, selectedCols) {
-  if (!moduleState?.dataMapping) return;
-  const dm = moduleState.dataMapping;
-  dm.conc = dm.conc || { selected: [], receptor: "", guest: "" };
-  dm.conc.selected = Array.isArray(selectedCols) ? selectedCols : [];
-
-  const receptor = String(dm.conc.receptor || "").trim();
-  const guest = String(dm.conc.guest || "").trim();
-
-  if (!receptor && dm.conc.selected.length >= 1) dm.conc.receptor = dm.conc.selected[0];
-  if (!guest && dm.conc.selected.length >= 2) dm.conc.guest = dm.conc.selected[1];
+function normalizeColumnName(name) {
+  return String(name ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
 }
 
-function getEffectiveRoleLabels(moduleState, selectedCols) {
-  ensureDefaultRoleMapping(moduleState, selectedCols);
-  const receptor = String(moduleState?.dataMapping?.conc?.receptor || "").trim();
-  const guest = String(moduleState?.dataMapping?.conc?.guest || "").trim();
-  return { receptor, guest };
+function pickFirstMatchingColumn(columns, patterns) {
+  for (const col of columns) {
+    const norm = normalizeColumnName(col);
+    if (patterns.some((p) => p.test(norm))) return col;
+  }
+  return "";
+}
+
+function resolveMapping(moduleKey, rawColumns, uiSelection) {
+  const columns = Array.isArray(rawColumns) ? rawColumns.map(String) : [];
+  const selection = uiSelection || {};
+
+  const uiReceptor = String(selection.receptor ?? "").trim();
+  const uiGuest = String(selection.guest ?? "").trim();
+
+  const hasUiReceptor = uiReceptor && columns.includes(uiReceptor);
+  const hasUiGuest = uiGuest && columns.includes(uiGuest);
+
+  const receptorPatterns = [
+    /^h$/,
+    /^host$/,
+    /^host_/,
+    /_host$/,
+    /^receptor$/,
+    /^receptor_/,
+    /_receptor$/,
+    /^ligand$/,
+    /^ligand_/,
+    /_ligand$/,
+    /^p$/,
+    /^prot$/,
+    /^protein$/,
+  ].map((r) => new RegExp(r.source, "i"));
+
+  const guestPatterns = [
+    /^g$/,
+    /^guest$/,
+    /^guest_/,
+    /_guest$/,
+    /^titrant$/,
+    /^titrant_/,
+    /_titrant$/,
+    /^metal$/,
+    /^metal_/,
+    /_metal$/,
+    /^q$/,
+    /^x$/,
+    /^x\\d+$/,
+  ].map((r) => new RegExp(r.source, "i"));
+
+  let receptor = hasUiReceptor ? uiReceptor : "";
+  let guest = hasUiGuest ? uiGuest : "";
+
+  if (!receptor) receptor = pickFirstMatchingColumn(columns, receptorPatterns);
+  if (!guest) guest = pickFirstMatchingColumn(columns, guestPatterns);
+
+  // Fallbacks: deterministic order of selected columns.
+  if (!receptor && columns.length >= 1) receptor = columns[0];
+  if (!guest && columns.length >= 2) guest = columns[1];
+
+  // Ensure distinct mapping when possible.
+  if (receptor && guest && receptor === guest) {
+    const alt = columns.find((c) => c !== receptor) || "";
+    guest = alt || guest;
+  }
+
+  return { moduleKey, receptor, guest };
+}
+
+function getEffectiveRoleLabels(moduleState, selectedCols, uiSelection) {
+  if (!moduleState?.dataMapping) moduleState.dataMapping = { conc: { selected: [], receptor: "", guest: "" }, signals: [] };
+  moduleState.dataMapping.conc = moduleState.dataMapping.conc || { selected: [], receptor: "", guest: "" };
+  moduleState.dataMapping.conc.selected = Array.isArray(selectedCols) ? selectedCols : [];
+
+  const resolved = resolveMapping(state.activeModule, moduleState.dataMapping.conc.selected, uiSelection);
+  moduleState.dataMapping.conc.receptor = resolved.receptor;
+  moduleState.dataMapping.conc.guest = resolved.guest;
+  return { receptor: resolved.receptor, guest: resolved.guest };
 }
 
 function parseChannelsInput(input) {
@@ -1193,6 +1288,13 @@ function wireSpectroscopyForm() {
     return;
   }
 
+  function reportDiagnosticsError(err, prefix = "") {
+    const detail = err?.stack || err?.message || String(err);
+    const msg = prefix ? `${prefix}\n\n${detail}` : detail;
+    diagEl.textContent = msg;
+    console.error(err);
+  }
+
   // Campos de texto identificables por placeholder
   // NOTA: Ahora son selects, los buscamos por ID
 
@@ -1280,7 +1382,7 @@ function wireSpectroscopyForm() {
     const selectedId = plotPresetSelect.value;
     if (!selectedId) return;
 
-    const ps = M().plotState;
+    const ps = M().plots;
     const index = ps.availablePlots.findIndex(p => p.id === selectedId);
     if (index >= 0) {
       ps.activePlotIndex = index;
@@ -1301,9 +1403,9 @@ function wireSpectroscopyForm() {
     const plotDiv = document.querySelector('.primary-plot .main-plotly');
     if (!plot || plot.kind !== 'plotly' || !plotDiv || !window.Plotly) return;
 
-    const modKey = state.activeModule;
     const presetId = plot.id;
-    const ov = state.plotOverrides[modKey]?.[presetId] || { traceNames: {} };
+    const ps = M().plots;
+    const ov = ps.overrides?.[presetId] || { traceNames: {} };
 
     const titleText = String(plotEditTitleInput?.value ?? '').trim();
     const xLabel = String(plotEditXLabelInput?.value ?? '').trim();
@@ -1328,7 +1430,7 @@ function wireSpectroscopyForm() {
       window.Plotly.restyle(plotDiv, { name: newTraceName }, [traceIdx]);
     }
 
-    state.plotOverrides[modKey][presetId] = ov;
+    ps.overrides[presetId] = ov;
     syncEditPlotPanelFromDiv(plotDiv);
     appendLog(`Applied plot edits for ${presetId}.`);
   });
@@ -1338,9 +1440,9 @@ function wireSpectroscopyForm() {
     const plotDiv = document.querySelector('.primary-plot .main-plotly');
     if (!plot || plot.kind !== 'plotly' || !plotDiv || !window.Plotly) return;
 
-    const modKey = state.activeModule;
     const presetId = plot.id;
-    const defaults = state.plotDefaults?.[modKey]?.[presetId];
+    const ps = M().plots;
+    const defaults = ps.defaults?.[presetId];
     if (!defaults) return;
 
     window.Plotly.relayout(plotDiv, {
@@ -1356,14 +1458,14 @@ function wireSpectroscopyForm() {
       window.Plotly.restyle(plotDiv, { name }, [i]);
     }
 
-    if (state.plotOverrides?.[modKey]) delete state.plotOverrides[modKey][presetId];
+    if (ps.overrides) delete ps.overrides[presetId];
     syncEditPlotPanelFromDiv(plotDiv);
     appendLog(`Reset plot edits for ${presetId}.`);
   });
 
   // X axis dropdown: update controls and re-render
   plotXAxisSelect?.addEventListener("change", () => {
-    const ps = M().plotState;
+    const ps = M().plots;
     const plot = ps.availablePlots[ps.activePlotIndex];
     if (plot?.id === 'spec_species_distribution' || plot?.id === 'nmr_species_distribution') {
       ps.controls.distXAxisId = plotXAxisSelect.value;
@@ -1373,7 +1475,7 @@ function wireSpectroscopyForm() {
 
   // Y series dropdown: update selected species/signals and re-render
   plotYSeriesSelect?.addEventListener("change", () => {
-    const ps = M().plotState;
+    const ps = M().plots;
     const plot = ps.availablePlots[ps.activePlotIndex];
     const selected = Array.from(plotYSeriesSelect.selectedOptions).map(o => o.value);
 
@@ -1386,6 +1488,14 @@ function wireSpectroscopyForm() {
     }
 
     renderMainCanvasPlot();
+  });
+
+  // Vary along dropdown: persist selection and re-render (if used by future plot types)
+  plotVarySelect?.addEventListener("change", () => {
+    M().plots.controls.varyAlong = plotVarySelect.value;
+    if (M().resultsPayload && (M().plots.availablePlots?.length || 0) > 0) {
+      try { renderMainCanvasPlot(); } catch (_) { }
+    }
   });
 
   // Export PNG from main canvas (the current carousel page)
@@ -1818,10 +1928,16 @@ function wireSpectroscopyForm() {
   receptorInput?.addEventListener("change", () => {
     M().receptor = receptorInput.value;
     M().dataMapping.conc.receptor = receptorInput.value || "";
+    if (M().resultsPayload && (M().plots.availablePlots?.length || 0) > 0) {
+      try { renderMainCanvasPlot(); } catch (_) { }
+    }
   });
   guestInput?.addEventListener("change", () => {
     M().guest = guestInput.value;
     M().dataMapping.conc.guest = guestInput.value || "";
+    if (M().resultsPayload && (M().plots.availablePlots?.length || 0) > 0) {
+      try { renderMainCanvasPlot(); } catch (_) { }
+    }
   });
 
   // Note: Grid content is not automatically saved on every keystroke here, 
@@ -1861,14 +1977,8 @@ function wireSpectroscopyForm() {
     const selectedCols = Array.from(columnsContainer.querySelectorAll('input[type="checkbox"]:checked'))
       .map(cb => cb.value);
 
-    // Sync mapping and ensure defaults
-    M().dataMapping.conc.selected = selectedCols;
-    M().dataMapping.conc.receptor = receptorInput.value || M().dataMapping.conc.receptor || "";
-    M().dataMapping.conc.guest = guestInput.value || M().dataMapping.conc.guest || "";
-    ensureDefaultRoleMapping(M(), selectedCols);
-
-    const currentReceptor = M().dataMapping.conc.receptor || receptorInput.value;
-    const currentGuest = M().dataMapping.conc.guest || guestInput.value;
+    const currentReceptor = receptorInput.value;
+    const currentGuest = guestInput.value;
 
     [receptorInput, guestInput].forEach(select => {
       select.innerHTML = "";
@@ -1885,12 +1995,18 @@ function wireSpectroscopyForm() {
       });
     });
 
-    if (selectedCols.includes(currentReceptor)) receptorInput.value = currentReceptor;
-    if (selectedCols.includes(currentGuest)) guestInput.value = currentGuest;
+    // Resolve mapping (Auto + heuristics) and persist into module state.
+    const roles = getEffectiveRoleLabels(M(), selectedCols, {
+      receptor: currentReceptor,
+      guest: currentGuest,
+    });
 
-    // Persist back into mapping after restore
-    M().dataMapping.conc.receptor = receptorInput.value || M().dataMapping.conc.receptor || "";
-    M().dataMapping.conc.guest = guestInput.value || M().dataMapping.conc.guest || "";
+    if (roles.receptor && selectedCols.includes(roles.receptor)) receptorInput.value = roles.receptor;
+    if (roles.guest && selectedCols.includes(roles.guest)) guestInput.value = roles.guest;
+
+    if (M().resultsPayload && (M().plots.availablePlots?.length || 0) > 0) {
+      try { renderMainCanvasPlot(); } catch (_) { }
+    }
   }
 
   // Listen for checkbox changes
@@ -1913,6 +2029,12 @@ function wireSpectroscopyForm() {
     const preset = document.getElementById("spectro-plot-preset-select");
     const xAxis = document.getElementById("spectro-x-axis-select");
     const ySel = document.getElementById("spectro-y-series-select");
+    const vary = document.getElementById("spectro-vary-along-select");
+    const plotTitle = document.getElementById("plot-edit-title");
+    const plotXLabel = document.getElementById("plot-edit-xlabel");
+    const plotYLabel = document.getElementById("plot-edit-ylabel");
+    const traceSelect = document.getElementById("plot-edit-trace-select");
+    const traceName = document.getElementById("plot-edit-trace-name");
 
     if (preset) {
       preset.innerHTML = '<option value="">Select a preset...</option>';
@@ -1925,11 +2047,20 @@ function wireSpectroscopyForm() {
     if (ySel) {
       ySel.innerHTML = "";
     }
+    if (vary) {
+      vary.innerHTML = '<option value="">Auto</option>';
+      vary.value = "";
+    }
+    if (plotTitle) plotTitle.value = "";
+    if (plotXLabel) plotXLabel.value = "";
+    if (plotYLabel) plotYLabel.value = "";
+    if (traceSelect) traceSelect.innerHTML = '<option value="">Select trace...</option>';
+    if (traceName) traceName.value = "";
   }
 
   function resetActiveModule() {
     // Reset state
-    state.modules[state.activeModule] = makeDefaultModuleState();
+    state.modules[getActiveModuleKey()] = makeDefaultModuleState();
 
     // Update UI
     renderModuleUI();
@@ -1939,8 +2070,12 @@ function wireSpectroscopyForm() {
     const fileInput = document.getElementById("excel-file");
     if (fileInput) fileInput.value = "";
 
-    // Clear Canvas
+    // Clear Canvas (and purge Plotly)
     const primaryPlot = document.querySelector('.primary-plot');
+    const plotDiv = document.querySelector('.primary-plot .main-plotly');
+    if (plotDiv && window.Plotly?.purge) {
+      try { window.Plotly.purge(plotDiv); } catch (_) { }
+    }
     if (primaryPlot) primaryPlot.innerHTML = '';
     const counter = document.getElementById('plot-counter');
     if (counter) counter.textContent = '—';
@@ -2066,7 +2201,7 @@ function wireSpectroscopyForm() {
     try {
       await assertBackendAvailable();
     } catch (err) {
-      diagEl.textContent = err.message || String(err);
+      reportDiagnosticsError(err, "Backend check failed.");
       setProcessing(false);
       console.error("[HM Fit] Backend check failed before processing:", err);
       return;
@@ -2090,7 +2225,7 @@ function wireSpectroscopyForm() {
 
     // Single source of truth: dataMapping
     m.dataMapping.conc.selected = selectedCols;
-    const roles = getEffectiveRoleLabels(m, selectedCols);
+    const roles = getEffectiveRoleLabels(m, selectedCols, { receptor: receptorInput?.value, guest: guestInput?.value });
     if (receptorInput && roles.receptor) receptorInput.value = roles.receptor;
     if (guestInput && roles.guest) guestInput.value = roles.guest;
 
@@ -2205,12 +2340,10 @@ function wireSpectroscopyForm() {
       m.resultsText = "";
       m.resultsPayload = null;
       // Reset main canvas on error
-      m.plotState.availablePlots = [];
-      m.plotData = {}; // Should be m.plotState.plotData? No, plotData is inside plotState.
-      // Correct: m.plotState.plotData = {};
-      m.plotState.plotData = {};
+      m.plots.availablePlots = [];
+      m.plots.plotData = {};
 
-      diagEl.textContent = message;
+      reportDiagnosticsError(err, message);
       console.error(`[HM Fit] Process Data request failed (${state.activeModule}):`, err);
     } finally {
       setProcessing(false);
@@ -2224,8 +2357,8 @@ function wireSpectroscopyForm() {
       const detail = data.detail || data.error || "Procesamiento falló.";
       m.resultsText = "";
       m.resultsPayload = null;
-      m.plotState.availablePlots = [];
-      m.plotState.plotData = {};
+      m.plots.availablePlots = [];
+      m.plots.plotData = {};
       appendToConsole(`\nError: ${detail}`);
       scrollDiagnosticsToBottom();
       return;
@@ -2328,18 +2461,18 @@ function wireSpectroscopyForm() {
   // === Main Canvas Functions ===
   function setMainCanvasResults(resultPayload) {
     // Extract availablePlots and plotData from backend response
-    const ps = M().plotState;
+    const ps = M().plots;
+    const moduleKey = getActiveModuleKey();
     ps.availablePlots = resultPayload.availablePlots || [];
     ps.plotData = resultPayload.plotData || {};
     ps.activePlotIndex = 0;
 
     // Clear plot overrides/defaults on new calculation (per module)
-    const modKey = state.activeModule;
-    state.plotOverrides[modKey] = {};
-    state.plotDefaults[modKey] = {};
+    ps.overrides = {};
+    ps.defaults = {};
 
     // Spectroscopy: convert legacy image plots to Plotly + build numeric-backed data objects
-    if (modKey === 'spectroscopy') {
+    if (moduleKey === 'spectroscopy') {
       ps.availablePlots = ps.availablePlots.map(p => (
         p?.kind === 'image' ? { ...p, kind: 'plotly' } : p
       ));
@@ -2423,7 +2556,7 @@ function wireSpectroscopyForm() {
     const sidePrev = document.getElementById('plot-prev-side');
     const sideNext = document.getElementById('plot-next-side');
 
-    const ps = M().plotState;
+    const ps = M().plots;
     const plots = ps.availablePlots;
     const index = ps.activePlotIndex;
 
@@ -2474,9 +2607,8 @@ function wireSpectroscopyForm() {
       figure.layout.uirevision = `hmfit-uirev:${state.activeModule}:${plot.id}`;
 
       // Snapshot defaults (first render per preset)
-      const modKey = state.activeModule;
-      if (!state.plotDefaults[modKey]?.[plot.id]) {
-        state.plotDefaults[modKey][plot.id] = snapshotFigureDefaults(figure);
+      if (!ps.defaults?.[plot.id]) {
+        ps.defaults[plot.id] = snapshotFigureDefaults(figure);
       }
 
       try {
@@ -2488,7 +2620,7 @@ function wireSpectroscopyForm() {
       }
 
       // Apply overrides after base render
-      const ov = state.plotOverrides?.[modKey]?.[plot.id];
+      const ov = ps.overrides?.[plot.id];
       if (ov) applyPlotOverrides(plotDiv, ov);
 
       // Resize after render for Tauri
@@ -2512,7 +2644,7 @@ function wireSpectroscopyForm() {
   // Build Plotly traces based on plot type
   function buildPlotlyTraces(plotId, data) {
     const traces = [];
-    const controls = M().plotState.controls;
+    const controls = M().plots.controls;
 
     if (plotId === 'spec_species_distribution' || plotId === 'nmr_species_distribution') {
       // Species distribution plot
@@ -2733,7 +2865,7 @@ function wireSpectroscopyForm() {
     };
 
     if (plotId === 'spec_species_distribution' || plotId === 'nmr_species_distribution') {
-      const xAxisId = M().plotState.controls.distXAxisId || 'titrant_total';
+      const xAxisId = M().plots.controls.distXAxisId || 'titrant_total';
       const axisOption = (data.axisOptions || []).find(a => a.id === xAxisId);
       layout.xaxis.title.text = axisOption?.label || 'Concentration';
       layout.yaxis.title.text = '[Species], M';
@@ -2841,6 +2973,11 @@ function wireSpectroscopyForm() {
     const xAxisSelect = document.getElementById('spectro-x-axis-select');
     const ySeriesSelect = document.getElementById('spectro-y-series-select');
     const varySelect = document.getElementById('spectro-vary-along-select');
+    const titleInput = document.getElementById('plot-edit-title');
+    const xLabelInput = document.getElementById('plot-edit-xlabel');
+    const yLabelInput = document.getElementById('plot-edit-ylabel');
+    const traceSelect = document.getElementById('plot-edit-trace-select');
+    const traceNameInput = document.getElementById('plot-edit-trace-name');
 
     const plot = getActivePlot();
     const data = getActivePlotData();
@@ -2855,6 +2992,15 @@ function wireSpectroscopyForm() {
         ySeriesSelect.innerHTML = '<option value="">No data (run process first)</option>';
         ySeriesSelect.disabled = true;
       }
+      if (varySelect) {
+        varySelect.innerHTML = '<option value="">Auto</option>';
+        varySelect.disabled = true;
+      }
+      if (titleInput) titleInput.value = '';
+      if (xLabelInput) xLabelInput.value = '';
+      if (yLabelInput) yLabelInput.value = '';
+      if (traceSelect) traceSelect.innerHTML = '<option value="">Select trace...</option>';
+      if (traceNameInput) traceNameInput.value = '';
       return;
     }
 
@@ -2889,6 +3035,7 @@ function wireSpectroscopyForm() {
         ySeriesSelect.innerHTML = '<option value="">No data for this plot (check plotData keys)</option>';
         ySeriesSelect.disabled = true;
       }
+      if (varySelect) varySelect.disabled = true;
       return;
     }
 
@@ -2906,7 +3053,7 @@ function wireSpectroscopyForm() {
           el.text = opt.label;
           xAxisSelect.add(el);
         });
-        xAxisSelect.value = M().plotState.controls.distXAxisId || 'titrant_total';
+        xAxisSelect.value = M().plots.controls.distXAxisId || 'titrant_total';
         const labelEl = xAxisSelect.closest('.field')?.querySelector('.field-label');
         if (labelEl) labelEl.textContent = 'X axis';
       }
@@ -2918,7 +3065,7 @@ function wireSpectroscopyForm() {
           const el = document.createElement('option');
           el.value = opt.id;
           el.text = opt.label;
-          el.selected = M().plotState.controls.distYSelected.has(opt.id);
+          el.selected = M().plots.controls.distYSelected.has(opt.id);
           ySeriesSelect.add(el);
         });
         const labelEl = ySeriesSelect.closest('.field')?.querySelector('.field-label');
@@ -2935,7 +3082,7 @@ function wireSpectroscopyForm() {
           const el = document.createElement('option');
           el.value = opt.id;
           el.text = opt.label;
-          el.selected = M().plotState.controls.nmrSignalsSelected.has(opt.id);
+          el.selected = M().plots.controls.nmrSignalsSelected.has(opt.id);
           ySeriesSelect.add(el);
         });
         const labelEl = ySeriesSelect.closest('.field')?.querySelector('.field-label');
@@ -2952,7 +3099,7 @@ function wireSpectroscopyForm() {
           const el = document.createElement('option');
           el.value = opt.id;
           el.text = opt.label;
-          el.selected = M().plotState.controls.nmrResidSelected.has(opt.id);
+          el.selected = M().plots.controls.nmrResidSelected.has(opt.id);
           ySeriesSelect.add(el);
         });
         const labelEl = ySeriesSelect.closest('.field')?.querySelector('.field-label');
@@ -2962,7 +3109,7 @@ function wireSpectroscopyForm() {
   }
 
   function navigateMainCanvas(delta) {
-    const ps = M().plotState;
+    const ps = M().plots;
     const total = ps.availablePlots.length;
     if (total === 0) return;
 
@@ -2987,7 +3134,7 @@ function wireSpectroscopyForm() {
     defaultOpt.text = 'Select a preset...';
     presetSelect.add(defaultOpt);
 
-    const ps = M().plotState;
+    const ps = M().plots;
     ps.availablePlots.forEach(plot => {
       const opt = document.createElement('option');
       opt.value = plot.id;
@@ -3002,7 +3149,7 @@ function wireSpectroscopyForm() {
   }
 
   function exportMainCanvasPNG() {
-    const ps = M().plotState;
+    const ps = M().plots;
     const currentPlot = ps.availablePlots[ps.activePlotIndex];
     const filename = `${currentPlot?.id || 'plot'}.png`;
 
@@ -3042,7 +3189,7 @@ function wireSpectroscopyForm() {
   }
 
   function exportMainCanvasCSV() {
-    const ps = M().plotState;
+    const ps = M().plots;
     const currentPlot = ps.availablePlots[ps.activePlotIndex];
 
     if (!currentPlot || currentPlot.kind !== 'plotly') {
@@ -3586,7 +3733,7 @@ function wireSpectroscopyForm() {
   function buildSpecConfigFromState() {
     const selectedCols = Array.from(columnsContainer.querySelectorAll('input[type="checkbox"]:checked'))
       .map(cb => cb.value);
-    const roles = getEffectiveRoleLabels(M(), selectedCols);
+    const roles = getEffectiveRoleLabels(M(), selectedCols, { receptor: receptorInput?.value, guest: guestInput?.value });
 
     const gridData = [];
     if (modelGridContainer) {
@@ -3626,7 +3773,7 @@ function wireSpectroscopyForm() {
       type: 'Spectroscopy',
       version: 1,
       plots: {
-        plotOverrides: state.plotOverrides.spectroscopy || {},
+        plotOverrides: state.modules.spectroscopy?.plots?.overrides || {},
       },
       dataMapping: M().dataMapping || {},
       model: {
@@ -3664,7 +3811,7 @@ function wireSpectroscopyForm() {
 
     const selectedCols = Array.from(columnsContainer.querySelectorAll('input[type="checkbox"]:checked'))
       .map(cb => cb.value);
-    const roles = getEffectiveRoleLabels(M(), selectedCols);
+    const roles = getEffectiveRoleLabels(M(), selectedCols, { receptor: receptorInput?.value, guest: guestInput?.value });
 
     const gridData = [];
     if (modelGridContainer) {
@@ -3704,7 +3851,7 @@ function wireSpectroscopyForm() {
       type: 'NMR',
       version: 1,
       plots: {
-        plotOverrides: state.plotOverrides.nmr || {},
+        plotOverrides: state.modules.nmr?.plots?.overrides || {},
       },
       dataMapping: M().dataMapping || {},
       model: {
@@ -3802,9 +3949,9 @@ function wireSpectroscopyForm() {
     // 6b. Plot overrides (optional)
     if (cfg?.plots?.plotOverrides) {
       if (cfg.type === 'NMR') {
-        state.plotOverrides.nmr = cfg.plots.plotOverrides || {};
+        state.modules.nmr.plots.overrides = cfg.plots.plotOverrides || {};
       } else {
-        state.plotOverrides.spectroscopy = cfg.plots.plotOverrides || {};
+        state.modules.spectroscopy.plots.overrides = cfg.plots.plotOverrides || {};
       }
     }
 
@@ -3853,7 +4000,7 @@ function wireSpectroscopyForm() {
       }
       // Ensure defaults exist even if config omitted roles or only 1 col is selected
       const selectedCols = Array.from(columnsContainer.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
-      ensureDefaultRoleMapping(M(), selectedCols);
+      getEffectiveRoleLabels(M(), selectedCols, { receptor: receptorInput?.value, guest: guestInput?.value });
     }, 50);
 
     diagEl.textContent = `Configuration loaded (${cfg.type}).`;
