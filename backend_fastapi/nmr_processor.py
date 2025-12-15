@@ -420,55 +420,90 @@ def process_nmr_data(
         N_res = residuals_vec.size
         N_par = int(free_idx.size)
         dof = N_res - N_par
-        
-        SS_res = float(np.sum(residuals_vec**2)) if residuals_vec.size else 0.0
-        s2 = (SS_res / dof) if dof > 0 else np.nan
-
-        if dof > 0 and N_par > 0:
-            eps = 1e-8
-            J_free = np.zeros((N_res, N_par))
-
-            for j, idx in enumerate(free_idx):
-                k_temp = k_opt_full.copy()
-                k_temp[idx] += eps * max(abs(k_temp[idx]), 1.0)
-                step = k_temp[idx] - k_opt_full[idx]
-
-                try:
-                    C_temp, _ = res.concentraciones(k_temp)
-                    dq_fit_temp = project_coeffs_block_onp_frac(dq, C_temp, D_cols, mask)
-                    diff_temp = dq - dq_fit_temp
-                    r_temp = diff_temp[valid_residuals_final].ravel()
-                    J_free[:, j] = (r_temp - residuals_vec) / step
-                except Exception:
-                    J_free[:, j] = 0.0
-
-            try:
-                JtJ = J_free.T @ J_free
-                cov_k = np.linalg.pinv(JtJ)
-                covfit_mat = s2 * cov_k
-                sigma_k = np.sqrt(np.diag(covfit_mat))
-
-                denom_log = np.log(10) * np.abs(k_opt_full[free_idx])
-                with np.errstate(divide='ignore', invalid='ignore'):
-                    SE_log10K_free = np.where(denom_log > 0, sigma_k / denom_log, np.nan)
-                    percK_free = np.where(np.abs(k_opt_full[free_idx]) > 0, (sigma_k / np.abs(k_opt_full[free_idx])) * 100.0, np.nan)
-
-                covfit_val = float(s2)
-            except Exception as e:
-                log_progress(f"Error calculando errores: {e}")
-                SE_log10K_free = np.full((N_par,), np.nan)
-                percK_free = np.full((N_par,), np.nan)
-                covfit_val = float(s2)
-        else:
-            SE_log10K_free = np.full((N_par,), np.nan)
-            percK_free = np.full((N_par,), np.nan)
-            covfit_val = float(s2) if np.isfinite(s2) else np.nan
 
         SE_log10K_full = np.zeros_like(k_opt_full, dtype=float)
         percK_full = np.zeros_like(k_opt_full, dtype=float)
-        if free_idx.size:
-            SE_log10K_full[free_idx] = SE_log10K_free
-            percK_full[free_idx] = percK_free
+        covfit_val = np.nan
+
+        # If non-absorbent species are selected, use VarPro-based error estimates.
+        if nas and len(nas) > 0:
+            try:
+                err_res = compute_errors_nmr_varpro(
+                    k_opt_full, res, dq, H, modelo, nas, mask=mask
+                )
+                J_full = np.asarray(err_res.get("J", np.zeros((len(k_opt_full), 0))), dtype=float)
+                rms_varpro = float(err_res.get("rms", np.nan))
+                rms = rms_varpro if np.isfinite(rms_varpro) else rms
+
+                if J_full.ndim == 2 and J_full.shape[0] == len(k_opt_full):
+                    J_free = J_full[free_idx, :] if free_idx.size else np.zeros((0, J_full.shape[1]), dtype=float)
+                    m_eff = int(J_free.shape[1])
+                    dof_free = max(m_eff - N_par, 1)
+                    sse = float((rms * rms) * m_eff) if np.isfinite(rms) else float(np.sum(residuals_vec**2))
+                    s2 = sse / dof_free
+                    covfit_val = float(s2)
+
+                    if N_par > 0:
+                        JtJ = J_free @ J_free.T
+                        cov_k = np.linalg.pinv(JtJ)
+                        covfit_mat = s2 * cov_k
+                        SE_log10K_free = np.sqrt(np.clip(np.diag(covfit_mat), 0.0, np.inf))
+                        percK_free = 100.0 * np.log(10.0) * SE_log10K_free
+                        SE_log10K_full[free_idx] = SE_log10K_free
+                        percK_full[free_idx] = percK_free
+                    else:
+                        SE_log10K_full[:] = 0.0
+                        percK_full[:] = 0.0
+                else:
+                    covfit_val = float(err_res.get("covfit", np.nan))
+            except Exception as e:
+                log_progress(f"Error calculando errores (VarPro): {e}")
+                covfit_val = np.nan
+        else:
+            SS_res = float(np.sum(residuals_vec**2)) if residuals_vec.size else 0.0
+            s2 = (SS_res / dof) if dof > 0 else np.nan
+
+            if dof > 0 and N_par > 0:
+                eps = 1e-8
+                J = np.zeros((N_res, N_par))
+
+                for j, idx in enumerate(free_idx):
+                    k_temp = k_opt_full.copy()
+                    k_temp[idx] += eps * max(abs(k_temp[idx]), 1.0)
+                    step = k_temp[idx] - k_opt_full[idx]
+
+                    try:
+                        C_temp, _ = res.concentraciones(k_temp)
+                        dq_fit_temp = project_coeffs_block_onp_frac(dq, C_temp, D_cols, mask)
+                        diff_temp = dq - dq_fit_temp
+                        r_temp = diff_temp[valid_residuals_final].ravel()
+                        J[:, j] = (r_temp - residuals_vec) / step
+                    except Exception:
+                        J[:, j] = 0.0
+
+                try:
+                    JtJ = J.T @ J
+                    cov_k = np.linalg.pinv(JtJ)
+                    covfit_mat = s2 * cov_k
+                    sigma_k = np.sqrt(np.diag(covfit_mat))
+
+                    denom_log = np.log(10) * np.abs(k_opt_full[free_idx])
+                    with np.errstate(divide='ignore', invalid='ignore'):
+                        SE_log10K_free = np.where(denom_log > 0, sigma_k / denom_log, np.nan)
+                        percK_free = np.where(np.abs(k_opt_full[free_idx]) > 0, (sigma_k / np.abs(k_opt_full[free_idx])) * 100.0, np.nan)
+
+                    covfit_val = float(s2)
+                    SE_log10K_full[free_idx] = SE_log10K_free
+                    percK_full[free_idx] = percK_free
+                except Exception as e:
+                    log_progress(f"Error calculando errores: {e}")
+                    covfit_val = float(s2)
+            else:
+                covfit_val = float(s2) if np.isfinite(s2) else np.nan
+
+        # For fixed parameters, always report zero uncertainty.
+        SE_log10K_full[fixed_mask] = 0.0
+        percK_full[fixed_mask] = 0.0
             
         rms = np.sqrt(np.mean(residuals_vec**2)) if residuals_vec.size > 0 else 0.0
         

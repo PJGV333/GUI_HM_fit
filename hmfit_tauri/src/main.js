@@ -1984,6 +1984,13 @@ function wireSpectroscopyForm() {
 	        chkFixed.checked = false;
 	        chkFixed.addEventListener("change", () => {
 	          const isFixed = chkFixed.checked;
+	          if (isFixed) {
+	            const v = parseFloat(inputVal.value);
+	            if (!Number.isNaN(v)) {
+	              inputMin.value = String(v);
+	              inputMax.value = String(v);
+	            }
+	          }
 	          inputMin.disabled = isFixed;
 	          inputMax.disabled = isFixed;
 	        });
@@ -4185,6 +4192,13 @@ function wireSpectroscopyForm() {
 	        fixedCb.checked = !!cfg.optimization.fixed[i];
 	        const inputs = row.querySelectorAll(".grid-input");
 	        if (inputs.length >= 3) {
+	          if (fixedCb.checked) {
+	            const v = parseFloat(inputs[0].value);
+	            if (!Number.isNaN(v)) {
+	              inputs[1].value = String(v);
+	              inputs[2].value = String(v);
+	            }
+	          }
 	          inputs[1].disabled = fixedCb.checked;
 	          inputs[2].disabled = fixedCb.checked;
 	        }

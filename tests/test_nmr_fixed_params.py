@@ -46,7 +46,7 @@ def _fake_minimize(fun, x0, method=None, bounds=None):
 
 
 class TestNmrFixedParams(unittest.TestCase):
-    def _run(self, *, fixed_list=None, bounds=None):
+    def _run(self, *, fixed_list=None, bounds=None, nas=None):
         from backend_fastapi.nmr_processor import process_nmr_data
 
         conc = pd.DataFrame(
@@ -104,7 +104,7 @@ class TestNmrFixedParams(unittest.TestCase):
                 algorithm="Levenberg-Marquardt",
                 optimizer="powell",
                 model_settings="Free",
-                non_absorbent_species=[],
+                non_absorbent_species=list(nas or []),
                 k_fixed=fixed_list,
             )
 
@@ -151,6 +151,25 @@ class TestNmrFixedParams(unittest.TestCase):
         self.assertEqual(se[2], 0.0)
         self.assertEqual(perc[2], 0.0)
         self.assertIn("± const", result.get("results_text", ""))
+
+    def test_varpro_error_path_respects_fixed_mask(self):
+        def fake_compute_errors_nmr_varpro(k, res, dq, h, modelo, nas, rcond=1e-10, use_projector=True, mask=None):
+            k = np.asarray(k, dtype=float).ravel()
+            p = k.size
+            m_eff = int(np.sum(np.asarray(mask, dtype=bool)))
+            j = np.zeros((p, m_eff), dtype=float)
+            for i in range(p):
+                if m_eff:
+                    j[i, i % m_eff] = 1.0
+            return {"J": j, "rms": 2.0, "covfit": 0.0}
+
+        with patch("backend_fastapi.nmr_processor.compute_errors_nmr_varpro", fake_compute_errors_nmr_varpro):
+            result = self._run(fixed_list=[False, False, True], nas=[0])
+
+        self.assertTrue(result.get("success"), result)
+        export = result.get("export_data") or {}
+        self.assertEqual(export.get("SE_log10K")[2], 0.0)
+        self.assertEqual(export.get("percK")[2], 0.0)
 
 
 if __name__ == "__main__":
