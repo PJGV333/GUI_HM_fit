@@ -214,6 +214,7 @@ def process_nmr_data(
     optimizer: str,
     model_settings: str,
     non_absorbent_species: List[int],
+    k_fixed: Optional[List[bool]] = None,
 ) -> Dict[str, Any]:
     
     # 1. Load Data
@@ -276,8 +277,27 @@ def process_nmr_data(
         modelo = np.array(model_matrix).T # Transpose to match expected shape (n_species x n_components)
         nas = non_absorbent_species
         
-        k = np.array(k_initial)
+        k = np.array(k_initial, dtype=float).ravel()
         bnds = _build_bounds_list(k_bounds)
+
+        fixed_mask = np.zeros(len(k), dtype=bool)
+        if k_fixed is not None:
+            for i, f in enumerate(k_fixed[: len(k)]):
+                fixed_mask[i] = bool(f)
+
+        # Compatibility: treat equal bounds as fixed
+        for i, (lb, ub) in enumerate(bnds):
+            if np.isfinite(lb) and np.isfinite(ub) and lb == ub:
+                fixed_mask[i] = True
+
+        free_idx = np.where(~fixed_mask)[0]
+        p0_full = k.copy()
+
+        def pack(theta_free: np.ndarray) -> np.ndarray:
+            k_full = p0_full.copy()
+            if free_idx.size:
+                k_full[free_idx] = np.asarray(theta_free, dtype=float).ravel()
+            return k_full
         
     except Exception as e:
          return {"error": f"Error preparing data matrices: {str(e)}"}
@@ -300,10 +320,11 @@ def process_nmr_data(
     # 4. Define Objective Function
     iter_state = {"cnt": 0, "best": np.inf}
 
-    def f_m(k_curr):
+    def f_m(theta_free):
         try:
             iter_state["cnt"] += 1
-            C = res.concentraciones(k_curr)[0]
+            k_curr_full = pack(theta_free)
+            C = res.concentraciones(k_curr_full)[0]
             dq_cal = project_coeffs_block_onp_frac(
                 dq, C, D_cols, mask, rcond=1e-10, ridge=1e-8
             )
@@ -317,7 +338,7 @@ def process_nmr_data(
             valid_residuals = mask & np.isfinite(dq_cal)
             
             r = diff[valid_residuals].ravel()
-            if (r.size <= len(k_curr)) or (not np.isfinite(r).all()):
+            if (r.size <= len(np.asarray(theta_free).ravel())) or (not np.isfinite(r).all()):
                 log_progress(f"Iter {iter_state['cnt']}: evaluación descartada (Nobs≤p o residuales no finitos)")
                 return 1e9
             rms = float(np.sqrt(np.mean(r * r)))
@@ -330,7 +351,7 @@ def process_nmr_data(
             )
             if should_log:
                 log_progress(
-                    f"Iter {iter_state['cnt']}: f(x)={rms:.6e} | x={[float(xi) for xi in k_curr]}"
+                    f"Iter {iter_state['cnt']}: f(x)={rms:.6e} | x={[float(xi) for xi in k_curr_full]}"
                 )
                 iter_state["best"] = min(best, rms)
             return rms
@@ -339,24 +360,35 @@ def process_nmr_data(
 
     # 5. Optimization
     try:
-        if optimizer == "differential_evolution":
-            # Check for infinite bounds
-            for (lb, ub) in bnds:
-                if np.isinf(lb) or np.isinf(ub):
-                     return {"error": "Differential Evolution requires finite bounds. Please set Min/Max for all parameters."}
-            
-            opt_res = differential_evolution(
-                f_m, bnds, x0=k, strategy='best1bin',
-                maxiter=1000, popsize=15, tol=0.01,
-                mutation=(0.5, 1), recombination=0.7,
-                init='latinhypercube'
-            )
+        if free_idx.size == 0:
+            k_opt_full = p0_full.copy()
+            log_progress("Optimización omitida: todas las constantes están fijas.")
         else:
-            opt_res = optimize.minimize(f_m, k, method=optimizer, bounds=bnds)
-            
-        k_opt = opt_res.x
-        k_opt = np.ravel(k_opt)
-        log_progress(f"Optimización completada (iter={iter_state['cnt']}, best_f={iter_state['best']:.6e})")
+            k_free0 = p0_full[free_idx]
+            bounds_free = [bnds[i] for i in free_idx]
+
+            if optimizer == "differential_evolution":
+                for (lb, ub) in bounds_free:
+                    if np.isinf(lb) or np.isinf(ub):
+                        return {"error": "Differential Evolution requires finite bounds for free parameters. Please set Min/Max (or mark as Fixed)."}
+
+                opt_res = differential_evolution(
+                    f_m,
+                    bounds_free,
+                    x0=k_free0,
+                    strategy='best1bin',
+                    maxiter=1000,
+                    popsize=15,
+                    tol=0.01,
+                    mutation=(0.5, 1),
+                    recombination=0.7,
+                    init='latinhypercube'
+                )
+            else:
+                opt_res = optimize.minimize(f_m, k_free0, method=optimizer, bounds=bounds_free)
+
+            k_opt_full = pack(opt_res.x)
+            log_progress(f"Optimización completada (iter={iter_state['cnt']}, best_f={iter_state['best']:.6e})")
         
     except Exception as e:
         return {"error": f"Optimization failed: {str(e)}"}
@@ -364,7 +396,7 @@ def process_nmr_data(
     # 6. Calculate Results & Statistics
     try:
         # Final concentrations
-        C_opt, Co_opt = res.concentraciones(k_opt)
+        C_opt, Co_opt = res.concentraciones(k_opt_full)
         
         # Final calculated shifts
         # Note: We use project_coeffs_block_onp_frac for consistency with f_m
@@ -386,61 +418,57 @@ def process_nmr_data(
         residuals_vec = diff_final[valid_residuals_final].ravel()
         
         N_res = residuals_vec.size
-        N_par = len(k_opt)
+        N_par = int(free_idx.size)
         dof = N_res - N_par
         
-        if dof > 0:
-            # Numerical Jacobian
+        SS_res = float(np.sum(residuals_vec**2)) if residuals_vec.size else 0.0
+        s2 = (SS_res / dof) if dof > 0 else np.nan
+
+        if dof > 0 and N_par > 0:
             eps = 1e-8
-            J = np.zeros((N_res, N_par))
-            
-            # Base residuals are already calculated: residuals_vec
-            
-            for i in range(N_par):
-                k_temp = k_opt.copy()
-                k_temp[i] += eps * max(abs(k_temp[i]), 1.0)
-                step = k_temp[i] - k_opt[i]
-                
+            J_free = np.zeros((N_res, N_par))
+
+            for j, idx in enumerate(free_idx):
+                k_temp = k_opt_full.copy()
+                k_temp[idx] += eps * max(abs(k_temp[idx]), 1.0)
+                step = k_temp[idx] - k_opt_full[idx]
+
                 try:
                     C_temp, _ = res.concentraciones(k_temp)
                     dq_fit_temp = project_coeffs_block_onp_frac(dq, C_temp, D_cols, mask)
                     diff_temp = dq - dq_fit_temp
-                    # Must use SAME mask as base
                     r_temp = diff_temp[valid_residuals_final].ravel()
-                    J[:, i] = (r_temp - residuals_vec) / step
-                except:
-                    J[:, i] = 0.0 # Should not happen often
-            
-            # Covariance
+                    J_free[:, j] = (r_temp - residuals_vec) / step
+                except Exception:
+                    J_free[:, j] = 0.0
+
             try:
-                JtJ = J.T @ J
+                JtJ = J_free.T @ J_free
                 cov_k = np.linalg.pinv(JtJ)
-                
-                SS_res = np.sum(residuals_vec**2)
-                s2 = SS_res / dof
-                
                 covfit_mat = s2 * cov_k
                 sigma_k = np.sqrt(np.diag(covfit_mat))
-                
-                # Convert to log10 units for reporting
-                # K = 10^logK -> dK = ln(10) * K * d(logK)
-                # d(logK) = dK / (ln(10) * K)
-                # SE_log10K = sigma_k / (ln(10) * k_opt)
-                
-                SE_log10K = sigma_k / (np.log(10) * np.abs(k_opt))
-                percK = (sigma_k / np.abs(k_opt)) * 100.0
-                
-                covfit_val = s2 # Scalar for table
-                
+
+                denom_log = np.log(10) * np.abs(k_opt_full[free_idx])
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    SE_log10K_free = np.where(denom_log > 0, sigma_k / denom_log, np.nan)
+                    percK_free = np.where(np.abs(k_opt_full[free_idx]) > 0, (sigma_k / np.abs(k_opt_full[free_idx])) * 100.0, np.nan)
+
+                covfit_val = float(s2)
             except Exception as e:
                 log_progress(f"Error calculando errores: {e}")
-                SE_log10K = np.full_like(k_opt, np.nan)
-                percK = np.full_like(k_opt, np.nan)
-                covfit_val = np.nan
+                SE_log10K_free = np.full((N_par,), np.nan)
+                percK_free = np.full((N_par,), np.nan)
+                covfit_val = float(s2)
         else:
-            SE_log10K = np.full_like(k_opt, np.nan)
-            percK = np.full_like(k_opt, np.nan)
-            covfit_val = np.nan
+            SE_log10K_free = np.full((N_par,), np.nan)
+            percK_free = np.full((N_par,), np.nan)
+            covfit_val = float(s2) if np.isfinite(s2) else np.nan
+
+        SE_log10K_full = np.zeros_like(k_opt_full, dtype=float)
+        percK_full = np.zeros_like(k_opt_full, dtype=float)
+        if free_idx.size:
+            SE_log10K_full[free_idx] = SE_log10K_free
+            percK_full[free_idx] = percK_free
             
         rms = np.sqrt(np.mean(residuals_vec**2)) if residuals_vec.size > 0 else 0.0
         
@@ -475,7 +503,7 @@ def process_nmr_data(
         
         # Format Text Report
         results_text = format_results_table(
-            k_opt, SE_log10K, percK, rms, covfit_val, lof=lof
+            k_opt_full, SE_log10K_full, percK_full, rms, covfit_val, lof=lof, fixed_mask=fixed_mask
         )
         
         # Add extra statistics to results text
@@ -525,10 +553,11 @@ def process_nmr_data(
             "C_T": C_T.tolist() if C_T is not None else [],
             "Chemical_Shifts": dq.tolist() if dq is not None else [],
             "Calculated_Chemical_Shifts": dq_fit.tolist() if dq_fit is not None else [],
-            "k": k_opt.tolist() if k_opt is not None else [],
+            "k": k_opt_full.tolist() if k_opt_full is not None else [],
             "k_ini": k_initial if k_initial is not None else [],
-            "percK": percK.tolist() if percK is not None else [],
-            "SE_log10K": SE_log10K.tolist() if SE_log10K is not None else [],
+            "percK": percK_full.tolist() if percK_full is not None else [],
+            "SE_log10K": SE_log10K_full.tolist() if SE_log10K_full is not None else [],
+            "fixed_mask": fixed_mask.tolist(),
             "signal_names": signal_names,
             "column_names": column_names,
             "stats_table": [
@@ -632,13 +661,27 @@ def process_nmr_data(
             },
         }
 
+        constants = []
+        for i in range(len(k_opt_full)):
+            is_fixed = bool(fixed_mask[i]) if fixed_mask is not None else False
+            se_val = 0.0 if is_fixed else float(SE_log10K_full[i]) if np.isfinite(SE_log10K_full[i]) else None
+            perc_val = 0.0 if is_fixed else float(percK_full[i]) if np.isfinite(percK_full[i]) else None
+            constants.append({
+                "name": f"K{i+1}",
+                "log10K": float(k_opt_full[i]),
+                "SE_log10K": se_val,
+                "percent_error": perc_val,
+                "fixed": is_fixed,
+            })
+
         return sanitize_for_json({
             "success": True,
             "results_text": results_text,
             "graphs": graphs,  # legacy PNG graphs
             "availablePlots": availablePlots,
             "plotData": {"nmr": nmr_plot_data},
-            "export_data": export_data
+            "export_data": export_data,
+            "constants": constants,
         })
 
     except Exception as e:

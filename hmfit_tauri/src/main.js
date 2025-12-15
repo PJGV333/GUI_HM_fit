@@ -1925,22 +1925,22 @@ function wireSpectroscopyForm() {
     modelGridContainer.appendChild(table);
   }
 
-  function generateOptGrid(nSpecies) {
-    if (!optGridContainer) return;
-    optGridContainer.innerHTML = "";
-    const nConstants = nSpecies;
+	  function generateOptGrid(nSpecies) {
+	    if (!optGridContainer) return;
+	    optGridContainer.innerHTML = "";
+	    const nConstants = nSpecies;
 
-    if (nConstants > 0) {
+	    if (nConstants > 0) {
       const optTable = document.createElement("table");
       optTable.className = "model-grid-table";
 
-      const optThead = document.createElement("thead");
-      const optHeaderRow = document.createElement("tr");
-      ["Parameter", "Value", "Min", "Max"].forEach(text => {
-        const th = document.createElement("th");
-        th.textContent = text;
-        optHeaderRow.appendChild(th);
-      });
+	      const optThead = document.createElement("thead");
+	      const optHeaderRow = document.createElement("tr");
+	      ["Parameter", "Value", "Min", "Max", "Fixed"].forEach(text => {
+	        const th = document.createElement("th");
+	        th.textContent = text;
+	        optHeaderRow.appendChild(th);
+	      });
       optThead.appendChild(optHeaderRow);
       optTable.appendChild(optThead);
 
@@ -1969,16 +1969,29 @@ function wireSpectroscopyForm() {
         tdMin.appendChild(inputMin);
         tr.appendChild(tdMin);
 
-        const tdMax = document.createElement("td");
-        const inputMax = document.createElement("input");
-        inputMax.type = "number";
-        inputMax.className = "grid-input";
-        inputMax.placeholder = "Max";
-        tdMax.appendChild(inputMax);
-        tr.appendChild(tdMax);
+	        const tdMax = document.createElement("td");
+	        const inputMax = document.createElement("input");
+	        inputMax.type = "number";
+	        inputMax.className = "grid-input";
+	        inputMax.placeholder = "Max";
+	        tdMax.appendChild(inputMax);
+	        tr.appendChild(tdMax);
 
-        optTbody.appendChild(tr);
-      }
+	        const tdFixed = document.createElement("td");
+	        const chkFixed = document.createElement("input");
+	        chkFixed.type = "checkbox";
+	        chkFixed.className = "fixed-param";
+	        chkFixed.checked = false;
+	        chkFixed.addEventListener("change", () => {
+	          const isFixed = chkFixed.checked;
+	          inputMin.disabled = isFixed;
+	          inputMax.disabled = isFixed;
+	        });
+	        tdFixed.appendChild(chkFixed);
+	        tr.appendChild(tdFixed);
+
+	        optTbody.appendChild(tr);
+	      }
       optTable.appendChild(optTbody);
       optGridContainer.appendChild(optTable);
     } else {
@@ -2456,17 +2469,20 @@ function wireSpectroscopyForm() {
         .map(tr => parseInt(tr.dataset.species.replace('sp', '')) - 1)
       : [];
 
-    // Extraer parámetros de optimización (K values)
-    const kValues = [];
-    const kBounds = [];
-    if (optGridContainer) {
-      const rows = optGridContainer.querySelectorAll("tbody tr");
-      rows.forEach(row => {
-        const inputs = row.querySelectorAll(".grid-input");
-        if (inputs.length >= 3) {
-          const val = parseFloat(inputs[0].value);
-          const min = parseFloat(inputs[1].value);
-          const max = parseFloat(inputs[2].value);
+	    // Extraer parámetros de optimización (K values)
+	    const kValues = [];
+	    const kBounds = [];
+	    const kFixed = [];
+	    if (optGridContainer) {
+	      const rows = optGridContainer.querySelectorAll("tbody tr");
+	      rows.forEach(row => {
+	        const inputs = row.querySelectorAll(".grid-input");
+	        const fixedCb = row.querySelector(".fixed-param");
+	        const isFixed = fixedCb ? fixedCb.checked : false;
+	        if (inputs.length >= 3) {
+	          const val = parseFloat(inputs[0].value);
+	          const min = parseFloat(inputs[1].value);
+	          const max = parseFloat(inputs[2].value);
 
           // Use Number.isNaN to check for valid numbers, allowing 0
           const finalVal = Number.isNaN(val) ? 1.0 : val;
@@ -2474,11 +2490,12 @@ function wireSpectroscopyForm() {
           const finalMin = Number.isNaN(min) ? null : min;
           const finalMax = Number.isNaN(max) ? null : max;
 
-          kValues.push(finalVal);
-          kBounds.push([finalMin, finalMax]);
-        }
-      });
-    }
+	          kValues.push(finalVal);
+	          kBounds.push([finalMin, finalMax]);
+	        }
+	        kFixed.push(isFixed);
+	      });
+	    }
 
     // Create FormData with file and parameters
     const formData = new FormData();
@@ -2491,10 +2508,11 @@ function wireSpectroscopyForm() {
     formData.append("modelo", JSON.stringify(gridData));
     formData.append("non_abs_species", JSON.stringify(nonAbsSpecies));
     formData.append("algorithm", algoSelect?.value || "Newton-Raphson");
-    formData.append("model_settings", modelSettingsSelect?.value || "Free");
-    formData.append("optimizer", optimizerSelect?.value || "powell");
-    formData.append("initial_k", JSON.stringify(kValues));
-    formData.append("bounds", JSON.stringify(kBounds));
+	    formData.append("model_settings", modelSettingsSelect?.value || "Free");
+	    formData.append("optimizer", optimizerSelect?.value || "powell");
+	    formData.append("initial_k", JSON.stringify(kValues));
+	    formData.append("bounds", JSON.stringify(kBounds));
+	    formData.append("fixed", JSON.stringify(kFixed));
 
     try {
       let data;
@@ -3966,24 +3984,28 @@ function wireSpectroscopyForm() {
         .map(tr => parseInt(tr.dataset.species.replace('sp', '')) - 1)
       : [];
 
-    const kValues = [];
-    const kBounds = [];
-    if (optGridContainer) {
-      const rows = optGridContainer.querySelectorAll("tbody tr");
-      rows.forEach(row => {
-        const inputs = row.querySelectorAll(".grid-input");
-        if (inputs.length >= 3) {
-          const val = parseFloat(inputs[0].value);
-          const min = parseFloat(inputs[1].value);
-          const max = parseFloat(inputs[2].value);
-          const finalVal = Number.isNaN(val) ? 1.0 : val;
-          const finalMin = Number.isNaN(min) ? null : min;
-          const finalMax = Number.isNaN(max) ? null : max;
-          kValues.push(finalVal);
-          kBounds.push([finalMin, finalMax]);
-        }
-      });
-    }
+	    const kValues = [];
+	    const kBounds = [];
+	    const kFixed = [];
+	    if (optGridContainer) {
+	      const rows = optGridContainer.querySelectorAll("tbody tr");
+	      rows.forEach(row => {
+	        const inputs = row.querySelectorAll(".grid-input");
+	        const fixedCb = row.querySelector(".fixed-param");
+	        const isFixed = fixedCb ? fixedCb.checked : false;
+	        if (inputs.length >= 3) {
+	          const val = parseFloat(inputs[0].value);
+	          const min = parseFloat(inputs[1].value);
+	          const max = parseFloat(inputs[2].value);
+	          const finalVal = Number.isNaN(val) ? 1.0 : val;
+	          const finalMin = Number.isNaN(min) ? null : min;
+	          const finalMax = Number.isNaN(max) ? null : max;
+	          kValues.push(finalVal);
+	          kBounds.push([finalMin, finalMax]);
+	        }
+	        kFixed.push(isFixed);
+	      });
+	    }
 
     return {
       type: 'Spectroscopy',
@@ -4010,15 +4032,16 @@ function wireSpectroscopyForm() {
         spectraSheet: spectraSheetInput?.value || "",
         concSheet: concSheetInput?.value || ""
       },
-      optimization: {
-        algorithm: algoSelect?.value,
-        modelSettings: modelSettingsSelect?.value,
-        optimizer: optimizerSelect?.value,
-        initialK: kValues,
-        bounds: kBounds
-      }
-    };
-  }
+	      optimization: {
+	        algorithm: algoSelect?.value,
+	        modelSettings: modelSettingsSelect?.value,
+	        optimizer: optimizerSelect?.value,
+	        initialK: kValues,
+	        bounds: kBounds,
+	        fixed: kFixed
+	      }
+	    };
+	  }
 
   function buildNmrConfigFromState() {
     // Reuse similar logic but for NMR specific fields
@@ -4136,27 +4159,42 @@ function wireSpectroscopyForm() {
       });
     }
 
-    // 4. Fill Optimization Grid
-    if (optGridContainer && cfg.optimization.initialK) {
-      const rows = optGridContainer.querySelectorAll("tbody tr");
-      rows.forEach((row, i) => {
-        if (i < cfg.optimization.initialK.length) {
-          const inputs = row.querySelectorAll(".grid-input");
-          if (inputs.length >= 3) {
-            inputs[0].value = cfg.optimization.initialK[i];
-            if (cfg.optimization.bounds && cfg.optimization.bounds[i]) {
-              inputs[1].value = cfg.optimization.bounds[i][0] ?? "";
-              inputs[2].value = cfg.optimization.bounds[i][1] ?? "";
-            }
-          }
-        }
-      });
-    }
+	    // 4. Fill Optimization Grid
+	    if (optGridContainer && cfg.optimization.initialK) {
+	      const rows = optGridContainer.querySelectorAll("tbody tr");
+	      rows.forEach((row, i) => {
+	        if (i < cfg.optimization.initialK.length) {
+	          const inputs = row.querySelectorAll(".grid-input");
+	          if (inputs.length >= 3) {
+	            inputs[0].value = cfg.optimization.initialK[i];
+	            if (cfg.optimization.bounds && cfg.optimization.bounds[i]) {
+	              inputs[1].value = cfg.optimization.bounds[i][0] ?? "";
+	              inputs[2].value = cfg.optimization.bounds[i][1] ?? "";
+	            }
+	          }
+	        }
+	      });
+	    }
 
-    // 5. Set Dropdowns (Algorithm, etc)
-    if (algoSelect) algoSelect.value = cfg.optimization.algorithm;
-    if (modelSettingsSelect) modelSettingsSelect.value = cfg.optimization.modelSettings;
-    if (optimizerSelect) optimizerSelect.value = cfg.optimization.optimizer;
+	    // 4b. Restore fixed params (if present)
+	    if (optGridContainer && Array.isArray(cfg.optimization.fixed)) {
+	      const rows = optGridContainer.querySelectorAll("tbody tr");
+	      rows.forEach((row, i) => {
+	        const fixedCb = row.querySelector(".fixed-param");
+	        if (!fixedCb) return;
+	        fixedCb.checked = !!cfg.optimization.fixed[i];
+	        const inputs = row.querySelectorAll(".grid-input");
+	        if (inputs.length >= 3) {
+	          inputs[1].disabled = fixedCb.checked;
+	          inputs[2].disabled = fixedCb.checked;
+	        }
+	      });
+	    }
+
+	    // 5. Set Dropdowns (Algorithm, etc)
+	    if (algoSelect) algoSelect.value = cfg.optimization.algorithm;
+	    if (modelSettingsSelect) modelSettingsSelect.value = cfg.optimization.modelSettings;
+	    if (optimizerSelect) optimizerSelect.value = cfg.optimization.optimizer;
 
     // 6. EFA (Spectroscopy only)
     if (cfg.type === 'Spectroscopy') {

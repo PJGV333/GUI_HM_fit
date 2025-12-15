@@ -87,7 +87,7 @@ def _build_bounds_list(bounds):
 
 
 # === Result formatting (shared with wx reference) ===
-def format_results_table(k, SE_log10K, percK, rms, covfit, lof=None):
+def format_results_table(k, SE_log10K, percK, rms, covfit, lof=None, fixed_mask=None):
     """
     Build an ASCII table with aligned columns for constants and diagnostics.
     Build an ASCII table with aligned columns for constants and diagnostics.
@@ -108,16 +108,23 @@ def format_results_table(k, SE_log10K, percK, rms, covfit, lof=None):
         "s² (var. reducida)",
     ]
 
-    rows = [
-        [
+    rows = []
+    for i in range(len(k)):
+        is_fixed = bool(fixed_mask[i]) if fixed_mask is not None and i < len(fixed_mask) else False
+        if is_fixed:
+            se_str = "const"
+            perc_str = ""
+        else:
+            se_str = f"{SE_log10K[i]:.2e}"
+            perc_str = f"{percK[i]:.2f} %"
+
+        rows.append([
             f"K{i+1}",
-            f"{k[i]:.2e} ± {SE_log10K[i]:.2e}",
-            f"{percK[i]:.2f} %",
+            f"{k[i]:.2e} ± {se_str}",
+            perc_str,
             f"{rms:.2e}" if i == 0 else "",
             f"{covfit:.2e}" if i == 0 else "",
-        ]
-        for i in range(len(k))
-    ]
+        ])
 
     max_widths = calculate_max_column_widths(headers, rows)
 

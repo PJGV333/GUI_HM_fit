@@ -188,7 +188,7 @@ async def process_spectroscopy(
     model_settings: str = Form("Free"),
     optimizer: str = Form("powell"),
     initial_k: str = Form("[]"),  # JSON string
-    bounds: str = Form("[]")  # JSON string
+    bounds: str = Form("[]"),  # JSON string
 ):
     """Process spectroscopy data with progress streaming."""
     try:
@@ -320,7 +320,8 @@ async def process_nmr(
     model_settings: str = Form("Free"),
     optimizer: str = Form("powell"),
     initial_k: str = Form("[]"),  # JSON string
-    bounds: str = Form("[]")  # JSON string
+    bounds: str = Form("[]"),  # JSON string
+    fixed: str = Form("[]"),  # JSON string
 ):
     """
     Process NMR titration data.
@@ -335,6 +336,12 @@ async def process_nmr(
         non_abs_species_list = json.loads(non_abs_species)
         initial_k_list = json.loads(initial_k)
         bounds_list = json.loads(bounds)
+        try:
+            fixed_list = json.loads(fixed)
+        except Exception:
+            fixed_list = []
+        if not isinstance(fixed_list, list):
+            fixed_list = []
         
         # Save file temporarily
         temp_path = UPLOAD_DIR / f"temp_nmr_{int(time.time())}_{file.filename}"
@@ -363,7 +370,8 @@ async def process_nmr(
                 algorithm=algorithm,
                 optimizer=optimizer,
                 model_settings=model_settings,
-                non_absorbent_species=non_abs_species_list
+                non_absorbent_species=non_abs_species_list,
+                k_fixed=fixed_list,
             )
 
         await broadcast_progress("Iniciando procesamiento NMR (en hilo separado)...")
