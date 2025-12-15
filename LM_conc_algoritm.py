@@ -5,6 +5,7 @@
 
 import numpy as onp
 from np_backend import xp as np  # backend conmutable (JAX/NumPy)
+from noncoop_utils import infer_noncoop_series
 
 # ---------------------------------------------------------
 # Pseudoinversa robusta en NumPy real (fallback si el sistema es mal condicionado)
@@ -63,21 +64,33 @@ class LevenbergMarquardt:
 
     def non_coop(self, K_log):
         """
-        No cooperativo 1:2 colapsado:
-        - Si llega solo K1, genera internamente [K1, K1 - log10(4)] en log10 y luego acumula (β).
-        - Si llegan K1,K2 “crudos”, aplica corrección al segundo paso y acumula.
+        Modo estadístico / no cooperativo para una serie 1:N (o N:1) con 2 componentes.
+
+        Entrada:
+          - K_log: vector en log10 que incluye ceros para componentes al inicio.
+            En modo Non-cooperative se espera que el usuario provea SOLO log10(K1).
+
+        Salida:
+          - log10(beta) por especie (tamaño nspec), con asignación robusta aunque
+            el orden de columnas de complejos no sea HG, HG2, ...
         """
-        K_log = onp.asarray(K_log, dtype=float)
-        start = self.n_componentes
-        n_complex = K_log.size - start
+        K_log = onp.asarray(K_log, dtype=float).ravel()
+        n_comp = self.n_componentes
+        nspec = self.nspec
+        if K_log.size < n_comp + 1:
+            return onp.cumsum(K_log)
 
-        if n_complex == 1 and (self.nspec - self.n_componentes) == 2:
-            K1 = K_log[start]
-            K_log = onp.concatenate((K_log, onp.array([K1 - onp.log10(4.0)], dtype=float)))
-        elif n_complex >= 2:
-            K_log[start + 1] -= onp.log10(4.0)
+        N, j_per_complex, complex_cols = infer_noncoop_series(self.modelo)
 
-        return onp.cumsum(K_log)
+        logK1 = float(K_log[n_comp])
+        js = onp.arange(1, N + 1, dtype=float)
+        logK_by_j = logK1 + onp.log10((N - js + 1.0) / (js * float(N)))
+        logBeta_by_j = onp.cumsum(logK_by_j)
+
+        logBeta_species = onp.zeros(nspec, dtype=float)
+        for col, j in zip(complex_cols.tolist(), j_per_complex.tolist()):
+            logBeta_species[int(col)] = float(logBeta_by_j[int(j) - 1])
+        return logBeta_species
 
 
     def _prepare_K_numeric(self, k_in):
@@ -106,12 +119,12 @@ class LevenbergMarquardt:
             K_log_eff = self.step_by_step(K_log_in)
 
         elif ms in ("Non-cooperative", "Statistical"):
-            if not (k_in.size == n_complex - 1 or k_in.size == n_complex):
+            if not (k_in.size == 1 or k_in.size == n_complex):
                 raise ValueError(
-                    f"Para 'Non-cooperative' se esperan {n_complex-1} o {n_complex} constantes, "
+                    f"Para 'Non-cooperative' se esperan 1 o {n_complex} constantes, "
                     f"llegaron {k_in.size}."
                 )
-            K_log_eff = self.non_coop(K_log_in)
+            K_log_eff = self.non_coop(K_log_in) if k_in.size == 1 else self.step_by_step(K_log_in)
 
         else:
             K_log_eff = K_log_in  # fallback

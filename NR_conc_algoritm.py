@@ -7,6 +7,7 @@
 
 import numpy as onp
 from np_backend import xp as np  # backend conmutable (JAX/NumPy)
+from noncoop_utils import infer_noncoop_series
 
 # ------------------------------------------------------------------
 def pinv_cs(A, rcond=1e-12):
@@ -60,20 +61,36 @@ class NewtonRaphson:
 
     def non_coop(self, K_log):
         """
-        Misma regla que tenías:
-        - El vector que entra YA incluye los ceros de componentes al inicio.
-        - Para 1:2 (dos complejos) se recibe solo K1.
-        - Se añade internamente K2 = K1 - log10(4) (en log10),
-          se concatena y luego se acumula con cumsum.
-        - No cambia la convención para 1:1 (no usar Non-cooperative ahí).
+        Modo estadístico / no cooperativo para una serie 1:N (o N:1) con 2 componentes.
+
+        Entrada:
+          - K_log: vector en log10 que incluye ceros para componentes al inicio.
+            En modo Non-cooperative se espera que el usuario provea SOLO log10(K1)
+            (primer paso macroscópico).
+
+        Salida:
+          - log10(beta) por especie (tamaño nspec), con asignación robusta aunque
+            el orden de columnas de complejos no sea HG, HG2, ...
         """
-        K_log = onp.asarray(K_log, dtype=float)
-        if K_log.size < 3:
-            # sin K1 presente (solo componentes) → no tocar
+        K_log = onp.asarray(K_log, dtype=float).ravel()
+        n_comp = self.n_componentes
+        nspec = self.nspec
+        if K_log.size < n_comp + 1:
             return onp.cumsum(K_log)
-        K_0 = onp.array([K_log[2] - onp.log10(4.0)], dtype=K_log.dtype)
-        K_1 = onp.concatenate((K_log, K_0))
-        return onp.cumsum(K_1)
+
+        # Infer N and mapping j -> complex column
+        N, j_per_complex, complex_cols = infer_noncoop_series(self.modelo)
+
+        logK1 = float(K_log[n_comp])
+        js = onp.arange(1, N + 1, dtype=float)
+        # logK_j = logK1 + log10((N-j+1)/(j*N))
+        logK_by_j = logK1 + onp.log10((N - js + 1.0) / (js * float(N)))
+        logBeta_by_j = onp.cumsum(logK_by_j)
+
+        logBeta_species = onp.zeros(nspec, dtype=float)
+        for col, j in zip(complex_cols.tolist(), j_per_complex.tolist()):
+            logBeta_species[int(col)] = float(logBeta_by_j[int(j) - 1])
+        return logBeta_species
 
     def _prepare_K_numeric(self, k_in):
         """
@@ -102,13 +119,14 @@ class NewtonRaphson:
                 raise ValueError(f"Para 'Step by step' se esperan {n_complex} constantes, llegaron {k_in.size}.")
             K_log_eff = self.step_by_step(K_log_full)
         elif ms in ("Non-cooperative", "Statistical"):
-            # Aquí puede venir 'una menos' (p.ej. 1:2 → 1)
-            if not (k_in.size == n_complex or k_in.size == n_complex - 1):
+            # Non-cooperative: por defecto se espera SOLO K1 (un parámetro).
+            # Por compatibilidad, aceptamos también n_complex (y se trata como step-by-step).
+            if not (k_in.size == 1 or k_in.size == n_complex):
                 raise ValueError(
-                    f"Para 'Non-cooperative' se esperan {n_complex-1} o {n_complex} constantes, "
+                    f"Para 'Non-cooperative' se esperan 1 o {n_complex} constantes, "
                     f"llegaron {k_in.size}."
                 )
-            K_log_eff = self.non_coop(K_log_full) if k_in.size == n_complex - 1 else self.step_by_step(K_log_full)
+            K_log_eff = self.non_coop(K_log_full) if k_in.size == 1 else self.step_by_step(K_log_full)
         else:
             # fallback conservador
             K_log_eff = K_log_full

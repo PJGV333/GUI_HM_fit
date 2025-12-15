@@ -35,6 +35,7 @@ from .spectroscopy_processor import (
     generate_figure_base64,
     generate_figure2_base64
 )
+from noncoop_utils import noncoop_derived_from_logK1
 
 # --- Progreso vía callback opcional (WebSocket en main.py) ---
 _progress_callback = None
@@ -538,9 +539,36 @@ def process_nmr_data(
         
         # Format Text Report
         results_text = format_results_table(
-            k_opt_full, SE_log10K_full, percK_full, rms, covfit_val, lof=lof, fixed_mask=fixed_mask
+            k_opt_full,
+            SE_log10K_full,
+            percK_full,
+            rms,
+            covfit_val,
+            lof=lof,
+            fixed_mask=fixed_mask,
         )
-        
+
+        derived_noncoop = None
+        if str(model_settings) in ("Non-cooperative", "Statistical") and np.asarray(k_opt_full).size == 1:
+            try:
+                derived = noncoop_derived_from_logK1(
+                    np.asarray(modelo, dtype=float),
+                    float(np.asarray(k_opt_full).ravel()[0]),
+                )
+                derived_noncoop = {
+                    "N": int(derived["N"]),
+                    "logK_by_j": np.asarray(derived["logK_by_j"], dtype=float).tolist(),
+                }
+
+                lines = ["", "Derived (Non-cooperative):", "j | log10(Kj)"]
+                for j in range(1, int(derived["N"]) + 1):
+                    lines.append(
+                        f"{j} | {derived['logK_by_j'][j-1]:.6g}"
+                    )
+                results_text += "\n" + "\n".join(lines)
+            except Exception:
+                derived_noncoop = None
+
         # Add extra statistics to results text
         extra_stats = [
             f"LOF: {lof:.2e} %",
@@ -593,6 +621,7 @@ def process_nmr_data(
             "percK": percK_full.tolist() if percK_full is not None else [],
             "SE_log10K": SE_log10K_full.tolist() if SE_log10K_full is not None else [],
             "fixed_mask": fixed_mask.tolist(),
+            "derived_noncoop": derived_noncoop,
             "signal_names": signal_names,
             "column_names": column_names,
             "stats_table": [
@@ -717,6 +746,7 @@ def process_nmr_data(
             "plotData": {"nmr": nmr_plot_data},
             "export_data": export_data,
             "constants": constants,
+            "derived_noncoop": export_data.get("derived_noncoop"),
         })
 
     except Exception as e:

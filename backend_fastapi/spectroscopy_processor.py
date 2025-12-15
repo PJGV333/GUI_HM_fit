@@ -19,6 +19,7 @@ import logging
 warnings.filterwarnings("ignore")
 from errors import compute_errors_spectro_varpro, pinv_cs, percent_error_log10K, sensitivities_wrt_logK
 from core_ad_probe import solve_A_nnls_pgd
+from noncoop_utils import noncoop_derived_from_logK1
 
 logger = logging.getLogger(__name__)
 
@@ -793,6 +794,28 @@ def process_spectroscopy_data(
 
     # Tabla formateada para resultados (alineada como en wx)
     results_text = format_results_table(k, SE_log10K, percK, rms, covfit, lof=lof)
+
+    derived_noncoop = None
+    if str(model_settings) in ("Non-cooperative", "Statistical") and np.asarray(k).size == 1:
+        try:
+            derived = noncoop_derived_from_logK1(
+                onp.asarray(modelo, dtype=float),
+                float(np.asarray(k).ravel()[0]),
+            )
+            derived_noncoop = {
+                "N": int(derived["N"]),
+                "logK_by_j": onp.asarray(derived["logK_by_j"], dtype=float).tolist(),
+            }
+
+            lines = ["", "Derived (Non-cooperative):", "j | log10(Kj)"]
+            for j in range(1, int(derived["N"]) + 1):
+                lines.append(
+                    f"{j} | {derived['logK_by_j'][j-1]:.6g}"
+                )
+            results_text += "\n" + "\n".join(lines)
+        except Exception:
+            derived_noncoop = None
+
     # Estadísticas sin duplicar RMS/s² (ya aparecen en la tabla)
     extra_stats = [
         f"LOF: {lof:.2e} %",
@@ -839,6 +862,8 @@ def process_spectroscopy_data(
             ["optimizer", optimizer],
         ],
     }
+    if derived_noncoop is not None:
+        export_data["derived_noncoop"] = derived_noncoop
 
     plot_data = None
     try:
@@ -940,10 +965,11 @@ def process_spectroscopy_data(
                 "SE_log10K": float(SE_log10K[i]),
                 "K": float(10**k[i]),
                 "SE_K": float(SE_K[i]),
-                "percent_error": float(percK[i])
+                "percent_error": float(percK[i]),
             }
             for i in range(len(k))
         ],
+        "derived_noncoop": export_data.get("derived_noncoop"),
         "statistics": {
             "RMS": float(rms),
             "lof": float(lof),
@@ -951,7 +977,7 @@ def process_spectroscopy_data(
             "dif_en_ct": float(dif_en_ct),
             "eigenvalues": int(EV),
             "covfit": float(covfit),
-            "optimizer": optimizer
+            "optimizer": optimizer,
         },
         "graphs": legacy_graphs,
         "legacy_graphs": legacy_graphs,
@@ -962,12 +988,14 @@ def process_spectroscopy_data(
         "export_data": export_data,
         "optimizer_result": {
             "success": bool(r_0.success),
-            "message": str(r_0.message) if hasattr(r_0, 'message') else "",
-            "nfev": int(r_0.nfev) if hasattr(r_0, 'nfev') else 0
+            "message": str(r_0.message) if hasattr(r_0, "message") else "",
+            "nfev": int(r_0.nfev) if hasattr(r_0, "nfev") else 0,
         },
         "channels_total": int(channels_total),
         "channels_used": int(channels_used),
-        "channels_mode": "custom" if (isinstance(resolved, (list, tuple)) and len(resolved) > 0) else "all",
+        "channels_mode": "custom"
+        if (isinstance(resolved, (list, tuple)) and len(resolved) > 0)
+        else "all",
         "plot_mode": plot_mode,
         "warnings": warnings_list,
     }

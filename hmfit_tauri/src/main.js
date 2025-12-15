@@ -1925,10 +1925,10 @@ function wireSpectroscopyForm() {
     modelGridContainer.appendChild(table);
   }
 
-	  function generateOptGrid(nSpecies) {
+	  function generateOptGrid(nSpecies, nConstantsOverride = null) {
 	    if (!optGridContainer) return;
 	    optGridContainer.innerHTML = "";
-	    const nConstants = nSpecies;
+	    const nConstants = Number.isFinite(nConstantsOverride) ? nConstantsOverride : nSpecies;
 
 	    if (nConstants > 0) {
       const optTable = document.createElement("table");
@@ -2007,23 +2007,99 @@ function wireSpectroscopyForm() {
   }
 
   // --- Handler: Define Model Dimensions (Grid Generation) ---
-  defineModelBtn?.addEventListener("click", () => {
-    const nComp = readInt(nCompInput?.value);
-    const nSpecies = readInt(nSpeciesInput?.value);
+	  defineModelBtn?.addEventListener("click", () => {
+	    const nComp = readInt(nCompInput?.value);
+	    const nSpecies = readInt(nSpeciesInput?.value);
 
     if (nComp <= 0 || nSpecies <= 0) {
       diagEl.textContent = "Please enter valid Number of Components and Species (>0).";
       return;
     }
 
-    generateModelGrid(nComp, nSpecies);
-    generateOptGrid(nSpecies);
-    diagEl.textContent = `Grid generado: ${nComp} Componentes x ${nSpecies} Especies.`;
+	    generateModelGrid(nComp, nSpecies);
+	    const nConstants = modelSettingsSelect?.value === "Non-cooperative" ? 1 : nSpecies;
+	    generateOptGrid(nSpecies, nConstants);
+	    diagEl.textContent = `Grid generado: ${nComp} Componentes x ${nSpecies} Especies.`;
 
     // Save to state
     M().nComponents = nComp;
     M().nSpecies = nSpecies;
-  });
+	  });
+
+	  function validateNonCooperativeModelOrThrow(modelRows, nComp, nSpecies) {
+	    if (nComp !== 2) {
+	      throw new Error("Non-cooperative requiere 2 componentes (Host/Guest).");
+	    }
+	    const complexRows = modelRows.slice(nComp);
+	    if (complexRows.length !== nSpecies) {
+	      throw new Error("Non-cooperative requiere una serie 1:N o N:1 (HG, HG2, ... o H2G, H3G, ...).");
+	    }
+	    const pairs = complexRows.map((row) => {
+	      const a = Math.round(Number(row?.[0] ?? 0));
+	      const b = Math.round(Number(row?.[1] ?? 0));
+	      return [a, b];
+	    });
+	    const allA1 = pairs.every(([a]) => a === 1);
+	    const allB1 = pairs.every(([, b]) => b === 1);
+	    const stages = allA1 ? pairs.map(([, b]) => b) : allB1 ? pairs.map(([a]) => a) : null;
+	    if (!stages) {
+	      throw new Error("Non-cooperative requiere complejos secuenciales 1:N o N:1 con 2 componentes.");
+	    }
+	    const N = nSpecies;
+	    const expected = new Set(Array.from({ length: N }, (_, i) => i + 1));
+	    const got = new Set(stages);
+	    if (got.size !== expected.size) throw new Error("Non-cooperative requiere una sola especie para cada j=1..N (sin duplicados).");
+	    for (const j of expected) {
+	      if (!got.has(j)) throw new Error("Non-cooperative requiere complejos para j=1..N (sin huecos).");
+	    }
+	  }
+
+	  modelSettingsSelect?.addEventListener("change", () => {
+	    const nSpecies = readInt(nSpeciesInput?.value);
+	    if (!Number.isFinite(nSpecies) || nSpecies <= 0) return;
+
+	    let firstVal = null;
+	    let firstMin = null;
+	    let firstMax = null;
+	    let firstFixed = false;
+	    const firstRow = optGridContainer?.querySelector("tbody tr");
+	    if (firstRow) {
+	      const inputs = firstRow.querySelectorAll(".grid-input");
+	      if (inputs.length >= 3) {
+	        firstVal = inputs[0].value;
+	        firstMin = inputs[1].value;
+	        firstMax = inputs[2].value;
+	      }
+	      const fixedCb = firstRow.querySelector(".fixed-param");
+	      firstFixed = fixedCb ? fixedCb.checked : false;
+	    }
+
+	    const nConstants = modelSettingsSelect.value === "Non-cooperative" ? 1 : nSpecies;
+	    generateOptGrid(nSpecies, nConstants);
+
+	    const newFirstRow = optGridContainer?.querySelector("tbody tr");
+	    if (newFirstRow && firstVal !== null) {
+	      const inputs = newFirstRow.querySelectorAll(".grid-input");
+	      if (inputs.length >= 3) {
+	        inputs[0].value = firstVal;
+	        inputs[1].value = firstMin ?? "";
+	        inputs[2].value = firstMax ?? "";
+	      }
+	      const fixedCb = newFirstRow.querySelector(".fixed-param");
+	      if (fixedCb) {
+	        fixedCb.checked = !!firstFixed;
+	        if (fixedCb.checked) {
+	          const v = parseFloat(inputs[0].value);
+	          if (!Number.isNaN(v)) {
+	            inputs[1].value = String(v);
+	            inputs[2].value = String(v);
+	          }
+	        }
+	        inputs[1].disabled = fixedCb.checked;
+	        inputs[2].disabled = fixedCb.checked;
+	      }
+	    }
+	  });
 
   // --- Input Listeners for State Persistence ---
   const formatAxisVal = (v) => {
@@ -2459,16 +2535,31 @@ function wireSpectroscopyForm() {
     if (receptorInput) receptorInput.value = m.dataMapping.conc.receptorId || "";
     if (guestInput) guestInput.value = m.dataMapping.conc.guestId || "";
 
-    // Recolectar datos del grid del modelo
-    const gridData = [];
-    if (modelGridContainer) {
-      const rows = modelGridContainer.querySelectorAll("tbody tr");
-      rows.forEach(row => {
-        const inputs = row.querySelectorAll(".grid-input");
-        const rowData = Array.from(inputs).map(inp => parseFloat(inp.value) || 0);
-        gridData.push(rowData);
-      });
-    }
+	    // Recolectar datos del grid del modelo
+	    const gridData = [];
+	    if (modelGridContainer) {
+	      const rows = modelGridContainer.querySelectorAll("tbody tr");
+	      rows.forEach(row => {
+	        const inputs = row.querySelectorAll(".grid-input");
+	        const rowData = Array.from(inputs).map(inp => parseFloat(inp.value) || 0);
+	        gridData.push(rowData);
+	      });
+	    }
+
+	    // Validation: Non-cooperative requires a pure 1:N / N:1 series with 2 components
+	    if (modelSettingsSelect?.value === "Non-cooperative") {
+	      try {
+	        const nComp = readInt(nCompInput?.value);
+	        const nSpecies = readInt(nSpeciesInput?.value);
+	        validateNonCooperativeModelOrThrow(gridData, nComp, nSpecies);
+	      } catch (err) {
+	        const msg = err?.message || String(err);
+	        diagEl.textContent = msg;
+	        appendToConsole(`\nError: ${msg}`);
+	        scrollDiagnosticsToBottom();
+	        return;
+	      }
+	    }
 
     // Extraer especies no absorbentes
     const nonAbsSpecies = modelGridContainer
@@ -4144,9 +4235,10 @@ function wireSpectroscopyForm() {
     if (nCompInput) nCompInput.value = cfg.model.nComp;
     if (nSpeciesInput) nSpeciesInput.value = cfg.model.nSpecies;
 
-    // Trigger grid generation
-    generateModelGrid(cfg.model.nComp, cfg.model.nSpecies);
-    generateOptGrid(cfg.model.nSpecies);
+	    // Trigger grid generation
+	    generateModelGrid(cfg.model.nComp, cfg.model.nSpecies);
+	    const nConstants = cfg.optimization?.modelSettings === "Non-cooperative" ? 1 : cfg.model.nSpecies;
+	    generateOptGrid(cfg.model.nSpecies, nConstants);
 
     // 3. Fill Model Grid
     if (modelGridContainer && cfg.model.stoichiometry) {
