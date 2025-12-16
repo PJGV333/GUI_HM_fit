@@ -4,6 +4,7 @@ use std::{
     net::{TcpStream, ToSocketAddrs},
     process::{Child, Command},
     sync::{Arc, Mutex},
+    path::PathBuf,
     time::Duration,
 };
 
@@ -32,6 +33,21 @@ fn port_in_use(addr: &str) -> bool {
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
+            // Ruta absoluta a src-tauri en LA máquina donde se compiló
+            let src_tauri_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            // .../GUI_HM_fit/hmfit_tauri/src-tauri
+            let project_root = src_tauri_dir
+                .parent().unwrap()  // hmfit_tauri
+                .parent().unwrap()  // GUI_HM_fit
+                .to_path_buf();
+
+            let python_bin = project_root.join("venv").join("bin").join("python");
+
+            // Debug: imprimir rutas para verificación
+            eprintln!("Project root: {:?}", project_root);
+            eprintln!("Python binary: {:?}", python_bin);
+            eprintln!("Python binary exists: {}", python_bin.exists());
+
             // Si el puerto ya está en uso, asumimos que el backend está corriendo (otra instancia o manual)
             let backend_addr = format!("127.0.0.1:{}", BACKEND_PORT);
             if port_in_use(backend_addr.as_str()) {
@@ -41,54 +57,17 @@ fn main() {
                 );
                 app.manage(BackendHandle(Arc::new(Mutex::new(None))));
             } else {
-                // Para que el binario empaquetado (AppImage, .deb, etc.) sea portable, no asumimos
-                // que existe una ruta fija a un venv dentro del repo.
-                //
-                // Si quieres que la app levante el backend automáticamente, exporta:
-                // - HM_FIT_SPAWN_BACKEND=1
-                // - HM_FIT_BACKEND_CMD="python3 -m backend_fastapi.main"
-                //
-                // (y asegúrate de que el comando y sus dependencias existan en el sistema).
-                let should_spawn = std::env::var_os("HM_FIT_SPAWN_BACKEND").is_some();
-                let backend_cmd = std::env::var("HM_FIT_BACKEND_CMD").ok();
+                let child = Command::new(&python_bin)
+                    .current_dir(&project_root)
+                    .env("HM_BACKEND_PORT", BACKEND_PORT)
+                    .args(["-m", "backend_fastapi.main"])
+                    .spawn()
+                    .expect(&format!(
+                        "No se pudo lanzar el backend FastAPI.\nPython binary: {:?}\nProject root: {:?}",
+                        python_bin, project_root
+                    ));
 
-                if should_spawn {
-                    let Some(cmd) = backend_cmd else {
-                        eprintln!(
-                            "HM_FIT_SPAWN_BACKEND está activo pero falta HM_FIT_BACKEND_CMD; no se lanza backend."
-                        );
-                        app.manage(BackendHandle(Arc::new(Mutex::new(None))));
-                        return Ok(());
-                    };
-
-                    let child = if cfg!(target_os = "windows") {
-                        Command::new("cmd")
-                            .args(["/C", &cmd])
-                            .env("HM_BACKEND_PORT", BACKEND_PORT)
-                            .spawn()
-                    } else {
-                        Command::new("sh")
-                            .args(["-lc", &cmd])
-                            .env("HM_BACKEND_PORT", BACKEND_PORT)
-                            .spawn()
-                    };
-
-                    match child {
-                        Ok(child) => {
-                            app.manage(BackendHandle(Arc::new(Mutex::new(Some(child)))));
-                        }
-                        Err(err) => {
-                            eprintln!("No se pudo lanzar el backend ({cmd}): {err}");
-                            app.manage(BackendHandle(Arc::new(Mutex::new(None))));
-                        }
-                    }
-                } else {
-                    eprintln!(
-                        "Backend no detectado en {} (y autolanzado deshabilitado); inicia el backend manualmente si lo necesitas.",
-                        backend_addr
-                    );
-                    app.manage(BackendHandle(Arc::new(Mutex::new(None))));
-                }
+                app.manage(BackendHandle(Arc::new(Mutex::new(Some(child)))));
             }
             Ok(())
         })

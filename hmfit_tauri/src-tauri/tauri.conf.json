@@ -10,12 +10,6 @@
     "version": "0.1.0"
   },
   "tauri": {
-    "bundle": {
-      "active": true,
-      "targets": ["appimage"],
-      "identifier": "com.hmfit.hmfit",
-      "icon": ["icons/icon.png"]
-    },
     "windows": [
       {
         "title": "HM Fit - Prototipo Tauri",
