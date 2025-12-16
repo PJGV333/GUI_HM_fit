@@ -707,6 +707,7 @@ function switchModule(nextModule) {
   renderModuleUI();
   renderPlotsUI();
   renderConsoleUI();
+  updateModelSettingsAvailability();
 
   // Hard clear visual remnants from previous module
   purgeMainPlotCanvas();
@@ -1126,6 +1127,76 @@ function readInt(value) {
   const v = String(value ?? "").trim();
   const n = parseInt(v, 10);
   return Number.isFinite(n) ? n : 0;
+}
+
+function isSequential1N_or_N1(pairs, nSpecies) {
+  if (!Number.isFinite(nSpecies) || nSpecies <= 0) return false;
+  if (!Array.isArray(pairs) || pairs.length !== nSpecies) return false;
+
+  const allA1 = pairs.every(([a]) => a === 1);
+  const allB1 = pairs.every(([, b]) => b === 1);
+  const stages = allA1 ? pairs.map(([, b]) => b) : allB1 ? pairs.map(([a]) => a) : null;
+  if (!stages) return false;
+
+  const expected = new Set(Array.from({ length: nSpecies }, (_, i) => i + 1));
+  const got = new Set(stages);
+  if (got.size !== expected.size) return false;
+  for (const j of expected) if (!got.has(j)) return false;
+
+  return true;
+}
+
+function readModelGridRowsFromDOM(modelGridContainer) {
+  if (!modelGridContainer) return [];
+  const rows = modelGridContainer.querySelectorAll("tbody tr");
+  const gridData = [];
+  rows.forEach((row) => {
+    const inputs = row.querySelectorAll(".grid-input");
+    const rowData = Array.from(inputs).map((inp) => {
+      const v = parseFloat(inp.value);
+      return Number.isFinite(v) ? v : 0;
+    });
+    gridData.push(rowData);
+  });
+  return gridData;
+}
+
+function updateModelSettingsAvailability() {
+  const modelSettingsSelect = document.getElementById("model-settings-select");
+  if (!modelSettingsSelect) return;
+
+  const numericInputs = Array.from(document.querySelectorAll('input[type="number"]'));
+  const nComponentsInput = numericInputs[1] || null;
+  const nSpeciesInput = numericInputs[2] || null;
+
+  const nComponents = readInt(nComponentsInput?.value);
+  const nSpecies = readInt(nSpeciesInput?.value);
+
+  const modelGridContainer = document.getElementById("model-grid-container");
+  const modelRows = readModelGridRowsFromDOM(modelGridContainer);
+  const complexRows = modelRows.slice(nComponents);
+  const pairs = (complexRows || []).map((row) => [
+    Math.round(Number(row?.[0] ?? 0)),
+    Math.round(Number(row?.[1] ?? 0)),
+  ]);
+
+  const allowedNonCoop = nComponents === 2 && isSequential1N_or_N1(pairs, nSpecies);
+
+  const nonCoopOpt = Array.from(modelSettingsSelect.options).find(
+    (o) => o.value === "Non-cooperative",
+  );
+  if (nonCoopOpt) {
+    nonCoopOpt.disabled = !allowedNonCoop;
+    nonCoopOpt.title = allowedNonCoop
+      ? ""
+      : "Disponible solo para complejos secuenciales 1:N o N:1 (2 componentes).";
+  }
+
+  if (!allowedNonCoop && modelSettingsSelect.value === "Non-cooperative") {
+    // Fallback deterministic: anything non-Non-cooperative counts as "cooperative" in the UI.
+    modelSettingsSelect.value = "Step by step";
+    modelSettingsSelect.dispatchEvent(new Event("change"));
+  }
 }
 
 function readList(text) {
@@ -1574,6 +1645,7 @@ function wireSpectroscopyForm() {
       el.text = opt;
       modelSettingsSelect.add(el);
     });
+    updateModelSettingsAvailability();
   }
   if (optimizerSelect) {
     ["powell", "nelder-mead", "trust-constr", "cg", "bfgs", "l-bfgs-b", "tnc", "cobyla", "slsqp", "differential_evolution"].forEach(opt => {
@@ -1923,6 +1995,7 @@ function wireSpectroscopyForm() {
     }
     table.appendChild(tbody);
     modelGridContainer.appendChild(table);
+    updateModelSettingsAvailability();
   }
 
   function generateOptGrid(nSpecies, nConstantsOverride = null) {
@@ -2020,6 +2093,7 @@ function wireSpectroscopyForm() {
     const nConstants = modelSettingsSelect?.value === "Non-cooperative" ? 1 : nSpecies;
     generateOptGrid(nSpecies, nConstants);
     diagEl.textContent = `Grid generado: ${nComp} Componentes x ${nSpecies} Especies.`;
+    updateModelSettingsAvailability();
 
     // Save to state
     M().nComponents = nComp;
@@ -2039,20 +2113,16 @@ function wireSpectroscopyForm() {
       const b = Math.round(Number(row?.[1] ?? 0));
       return [a, b];
     });
-    const allA1 = pairs.every(([a]) => a === 1);
-    const allB1 = pairs.every(([, b]) => b === 1);
-    const stages = allA1 ? pairs.map(([, b]) => b) : allB1 ? pairs.map(([a]) => a) : null;
-    if (!stages) {
+    if (!isSequential1N_or_N1(pairs, nSpecies)) {
       throw new Error("Non-cooperative requiere complejos secuenciales 1:N o N:1 con 2 componentes.");
     }
-    const N = nSpecies;
-    const expected = new Set(Array.from({ length: N }, (_, i) => i + 1));
-    const got = new Set(stages);
-    if (got.size !== expected.size) throw new Error("Non-cooperative requiere una sola especie para cada j=1..N (sin duplicados).");
-    for (const j of expected) {
-      if (!got.has(j)) throw new Error("Non-cooperative requiere complejos para j=1..N (sin huecos).");
-    }
   }
+
+  nCompInput?.addEventListener("input", updateModelSettingsAvailability);
+  nSpeciesInput?.addEventListener("input", updateModelSettingsAvailability);
+  modelGridContainer?.addEventListener("input", (e) => {
+    if (e.target?.matches?.(".grid-input")) updateModelSettingsAvailability();
+  });
 
   modelSettingsSelect?.addEventListener("change", () => {
     const nSpecies = readInt(nSpeciesInput?.value);
@@ -2507,112 +2577,103 @@ function wireSpectroscopyForm() {
     }
 
     setProcessing(true);
-    diagEl.textContent = "Verificando backend...\n";
     try {
-      await assertBackendAvailable();
-    } catch (err) {
-      reportDiagnosticsError(err, "Backend check failed.");
-      setProcessing(false);
-      console.error("[HM Fit] Backend check failed before processing:", err);
-      return;
-    }
-
-    connectWebSocket();
-    diagEl.textContent = `Procesando datos de ${state.activeModule === 'nmr' ? 'NMR' : 'Spectroscopy'}...\n`;
-
-    // Recolectar columnas seleccionadas (IDs estables)
-    const selectedConcIds = selectedConcIdsFromDOM(columnsContainer);
-    m.dataMapping.conc.selectedIds = selectedConcIds;
-    refreshColumnCatalog(state.activeModule);
-
-    const selectedColsRaw = concRawsFromIds(m, selectedConcIds);
-    const rolesRaw = getEffectiveRoleRaws(state.activeModule, {
-      receptorId: receptorInput?.value,
-      guestId: guestInput?.value,
-    });
-
-    // Sync dropdowns to resolved mapping (Auto)
-    if (receptorInput) receptorInput.value = m.dataMapping.conc.receptorId || "";
-    if (guestInput) guestInput.value = m.dataMapping.conc.guestId || "";
-
-    // Recolectar datos del grid del modelo
-    const gridData = [];
-    if (modelGridContainer) {
-      const rows = modelGridContainer.querySelectorAll("tbody tr");
-      rows.forEach(row => {
-        const inputs = row.querySelectorAll(".grid-input");
-        const rowData = Array.from(inputs).map(inp => parseFloat(inp.value) || 0);
-        gridData.push(rowData);
-      });
-    }
-
-    // Validation: Non-cooperative requires a pure 1:N / N:1 series with 2 components
-    if (modelSettingsSelect?.value === "Non-cooperative") {
+      diagEl.textContent = "Verificando backend...\n";
       try {
-        const nComp = readInt(nCompInput?.value);
-        const nSpecies = readInt(nSpeciesInput?.value);
-        validateNonCooperativeModelOrThrow(gridData, nComp, nSpecies);
+        await assertBackendAvailable();
       } catch (err) {
-        const msg = err?.message || String(err);
-        diagEl.textContent = msg;
-        appendToConsole(`\nError: ${msg}`);
-        scrollDiagnosticsToBottom();
+        reportDiagnosticsError(err, "Backend check failed.");
+        console.error("[HM Fit] Backend check failed before processing:", err);
         return;
       }
-    }
 
-    // Extraer especies no absorbentes
-    const nonAbsSpecies = modelGridContainer
-      ? Array.from(modelGridContainer.querySelectorAll("tr.selected"))
-        .map(tr => parseInt(tr.dataset.species.replace('sp', '')) - 1)
-      : [];
+      connectWebSocket();
+      diagEl.textContent = `Procesando datos de ${state.activeModule === 'nmr' ? 'NMR' : 'Spectroscopy'}...\n`;
 
-    // Extraer parámetros de optimización (K values)
-    const kValues = [];
-    const kBounds = [];
-    const kFixed = [];
-    if (optGridContainer) {
-      const rows = optGridContainer.querySelectorAll("tbody tr");
-      rows.forEach(row => {
-        const inputs = row.querySelectorAll(".grid-input");
-        const fixedCb = row.querySelector(".fixed-param");
-        const isFixed = fixedCb ? fixedCb.checked : false;
-        if (inputs.length >= 3) {
-          const val = parseFloat(inputs[0].value);
-          const min = parseFloat(inputs[1].value);
-          const max = parseFloat(inputs[2].value);
+      // Recolectar columnas seleccionadas (IDs estables)
+      const selectedConcIds = selectedConcIdsFromDOM(columnsContainer);
+      m.dataMapping.conc.selectedIds = selectedConcIds;
+      refreshColumnCatalog(state.activeModule);
 
-          // Use Number.isNaN to check for valid numbers, allowing 0
-          const finalVal = Number.isNaN(val) ? 1.0 : val;
-          // Mantener la semántica wx: límites vacíos -> ±inf (se traducen a null y el backend los convierte)
-          const finalMin = Number.isNaN(min) ? null : min;
-          const finalMax = Number.isNaN(max) ? null : max;
-
-          kValues.push(finalVal);
-          kBounds.push([finalMin, finalMax]);
-        }
-        kFixed.push(isFixed);
+      const selectedColsRaw = concRawsFromIds(m, selectedConcIds);
+      const rolesRaw = getEffectiveRoleRaws(state.activeModule, {
+        receptorId: receptorInput?.value,
+        guestId: guestInput?.value,
       });
-    }
 
-    // Create FormData with file and parameters
-    const formData = new FormData();
-    formData.append("file", m.file);
-    formData.append("conc_sheet", concSheetInput?.value || "");
-    formData.append("column_names", JSON.stringify(selectedColsRaw));
-    formData.append("receptor_label", rolesRaw.receptor || "");
-    formData.append("guest_label", rolesRaw.guest || "");
+      // Sync dropdowns to resolved mapping (Auto)
+      if (receptorInput) receptorInput.value = m.dataMapping.conc.receptorId || "";
+      if (guestInput) guestInput.value = m.dataMapping.conc.guestId || "";
 
-    formData.append("modelo", JSON.stringify(gridData));
-    formData.append("non_abs_species", JSON.stringify(nonAbsSpecies));
-    formData.append("algorithm", algoSelect?.value || "Newton-Raphson");
-    formData.append("model_settings", modelSettingsSelect?.value || "Free");
-    formData.append("optimizer", optimizerSelect?.value || "powell");
-    formData.append("initial_k", JSON.stringify(kValues));
-    formData.append("bounds", JSON.stringify(kBounds));
-    formData.append("fixed", JSON.stringify(kFixed));
+      // Recolectar datos del grid del modelo
+      const gridData = readModelGridRowsFromDOM(modelGridContainer);
 
-    try {
+      // Validation: Non-cooperative requires a pure 1:N / N:1 series with 2 components
+      if (modelSettingsSelect?.value === "Non-cooperative") {
+        try {
+          const nComp = readInt(nCompInput?.value);
+          const nSpecies = readInt(nSpeciesInput?.value);
+          validateNonCooperativeModelOrThrow(gridData, nComp, nSpecies);
+        } catch (err) {
+          const msg = err?.message || String(err);
+          diagEl.textContent = msg;
+          appendToConsole(`\nError: ${msg}`);
+          scrollDiagnosticsToBottom();
+          return;
+        }
+      }
+
+      // Extraer especies no absorbentes
+      const nonAbsSpecies = modelGridContainer
+        ? Array.from(modelGridContainer.querySelectorAll("tr.selected"))
+          .map(tr => parseInt(tr.dataset.species.replace('sp', '')) - 1)
+        : [];
+
+      // Extraer parámetros de optimización (K values)
+      const kValues = [];
+      const kBounds = [];
+      const kFixed = [];
+      if (optGridContainer) {
+        const rows = optGridContainer.querySelectorAll("tbody tr");
+        rows.forEach(row => {
+          const inputs = row.querySelectorAll(".grid-input");
+          const fixedCb = row.querySelector(".fixed-param");
+          const isFixed = fixedCb ? fixedCb.checked : false;
+          if (inputs.length >= 3) {
+            const val = parseFloat(inputs[0].value);
+            const min = parseFloat(inputs[1].value);
+            const max = parseFloat(inputs[2].value);
+
+            // Use Number.isNaN to check for valid numbers, allowing 0
+            const finalVal = Number.isNaN(val) ? 1.0 : val;
+            // Mantener la semántica wx: límites vacíos -> ±inf (se traducen a null y el backend los convierte)
+            const finalMin = Number.isNaN(min) ? null : min;
+            const finalMax = Number.isNaN(max) ? null : max;
+
+            kValues.push(finalVal);
+            kBounds.push([finalMin, finalMax]);
+          }
+          kFixed.push(isFixed);
+        });
+      }
+
+      // Create FormData with file and parameters
+      const formData = new FormData();
+      formData.append("file", m.file);
+      formData.append("conc_sheet", concSheetInput?.value || "");
+      formData.append("column_names", JSON.stringify(selectedColsRaw));
+      formData.append("receptor_label", rolesRaw.receptor || "");
+      formData.append("guest_label", rolesRaw.guest || "");
+
+      formData.append("modelo", JSON.stringify(gridData));
+      formData.append("non_abs_species", JSON.stringify(nonAbsSpecies));
+      formData.append("algorithm", algoSelect?.value || "Newton-Raphson");
+      formData.append("model_settings", modelSettingsSelect?.value || "Free");
+      formData.append("optimizer", optimizerSelect?.value || "powell");
+      formData.append("initial_k", JSON.stringify(kValues));
+      formData.append("bounds", JSON.stringify(kBounds));
+      formData.append("fixed", JSON.stringify(kFixed));
+
       let data;
       if (state.activeModule === "nmr") {
         const nmrSheet = nmrSheetInput?.value;
@@ -4328,6 +4389,7 @@ function wireSpectroscopyForm() {
     if (algoSelect) algoSelect.value = cfg.optimization.algorithm;
     if (modelSettingsSelect) modelSettingsSelect.value = cfg.optimization.modelSettings;
     if (optimizerSelect) optimizerSelect.value = cfg.optimization.optimizer;
+    updateModelSettingsAvailability();
 
     // 6. EFA (Spectroscopy only)
     if (cfg.type === 'Spectroscopy') {
