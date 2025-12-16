@@ -1925,22 +1925,22 @@ function wireSpectroscopyForm() {
     modelGridContainer.appendChild(table);
   }
 
-	  function generateOptGrid(nSpecies, nConstantsOverride = null) {
-	    if (!optGridContainer) return;
-	    optGridContainer.innerHTML = "";
-	    const nConstants = Number.isFinite(nConstantsOverride) ? nConstantsOverride : nSpecies;
+  function generateOptGrid(nSpecies, nConstantsOverride = null) {
+    if (!optGridContainer) return;
+    optGridContainer.innerHTML = "";
+    const nConstants = Number.isFinite(nConstantsOverride) ? nConstantsOverride : nSpecies;
 
-	    if (nConstants > 0) {
+    if (nConstants > 0) {
       const optTable = document.createElement("table");
       optTable.className = "model-grid-table";
 
-	      const optThead = document.createElement("thead");
-	      const optHeaderRow = document.createElement("tr");
-	      ["Parameter", "Value", "Min", "Max", "Fixed"].forEach(text => {
-	        const th = document.createElement("th");
-	        th.textContent = text;
-	        optHeaderRow.appendChild(th);
-	      });
+      const optThead = document.createElement("thead");
+      const optHeaderRow = document.createElement("tr");
+      ["Parameter", "Value", "Min", "Max", "Fixed"].forEach(text => {
+        const th = document.createElement("th");
+        th.textContent = text;
+        optHeaderRow.appendChild(th);
+      });
       optThead.appendChild(optHeaderRow);
       optTable.appendChild(optThead);
 
@@ -1969,36 +1969,36 @@ function wireSpectroscopyForm() {
         tdMin.appendChild(inputMin);
         tr.appendChild(tdMin);
 
-	        const tdMax = document.createElement("td");
-	        const inputMax = document.createElement("input");
-	        inputMax.type = "number";
-	        inputMax.className = "grid-input";
-	        inputMax.placeholder = "Max";
-	        tdMax.appendChild(inputMax);
-	        tr.appendChild(tdMax);
+        const tdMax = document.createElement("td");
+        const inputMax = document.createElement("input");
+        inputMax.type = "number";
+        inputMax.className = "grid-input";
+        inputMax.placeholder = "Max";
+        tdMax.appendChild(inputMax);
+        tr.appendChild(tdMax);
 
-	        const tdFixed = document.createElement("td");
-	        const chkFixed = document.createElement("input");
-	        chkFixed.type = "checkbox";
-	        chkFixed.className = "fixed-param";
-	        chkFixed.checked = false;
-	        chkFixed.addEventListener("change", () => {
-	          const isFixed = chkFixed.checked;
-	          if (isFixed) {
-	            const v = parseFloat(inputVal.value);
-	            if (!Number.isNaN(v)) {
-	              inputMin.value = String(v);
-	              inputMax.value = String(v);
-	            }
-	          }
-	          inputMin.disabled = isFixed;
-	          inputMax.disabled = isFixed;
-	        });
-	        tdFixed.appendChild(chkFixed);
-	        tr.appendChild(tdFixed);
+        const tdFixed = document.createElement("td");
+        const chkFixed = document.createElement("input");
+        chkFixed.type = "checkbox";
+        chkFixed.className = "fixed-param";
+        chkFixed.checked = false;
+        chkFixed.addEventListener("change", () => {
+          const isFixed = chkFixed.checked;
+          if (isFixed) {
+            const v = parseFloat(inputVal.value);
+            if (!Number.isNaN(v)) {
+              inputMin.value = String(v);
+              inputMax.value = String(v);
+            }
+          }
+          inputMin.disabled = isFixed;
+          inputMax.disabled = isFixed;
+        });
+        tdFixed.appendChild(chkFixed);
+        tr.appendChild(tdFixed);
 
-	        optTbody.appendChild(tr);
-	      }
+        optTbody.appendChild(tr);
+      }
       optTable.appendChild(optTbody);
       optGridContainer.appendChild(optTable);
     } else {
@@ -2007,99 +2007,99 @@ function wireSpectroscopyForm() {
   }
 
   // --- Handler: Define Model Dimensions (Grid Generation) ---
-	  defineModelBtn?.addEventListener("click", () => {
-	    const nComp = readInt(nCompInput?.value);
-	    const nSpecies = readInt(nSpeciesInput?.value);
+  defineModelBtn?.addEventListener("click", () => {
+    const nComp = readInt(nCompInput?.value);
+    const nSpecies = readInt(nSpeciesInput?.value);
 
     if (nComp <= 0 || nSpecies <= 0) {
       diagEl.textContent = "Please enter valid Number of Components and Species (>0).";
       return;
     }
 
-	    generateModelGrid(nComp, nSpecies);
-	    const nConstants = modelSettingsSelect?.value === "Non-cooperative" ? 1 : nSpecies;
-	    generateOptGrid(nSpecies, nConstants);
-	    diagEl.textContent = `Grid generado: ${nComp} Componentes x ${nSpecies} Especies.`;
+    generateModelGrid(nComp, nSpecies);
+    const nConstants = modelSettingsSelect?.value === "Non-cooperative" ? 1 : nSpecies;
+    generateOptGrid(nSpecies, nConstants);
+    diagEl.textContent = `Grid generado: ${nComp} Componentes x ${nSpecies} Especies.`;
 
     // Save to state
     M().nComponents = nComp;
     M().nSpecies = nSpecies;
-	  });
+  });
 
-	  function validateNonCooperativeModelOrThrow(modelRows, nComp, nSpecies) {
-	    if (nComp !== 2) {
-	      throw new Error("Non-cooperative requiere 2 componentes (Host/Guest).");
-	    }
-	    const complexRows = modelRows.slice(nComp);
-	    if (complexRows.length !== nSpecies) {
-	      throw new Error("Non-cooperative requiere una serie 1:N o N:1 (HG, HG2, ... o H2G, H3G, ...).");
-	    }
-	    const pairs = complexRows.map((row) => {
-	      const a = Math.round(Number(row?.[0] ?? 0));
-	      const b = Math.round(Number(row?.[1] ?? 0));
-	      return [a, b];
-	    });
-	    const allA1 = pairs.every(([a]) => a === 1);
-	    const allB1 = pairs.every(([, b]) => b === 1);
-	    const stages = allA1 ? pairs.map(([, b]) => b) : allB1 ? pairs.map(([a]) => a) : null;
-	    if (!stages) {
-	      throw new Error("Non-cooperative requiere complejos secuenciales 1:N o N:1 con 2 componentes.");
-	    }
-	    const N = nSpecies;
-	    const expected = new Set(Array.from({ length: N }, (_, i) => i + 1));
-	    const got = new Set(stages);
-	    if (got.size !== expected.size) throw new Error("Non-cooperative requiere una sola especie para cada j=1..N (sin duplicados).");
-	    for (const j of expected) {
-	      if (!got.has(j)) throw new Error("Non-cooperative requiere complejos para j=1..N (sin huecos).");
-	    }
-	  }
+  function validateNonCooperativeModelOrThrow(modelRows, nComp, nSpecies) {
+    if (nComp !== 2) {
+      throw new Error("Non-cooperative requiere 2 componentes (Host/Guest).");
+    }
+    const complexRows = modelRows.slice(nComp);
+    if (complexRows.length !== nSpecies) {
+      throw new Error("Non-cooperative requiere una serie 1:N o N:1 (HG, HG2, ... o H2G, H3G, ...).");
+    }
+    const pairs = complexRows.map((row) => {
+      const a = Math.round(Number(row?.[0] ?? 0));
+      const b = Math.round(Number(row?.[1] ?? 0));
+      return [a, b];
+    });
+    const allA1 = pairs.every(([a]) => a === 1);
+    const allB1 = pairs.every(([, b]) => b === 1);
+    const stages = allA1 ? pairs.map(([, b]) => b) : allB1 ? pairs.map(([a]) => a) : null;
+    if (!stages) {
+      throw new Error("Non-cooperative requiere complejos secuenciales 1:N o N:1 con 2 componentes.");
+    }
+    const N = nSpecies;
+    const expected = new Set(Array.from({ length: N }, (_, i) => i + 1));
+    const got = new Set(stages);
+    if (got.size !== expected.size) throw new Error("Non-cooperative requiere una sola especie para cada j=1..N (sin duplicados).");
+    for (const j of expected) {
+      if (!got.has(j)) throw new Error("Non-cooperative requiere complejos para j=1..N (sin huecos).");
+    }
+  }
 
-	  modelSettingsSelect?.addEventListener("change", () => {
-	    const nSpecies = readInt(nSpeciesInput?.value);
-	    if (!Number.isFinite(nSpecies) || nSpecies <= 0) return;
+  modelSettingsSelect?.addEventListener("change", () => {
+    const nSpecies = readInt(nSpeciesInput?.value);
+    if (!Number.isFinite(nSpecies) || nSpecies <= 0) return;
 
-	    let firstVal = null;
-	    let firstMin = null;
-	    let firstMax = null;
-	    let firstFixed = false;
-	    const firstRow = optGridContainer?.querySelector("tbody tr");
-	    if (firstRow) {
-	      const inputs = firstRow.querySelectorAll(".grid-input");
-	      if (inputs.length >= 3) {
-	        firstVal = inputs[0].value;
-	        firstMin = inputs[1].value;
-	        firstMax = inputs[2].value;
-	      }
-	      const fixedCb = firstRow.querySelector(".fixed-param");
-	      firstFixed = fixedCb ? fixedCb.checked : false;
-	    }
+    let firstVal = null;
+    let firstMin = null;
+    let firstMax = null;
+    let firstFixed = false;
+    const firstRow = optGridContainer?.querySelector("tbody tr");
+    if (firstRow) {
+      const inputs = firstRow.querySelectorAll(".grid-input");
+      if (inputs.length >= 3) {
+        firstVal = inputs[0].value;
+        firstMin = inputs[1].value;
+        firstMax = inputs[2].value;
+      }
+      const fixedCb = firstRow.querySelector(".fixed-param");
+      firstFixed = fixedCb ? fixedCb.checked : false;
+    }
 
-	    const nConstants = modelSettingsSelect.value === "Non-cooperative" ? 1 : nSpecies;
-	    generateOptGrid(nSpecies, nConstants);
+    const nConstants = modelSettingsSelect.value === "Non-cooperative" ? 1 : nSpecies;
+    generateOptGrid(nSpecies, nConstants);
 
-	    const newFirstRow = optGridContainer?.querySelector("tbody tr");
-	    if (newFirstRow && firstVal !== null) {
-	      const inputs = newFirstRow.querySelectorAll(".grid-input");
-	      if (inputs.length >= 3) {
-	        inputs[0].value = firstVal;
-	        inputs[1].value = firstMin ?? "";
-	        inputs[2].value = firstMax ?? "";
-	      }
-	      const fixedCb = newFirstRow.querySelector(".fixed-param");
-	      if (fixedCb) {
-	        fixedCb.checked = !!firstFixed;
-	        if (fixedCb.checked) {
-	          const v = parseFloat(inputs[0].value);
-	          if (!Number.isNaN(v)) {
-	            inputs[1].value = String(v);
-	            inputs[2].value = String(v);
-	          }
-	        }
-	        inputs[1].disabled = fixedCb.checked;
-	        inputs[2].disabled = fixedCb.checked;
-	      }
-	    }
-	  });
+    const newFirstRow = optGridContainer?.querySelector("tbody tr");
+    if (newFirstRow && firstVal !== null) {
+      const inputs = newFirstRow.querySelectorAll(".grid-input");
+      if (inputs.length >= 3) {
+        inputs[0].value = firstVal;
+        inputs[1].value = firstMin ?? "";
+        inputs[2].value = firstMax ?? "";
+      }
+      const fixedCb = newFirstRow.querySelector(".fixed-param");
+      if (fixedCb) {
+        fixedCb.checked = !!firstFixed;
+        if (fixedCb.checked) {
+          const v = parseFloat(inputs[0].value);
+          if (!Number.isNaN(v)) {
+            inputs[1].value = String(v);
+            inputs[2].value = String(v);
+          }
+        }
+        inputs[1].disabled = fixedCb.checked;
+        inputs[2].disabled = fixedCb.checked;
+      }
+    }
+  });
 
   // --- Input Listeners for State Persistence ---
   const formatAxisVal = (v) => {
@@ -2535,31 +2535,31 @@ function wireSpectroscopyForm() {
     if (receptorInput) receptorInput.value = m.dataMapping.conc.receptorId || "";
     if (guestInput) guestInput.value = m.dataMapping.conc.guestId || "";
 
-	    // Recolectar datos del grid del modelo
-	    const gridData = [];
-	    if (modelGridContainer) {
-	      const rows = modelGridContainer.querySelectorAll("tbody tr");
-	      rows.forEach(row => {
-	        const inputs = row.querySelectorAll(".grid-input");
-	        const rowData = Array.from(inputs).map(inp => parseFloat(inp.value) || 0);
-	        gridData.push(rowData);
-	      });
-	    }
+    // Recolectar datos del grid del modelo
+    const gridData = [];
+    if (modelGridContainer) {
+      const rows = modelGridContainer.querySelectorAll("tbody tr");
+      rows.forEach(row => {
+        const inputs = row.querySelectorAll(".grid-input");
+        const rowData = Array.from(inputs).map(inp => parseFloat(inp.value) || 0);
+        gridData.push(rowData);
+      });
+    }
 
-	    // Validation: Non-cooperative requires a pure 1:N / N:1 series with 2 components
-	    if (modelSettingsSelect?.value === "Non-cooperative") {
-	      try {
-	        const nComp = readInt(nCompInput?.value);
-	        const nSpecies = readInt(nSpeciesInput?.value);
-	        validateNonCooperativeModelOrThrow(gridData, nComp, nSpecies);
-	      } catch (err) {
-	        const msg = err?.message || String(err);
-	        diagEl.textContent = msg;
-	        appendToConsole(`\nError: ${msg}`);
-	        scrollDiagnosticsToBottom();
-	        return;
-	      }
-	    }
+    // Validation: Non-cooperative requires a pure 1:N / N:1 series with 2 components
+    if (modelSettingsSelect?.value === "Non-cooperative") {
+      try {
+        const nComp = readInt(nCompInput?.value);
+        const nSpecies = readInt(nSpeciesInput?.value);
+        validateNonCooperativeModelOrThrow(gridData, nComp, nSpecies);
+      } catch (err) {
+        const msg = err?.message || String(err);
+        diagEl.textContent = msg;
+        appendToConsole(`\nError: ${msg}`);
+        scrollDiagnosticsToBottom();
+        return;
+      }
+    }
 
     // Extraer especies no absorbentes
     const nonAbsSpecies = modelGridContainer
@@ -2567,20 +2567,20 @@ function wireSpectroscopyForm() {
         .map(tr => parseInt(tr.dataset.species.replace('sp', '')) - 1)
       : [];
 
-	    // Extraer parámetros de optimización (K values)
-	    const kValues = [];
-	    const kBounds = [];
-	    const kFixed = [];
-	    if (optGridContainer) {
-	      const rows = optGridContainer.querySelectorAll("tbody tr");
-	      rows.forEach(row => {
-	        const inputs = row.querySelectorAll(".grid-input");
-	        const fixedCb = row.querySelector(".fixed-param");
-	        const isFixed = fixedCb ? fixedCb.checked : false;
-	        if (inputs.length >= 3) {
-	          const val = parseFloat(inputs[0].value);
-	          const min = parseFloat(inputs[1].value);
-	          const max = parseFloat(inputs[2].value);
+    // Extraer parámetros de optimización (K values)
+    const kValues = [];
+    const kBounds = [];
+    const kFixed = [];
+    if (optGridContainer) {
+      const rows = optGridContainer.querySelectorAll("tbody tr");
+      rows.forEach(row => {
+        const inputs = row.querySelectorAll(".grid-input");
+        const fixedCb = row.querySelector(".fixed-param");
+        const isFixed = fixedCb ? fixedCb.checked : false;
+        if (inputs.length >= 3) {
+          const val = parseFloat(inputs[0].value);
+          const min = parseFloat(inputs[1].value);
+          const max = parseFloat(inputs[2].value);
 
           // Use Number.isNaN to check for valid numbers, allowing 0
           const finalVal = Number.isNaN(val) ? 1.0 : val;
@@ -2588,12 +2588,12 @@ function wireSpectroscopyForm() {
           const finalMin = Number.isNaN(min) ? null : min;
           const finalMax = Number.isNaN(max) ? null : max;
 
-	          kValues.push(finalVal);
-	          kBounds.push([finalMin, finalMax]);
-	        }
-	        kFixed.push(isFixed);
-	      });
-	    }
+          kValues.push(finalVal);
+          kBounds.push([finalMin, finalMax]);
+        }
+        kFixed.push(isFixed);
+      });
+    }
 
     // Create FormData with file and parameters
     const formData = new FormData();
@@ -2606,11 +2606,11 @@ function wireSpectroscopyForm() {
     formData.append("modelo", JSON.stringify(gridData));
     formData.append("non_abs_species", JSON.stringify(nonAbsSpecies));
     formData.append("algorithm", algoSelect?.value || "Newton-Raphson");
-	    formData.append("model_settings", modelSettingsSelect?.value || "Free");
-	    formData.append("optimizer", optimizerSelect?.value || "powell");
-	    formData.append("initial_k", JSON.stringify(kValues));
-	    formData.append("bounds", JSON.stringify(kBounds));
-	    formData.append("fixed", JSON.stringify(kFixed));
+    formData.append("model_settings", modelSettingsSelect?.value || "Free");
+    formData.append("optimizer", optimizerSelect?.value || "powell");
+    formData.append("initial_k", JSON.stringify(kValues));
+    formData.append("bounds", JSON.stringify(kBounds));
+    formData.append("fixed", JSON.stringify(kFixed));
 
     try {
       let data;
@@ -2897,13 +2897,13 @@ function wireSpectroscopyForm() {
       if (sideNext) sideNext.disabled = !enabled;
     };
 
-	    if (!plots.length) {
-	      if (container) container.innerHTML = '<p style="color: #9ca3af; padding: 2rem;">No plots available</p>';
-	      if (counterEl) counterEl.textContent = '—';
-	      setNavEnabled(false);
-	      resetEditPlotPanel();
-	      return;
-	    }
+    if (!plots.length) {
+      if (container) container.innerHTML = '<p style="color: #9ca3af; padding: 2rem;">No plots available</p>';
+      if (counterEl) counterEl.textContent = '—';
+      setNavEnabled(false);
+      resetEditPlotPanel();
+      return;
+    }
 
     const plot = getActivePlot();
     const data = getActivePlotData();
@@ -3005,9 +3005,33 @@ function wireSpectroscopyForm() {
       });
     } else if (plotId === 'nmr_shifts_fit') {
       // NMR chemical shifts fit
-      const x = data.x || [];
+      const xRaw = data.x || [];
       const signalOptions = data.signalOptions || [];
       const signals = data.signals || {};
+
+      // Detect resets in X to insert gaps (for concatenated titrations)
+      const gapIndices = new Set();
+      for (let i = 1; i < xRaw.length; i++) {
+        if (xRaw[i] < xRaw[i - 1]) {
+          gapIndices.add(i);
+        }
+      }
+
+      // Helper to insert nulls at gap indices
+      function createGappedArrays(xArr, yArr) {
+        if (gapIndices.size === 0) return { x: xArr, y: yArr };
+        const newX = [];
+        const newY = [];
+        for (let i = 0; i < xArr.length; i++) {
+          if (gapIndices.has(i)) {
+            newX.push(null);
+            newY.push(null);
+          }
+          newX.push(xArr[i]);
+          newY.push(yArr ? yArr[i] : null);
+        }
+        return { x: newX, y: newY };
+      }
 
       // If no signals selected, select all
       if (controls.nmrSignalsSelected.size === 0) {
@@ -3016,18 +3040,21 @@ function wireSpectroscopyForm() {
 
       signalOptions.forEach(opt => {
         if (controls.nmrSignalsSelected.has(opt.id) && signals[opt.id]) {
+          const { x: xGapped, y: yObsGapped } = createGappedArrays(xRaw, signals[opt.id].obs);
+          const { y: yFitGapped } = createGappedArrays(xRaw, signals[opt.id].fit);
+
           // Observed points
           traces.push({
-            x: x,
-            y: signals[opt.id].obs,
+            x: xGapped,
+            y: yObsGapped,
             mode: 'markers',
             name: `${opt.label} obs`,
             marker: { size: 8 }
           });
           // Fit line
           traces.push({
-            x: x,
-            y: signals[opt.id].fit,
+            x: xGapped, // Use same X with gaps
+            y: yFitGapped,
             mode: 'lines',
             name: `${opt.label} fit`,
             line: { width: 2, dash: 'dot' }
@@ -4082,28 +4109,28 @@ function wireSpectroscopyForm() {
         .map(tr => parseInt(tr.dataset.species.replace('sp', '')) - 1)
       : [];
 
-	    const kValues = [];
-	    const kBounds = [];
-	    const kFixed = [];
-	    if (optGridContainer) {
-	      const rows = optGridContainer.querySelectorAll("tbody tr");
-	      rows.forEach(row => {
-	        const inputs = row.querySelectorAll(".grid-input");
-	        const fixedCb = row.querySelector(".fixed-param");
-	        const isFixed = fixedCb ? fixedCb.checked : false;
-	        if (inputs.length >= 3) {
-	          const val = parseFloat(inputs[0].value);
-	          const min = parseFloat(inputs[1].value);
-	          const max = parseFloat(inputs[2].value);
-	          const finalVal = Number.isNaN(val) ? 1.0 : val;
-	          const finalMin = Number.isNaN(min) ? null : min;
-	          const finalMax = Number.isNaN(max) ? null : max;
-	          kValues.push(finalVal);
-	          kBounds.push([finalMin, finalMax]);
-	        }
-	        kFixed.push(isFixed);
-	      });
-	    }
+    const kValues = [];
+    const kBounds = [];
+    const kFixed = [];
+    if (optGridContainer) {
+      const rows = optGridContainer.querySelectorAll("tbody tr");
+      rows.forEach(row => {
+        const inputs = row.querySelectorAll(".grid-input");
+        const fixedCb = row.querySelector(".fixed-param");
+        const isFixed = fixedCb ? fixedCb.checked : false;
+        if (inputs.length >= 3) {
+          const val = parseFloat(inputs[0].value);
+          const min = parseFloat(inputs[1].value);
+          const max = parseFloat(inputs[2].value);
+          const finalVal = Number.isNaN(val) ? 1.0 : val;
+          const finalMin = Number.isNaN(min) ? null : min;
+          const finalMax = Number.isNaN(max) ? null : max;
+          kValues.push(finalVal);
+          kBounds.push([finalMin, finalMax]);
+        }
+        kFixed.push(isFixed);
+      });
+    }
 
     return {
       type: 'Spectroscopy',
@@ -4130,16 +4157,16 @@ function wireSpectroscopyForm() {
         spectraSheet: spectraSheetInput?.value || "",
         concSheet: concSheetInput?.value || ""
       },
-	      optimization: {
-	        algorithm: algoSelect?.value,
-	        modelSettings: modelSettingsSelect?.value,
-	        optimizer: optimizerSelect?.value,
-	        initialK: kValues,
-	        bounds: kBounds,
-	        fixed: kFixed
-	      }
-	    };
-	  }
+      optimization: {
+        algorithm: algoSelect?.value,
+        modelSettings: modelSettingsSelect?.value,
+        optimizer: optimizerSelect?.value,
+        initialK: kValues,
+        bounds: kBounds,
+        fixed: kFixed
+      }
+    };
+  }
 
   function buildNmrConfigFromState() {
     // Reuse similar logic but for NMR specific fields
@@ -4235,10 +4262,10 @@ function wireSpectroscopyForm() {
     if (nCompInput) nCompInput.value = cfg.model.nComp;
     if (nSpeciesInput) nSpeciesInput.value = cfg.model.nSpecies;
 
-	    // Trigger grid generation
-	    generateModelGrid(cfg.model.nComp, cfg.model.nSpecies);
-	    const nConstants = cfg.optimization?.modelSettings === "Non-cooperative" ? 1 : cfg.model.nSpecies;
-	    generateOptGrid(cfg.model.nSpecies, nConstants);
+    // Trigger grid generation
+    generateModelGrid(cfg.model.nComp, cfg.model.nSpecies);
+    const nConstants = cfg.optimization?.modelSettings === "Non-cooperative" ? 1 : cfg.model.nSpecies;
+    generateOptGrid(cfg.model.nSpecies, nConstants);
 
     // 3. Fill Model Grid
     if (modelGridContainer && cfg.model.stoichiometry) {
@@ -4258,49 +4285,49 @@ function wireSpectroscopyForm() {
       });
     }
 
-	    // 4. Fill Optimization Grid
-	    if (optGridContainer && cfg.optimization.initialK) {
-	      const rows = optGridContainer.querySelectorAll("tbody tr");
-	      rows.forEach((row, i) => {
-	        if (i < cfg.optimization.initialK.length) {
-	          const inputs = row.querySelectorAll(".grid-input");
-	          if (inputs.length >= 3) {
-	            inputs[0].value = cfg.optimization.initialK[i];
-	            if (cfg.optimization.bounds && cfg.optimization.bounds[i]) {
-	              inputs[1].value = cfg.optimization.bounds[i][0] ?? "";
-	              inputs[2].value = cfg.optimization.bounds[i][1] ?? "";
-	            }
-	          }
-	        }
-	      });
-	    }
+    // 4. Fill Optimization Grid
+    if (optGridContainer && cfg.optimization.initialK) {
+      const rows = optGridContainer.querySelectorAll("tbody tr");
+      rows.forEach((row, i) => {
+        if (i < cfg.optimization.initialK.length) {
+          const inputs = row.querySelectorAll(".grid-input");
+          if (inputs.length >= 3) {
+            inputs[0].value = cfg.optimization.initialK[i];
+            if (cfg.optimization.bounds && cfg.optimization.bounds[i]) {
+              inputs[1].value = cfg.optimization.bounds[i][0] ?? "";
+              inputs[2].value = cfg.optimization.bounds[i][1] ?? "";
+            }
+          }
+        }
+      });
+    }
 
-	    // 4b. Restore fixed params (if present)
-	    if (optGridContainer && Array.isArray(cfg.optimization.fixed)) {
-	      const rows = optGridContainer.querySelectorAll("tbody tr");
-	      rows.forEach((row, i) => {
-	        const fixedCb = row.querySelector(".fixed-param");
-	        if (!fixedCb) return;
-	        fixedCb.checked = !!cfg.optimization.fixed[i];
-	        const inputs = row.querySelectorAll(".grid-input");
-	        if (inputs.length >= 3) {
-	          if (fixedCb.checked) {
-	            const v = parseFloat(inputs[0].value);
-	            if (!Number.isNaN(v)) {
-	              inputs[1].value = String(v);
-	              inputs[2].value = String(v);
-	            }
-	          }
-	          inputs[1].disabled = fixedCb.checked;
-	          inputs[2].disabled = fixedCb.checked;
-	        }
-	      });
-	    }
+    // 4b. Restore fixed params (if present)
+    if (optGridContainer && Array.isArray(cfg.optimization.fixed)) {
+      const rows = optGridContainer.querySelectorAll("tbody tr");
+      rows.forEach((row, i) => {
+        const fixedCb = row.querySelector(".fixed-param");
+        if (!fixedCb) return;
+        fixedCb.checked = !!cfg.optimization.fixed[i];
+        const inputs = row.querySelectorAll(".grid-input");
+        if (inputs.length >= 3) {
+          if (fixedCb.checked) {
+            const v = parseFloat(inputs[0].value);
+            if (!Number.isNaN(v)) {
+              inputs[1].value = String(v);
+              inputs[2].value = String(v);
+            }
+          }
+          inputs[1].disabled = fixedCb.checked;
+          inputs[2].disabled = fixedCb.checked;
+        }
+      });
+    }
 
-	    // 5. Set Dropdowns (Algorithm, etc)
-	    if (algoSelect) algoSelect.value = cfg.optimization.algorithm;
-	    if (modelSettingsSelect) modelSettingsSelect.value = cfg.optimization.modelSettings;
-	    if (optimizerSelect) optimizerSelect.value = cfg.optimization.optimizer;
+    // 5. Set Dropdowns (Algorithm, etc)
+    if (algoSelect) algoSelect.value = cfg.optimization.algorithm;
+    if (modelSettingsSelect) modelSettingsSelect.value = cfg.optimization.modelSettings;
+    if (optimizerSelect) optimizerSelect.value = cfg.optimization.optimizer;
 
     // 6. EFA (Spectroscopy only)
     if (cfg.type === 'Spectroscopy') {
