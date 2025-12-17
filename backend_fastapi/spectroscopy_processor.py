@@ -34,12 +34,14 @@ def set_progress_callback(callback, loop=None):
     _loop = loop
 
 def log_progress(message: str):
-    """Enviar mensaje de progreso si hay callback."""
+    """Enviar mensaje de progreso si hay callback; si no, imprime a consola."""
     if _progress_callback:
         if _loop:
             _loop.call_soon_threadsafe(_progress_callback, message)
         else:
             _progress_callback(message)
+        return
+    print(message)
 
 # === Shared helper utilities (used by both Spectroscopy and NMR) ===
 _alias_re = re.compile(r"\(([^)]+)\)")
@@ -140,27 +142,6 @@ def format_results_table(k, SE_log10K, percK, rms, covfit, lof=None, fixed_mask=
 
     table = "\n".join(table_lines)
     return "=== RESULTADOS ===\n" + table
-
-# Progress callback for WebSocket streaming
-_progress_callback = None
-_loop = None
-
-def set_progress_callback(callback, loop=None):
-    """Set the callback function for progress updates."""
-    global _progress_callback, _loop
-    _progress_callback = callback
-    _loop = loop
-
-def log_progress(message):
-    """Send progress message through callback if set."""
-    if _progress_callback:
-        if _loop:
-            # If loop is provided, schedule callback safely
-            _loop.call_soon_threadsafe(_progress_callback, message)
-        else:
-            # Direct call (synchronous)
-            _progress_callback(message)
-    print(message)  # Also print to console
 
 def pinv_cs_local(A, rcond=1e-12):
     """
