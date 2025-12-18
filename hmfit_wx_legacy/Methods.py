@@ -505,27 +505,109 @@ class BaseTechniquePanel(wx.Panel):
         self.update_canvas_figure(fig)
     
     def update_canvas_figure(self, new_figure):
-        current_axes = self.app_ref.canvas.figure.gca()
-        current_axes.clear()
-
+        current_axes = getattr(self.app_ref, "ax", None)
+        try:
+            if current_axes is None or getattr(current_axes, "figure", None) is not self.app_ref.canvas.figure:
+                current_axes = self.app_ref.canvas.figure.gca()
+                try:
+                    setattr(self.app_ref, "ax", current_axes)
+                except Exception:
+                    pass
+        except Exception:
+            current_axes = self.app_ref.canvas.figure.gca()
         new_axes = new_figure.gca()
-        current_axes._sharex = new_axes._sharex
-        current_axes._sharey = new_axes._sharey
 
-        # Copy raster images (used when we render backend PNGs into Figures).
-        for im in getattr(new_axes, "images", []) or []:
+        new_images = list(getattr(new_axes, "images", []) or [])
+        new_lines = list(new_axes.get_lines() or [])
+        is_image_only = bool(new_images) and not bool(new_lines)
+
+        # Fast path for backend PNG plots: reuse a single AxesImage and only swap pixel data.
+        if is_image_only:
+            im = new_images[0]
+            artist = getattr(current_axes, "_hmfit_img_artist", None)
+            try:
+                if artist is not None and artist not in (getattr(current_axes, "images", []) or []):
+                    artist = None
+            except Exception:
+                pass
+
+            if artist is None:
+                current_axes.clear()
+                artist = current_axes.imshow(
+                    im.get_array(),
+                    extent=im.get_extent(),
+                    origin=getattr(im, "origin", None),
+                    interpolation=im.get_interpolation(),
+                )
+                setattr(current_axes, "_hmfit_img_artist", artist)
+                try:
+                    x0, x1, y0, y1 = im.get_extent()
+                    current_axes.set_xlim((x0, x1))
+                    current_axes.set_ylim((y0, y1))
+                except Exception:
+                    pass
+            else:
+                try:
+                    artist.set_data(im.get_array())
+                except Exception:
+                    try:
+                        artist.set_array(im.get_array())
+                    except Exception:
+                        # Fallback: rebuild the artist if the backend image type changes.
+                        current_axes.clear()
+                        artist = current_axes.imshow(
+                            im.get_array(),
+                            extent=im.get_extent(),
+                            origin=getattr(im, "origin", None),
+                            interpolation=im.get_interpolation(),
+                        )
+                        setattr(current_axes, "_hmfit_img_artist", artist)
+                try:
+                    artist.set_extent(im.get_extent())
+                except Exception:
+                    pass
+                try:
+                    x0, x1, y0, y1 = im.get_extent()
+                    current_axes.set_xlim((x0, x1))
+                    current_axes.set_ylim((y0, y1))
+                except Exception:
+                    pass
+                try:
+                    artist.set_interpolation(im.get_interpolation())
+                except Exception:
+                    pass
+                try:
+                    artist.set_origin(getattr(im, "origin", None))
+                except Exception:
+                    pass
+
+            current_axes.set_title(new_axes.get_title())
+            current_axes.set_axis_off()
+            self.app_ref.canvas.draw_idle()
+            return
+
+        # Generic path for line plots (rare in the new backend, but used by some UI views).
+        current_axes.clear()
+        try:
+            if hasattr(current_axes, "_hmfit_img_artist"):
+                delattr(current_axes, "_hmfit_img_artist")
+        except Exception:
+            pass
+
+        # Copy raster images (if present alongside lines).
+        for im in new_images:
             try:
                 current_axes.imshow(
                     im.get_array(),
                     extent=im.get_extent(),
-                    origin=im.origin,
+                    origin=getattr(im, "origin", None),
                     interpolation=im.get_interpolation(),
                 )
             except Exception:
                 continue
 
         # Copy line series.
-        for line in new_axes.get_lines():
+        for line in new_lines:
             new_line, = current_axes.plot(
                 line.get_xdata(),
                 line.get_ydata(),
@@ -568,7 +650,7 @@ class BaseTechniquePanel(wx.Panel):
         except Exception:
             pass
 
-        self.app_ref.canvas.draw()
+        self.app_ref.canvas.draw_idle()
     
     # Manejador de eventos para la selección de celdas o filas
     def on_selection_changed(self, event):

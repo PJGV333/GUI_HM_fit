@@ -148,13 +148,15 @@ class App(wx.Frame):
         canvas_panel = wx.Panel(self.right_splitter)
         canvas_sizer = wx.BoxSizer(wx.VERTICAL)
 
-        # Figura sin constrained_layout; manejaremos márgenes manualmente
+        # Single persistent figure/canvas (no recreation on Next/Prev).
+        # Keep margins reasonable once; avoid calling tight_layout repeatedly.
         self.fig = Figure()
+        self.fig.subplots_adjust(left=0.08, right=0.98, bottom=0.10, top=0.92)
+        self.ax = self.fig.add_subplot(111)
         self.canvas = FigureCanvas(canvas_panel, -1, self.fig)
         canvas_sizer.Add(self.canvas, 1, wx.EXPAND | wx.ALL, 0)
         canvas_panel.SetSizer(canvas_sizer)
         canvas_panel.Bind(wx.EVT_SIZE, self._on_canvas_resize)
-        self.canvas.Bind(wx.EVT_SIZE, self._on_canvas_resize)  # redibujo cuando el canvas cambia tamaño
 
         # Panel inferior: consola
         console_panel = wx.Panel(self.right_splitter)
@@ -203,7 +205,7 @@ class App(wx.Frame):
         self.main_sizer.Layout()
         self.Refresh()
         self.Update()
-        # Asegurar tamaño/márgenes correctos al arrancar
+        # Ensure initial sizing is correct (no recomputation).
         wx.CallAfter(self._redraw_canvas)
 
     # ----------------- Handlers para teclado/resize -----------------
@@ -230,17 +232,11 @@ class App(wx.Frame):
         evt.Skip()
 
     def _redraw_canvas(self):
-        """Ajusta tamaño y márgenes para que no se recorte y se adapte al sash."""
+        """Fit canvas to its panel without recreating figures."""
         try:
-            # Forzar al canvas a ocupar exactamente el área disponible del panel
-            parent_sz = self.canvas.GetParent().GetClientSize()
-            self.canvas.SetMinSize(parent_sz)
-            self.canvas.SetSize(parent_sz)
-
-            # Márgenes seguros (ajústalos si quieres más/menos borde)
-            self.fig.subplots_adjust(left=0.14, right=0.985, bottom=0.20, top=0.985)
-
-            # Redibujo eficiente
+            parent = self.canvas.GetParent()
+            if parent:
+                self.canvas.SetSize(parent.GetClientSize())
             self.canvas.draw_idle()
         except Exception:
             pass
@@ -250,13 +246,8 @@ class App(wx.Frame):
         evt.Skip()
 
     def _on_canvas_resize(self, evt):
-        # Redibuja la figura al cambiar tamaño del panel/canvas
-        try:
-            evt.GetEventObject().Layout()
-        except Exception:
-            pass
-        self._redraw_canvas()
         evt.Skip()
+        self._redraw_canvas()
 
     # ----------------- Botones navegación y cálculo -----------------
     def on_process_data(self, event):
@@ -349,12 +340,19 @@ class App(wx.Frame):
                 if panel.model_grid.GetNumberCols() > 0:
                     panel.model_grid.DeleteCols(0, panel.model_grid.GetNumberCols())
 
-            # Limpiar lista de figuras
-            if hasattr(self, 'fig'):
-                self.fig.clear()
-                if hasattr(self, 'canvas'):
-                    self.canvas.figure.clear()
-                    self.canvas.draw()
+            # Clear plot content without recreating the canvas/figure.
+            try:
+                ax = getattr(self, "ax", None)
+                if ax is None:
+                    self.fig.clear()
+                    self.ax = self.fig.add_subplot(111)
+                    ax = self.ax
+                ax.clear()
+                ax.set_axis_off()
+                if hasattr(self, "canvas"):
+                    self.canvas.draw_idle()
+            except Exception:
+                pass
             if hasattr(panel, "figures"):
                 panel.figures = []
             if hasattr(panel, "current_figure_index"):
