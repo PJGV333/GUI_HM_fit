@@ -8,8 +8,12 @@ import numpy as onp
 from np_backend import xp as np, jit, jacrev, vmap, lax
 import pandas as pd
 import matplotlib
-matplotlib.use('Agg')  # Non-interactive backend
-import matplotlib.pyplot as plt
+import sys
+
+# When used from a wxPython GUI we don't want to override the interactive backend.
+# For headless/server usage, force a non-interactive backend before importing pyplot.
+if "matplotlib.pyplot" not in sys.modules:
+    matplotlib.use("Agg")
 from matplotlib.figure import Figure
 from scipy import optimize
 from scipy.optimize import differential_evolution
@@ -34,12 +38,14 @@ def set_progress_callback(callback, loop=None):
     _loop = loop
 
 def log_progress(message: str):
-    """Enviar mensaje de progreso si hay callback."""
+    """Enviar mensaje de progreso si hay callback; si no, imprime a consola."""
     if _progress_callback:
         if _loop:
             _loop.call_soon_threadsafe(_progress_callback, message)
         else:
             _progress_callback(message)
+        return
+    print(message)
 
 # === Shared helper utilities (used by both Spectroscopy and NMR) ===
 _alias_re = re.compile(r"\(([^)]+)\)")
@@ -141,27 +147,6 @@ def format_results_table(k, SE_log10K, percK, rms, covfit, lof=None, fixed_mask=
     table = "\n".join(table_lines)
     return "=== RESULTADOS ===\n" + table
 
-# Progress callback for WebSocket streaming
-_progress_callback = None
-_loop = None
-
-def set_progress_callback(callback, loop=None):
-    """Set the callback function for progress updates."""
-    global _progress_callback, _loop
-    _progress_callback = callback
-    _loop = loop
-
-def log_progress(message):
-    """Send progress message through callback if set."""
-    if _progress_callback:
-        if _loop:
-            # If loop is provided, schedule callback safely
-            _loop.call_soon_threadsafe(_progress_callback, message)
-        else:
-            # Direct call (synchronous)
-            _progress_callback(message)
-    print(message)  # Also print to console
-
 def pinv_cs_local(A, rcond=1e-12):
     """
     Pseudoinversa estable (ahora sin complex-step).
@@ -185,8 +170,8 @@ def generate_figure_base64(x, y, mark, ylabel, xlabel, title):
         # Debug shapes
         x_shape = np.shape(x)
         y_shape = np.shape(y)
-        print(f"DEBUG plot '{title}': x={x_shape}, y={y_shape}")
-    except:
+        logger.debug("plot %r: x=%s, y=%s", title, x_shape, y_shape)
+    except Exception:
         pass
 
     fig = Figure(figsize=(8, 6), dpi=100)
@@ -224,7 +209,6 @@ def generate_figure_base64(x, y, mark, ylabel, xlabel, title):
     fig.savefig(buf, format='png', bbox_inches='tight')
     buf.seek(0)
     img_base64 = base64.b64encode(buf.read()).decode('utf-8')
-    plt.close(fig)
     
     return img_base64
 
@@ -235,8 +219,8 @@ def generate_figure2_base64(x, y, y2, mark1, mark2, ylabel, xlabel, alpha, title
         x_shape = np.shape(x)
         y_shape = np.shape(y)
         y2_shape = np.shape(y2)
-        print(f"DEBUG plot2 '{title}': x={x_shape}, y={y_shape}, y2={y2_shape}")
-    except:
+        logger.debug("plot2 %r: x=%s, y=%s, y2=%s", title, x_shape, y_shape, y2_shape)
+    except Exception:
         pass
 
     fig = Figure(figsize=(8, 6), dpi=100)
@@ -283,7 +267,6 @@ def generate_figure2_base64(x, y, y2, mark1, mark2, ylabel, xlabel, alpha, title
     fig.savefig(buf, format='png', bbox_inches='tight')
     buf.seek(0)
     img_base64 = base64.b64encode(buf.read()).decode('utf-8')
-    plt.close(fig)
     
     return img_base64
 
