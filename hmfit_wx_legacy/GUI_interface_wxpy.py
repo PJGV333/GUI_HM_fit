@@ -1,29 +1,21 @@
 import wx
 import sys
 import os
-from wx import FileDialog
 from wx.lib.scrolledpanel import ScrolledPanel
 import wx.grid as gridlib
-import pandas as pd
-import numpy as np
 import matplotlib
 matplotlib.use('WXAgg')
 matplotlib.rcParams['keymap.quit'] = []
 matplotlib.rcParams['keymap.quit_all'] = []
 from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
 from matplotlib.figure import Figure
-from scipy import optimize
-import matplotlib.pyplot as plt
-from scipy.optimize import differential_evolution, basinhopping
 import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 warnings.filterwarnings("ignore")
-import timeit
 from .Spectroscopy_controls import Spectroscopy_controlsPanel
 from .NMR_controls import NMR_controlsPanel
 # from Simulation_controls import Simulation_controlsPanel
 from .Methods import BaseTechniquePanel, add_private_font_if_available, get_monospace_font
-import importlib
 
 
 class TextRedirector:

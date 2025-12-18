@@ -1,0 +1,1120 @@
+import wx
+from .Methods import BaseTechniquePanel
+import wx.grid as gridlib
+import numpy as onp  # NumPy “real”, no JAX
+from np_backend import xp as np, jit, jacrev, vmap, lax
+import pandas as pd
+import matplotlib
+matplotlib.use('WXAgg')
+from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
+from matplotlib.figure import Figure
+from scipy import optimize
+from scipy.optimize import differential_evolution
+import matplotlib.pyplot as plt
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning) 
+import warnings
+warnings.filterwarnings("ignore")
+import timeit
+from .Methods import BaseTechniquePanel
+from wx.lib.scrolledpanel import ScrolledPanel
+from errors import compute_errors_nmr_varpro
+import re
+
+def pinv_cs(A, rcond=1e-12):
+    A = np.asarray(A)
+    if not np.iscomplexobj(A):
+        return np.linalg.pinv(A, rcond=rcond)
+    m, n = A.shape
+    Ar = np.block([[A.real, -A.imag],
+                   [A.imag,  A.real]])      # (2m x 2n)
+    Pr = np.linalg.pinv(Ar, rcond=rcond)    # (2n x 2m)
+    X = Pr[:n,    :m]
+    Y = Pr[n:2*n, :m]
+    return X + 1j*Y
+
+_alias_re = re.compile(r"\(([^)]+)\)")
+
+def _aliases_from_names(names):
+    alias2idx = {}
+    for i, nm in enumerate(names):
+        s = str(nm).lower()
+        for a in _alias_re.findall(s):
+            alias2idx[a.strip().lower()] = i
+        head = s.split("(")[0].strip().split()
+        if head:
+            alias2idx[head[0]] = i
+    return alias2idx
+
+def build_D_cols(CT, conc_colnames, signal_colnames, default_idx=0):
+    """
+    CT: DataFrame o ndarray (n_i, n_comp) con las columnas marcadas.
+    conc_colnames: lista de nombres en el MISMO orden de CT.
+    signal_colnames: encabezados de señales (Chem_Shift_T.columns)
+    """
+    # --- normaliza CT a ndarray y alinea nombres ---
+    if 'pd' in globals() and isinstance(CT, pd.DataFrame):
+        CT_arr = CT.to_numpy(dtype=float)
+        if not conc_colnames or len(conc_colnames) != CT.shape[1]:
+            conc_colnames = list(CT.columns)
+    else:
+        CT_arr = onp.asarray(CT, dtype=float)
+
+    alias2idx = _aliases_from_names(conc_colnames)
+    m_sig = len(signal_colnames)
+    n_i = CT_arr.shape[0]
+
+    D_cols = onp.empty((n_i, m_sig), float)
+    parent_idx = []
+
+    for j, sname in enumerate(signal_colnames):
+        s = str(sname).lower()
+        found = None
+        # alias entre paréntesis
+        for a in _alias_re.findall(s):
+            k = a.strip().lower()
+            if k in alias2idx:
+                found = alias2idx[k]; break
+        # fallback por token
+        if found is None:
+            head = s.split("(")[0].strip().split()
+            if head:
+                found = alias2idx.get(head[-1])
+
+        if (found is None) or (found < 0) or (found >= CT_arr.shape[1]):
+            found = default_idx  # último recurso
+
+        D_cols[:, j] = CT_arr[:, found]
+        parent_idx.append(found)
+
+    return D_cols, parent_idx
+
+
+def project_coeffs_block_onp_frac(dq_block, C_block, D_cols, mask_block, rcond=1e-10, ridge=0.0):
+    """Proyección por señal usando fracción molar del 'padre' de cada señal."""
+    m, nP = dq_block.shape
+    dq_calc = onp.zeros_like(dq_block, float)
+    Xbase = onp.asarray(C_block, float)
+    finite_rows = onp.isfinite(Xbase).all(axis=1)
+    nonzero_rows = onp.linalg.norm(Xbase, axis=1) > 0.0
+    goodX = finite_rows & nonzero_rows
+    for j in range(nP):
+        D = D_cols[:, j]
+        mj = mask_block[:, j] & goodX & onp.isfinite(D) & (onp.abs(D) > 0)
+        if mj.sum() < 2: continue
+        Xj = Xbase[mj, :] / D[mj][:, None]
+        y  = dq_block[mj, j]
+        try:
+            coef, *_ = onp.linalg.lstsq(Xj, y, rcond=rcond)
+        except onp.linalg.LinAlgError:
+            if ridge > 0.0:
+                XtX = Xj.T @ Xj
+                coef = onp.linalg.solve(XtX + ridge*onp.eye(XtX.shape[0]), Xj.T @ y)
+            else:
+                coef = onp.linalg.pinv(Xj, rcond=rcond) @ y
+        dq_calc[mj, j] = Xj @ coef
+    return dq_calc
+
+
+def residuals_masked_onp(k, dq, mask, H, solver):
+    """Vector de residuales usando solo observaciones válidas (mask=True)."""
+    C = res.concentraciones(k)[0]
+    dq_cal = project_coeffs_block_onp_frac(dq, C, D_cols, mask)
+    return (dq - dq_cal)[mask].ravel()
+
+# --- a nivel de módulo, en NMR_controls.py ---
+
+def project_coeffs_block_onp(dq_block, X_block, mask_block, rcond=1e-10, ridge=0.0):
+    """
+    Ajusta coeficientes por señal usando SOLO filas válidas.
+    - Filtra también filas donde X tenga NaN/Inf o norm≈0 (p.ej. H=0).
+    - Usa pinv o ridge si lstsq falla / X es mal condicionada.
+    dq_block : (m, nP)
+    X_block  : (m, n_abs)   # = C / H[:,None] que tú ya calculas antes
+    mask_block: (m, nP)
+    """
+    m, nP = dq_block.shape
+    dq_calc = onp.zeros_like(dq_block, dtype=float)
+
+    # filas de X que son numéricamente utilizables
+    finite_rows = onp.isfinite(X_block).all(axis=1)
+    nonzero_rows = onp.linalg.norm(X_block, axis=1) > 0.0
+    good_rows_X = finite_rows & nonzero_rows
+
+    for j in range(nP):
+        mj = mask_block[:, j] & good_rows_X
+        nj = int(mj.sum())
+        if nj < 2:
+            continue  # no hay suficientes puntos para esa señal
+
+        X = X_block[mj, :]      # (nj × n_abs)
+        y = dq_block[mj, j]     # (nj,)
+
+        try:
+            # camino estable
+            coef, *_ = onp.linalg.lstsq(X, y, rcond=rcond)
+        except onp.linalg.LinAlgError:
+            if ridge > 0.0:
+                # ridge mínimo si lstsq no converge
+                XtX = X.T @ X
+                coef = onp.linalg.solve(XtX + ridge * onp.eye(XtX.shape[0]), X.T @ y)
+            else:
+                # fallback pinv
+                coef = onp.linalg.pinv(X, rcond=rcond) @ y
+
+        # predicción solo en filas observadas
+        dq_calc[mj, j] = X @ coef
+
+    return dq_calc
+
+    
+# Clase para la técnica de NMR
+class NMR_controlsPanel(BaseTechniquePanel):
+    def __init__(self, parent, app_ref):
+        super().__init__(parent, app_ref=app_ref)
+        self.app_ref = app_ref
+
+        self.panel = self
+        self.left_sizer = wx.BoxSizer(wx.VERTICAL)
+        self.right_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        # Crear controles (botones, etiquetas, etc.) y añadirlos a left_sizer o right_sizer
+        # Crear el botón para seleccionar el archivo
+        self.btn_select_file = wx.Button(self.panel, label="Select Excel File")
+        self.btn_select_file.Bind(wx.EVT_BUTTON, self.select_file)
+        self.left_sizer.Add(self.btn_select_file, 0, wx.ALL | wx.EXPAND, 5)
+
+        # Crear el ScrolledWindow
+        #self.scrolled_window = wx.ScrolledWindow(self.panel, style=wx.HSCROLL)
+        #self.scrolled_window.SetScrollRate(10, 0)  # El primer valor es la velocidad de scroll horizontal, el segundo es vertical y está seteado en 0 porque no queremos scroll vertical.
+        self.scrolled_window = ScrolledPanel(self.panel, style=wx.HSCROLL | wx.TAB_TRAVERSAL)
+        self.scrolled_window.SetupScrolling(scroll_x=True, scroll_y=False, rate_x=10, rate_y=0)
+        
+        # Crear un StaticText para mostrar la ruta del archivo dentro del ScrolledWindow
+        self.lbl_file_path = wx.StaticText(self.scrolled_window, label="No file selected")
+
+        # Crear un sizer para el ScrolledWindow y agregar el StaticText
+        scrolled_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        scrolled_sizer.Add(self.lbl_file_path, 1, wx.EXPAND | wx.ALL, 5)
+
+        # Asignar el sizer al ScrolledWindow y actualizar su tamaño
+        self.scrolled_window.SetSizer(scrolled_sizer)
+        self.scrolled_window.SetMinSize((-1, 45))  # Establecer un tamaño mínimo para el ScrolledWindow
+
+        self.left_sizer.Add(self.scrolled_window, 0, wx.EXPAND | wx.ALL, 5)
+        self.Layout()
+        self.Refresh()             # Refresca el frame para mostrar los cambios
+        self.Update()
+
+        # desplazamientos químicos
+        self.sheet_chemshift_panel, self.choice_chemshifts = self.create_sheet_dropdown_section("Sheet Name of Chemical Shift:", self)
+        self.left_sizer.Add(self.sheet_chemshift_panel, 0, wx.EXPAND | wx.ALL, 5)
+
+        # Sizer horizontal para los menús desplegables
+        dropdowns_sizer_chemical_shift = wx.BoxSizer(wx.HORIZONTAL)
+        self.left_sizer.Add(dropdowns_sizer_chemical_shift, 0, wx.EXPAND | wx.ALL, 5)
+
+        # Sizer horizontal para los menús desplegables
+        dropdowns_sizer_chemical_shift = wx.BoxSizer(wx.HORIZONTAL)
+        self.left_sizer.Add(dropdowns_sizer_chemical_shift, 0, wx.EXPAND | wx.ALL, 5)
+
+        # ScrolledWindow para los checkboxes de desplazamientos químicos (inicialmente vacío)
+        #self.chemical_shifts_panel = wx.ScrolledWindow(self.panel, style=wx.HSCROLL)
+        #self.chemical_shifts_panel.SetScrollRate(10, 0)  # El primer número es la velocidad de desplazamiento horizontal, el segundo es para vertical (seteado a 0, ya que no queremos scroll vertical).
+        self.chemical_shifts_panel = ScrolledPanel(self.panel, style=wx.HSCROLL | wx.TAB_TRAVERSAL)
+        self.chemical_shifts_panel.SetupScrolling(scroll_x=True, scroll_y=False, rate_x=10, rate_y=0)
+        
+        
+        # Sizer para los checkboxes dentro de ScrolledWindow
+        self.chemical_shifts_sizer = wx.BoxSizer(wx.HORIZONTAL)
+
+        # Etiqueta para los desplazamientos químicos
+        self.lbl_chemical_shifts = wx.StaticText(self.chemical_shifts_panel, label="Chemical Shifts: ")
+        self.chemical_shifts_sizer.Add(self.lbl_chemical_shifts, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+
+        # Configurar el sizer en el ScrolledWindow y añadir el panel al sizer principal
+        self.chemical_shifts_panel.SetSizer(self.chemical_shifts_sizer)
+        self.left_sizer.Add(self.chemical_shifts_panel, 0, wx.EXPAND | wx.ALL, 5)
+
+        # Ajustar el tamaño del ScrolledWindow para asegurarse de que la barra de desplazamiento aparezca cuando sea necesario
+        self.chemical_shifts_panel.SetMinSize((-1, 50))  # Reemplaza 'altura_deseada' con la altura que quieras para el panel
+        #self.chemical_shifts_panel.SetMaxSize((400, -1))  # Reemplaza 'ancho_deseado' con el ancho máximo que quieras para el panel
+
+        # Llama a Layout para actualizar la interfaz gráfica
+        self.panel.Layout()
+        self.Refresh()             # Refresca el frame para mostrar los cambios
+        self.Update()
+
+        # Panel para los menús desplegables de desplazamientos químicos
+        self.choice_chemical_shifts_panel = wx.Panel(self.panel)
+
+        #self.choice_chemshifts.Bind(wx.EVT_CHOICE, self.on_chemical_shift_sheet_selected)
+
+        # Concentraciones
+        self.sheet_conc_panel, self.choice_sheet_conc = self.create_sheet_dropdown_section("Concentration Sheet Name:", self)
+        self.left_sizer.Add(self.sheet_conc_panel, 0, wx.EXPAND | wx.ALL, 5)
+
+        dropdowns_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.left_sizer.Add(dropdowns_sizer, 0, wx.EXPAND | wx.ALL, 5)
+
+        # ScrolledWindow para los checkboxes de nombres de columnas (inicialmente vacío)
+        #self.columns_names_panel = wx.ScrolledWindow(self.panel, style=wx.HSCROLL)
+        #self.columns_names_panel.SetScrollRate(10, 0)  # Configurar la velocidad de desplazamiento horizontal
+        self.columns_names_panel = ScrolledPanel(self.panel, style=wx.HSCROLL | wx.TAB_TRAVERSAL)
+        self.columns_names_panel.SetupScrolling(scroll_x=True, scroll_y=False, rate_x=10, rate_y=0)
+        
+        
+        # Sizer para los checkboxes dentro del ScrolledWindow
+        self.columns_names_sizer = wx.BoxSizer(wx.HORIZONTAL)
+
+        # Etiqueta para los nombres de las columnas
+        self.lbl_columns = wx.StaticText(self.columns_names_panel, label="Column names: ")
+        self.columns_names_sizer.Add(self.lbl_columns, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+
+        # Configurar el sizer en el ScrolledWindow y añadir el panel al sizer principal
+        self.columns_names_panel.SetSizer(self.columns_names_sizer)
+        self.left_sizer.Add(self.columns_names_panel, 0, wx.EXPAND | wx.ALL, 5)
+
+        # Ajustar el tamaño del ScrolledWindow para asegurarse de que la barra de desplazamiento aparezca cuando sea necesario
+        self.columns_names_panel.SetMinSize((-1, 40))  # Reemplaza 'altura_deseada' con la altura que quieras para el panel
+        #self.columns_names_panel.SetMaxSize((400, -1))  # Reemplaza 'ancho_deseado' con el ancho máximo que quieras para el panel
+
+        # Llama a Layout para actualizar la interfaz gráfica
+        self.panel.Layout()
+        self.Refresh()             # Refresca el frame para mostrar los cambios
+        self.Update()
+
+        
+        self.choice_columns_panel = wx.Panel(self.panel)
+
+        # Crear el sizer horizontal para los menús desplegables
+        self.dropdown_sizer = wx.BoxSizer(wx.HORIZONTAL)
+
+        # Crear y añadir el menú desplegable para 'Receptor or Ligant'
+        self.receptor_label = wx.StaticText(self.choice_columns_panel, label="Receptor or Ligant:")
+        self.dropdown_sizer.Add(self.receptor_label, 0, wx.ALL|wx.CENTER, 5)
+        self.receptor_choice = wx.Choice(self.choice_columns_panel)
+        self.dropdown_sizer.Add(self.receptor_choice, 0, wx.ALL|wx.CENTER, 5)
+
+        # Crear y añadir el menú desplegable para 'Guest, Metal or Titrant'
+        self.guest_label = wx.StaticText(self.choice_columns_panel, label="Guest, Metal or Titrant:")
+        self.dropdown_sizer.Add(self.guest_label, 0, wx.ALL|wx.CENTER, 5)
+        self.guest_choice = wx.Choice(self.choice_columns_panel)
+        self.dropdown_sizer.Add(self.guest_choice, 0, wx.ALL|wx.CENTER, 5)
+
+        # Agregar el sizer horizontal al panel principal o sizer
+        # Asumiendo que 'self.columns_names_panel' es el panel que contiene tus checkboxes
+        self.choice_columns_panel.SetSizer(self.dropdown_sizer)
+        self.left_sizer.Add(self.choice_columns_panel, 0, wx.EXPAND | wx.ALL, 5)
+
+        # Vincular la función de manejo de selección duplicada a los eventos de selección de los menús desplegables
+        self.receptor_choice.Bind(wx.EVT_CHOICE, self.on_dropdown_selection)
+        self.guest_choice.Bind(wx.EVT_CHOICE, self.on_dropdown_selection)
+            
+
+        # Creación del wx.Notebook
+        notebook = wx.Notebook(self.panel)
+
+        # Creación de los paneles para las pestañas
+        #tab_modelo = wx.Panel(notebook)
+        tab_modelo = ScrolledPanel(notebook, style=wx.VSCROLL | wx.TAB_TRAVERSAL)
+        tab_modelo.SetupScrolling(scroll_x=False, scroll_y=True, rate_x=0, rate_y=10)
+        tab_optimizacion = wx.Panel(notebook)
+
+        # Añadir los paneles al notebook
+        notebook.AddPage(tab_modelo, "Model")
+        notebook.AddPage(tab_optimizacion, "Optimization")
+
+        # Creación del CheckBox
+        self.toggle_components = wx.Button(tab_modelo, label="Define Model Dimensions")
+        #self.toggle_components.Bind(wx.EVT_BUTTON, self.on_define_model_dimensions_checked)
+        self.toggle_components.Bind(wx.EVT_BUTTON, self._wrap_define_model_dimensions)
+
+        # Creación de los TextCtrl para número de componentes y número de especies
+        self.num_components_text, self.entry_nc = self.create_sheet_section("Number of Components:", "0", parent = tab_modelo)
+        self.num_species_text, self.entry_nsp = self.create_sheet_section("Number of Species:", "0", parent = tab_modelo)
+        
+        self.sp_columns = wx.StaticText(tab_modelo, label="Select non-absorbent species: ")
+
+        self.sp_select_sizer = wx.BoxSizer(wx.HORIZONTAL)
+
+        # Reemplazar el wx.ListCtrl por un wx.grid.Grid
+        self.model_panel = ScrolledPanel(tab_modelo, style=wx.TAB_TRAVERSAL)
+        self.model_panel.SetupScrolling(scroll_x=False, scroll_y=True)
+        self.model_panel.SetScrollRate(0, 10)
+        self.model_panel.SetMinSize((-1, 240))
+        self.model_grid = wx.grid.Grid(self.model_panel)
+        self.model_grid.CreateGrid(0, 4)  # Por ejemplo, crear una cuadrícula sin filas inicialmente, pero con 4 columnas
+        self.model_grid.SetSelectionMode(wx.grid.Grid.SelectRows)  # Configurar para seleccionar filas completas
+
+        self.model_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.model_sizer.Add(self.model_grid, 1, wx.ALL | wx.EXPAND, 5)
+        self.model_panel.SetSizer(self.model_sizer)
+
+        # Configurar sizer y añadir al panel de la pestaña 'Modelo'
+        modelo_sizer = wx.BoxSizer(wx.VERTICAL)
+        #modelo_sizer.Add(self.sheet_model_panel, 0, wx.EXPAND | wx.ALL, 5)
+        # Añadirlos al sizer
+        modelo_sizer.Add(self.toggle_components, 0, wx.ALL | wx.EXPAND, 5)
+        modelo_sizer.Add(self.num_components_text, 0, wx.ALL | wx.EXPAND, 5)
+        modelo_sizer.Add(self.num_species_text, 0, wx.ALL | wx.EXPAND, 5)
+        modelo_sizer.Add(self.sp_columns, 0, wx.EXPAND | wx.ALL, 5)
+        modelo_sizer.Add(self.model_panel, 0, wx.EXPAND | wx.ALL, 5)
+        tab_modelo.SetSizer(modelo_sizer)
+        tab_modelo.SetupScrolling(scroll_x=False, scroll_y=True)
+        tab_modelo.FitInside()
+
+
+        # Crear los controles para la pestaña 'Optimización'
+        algo_panel = wx.Panel(tab_optimizacion)
+        algo_label = wx.StaticText(algo_panel, label='Algorithm for C')
+        algo_sizer = wx.BoxSizer(wx.VERTICAL)
+        algo_sizer.Add(algo_label, 0, wx.ALL, 5)
+        algoritmo = ["Newton-Raphson", "Levenberg-Marquardt"]
+        self.choice_algoritm = wx.Choice(algo_panel, choices=algoritmo)
+        algo_sizer.Add(self.choice_algoritm, 0, wx.ALL, 5)
+        self.choice_algoritm.SetSelection(0)
+        algo_panel.SetSizer(algo_sizer)
+
+        ajustes_panel = wx.Panel(tab_optimizacion)
+        ajustes_label = wx.StaticText(ajustes_panel, label='Model settings')
+        ajustes_sizer = wx.BoxSizer(wx.VERTICAL)
+        ajustes_sizer.Add(ajustes_label, 0, wx.ALL, 5)
+        ajustes_modelo_choices = ["Free", "Step by step", "Non-cooperative"]
+        self.choice_model_settings = wx.Choice(ajustes_panel, choices=ajustes_modelo_choices)
+        self.choice_model_settings.Bind(wx.EVT_CHOICE, lambda event: self.update_parameter_grid())
+        ajustes_sizer.Add(self.choice_model_settings, 0, wx.ALL, 5)
+        self.choice_model_settings.SetSelection(0)
+        ajustes_panel.SetSizer(ajustes_sizer)
+
+        optimizador_panel = wx.Panel(tab_optimizacion)
+        optimizador_label = wx.StaticText(optimizador_panel, label='Optimizer')
+        optimizador_sizer = wx.BoxSizer(wx.VERTICAL)
+        optimizador_sizer.Add(optimizador_label, 0, wx.ALL, 5)
+        optimizador_choices = ["powell", "nelder-mead", "trust-constr", "cg", "bfgs", "l-bfgs-b", "tnc", "cobyla", "slsqp", "differential_evolution"]
+        self.choice_optimizer_settings = wx.Choice(optimizador_panel, choices=optimizador_choices)
+        optimizador_sizer.Add(self.choice_optimizer_settings, 0, wx.ALL, 5)
+        self.choice_optimizer_settings.SetSelection(0)
+        optimizador_panel.SetSizer(optimizador_sizer)
+
+        # Crear el Grid
+        self.grid = gridlib.Grid(tab_optimizacion)
+        self.grid.CreateGrid(0, 4)
+        self.grid.SetRowLabelSize(0)
+        self.grid.SetColLabelValue(0, "Parameter")
+        self.grid.SetColLabelValue(1, "Value")
+        self.grid.SetColLabelValue(2, "Min")
+        self.grid.SetColLabelValue(3, "Max")
+        self.grid.AutoSizeColumns()
+
+       # Sizer principal para la pestaña 'Optimización'
+        optimizacion_sizer = wx.BoxSizer(wx.HORIZONTAL)
+
+        # Sizer para los controles verticales (menús desplegables)
+        controls_sizer = wx.BoxSizer(wx.VERTICAL)
+        controls_sizer.Add(algo_panel, 0, wx.EXPAND | wx.ALL, 5)
+        controls_sizer.Add(ajustes_panel, 0, wx.EXPAND | wx.ALL, 5)
+        controls_sizer.Add(optimizador_panel, 0, wx.EXPAND | wx.ALL, 5)
+
+        # Añadir el sizer de controles al sizer principal de 'Optimización'
+        optimizacion_sizer.Add(controls_sizer, 0, wx.EXPAND | wx.ALL, 5)
+
+        # Añadir el grid al sizer principal de 'Optimización'
+        optimizacion_sizer.Add(self.grid, 1, wx.EXPAND | wx.ALL, 5)
+
+        # Configurar el sizer en el panel de la pestaña 'Optimización'
+        tab_optimizacion.SetSizer(optimizacion_sizer)
+
+        # Ajustar la distribución de los controles
+        tab_optimizacion.Layout()
+
+        # Añadir el notebook al left_sizer
+        self.left_sizer.Add(notebook, 1, wx.EXPAND | wx.ALL, 5)
+        self.SetSizer(self.left_sizer)
+        #self.Fit()
+        self.Show()
+        self.Layout()
+
+###################################################################################
+
+    def _refresh_page_scroller(self):
+        page = self.GetParent()
+        while page is not None and not hasattr(page, "FitInside"):
+            page = page.GetParent()
+        if page is not None:
+            page.Layout()
+            page.FitInside()
+            page.SendSizeEvent()
+
+    def _wrap_define_model_dimensions(self, evt):
+        try:
+            self.on_define_model_dimensions_checked(evt)
+        finally:
+            self.Layout()
+            wx.CallAfter(self._refresh_scroller, self.model_panel, False, True)
+            target_outer = getattr(self, "scrolled_window", self.GetParent())
+            wx.CallAfter(self._refresh_scroller, target_outer, True, True)
+
+
+    def process_data(self, event):
+        """Collect UI inputs, call the new backend runner, then render results."""
+        import threading
+
+        def set_controls_enabled(enabled: bool) -> None:
+            for attr in ("btn_process_data", "btn_prev_figure", "btn_next_figure", "btn_save_results"):
+                btn = getattr(self.app_ref, attr, None)
+                if btn is not None:
+                    btn.Enable(bool(enabled))
+
+        file_path = getattr(self, "file_path", None)
+        if not file_path:
+            wx.MessageBox(
+                "No se ha seleccionado un archivo .xlsx",
+                "Seleccione un archivo .xlsx para trabajar.",
+                wx.OK | wx.ICON_ERROR,
+            )
+            return
+
+        nmr_sheet = self.choice_chemshifts.GetStringSelection()
+        conc_sheet = self.choice_sheet_conc.GetStringSelection()
+        if not nmr_sheet or not conc_sheet:
+            wx.MessageBox(
+                "Por favor, seleccione las hojas de Excel correctamente.",
+                "Error en selección de hojas",
+                wx.OK | wx.ICON_ERROR,
+            )
+            return
+
+        signal_names = [checkbox.GetLabel() for checkbox in self.vars_chemshift.values() if checkbox.IsChecked()]
+        if not signal_names:
+            wx.MessageBox(
+                "Por favor, selecciona al menos una casilla de desplazamientos químicos para continuar.",
+                "Advertencia",
+                wx.OK | wx.ICON_WARNING,
+            )
+            return
+
+        column_names = [checkbox.GetLabel() for checkbox in self.vars_columnas.values() if checkbox.IsChecked()]
+        if not column_names:
+            wx.MessageBox(
+                "Por favor, selecciona al menos una casilla para continuar.",
+                "Advertencia",
+                wx.OK | wx.ICON_WARNING,
+            )
+            return
+
+        receptor_label = (self.receptor_choice.GetStringSelection() or "").strip()
+        guest_label = (self.guest_choice.GetStringSelection() or "").strip()
+        if not receptor_label or not guest_label:
+            wx.MessageBox(
+                "Seleccione columnas para Receptor y Guest (deben ser diferentes).",
+                "Faltan selecciones",
+                wx.OK | wx.ICON_WARNING,
+            )
+            return
+        if receptor_label == guest_label:
+            wx.MessageBox(
+                "Receptor and Guest cannot be the same column. Please select different columns.",
+                "Selection Error",
+                wx.OK | wx.ICON_WARNING,
+            )
+            return
+
+        model_grid_data = self.extract_data_from_grid()
+        if not model_grid_data:
+            wx.MessageBox("Select a sheet model o create one.", "Advertencia", wx.OK | wx.ICON_WARNING)
+            return
+
+        modelo = []
+        any_nonzero = False
+        for row in model_grid_data:
+            row_vals = []
+            for v in row:
+                if v is None or (isinstance(v, str) and not v.strip()):
+                    fv = 0.0
+                else:
+                    try:
+                        fv = float(v)
+                    except (TypeError, ValueError):
+                        fv = 0.0
+                any_nonzero = any_nonzero or (fv != 0.0)
+                row_vals.append(fv)
+            modelo.append(row_vals)
+
+        if not any_nonzero:
+            wx.MessageBox("Select a sheet model o create one.", "Advertencia", wx.OK | wx.ICON_WARNING)
+            return
+
+        non_abs_species = list(getattr(self, "model_grid", None).GetSelectedRows() if hasattr(self, "model_grid") else [])
+
+        algorithm = self.choice_algoritm.GetStringSelection() or "Newton-Raphson"
+        model_settings = self.choice_model_settings.GetStringSelection() or "Free"
+        optimizer = self.choice_optimizer_settings.GetStringSelection() or "powell"
+
+        n_rows = self.grid.GetNumberRows() if hasattr(self, "grid") else 0
+        if n_rows <= 0:
+            wx.MessageBox(
+                "Defina el número de constantes (en Model/Optimization) y agregue valores iniciales.",
+                "Advertencia",
+                wx.OK | wx.ICON_WARNING,
+            )
+            return
+
+        initial_k = []
+        bounds = []
+        for row in range(n_rows):
+            val_s = (self.grid.GetCellValue(row, 1) or "").strip()
+            if not val_s:
+                wx.MessageBox(
+                    "Write an initial estimate for the constants.",
+                    "Advertencia",
+                    wx.OK | wx.ICON_WARNING,
+                )
+                return
+            try:
+                initial_k.append(float(val_s))
+            except ValueError:
+                wx.MessageBox(
+                    f"Invalid constant value in row {row + 1}.",
+                    "Error",
+                    wx.OK | wx.ICON_ERROR,
+                )
+                return
+
+            min_s = (self.grid.GetCellValue(row, 2) or "").strip()
+            max_s = (self.grid.GetCellValue(row, 3) or "").strip()
+            try:
+                min_v = float(min_s) if min_s else None
+            except ValueError:
+                min_v = None
+            try:
+                max_v = float(max_s) if max_s else None
+            except ValueError:
+                max_v = None
+            bounds.append((min_v, max_v))
+
+        config = {
+            "file_path": file_path,
+            "nmr_sheet": nmr_sheet,
+            "conc_sheet": conc_sheet,
+            "column_names": column_names,
+            "signal_names": signal_names,
+            "receptor_label": receptor_label,
+            "guest_label": guest_label,
+            "modelo": modelo,
+            "non_abs_species": non_abs_species,
+            "algorithm": algorithm,
+            "model_settings": model_settings,
+            "optimizer": optimizer,
+            "initial_k": initial_k,
+            "bounds": bounds,
+        }
+
+        self.last_result = None
+        self.figures = []
+        self.current_figure_index = -1
+        set_controls_enabled(False)
+        print("Starting NMR processing...")
+
+        def progress_cb(msg: str) -> None:
+            print(str(msg).rstrip())
+
+        def on_success(result: dict) -> None:
+            try:
+                self.last_result = result
+
+                from hmfit_core.plots import figures_from_graphs
+
+                self.figures = figures_from_graphs(result.get("graphs") or {})
+                self.current_figure_index = 0 if self.figures else -1
+                if self.figures:
+                    self.update_canvas_figure(self.figures[self.current_figure_index])
+
+                results_text = result.get("results_text") or ""
+                if results_text:
+                    print("\n" + str(results_text).rstrip() + "\n")
+            finally:
+                set_controls_enabled(True)
+
+        def on_error(exc: Exception) -> None:
+            try:
+                print(f"ERROR: {exc}")
+                wx.MessageBox(str(exc), "Error", wx.OK | wx.ICON_ERROR)
+            finally:
+                set_controls_enabled(True)
+
+        def worker() -> None:
+            try:
+                from hmfit_core import run_nmr
+
+                result = run_nmr(config, progress_cb=progress_cb)
+                if isinstance(result, dict) and result.get("error"):
+                    raise RuntimeError(str(result.get("error")))
+                if isinstance(result, dict) and not result.get("success", True):
+                    raise RuntimeError("Processing failed.")
+            except Exception as exc:
+                wx.CallAfter(on_error, exc)
+                return
+            wx.CallAfter(on_success, result)
+
+        self._worker_thread = threading.Thread(target=worker, daemon=True)
+        self._worker_thread.start()
+        return
+
+        # Legacy implementation below (kept for reference).
+        # Placeholder for the actual data processing
+        # Would call the functions from the provided script and display output
+        
+        # Verificar si se han seleccionado hojas válidas
+        if not hasattr(self, 'file_path'):
+            wx.MessageBox("No se ha seleccionado un archivo .xlsx", 
+                        "Seleccione un archivo .xlsx para trabajar.", wx.OK | wx.ICON_ERROR)
+            return  # Detener la ejecución de la función
+
+        chem_shift = self.choice_chemshifts.GetStringSelection()
+        conc_entry = self.choice_sheet_conc.GetStringSelection()
+
+        # Verificar si se han seleccionado hojas válidas
+        if not chem_shift or not conc_entry:
+            wx.MessageBox("Por favor, seleccione las hojas de Excel correctamente.", 
+                        "Error en selección de hojas", wx.OK | wx.ICON_ERROR)
+            return  # Detener la ejecución de la función
+
+        
+        chemshift_data = pd.read_excel(self.file_path, chem_shift, header=0)
+
+        # Obtener los nombres de las columnas seleccionadas en los Scheckboxes de desplazamientos químicos
+        # Verificar qué checkboxes están marcados
+        #for col, checkbox in self.vars_chemshift.items():
+        #    print(f"Columna: {col}, Checkbox marcado: {checkbox.IsChecked()}")
+
+        columnas_chemshift_seleccionadas = [col for col, checkbox in self.vars_chemshift.items() if checkbox.IsChecked()]
+
+        if not columnas_chemshift_seleccionadas:
+            # Si no se ha seleccionado ningún checkbox, mostrar un mensaje de advertencia
+            wx.MessageBox('Por favor, selecciona al menos una casilla de desplazamientos químicos para continuar.', 'Advertencia', wx.OK | wx.ICON_WARNING)
+            return  # Salir de la función para no continuar con el procesamiento
+
+        # Extraer datos de las columnas seleccionadas de desplazamientos químicos
+        Chem_Shift_T = chemshift_data[columnas_chemshift_seleccionadas].to_numpy()
+
+        # Crear un diccionario que mapea nombres de columnas a sus nuevos índices en Chem_Shift_T
+        column_indices_in_Chem_Shift_T = {name: index for index, name in enumerate(columnas_chemshift_seleccionadas)}
+
+        # Extraer datos de esas columnas
+        concentracion = pd.read_excel(self.file_path, conc_entry, header=0)
+
+        nombres_de_columnas = concentracion.columns
+        
+        # Obtener los nombres de las columnas seleccionadas
+        columnas_seleccionadas = [col for col, checkbox in self.vars_columnas.items() if checkbox.IsChecked()]
+
+        if not columnas_seleccionadas:
+            # Si no se ha seleccionado ningún checkbox, mostrar un mensaje de advertencia
+            wx.MessageBox('Por favor, selecciona al menos una casilla para continuar.', 'Advertencia', wx.OK | wx.ICON_WARNING)
+            return  # Salir de la función para no continuar con el procesamiento
+        
+        print("process_data iniciada")
+        
+        C_T = concentracion[columnas_seleccionadas].to_numpy()
+        
+        # Crear un diccionario que mapea nombres de columnas a sus nuevos índices en C_T
+        column_indices_in_C_T = {name: index for index, name in enumerate(columnas_seleccionadas)}
+
+        # Obtener los nombres de las columnas seleccionadas para receptor y huésped
+        receptor_name = self.receptor_choice.GetStringSelection()
+        guest_name = self.guest_choice.GetStringSelection()
+
+        # Usar el diccionario para obtener los índices correctos dentro de C_T
+        receptor_index_in_C_T = column_indices_in_C_T.get(receptor_name, -1)
+        guest_index_in_C_T = column_indices_in_C_T.get(guest_name, -1)
+
+        # Asumiendo que receptor_index_in_C_T y guest_index_in_C_T son los índices.
+        # Verifica si al menos uno de los índices es diferente de -1
+        if receptor_index_in_C_T != -1 or guest_index_in_C_T != -1:
+            
+            # Si guest_index_in_C_T es válido, asigna la columna correspondiente a G
+            if guest_index_in_C_T != -1:
+                G = C_T[:, guest_index_in_C_T]
+
+            # Si receptor_index_in_C_T es válido, asigna la columna correspondiente a H
+            if receptor_index_in_C_T != -1:
+                H = C_T[:, receptor_index_in_C_T]
+
+        nc = len(C_T)
+        n_comp = len(C_T.T)
+    
+        C_T = pd.DataFrame(C_T)
+        Chem_Shift_T = pd.DataFrame(Chem_Shift_T)
+        dq1 = Chem_Shift_T - Chem_Shift_T.iloc[0]
+        dq  = onp.asarray(dq1.to_numpy(dtype=float))   # NumPy real
+        mask = onp.isfinite(dq)                        # True solo donde hay dato
+
+
+        signal_names = list(Chem_Shift_T.columns)        # encabezados de señales
+        # si tu lista 'columnas_seleccionadas' no existe o no coincide en longitud, usa C_T.columns
+        try:
+            nombres_conc = list(columnas_seleccionadas)
+        except NameError:
+            nombres_conc = list(C_T.columns)
+        if len(nombres_conc) != C_T.shape[1]:
+            nombres_conc = list(C_T.columns)
+
+        D_cols, parent_idx = build_D_cols(C_T, nombres_conc, signal_names, default_idx=0)
+        mask = mask & onp.isfinite(D_cols) & (onp.abs(D_cols) > 0)
+
+
+        # Intentar leer desde el archivo Excel
+        grid_data = self.extract_data_from_grid()
+        modelo = np.array(grid_data).T
+        nas = self.on_selection_changed(event)
+
+        modelo = np.array(modelo)
+
+        if not np.any(modelo):
+            # Si no se ha seleccionado ningún checkbox, mostrar un mensaje de advertencia
+            wx.MessageBox('Select a sheet model o create one.', 'Advertencia', wx.OK | wx.ICON_WARNING)
+            return  # Salir de la función para no continuar con el procesamiento
+
+        work_algo = self.choice_algoritm.GetStringSelection()
+        model_sett = self.choice_model_settings.GetStringSelection() 
+
+        k, bnds = self.extract_constants_from_grid()
+        k_ini = k
+
+        if not np.any(k):
+            # Si no se ha seleccionado ningún checkbox, mostrar un mensaje de advertencia
+            wx.MessageBox('Write an initial estimate for the constants.', 'Advertencia', wx.OK | wx.ICON_WARNING)
+            return  # Salir de la función para no continuar con el procesamiento
+
+        if work_algo == "Newton-Raphson":
+            
+            from NR_conc_algoritm import NewtonRaphson
+
+            res = NewtonRaphson(C_T, modelo, nas, model_sett)
+
+        elif work_algo == "Levenberg-Marquardt": 
+            
+            from LM_conc_algoritm import LevenbergMarquardt
+
+            res = LevenbergMarquardt(C_T, modelo, nas, model_sett) 
+
+
+        # --- chequeo de observaciones efectivas por la máscara fraccionaria ---
+        N_eff_total = int(mask.sum())
+        p = len(k)  # nº de parámetros que estás optimizando
+        n_eff_por_senal = onp.sum(mask, axis=0)
+
+        if (N_eff_total <= p) or (n_eff_por_senal < 2).all():
+            wx.MessageBox(
+                "Planteamiento degenerado: muy pocos puntos efectivos por señal tras la selección de roles/columnas.\n"
+                "Revisa qué specie es Receptor/Ligand y cuál es Guest/Titrant.",
+                "Datos insuficientes", wx.OK | wx.ICON_WARNING
+            )
+            return  # salimos sin lanzar la optimización
+
+        def cal_delta(k):
+            C = res.concentraciones(k)[0]
+            xi = C / H[:, np.newaxis]
+            coeficientes = pinv_cs(xi) @ dq #se cambio np.linag.pinv por np.linalg.pinv
+            dq_cal = coeficientes.T @ xi.T
+            return dq_cal
+
+        def cal_coef(k):
+            C = res.concentraciones(k)[0]
+            xi = C / H[:, np.newaxis]
+            coeficientes = pinv_cs(xi) @ dq #se cambio np.linag.pinv por np.linalg.pinv
+            return coeficientes
+
+        def f_m(k):
+            try:
+                C = res.concentraciones(k)[0]
+                dq_cal = project_coeffs_block_onp_frac(
+                    dq, C, D_cols, mask, rcond=1e-10, ridge=1e-8
+                )
+                r = (dq - dq_cal)[mask].ravel()
+                if (r.size <= len(k)) or (not onp.isfinite(r).all()):
+                    return 1e9
+
+                # objetivo como RMS (compatible con lo que imprimías antes)
+                rms = float(onp.sqrt(onp.mean(r * r)))
+
+                # --- monitoreo no-bloqueante y con “throttling” ---
+                # imprime cada ~25 llamadas o cuando mejora el mejor valor
+                cnt = getattr(self, "_print_counter", 0) + 1
+                best = getattr(self, "_best_f", onp.inf)
+                should_print = (cnt % 25 == 0) or (rms < best * 0.999)
+
+                if should_print:
+                    self.res_consola("f(x)", rms)
+                    self.res_consola("x", k)
+                    self._best_f = min(best, rms)
+
+                self._print_counter = cnt
+                try:
+                    wx.Yield()
+                except Exception:
+                    pass
+
+                return rms
+            except Exception:
+                return 1e9
+
+
+
+        def f_m2(k):
+            C = res.concentraciones(k)[0]
+            X = C / H[:, None]
+            dq_cal = project_coeffs_block_onp(dq, X, mask)
+            r_vec  = residual_masked_onp(dq, dq_cal, mask)
+            rms = float(onp.sqrt(onp.mean(r_vec**2)))
+            return rms
+
+
+        # Registrar el tiempo de inicio
+        inicio = timeit.default_timer()
+        
+        optimizer = self.choice_optimizer_settings.GetStringSelection()
+        print(optimizer)
+        print(bnds)
+
+        def verificar_bounds(bounds):
+            """
+            Verifica si los límites contienen np.inf o -np.inf.
+            Retorna True si los límites son válidos, False de lo contrario.
+            """
+            for (min_val, max_val) in bounds:
+                if np.isinf(min_val) or np.isinf(max_val):
+                    return False
+            return True
+
+        # Inicializa r_0 fuera del bloque if-else
+        r_0 = None
+    
+        if optimizer  == "differential_evolution":
+            if verificar_bounds(bnds) == False:
+                # Mostrar un MessageBox en caso de valores infinitos en los límites
+                wx.MessageBox('Los límites no deben contener valores infinitos.', 
+                            'Error en los Límites', wx.OK | wx.ICON_ERROR)
+                # Aquí puedes manejar el error o simplemente retornar para evitar seguir con el procesamiento
+
+            else:
+                self.r_0 = differential_evolution(f_m, bnds, x0 = k, strategy='best1bin', 
+                          maxiter=1000, popsize=15, tol=0.01, 
+                           mutation=(0.5, 1), recombination=0.7,
+                           init='latinhypercube')
+            
+        else:
+            self.r_0 = optimize.minimize(f_m, k, method=optimizer, bounds=bnds)
+
+                    
+        # Registrar el tiempo de finalización
+        fin = timeit.default_timer()
+        
+        # Calcular el tiempo total de ejecución
+        tiempo_total = fin - inicio
+        
+        print("El tiempo de ejecución de la función fue: ", tiempo_total, "segundos.")
+
+        k = self.r_0.x 
+        k = np.ravel(k) 
+
+
+        # Calcular el SER
+        n = len(H)
+        p = len(k)
+        #SER = f_m2(k)
+
+
+        from errors import percent_error_log10K, sensitivities_wrt_logK
+        
+        # --- al inicio del archivo (cabecera) asegúrate de tener:
+
+        # --- residual enmascarado para errores (equivalente 1 bloque) ---
+        def residuals_masked_for_errors(k):
+            C = res.concentraciones(k)[0]          # (n_i × n_abs)
+            X = C / H[:, None]                     # diseño del bloque
+            dq_cal = project_coeffs_block_onp(dq, X, mask)
+            return (dq - dq_cal)[mask].ravel()
+
+
+
+        
+
+        # Chequeo mínimo antes de calcular errores
+        r_test = residuals_masked_for_errors(self.r_0.x)
+        if (r_test.size <= len(self.r_0.x)) or (not onp.isfinite(r_test).all()):
+            self.res_consola("Aviso",
+                "No se pueden calcular errores: Nobs_eff ≤ p o residuales no finitos (roles/columnas).")
+            return  # salir sin calcular errores
+
+
+        metrics = compute_errors_nmr_varpro(
+        k=self.r_0.x, res=res, dq=dq, H=H, modelo=modelo, nas=nas,
+        rcond=1e-10, use_projector=True, mask=mask)
+
+        percK     = metrics["percK"]
+        SE_K      = metrics["SE_K"]
+        rms       = metrics["rms"]
+        covfit    = metrics["covfit"]
+        SE_log10K = metrics["SE_log10K"]
+        coef      = metrics["coef"]
+        J         = metrics["J"]
+        xi        = metrics["xi"]
+                
+
+        SER = f_m(k)
+
+        C, Co = res.concentraciones(k)
+        #self.entry_nc.GetValue()
+                
+        if n_comp == 1:
+            
+            self.figura(H, C, ":o",  "[Species], M", "[H], M", "Perfil de concentraciones")
+
+            C_opt = res.concentraciones(k)[0]
+            X_opt = C_opt / H[:, None]
+            dq_fit = project_coeffs_block_onp(dq, X_opt, mask)   # (npts × nP)
+
+            dq_cal = dq_fit                                      # para tablas/export
+            self.figura2(H, dq, dq_fit, "o", ":", "$\\Delta$\\delta (ppm)", "[H], M", 1, "Ajuste")
+
+
+        else:
+            self.figura(G, C, ":o", "[Species], M", "[G], M", "Perfil de concentraciones")
+
+            C_opt = res.concentraciones(k)[0]
+            X_opt = C_opt / H[:, None]
+            dq_fit = project_coeffs_block_onp(dq, X_opt, mask)   # (npts × nP)
+
+            dq_cal = dq_fit    
+
+            self.figura2(G, dq, cal_delta(k).T, "o", ":", r"$\Delta$$\delta$ (ppm)", "[G], M", 1, "Ajuste")
+        
+            
+
+        MAE = abs(SER / nc)
+        dif_en_ct = round(max(100 - (np.sum(C, 1) * 100 / max(H))), 2)
+
+    
+         ####pasos para imprimir bonito los resultados. 
+        # Función para calcular los anchos máximos necesarios para cada columna
+        def calculate_max_column_widths(headers, data_rows):
+            column_widths = [len(header) for header in headers]
+            for row in data_rows:
+                for i, item in enumerate(row):
+                    # Considerar la longitud del item como cadena
+                    column_widths[i] = max(column_widths[i], len(str(item)))
+            return column_widths
+
+        # Encabezados
+        headers = [
+            "Constant",
+            "log10(K) ± SE(log10K)",
+            "% Error (K, Δ-method)",
+            "RMS",
+            "s² (var. reducida)"
+        ]
+
+        # Filas
+        data = [
+            [
+                f"K{i+1}",
+                f"{k[i]:.2e} ± {SE_log10K[i]:.2e}",   # ± en log10(K)
+                f"{percK[i]:.2f} %",                  # % en K (delta method)
+                f"{rms:.2e}" if i == 0 else "",
+                f"{covfit:.2e}" if i == 0 else "",
+            ]
+            for i in range(len(k))
+        ]
+
+
+        # Calcular los anchos máximos para las columnas
+        max_widths = calculate_max_column_widths(headers, data)
+
+        # Crear la tabla con los anchos ajustados
+        table_lines = []
+
+        # Encabezado
+        header_line = " | ".join(f"{header.ljust(max_widths[i])}" for i, header in enumerate(headers))
+        table_lines.append("-" * len(header_line))
+        table_lines.append(header_line)
+        table_lines.append("-" * len(header_line))
+
+        # Filas de datos
+        for row in data:
+            line = " | ".join(f"{item.ljust(max_widths[i])}" for i, item in enumerate(row))
+            table_lines.append(line)
+
+        # Unir las líneas para formar la tabla
+        adjusted_table = "\n".join(table_lines)
+        print(adjusted_table)
+        ###### Aqui terminan los pasos para la impresión bonita########
+
+        nombres = [f"k{i}" for i in range(1, len(k)+1)]
+        k_nombres = [f"{n}" for n in nombres]
+        
+        K = np.array([k, percK]).T
+        
+        modelo = pd.DataFrame(modelo)
+        C = pd.DataFrame(C)
+        Co = pd.DataFrame(Co)
+        C_T = pd.DataFrame(C_T)
+        dq = pd.DataFrame(dq)
+        dq_cal = pd.DataFrame(dq_cal)
+        k = pd.DataFrame(K, index = [k_nombres])
+        k_ini = pd.DataFrame(k_ini)
+        covfit = covfit
+        coef = pd.DataFrame(coef)
+        
+        stats = onp.array([SER, MAE, dif_en_ct, covfit, optimizer], dtype=object)
+        stats = pd.DataFrame(stats, index= ["RMS", "Error absoluto medio", 
+                                            "Diferencia en C total (%)", 
+                                            "covfit", "optimizer"])
+        
+        # Generar nombres de columnas
+        num_columns_C = len(C.columns)
+        column_names_C = [f"sp_{i}" for i in range(1, num_columns_C + 1)]
+
+        num_columns_Co = len(Co.columns)
+        column_names_Co = [f"sp_{i}" for i in range(1, num_columns_Co + 1)]
+
+        num_columns_dq1 = len(Chem_Shift_T.columns)
+        column_names_dq1 = [f"dobs_{i}" for i in range(1, num_columns_dq1 + 1)]
+
+        num_columns_dq_cal = len(dq_cal.columns)
+        column_names_dq_cal = [f"dcal_{i}" for i in range(1, num_columns_dq_cal + 1)]
+
+        num_columns_coef = len(coef.columns)
+        column_names_coef = [f"coef_{i}" for i in range(1, num_columns_coef + 1)]
+
+        num_columns_ct = len(C_T.columns)
+        column_names_ct = [f"ct_{i}" for i in range(1, num_columns_ct + 1)]
+
+        column_names_k = ["Constants", "Error (%)"]
+
+        column_names_k_ini = ["Constants"]
+
+        column_names_stats = ["Stats"]
+
+        # Asignar nombres de columnas a los DataFrames
+        C.columns = column_names_C
+        Co.columns = column_names_Co
+        dq.columns = column_names_dq1
+        dq_cal.columns = column_names_dq_cal
+        k.columns = column_names_k
+        k_ini.columns = column_names_k_ini
+        stats.columns = column_names_stats
+        C_T.columns = column_names_ct
+        coef.columns = column_names_coef
+
+        self.modelo = modelo
+        self.C = C
+        self.Co = Co
+        self.dq = dq
+        self.dq_cal = dq_cal
+        self.k = k
+        self.k_ini = k_ini
+        self.stats = stats
+        self.C_T = C_T
+        self.coef = coef

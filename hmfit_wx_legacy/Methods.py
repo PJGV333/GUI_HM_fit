@@ -82,8 +82,31 @@ class BaseTechniquePanel(wx.Panel):
 
     # añadir parametros al cuadro de las constantes. Editar los valores por defecto.
     def add_parameter_bounds(self, num_parameters):
-        self.grid.ClearGrid()  # Limpiar el Grid antes de añadir nuevos elementos
+        import wx.grid as gridlib
+
+        if self.grid.GetNumberRows() > 0 and self.grid.GetNumberCols() > 0:
+            self.grid.ClearGrid()  # Limpiar el Grid antes de añadir nuevos elementos
         self.grid.SetRowLabelSize(0)  # Ocultar la columna de números de fila
+
+        # Ensure columns: Parameter, Value, Min, Max, Fixed
+        desired_cols = 5
+        if self.grid.GetNumberCols() < desired_cols:
+            self.grid.AppendCols(desired_cols - self.grid.GetNumberCols())
+        elif self.grid.GetNumberCols() > desired_cols:
+            self.grid.DeleteCols(desired_cols, self.grid.GetNumberCols() - desired_cols)
+
+        self.grid.SetColLabelValue(0, "Parameter")
+        self.grid.SetColLabelValue(1, "Value")
+        self.grid.SetColLabelValue(2, "Min")
+        self.grid.SetColLabelValue(3, "Max")
+        self.grid.SetColLabelValue(4, "Fixed")
+
+        if not getattr(self, "_param_grid_events_bound", False):
+            try:
+                self.grid.Bind(gridlib.EVT_GRID_CELL_CHANGED, self._on_parameter_grid_cell_changed)
+                self._param_grid_events_bound = True
+            except Exception:
+                pass
 
         # Asegurarse de que el Grid tiene suficientes filas
         if self.grid.GetNumberRows() < num_parameters:
@@ -97,6 +120,64 @@ class BaseTechniquePanel(wx.Panel):
             self.grid.SetCellValue(i, 1, "")  # Valor por defecto para "Valor"
             self.grid.SetCellValue(i, 2, "")  # Valor por defecto para "Mín"
             self.grid.SetCellValue(i, 3, "")  # Valor por defecto para "Máx"
+            self.grid.SetCellValue(i, 4, "0")  # Por defecto: no fijo
+            try:
+                self.grid.SetCellEditor(i, 4, gridlib.GridCellBoolEditor())
+                self.grid.SetCellRenderer(i, 4, gridlib.GridCellBoolRenderer())
+            except Exception:
+                pass
+
+            # Ensure bounds cells are editable until fixed is checked.
+            try:
+                self.grid.SetReadOnly(i, 2, False)
+                self.grid.SetReadOnly(i, 3, False)
+            except Exception:
+                pass
+
+    def _on_parameter_grid_cell_changed(self, evt):
+        import wx.grid as gridlib
+
+        try:
+            row = int(evt.GetRow())
+            col = int(evt.GetCol())
+        except Exception:
+            evt.Skip()
+            return
+
+        fixed_col = 4
+        value_col = 1
+        min_col = 2
+        max_col = 3
+
+        if not hasattr(self, "grid") or self.grid.GetNumberCols() <= fixed_col:
+            evt.Skip()
+            return
+
+        fixed_raw = str(self.grid.GetCellValue(row, fixed_col) or "").strip().lower()
+        fixed = fixed_raw in {"1", "true", "yes", "y", "t"}
+
+        # If Fixed toggled or value changed while fixed, keep Min/Max = Value.
+        if col in (fixed_col, value_col) and fixed:
+            val_s = (self.grid.GetCellValue(row, value_col) or "").strip()
+            try:
+                v = float(val_s)
+            except Exception:
+                v = None
+            if v is not None:
+                try:
+                    self.grid.SetCellValue(row, min_col, str(v))
+                    self.grid.SetCellValue(row, max_col, str(v))
+                except Exception:
+                    pass
+
+        # Toggle Min/Max editability.
+        try:
+            self.grid.SetReadOnly(row, min_col, fixed)
+            self.grid.SetReadOnly(row, max_col, fixed)
+        except Exception:
+            pass
+
+        evt.Skip()
  
     # Función para extraer los datos del grid y crear x0 y bonds para el optimizador
 
@@ -450,11 +531,20 @@ class BaseTechniquePanel(wx.Panel):
                 line.get_ydata(),
                 marker=line.get_marker(),
                 color=line.get_color(),
+                label=line.get_label(),
             )
             if line.get_linestyle() is not None:
                 new_line.set_linestyle(line.get_linestyle())
             if line.get_alpha() is not None:
                 new_line.set_alpha(line.get_alpha())
+            try:
+                new_line.set_linewidth(line.get_linewidth())
+            except Exception:
+                pass
+            try:
+                new_line.set_markersize(line.get_markersize())
+            except Exception:
+                pass
 
         # Copy labels/title and basic view settings.
         current_axes.set_xlabel(new_axes.get_xlabel())
@@ -468,6 +558,13 @@ class BaseTechniquePanel(wx.Panel):
         try:
             if not new_axes.axison:
                 current_axes.set_axis_off()
+        except Exception:
+            pass
+
+        # Copy legend (best effort).
+        try:
+            if new_axes.get_legend() is not None:
+                current_axes.legend()
         except Exception:
             pass
 

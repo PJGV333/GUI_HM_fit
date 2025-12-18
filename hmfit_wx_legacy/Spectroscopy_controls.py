@@ -1,44 +1,95 @@
 import wx
-from .Methods import BaseTechniquePanel
 import wx.grid as gridlib
-import numpy as onp  # NumPy “real”, no JAX
-from np_backend import xp as np, jit, jacrev, vmap, lax
-import pandas as pd
-import matplotlib
-matplotlib.use('WXAgg')
-from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
-from matplotlib.figure import Figure
-from scipy import optimize
-from scipy.optimize import differential_evolution
-import matplotlib.pyplot as plt
-import warnings
-warnings.filterwarnings("ignore", category=RuntimeWarning) 
-import warnings
-warnings.filterwarnings("ignore")
-import timeit
-from .Methods import BaseTechniquePanel
 from wx.lib.scrolledpanel import ScrolledPanel
-from errors import compute_errors_spectro_varpro
-from core_ad_probe import solve_A_nnls_pgd
+
+from .Methods import BaseTechniquePanel
+from .plots_tab import PlotsTabPanel
+
+CHANNEL_TOLERANCE = 0.5
 
 
-def pinv_cs(A, rcond=1e-12):
+def _grid_cell_to_bool(value: str) -> bool:
+    s = str(value or "").strip().lower()
+    return s in {"1", "true", "yes", "y", "t"}
+
+
+def _parse_custom_channels(raw: str) -> dict:
     """
-    Pseudoinversa estable (ahora sin complex-step).
-    Thin wrapper sobre np.linalg.pinv con fallback por si SVD no converge.
+    Minimal parser for spectroscopy custom channels.
+
+    Supported:
+    - "300,310,320" -> list of floats
+    - "250-450"     -> range (min,max)
+    - "250-450:5"   -> range (step ignored for now)
     """
-    try:
-        return np.linalg.pinv(A, rcond=rcond)
-    except np.linalg.LinAlgError:
-        # Fallback regularizado tipo ridge
-        ATA = A.T @ A + (rcond if np.isscalar(rcond) else 1e-12) * np.eye(A.shape[1], dtype=A.dtype)
-        return np.linalg.solve(ATA, A.T)
+    text = str(raw or "").strip()
+    if not text:
+        raise ValueError("Custom channels is empty. Example: 250-450 or 300, 310, 320")
+
+    if "," in text:
+        vals = []
+        for part in text.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            vals.append(float(part))
+        if not vals:
+            raise ValueError("No channels parsed. Example: 300, 310, 320")
+        return {"kind": "list", "values": vals, "custom": vals}
+
+    if "-" in text:
+        rng = text.split(":", 1)[0].strip()
+        a_s, b_s = (x.strip() for x in rng.split("-", 1))
+        a = float(a_s)
+        b = float(b_s)
+        lo = min(a, b)
+        hi = max(a, b)
+        return {"kind": "range", "min": lo, "max": hi, "custom": [lo, hi]}
+
+    val = float(text)
+    return {"kind": "list", "values": [val], "custom": [val]}
 
 
-def _solve_A(C, YT, rcond=1e-10):
-    # C: (m×s), YT: (nw×m)  →  A: (s×nw)
-    A, *_ = np.linalg.lstsq(C, YT, rcond=rcond)
-    return A
+def _load_spectroscopy_axis_values(file_path: str, spectra_sheet: str) -> list[float]:
+    import pandas as pd
+
+    df = pd.read_excel(file_path, spectra_sheet, header=0, usecols=[0])
+    axis = pd.to_numeric(df.iloc[:, 0], errors="coerce")
+    axis = axis.loc[axis.notna()].astype(float)
+    return [float(x) for x in axis.to_numpy()]
+
+
+def _resolve_custom_channels(parsed: dict, axis_values: list[float], tol: float = CHANNEL_TOLERANCE) -> list[float]:
+    axis = [float(v) for v in axis_values if v is not None]
+    if not axis:
+        raise ValueError("Axis not available. Select a valid Spectra sheet first.")
+
+    if parsed.get("kind") == "range":
+        lo = float(parsed["min"])
+        hi = float(parsed["max"])
+        selected = [v for v in axis if lo <= v <= hi]
+        if not selected:
+            raise ValueError(f"Range '{lo}-{hi}' matched 0 axis values.")
+        return selected
+
+    targets = list(parsed.get("values") or [])
+    if not targets:
+        raise ValueError("No channels parsed. Example: 300, 310, 320")
+
+    resolved_set: set[float] = set()
+    for target in targets:
+        best = None
+        best_diff = float("inf")
+        for v in axis:
+            d = abs(v - float(target))
+            if d < best_diff:
+                best = v
+                best_diff = d
+        if best is None or best_diff > float(tol):
+            raise ValueError(f"'{target}' is not within tolerance (tol={tol}) of any axis value.")
+        resolved_set.add(best)
+
+    return [v for v in axis if v in resolved_set]
 
 # Clase para la técnica de Espectroscopia
 class Spectroscopy_controlsPanel(BaseTechniquePanel):
@@ -88,6 +139,29 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         # Espectros
         self.sheet_spectra_panel, self.choice_sheet_spectra = self.create_sheet_dropdown_section("Spectra Sheet Name:", self)
         self.left_sizer.Add(self.sheet_spectra_panel, 0, wx.EXPAND | wx.ALL, 5)
+
+        # Channels selector (Tauri-like): All / Custom
+        channels_panel = wx.Panel(self.panel)
+        channels_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        channels_label = wx.StaticText(channels_panel, label="Channels:")
+        channels_sizer.Add(channels_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+
+        self.choice_channels = wx.Choice(channels_panel, choices=["All", "Custom"])
+        self.choice_channels.SetSelection(0)
+        self.choice_channels.SetToolTip("All = use all channels; Custom = select specific channels")
+        channels_sizer.Add(self.choice_channels, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+
+        self.entry_channels_custom = wx.TextCtrl(channels_panel)
+        self.entry_channels_custom.Enable(False)
+        hint = "e.g. 250-450 or 300, 310, 320"
+        if hasattr(self.entry_channels_custom, "SetHint"):
+            self.entry_channels_custom.SetHint(hint)
+        self.entry_channels_custom.SetToolTip(hint)
+        channels_sizer.Add(self.entry_channels_custom, 1, wx.ALL | wx.EXPAND, 5)
+
+        channels_panel.SetSizer(channels_sizer)
+        self.left_sizer.Add(channels_panel, 0, wx.EXPAND | wx.ALL, 5)
+        self.choice_channels.Bind(wx.EVT_CHOICE, self.on_channels_mode_changed)
 
         # Concentraciones
         self.sheet_conc_panel, self.choice_sheet_conc = self.create_sheet_dropdown_section("Concentration Sheet Name:", self)
@@ -153,6 +227,7 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
 
         # Crear el Checkbox para EFA y añadirlo al sizer de la sección "Eigenvalues"
         self.EFA_cb = wx.CheckBox(self.sheet_EV_panel, label='EFA')
+        self._efa_tooltip_default = self.EFA_cb.GetToolTipText() if hasattr(self.EFA_cb, "GetToolTipText") else ""
         self.EFA_cb.SetValue(True)  # Marcar el checkbox por defecto
         self.sheet_EV_panel.GetSizer().Insert(0, self.EFA_cb, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
         self.left_sizer.Add(self.sheet_EV_panel, 0, wx.ALL | wx.EXPAND, 5)
@@ -165,10 +240,13 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         tab_modelo = ScrolledPanel(notebook, style=wx.VSCROLL | wx.TAB_TRAVERSAL)
         tab_modelo.SetupScrolling(scroll_x=False, scroll_y=True, rate_x=0, rate_y=10)
         tab_optimizacion = wx.Panel(notebook)
+        tab_plots = PlotsTabPanel(notebook, technique_panel=self, module_key="spec")
 
         # Añadir los paneles al notebook
         notebook.AddPage(tab_modelo, "Model")
         notebook.AddPage(tab_optimizacion, "Optimization")
+        notebook.AddPage(tab_plots, "Plots")
+        self.plots_tab = tab_plots
 
         # Creación del CheckBox
         self.toggle_components = wx.Button(tab_modelo, label="Define Model Dimensions")
@@ -246,12 +324,13 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
 
         # Crear el Grid
         self.grid = gridlib.Grid(tab_optimizacion)
-        self.grid.CreateGrid(0, 4)
+        self.grid.CreateGrid(0, 5)
         self.grid.SetRowLabelSize(0)
         self.grid.SetColLabelValue(0, "Parameter")
         self.grid.SetColLabelValue(1, "Value")
         self.grid.SetColLabelValue(2, "Min")
         self.grid.SetColLabelValue(3, "Max")
+        self.grid.SetColLabelValue(4, "Fixed")
         self.grid.AutoSizeColumns()
 
         # Sizer principal para la pestaña 'Optimización'
@@ -284,6 +363,33 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         self.Refresh()             # Refresca el frame para mostrar los cambios
         self.Update()
 
+
+    ###############################################################################################
+    def on_channels_mode_changed(self, evt):
+        mode = (self.choice_channels.GetStringSelection() or "All").strip()
+        is_custom = mode.lower() == "custom"
+
+        if hasattr(self, "entry_channels_custom"):
+            self.entry_channels_custom.Enable(bool(is_custom))
+            if not is_custom:
+                self.entry_channels_custom.SetValue("")
+
+        efa_cb = getattr(self, "EFA_cb", None)
+        if efa_cb is not None:
+            if is_custom:
+                if efa_cb.GetValue():
+                    efa_cb.SetValue(False)
+                efa_cb.Enable(False)
+                efa_cb.SetToolTip("EFA requiere espectro completo (Channels=All).")
+            else:
+                efa_cb.Enable(True)
+                if getattr(self, "_efa_tooltip_default", ""):
+                    efa_cb.SetToolTip(self._efa_tooltip_default)
+                else:
+                    efa_cb.SetToolTip("")
+
+        if evt is not None:
+            evt.Skip()
 
     ###############################################################################################
     def _refresh_page_scroller(self):
@@ -371,6 +477,35 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
 
         efa_enabled = bool(getattr(self, "EFA_cb", None) and self.EFA_cb.GetValue())
 
+        # Channels (All / Custom) → backend expects `channels_resolved` (axis values).
+        channels_mode = "all"
+        channels_raw = "All"
+        channels_custom = []
+        channels_resolved = []
+        choice_channels = getattr(self, "choice_channels", None)
+        if choice_channels is not None and (choice_channels.GetStringSelection() or "All").strip().lower() == "custom":
+            channels_mode = "custom"
+            custom_ctrl = getattr(self, "entry_channels_custom", None)
+            channels_raw = (custom_ctrl.GetValue() if custom_ctrl is not None else "").strip()
+            try:
+                parsed = _parse_custom_channels(channels_raw)
+                axis_values = _load_spectroscopy_axis_values(file_path, spectra_sheet)
+                channels_resolved = _resolve_custom_channels(parsed, axis_values)
+                channels_custom = list(parsed.get("custom") or [])
+            except Exception as exc:
+                wx.MessageBox(str(exc), "Channels error", wx.OK | wx.ICON_ERROR)
+                return
+
+            if not channels_resolved:
+                wx.MessageBox("Custom channels matched 0 axis values.", "Channels error", wx.OK | wx.ICON_ERROR)
+                return
+
+            # EFA requires full spectrum; force off when using Custom.
+            if efa_enabled:
+                efa_enabled = False
+                if getattr(self, "EFA_cb", None) is not None:
+                    self.EFA_cb.SetValue(False)
+
         model_grid_data = self.extract_data_from_grid()
         if not model_grid_data:
             wx.MessageBox("Select a sheet model o create one.", "Advertencia", wx.OK | wx.ICON_WARNING)
@@ -413,6 +548,7 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
 
         initial_k = []
         bounds = []
+        fixed_mask = []
         for row in range(n_rows):
             val_s = (self.grid.GetCellValue(row, 1) or "").strip()
             if not val_s:
@@ -423,7 +559,8 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
                 )
                 return
             try:
-                initial_k.append(float(val_s))
+                k_val = float(val_s)
+                initial_k.append(k_val)
             except ValueError:
                 wx.MessageBox(
                     f"Invalid constant value in row {row + 1}.",
@@ -431,6 +568,11 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
                     wx.OK | wx.ICON_ERROR,
                 )
                 return
+
+            fixed = False
+            if self.grid.GetNumberCols() > 4:
+                fixed = _grid_cell_to_bool(self.grid.GetCellValue(row, 4))
+            fixed_mask.append(bool(fixed))
 
             min_s = (self.grid.GetCellValue(row, 2) or "").strip()
             max_s = (self.grid.GetCellValue(row, 3) or "").strip()
@@ -442,6 +584,16 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
                 max_v = float(max_s) if max_s else None
             except ValueError:
                 max_v = None
+
+            if fixed:
+                min_v = k_val
+                max_v = k_val
+                # Keep bounds consistent for optimizers (esp. differential_evolution).
+                try:
+                    self.grid.SetCellValue(row, 2, str(k_val))
+                    self.grid.SetCellValue(row, 3, str(k_val))
+                except Exception:
+                    pass
             bounds.append((min_v, max_v))
 
         config = {
@@ -460,10 +612,13 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
             "optimizer": optimizer,
             "initial_k": initial_k,
             "bounds": bounds,
-            "channels_raw": "All",
-            "channels_mode": "all",
-            "channels_resolved": [],
+            "fixed_mask": fixed_mask,
+            "channels_mode": channels_mode,
+            "channels_custom": channels_custom,
+            "channels_raw": channels_raw,
+            "channels_resolved": channels_resolved,
         }
+        self.last_config = dict(config)
 
         self.last_result = None
         self.figures = []
@@ -477,6 +632,11 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         def on_success(result: dict) -> None:
             try:
                 self.last_result = result
+                if getattr(self, "plots_tab", None) is not None:
+                    try:
+                        self.plots_tab.set_result(result, config=config)
+                    except Exception:
+                        pass
 
                 from hmfit_core.plots import figures_from_graphs
 
@@ -500,7 +660,7 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
 
         def worker() -> None:
             try:
-                from hmfit_core.runners import run_spectroscopy
+                from hmfit_core import run_spectroscopy
 
                 result = run_spectroscopy(config, progress_cb=progress_cb)
                 if isinstance(result, dict) and result.get("error"):
@@ -515,536 +675,3 @@ class Spectroscopy_controlsPanel(BaseTechniquePanel):
         self._worker_thread = threading.Thread(target=worker, daemon=True)
         self._worker_thread.start()
         return
-
-        # Legacy implementation below (kept for reference).
-        # Placeholder for the actual data processing
-        # Would call the functions from the provided script and display output
-        
-        # Verificar si se han seleccionado hojas válidas
-        if not hasattr(self, 'file_path'):
-            wx.MessageBox("No se ha seleccionado un archivo .xlsx", 
-                        "Seleccione un archivo .xlsx para trabajar.", wx.OK | wx.ICON_ERROR)
-            return  # Detener la ejecución de la función
-
-        spec_entry = self.choice_sheet_spectra.GetStringSelection()
-        conc_entry = self.choice_sheet_conc.GetStringSelection()
-
-        # Verificar si se han seleccionado hojas válidas
-        if not spec_entry or not conc_entry:
-            wx.MessageBox("Por favor, seleccione las hojas de Excel correctamente.", 
-                        "Error en selección de hojas", wx.OK | wx.ICON_ERROR)
-            return  # Detener la ejecución de la función
-
-        # Extraer espectros para trabajar
-        spec = pd.read_excel(self.file_path, spec_entry, header=0, index_col=0)
-        nm = spec.index.to_numpy()
-
-        # Extraer datos de esas columnas
-        concentracion = pd.read_excel(self.file_path, conc_entry, header=0)
-
-        nombres_de_columnas = concentracion.columns
-        
-        # Obtener los nombres de las columnas seleccionadas
-        columnas_seleccionadas = [col for col, checkbox in self.vars_columnas.items() if checkbox.IsChecked()]
-
-        if not columnas_seleccionadas:
-            # Si no se ha seleccionado ningún checkbox, mostrar un mensaje de advertencia
-            wx.MessageBox('Por favor, selecciona al menos una casilla para continuar.', 'Advertencia', wx.OK | wx.ICON_WARNING)
-            return  # Salir de la función para no continuar con el procesamiento
-        
-        print("process_data iniciada")
-        
-        #spec = spec.to_numpy(dtype=float) if hasattr(spec, "to_numpy") else onp.asarray(spec, dtype=float)
-        
-        C_T = concentracion[columnas_seleccionadas].to_numpy()
-
-        #C_T = C_T.to_numpy(dtype=float) if hasattr(C_T, "to_numpy") else onp.asarray(C_T, dtype=float)
-
-
-        # Crear un diccionario que mapea nombres de columnas a sus nuevos índices en C_T
-        column_indices_in_C_T = {name: index for index, name in enumerate(columnas_seleccionadas)}
-
-        # Obtener los nombres de las columnas seleccionadas para receptor y huésped
-        receptor_name = self.receptor_choice.GetStringSelection()
-        guest_name = self.guest_choice.GetStringSelection()
-
-        # Usar el diccionario para obtener los índices correctos dentro de C_T
-        receptor_index_in_C_T = column_indices_in_C_T.get(receptor_name, -1)
-        guest_index_in_C_T = column_indices_in_C_T.get(guest_name, -1)
-
-      
-        # Verifica si al menos uno de los índices es diferente de -1
-        if receptor_index_in_C_T != -1 or guest_index_in_C_T != -1:
-            
-            # Si guest_index_in_C_T es válido, asigna la columna correspondiente a G
-            if guest_index_in_C_T != -1:
-                G = C_T[:, guest_index_in_C_T]
-
-            # Si receptor_index_in_C_T es válido, asigna la columna correspondiente a H
-            if receptor_index_in_C_T != -1:
-                H = C_T[:, receptor_index_in_C_T]
-            
-        nc = len(C_T)
-        n_comp = len(C_T.T)
-        nw = len(spec)
-        
-        def SVD_EFA(spec, args = (nc)):
-            u, s, v = onp.linalg.svd(spec, full_matrices=False)
-            
-            #EFA fijo
-            
-            L = range(1,(nc + 1), 1)
-            L2 = range(0, nc, 1)
-            
-            X = []
-            for i in L:
-                uj, sj, vj = onp.linalg.svd(spec.T.iloc[:i,:], full_matrices=False)
-                X.append(sj)
-            
-            ev_s = pd.DataFrame(X)
-            ev_s0 = onp.array(ev_s)
-            
-            X2 = []
-            for i in L2:
-                ui, si, vi = onp.linalg.svd(spec.T.iloc[i:,:], full_matrices=False)
-                X2.append(si)
-            
-            ev_s1 = pd.DataFrame(X2)
-            ev_s10 = np.array(ev_s1) 
-            
-            self.figura(range(0, nc), np.log10(s), "o", "log(EV)", "# de autovalores", "Eigenvalues")      
-            self.figura2(G, np.log10(ev_s0), np.log10(ev_s10), "k-o", "b:o", "log(EV)", "[G], M", 1, "EFA")
-                
-            EV = int(self.entry_EV.GetValue())
-
-            if EV == 0:
-                EV = nc
-
-            print("Eigenvalues used: ", EV)      
-
-            Y = u[:,0:EV] @ np.diag(s[0:EV:]) @ v[0:EV:]
-            #Y_svd = pd.DataFrame(Y, index = [list(nm)])
-            return Y, EV
-        
-        if self.EFA_cb.GetValue():
-            Y, EV = SVD_EFA(spec)
-        else:
-            Y = np.array(spec)
-        
-        C_T = pd.DataFrame(C_T)
-        
-        
-        # Intentar leer desde el archivo Excel
-        grid_data = self.extract_data_from_grid()
-        modelo = np.array(grid_data).T
-        nas = self.on_selection_changed(event)
-
-                    
-        modelo = np.array(modelo)
-
-        if not np.any(modelo):
-            # Si no se ha seleccionado ningún checkbox, mostrar un mensaje de advertencia
-            wx.MessageBox('Select a sheet model o create one.', 'Advertencia', wx.OK | wx.ICON_WARNING)
-            return  # Salir de la función para no continuar con el procesamiento
-
-        work_algo = self.choice_algoritm.GetStringSelection()
-        model_sett = self.choice_model_settings.GetStringSelection() 
-
-        k, bnds = self.extract_constants_from_grid()
-        k_ini = k
-
-        if not np.any(k):
-            # Si no se ha seleccionado ningún checkbox, mostrar un mensaje de advertencia
-            wx.MessageBox('Write an initial estimate for the constants.', 'Advertencia', wx.OK | wx.ICON_WARNING)
-            return  # Salir de la función para no continuar con el procesamiento
-
-        if work_algo == "Newton-Raphson":
-            
-            from NR_conc_algoritm import NewtonRaphson
-
-            res = NewtonRaphson(C_T, modelo, nas, model_sett)
-
-        elif work_algo == "Levenberg-Marquardt": 
-            
-            from LM_conc_algoritm import LevenbergMarquardt
-
-            res = LevenbergMarquardt(C_T, modelo, nas, model_sett) 
-
-
-        # Implementing the abortividades function
-        def abortividades(k, Y):
-            C, Co = res.concentraciones(k)  # Assuming the function concentraciones returns C and Co
-            #A = np.linalg.pinv(C) @ Y.T 
-            A = solve_A_nnls_pgd(C, Y.T, ridge=0.0, max_iters=300)
-            return np.all(A >= 0)
-        
-        def f_m2(k):
-            C = res.concentraciones(k)[0]  
-            A = solve_A_nnls_pgd(C, Y.T, ridge=0.0, max_iters=300)  
-            r = C @ A - Y.T #se cambio np.linag.pinv por np.linalg.pinv
-            rms = np.sqrt(np.mean(np.square(r)))
-            #print(f"f(x): {rms}")
-            #print(f"x: {k}")
-            return rms, r
-            
-        def f_m(k):
-            C = res.concentraciones(k)[0]    
-            A = solve_A_nnls_pgd(C, Y.T, ridge=0.0, max_iters=300)  
-            r = C @ A - Y.T
-            #r = C @ np.linalg.pinv(C) @ Y.T - Y.T 
-            rms = np.sqrt(np.mean(np.square(r)))
-            self.res_consola("f(x)", rms)
-            self.res_consola("x", k)
-            
-            # Procesar eventos de la GUI para actualizar la consola en tiempo real
-            wx.Yield()
-            return rms
-                
-        #bnds = [(-20, 20)]*len(k.T) #Bounds(0, 1e15, keep_feasible=(True)) #
-        
-        # Registrar el tiempo de inicio
-        inicio = timeit.default_timer()
-        
-        optimizer = self.choice_optimizer_settings.GetStringSelection()
-        print(optimizer)
-        print(bnds)
-
-        def verificar_bounds(bounds):
-            """
-            Verifica si los límites contienen np.inf o -np.inf.
-            Retorna True si los límites son válidos, False de lo contrario.
-            """
-            for (min_val, max_val) in bounds:
-                if np.isinf(min_val) or np.isinf(max_val):
-                    return False
-            return True
-    
-        
-        if optimizer  == "differential_evolution":
-            if verificar_bounds(bnds) == False:
-                # Mostrar un MessageBox en caso de valores infinitos en los límites
-                wx.MessageBox('Los límites no deben contener valores infinitos.', 
-                            'Error en los Límites', wx.OK | wx.ICON_ERROR)
-                # Aquí puedes manejar el error o simplemente retornar para evitar seguir con el procesamiento
-
-            else:
-                self.r_0 = differential_evolution(f_m, bnds, x0 = k, strategy='best1bin', 
-                          maxiter=1000, popsize=15, tol=0.01, 
-                           mutation=(0.5, 1), recombination=0.7,
-                           init='latinhypercube')
-            
-        else:
-            self.r_0 = optimize.minimize(f_m, k, method=optimizer, bounds=bnds)
-
-                    
-        # Registrar el tiempo de finalización
-        fin = timeit.default_timer()
-        
-        # Calcular el tiempo total de ejecución
-        tiempo_total = fin - inicio
-        
-        print("El tiempo de ejecución de la función fue: ", tiempo_total, "segundos.")
-        
-        k = self.r_0.x 
-        k = np.ravel(k)
-        
-        
-        from errors import pinv_cs, percent_error_log10K, sensitivities_wrt_logK
-
-        
-        # Calcular la matriz jacobiana de los residuos
-        def residuals(k):
-            C = res.concentraciones(k)[0]
-            A = solve_A_nnls_pgd(C, Y.T, ridge=0.0, max_iters=300)  
-            r = C @ A - Y.T
-            #r = C @ np.linalg.pinv(C) @ Y.T - Y.T 
-            return r.ravel() #r.flatten()
-                
-        # --- al inicio del archivo asegúrate de tener:
-        # from errors import pinv_cs, percent_error_log10K, sensitivities_wrt_logK
-
-        def compute_errors_spectroscopy(k, res, Y, modelo, nas):
-            """
-            Flujo ÚNICO (NR/LM) para errores en Espectroscopia usando sensibilidades implícitas.
-            k      : (p,)    parámetros óptimos (log10 K)
-            res    : solver de concentraciones con .concentraciones(k)
-            Y      : (nw × m) matriz de datos (tal como la usas; su .T es (m × nw))
-            modelo : (nspec×n_comp) o (n_comp×nspec)
-            nas    : lista de índices de especies NO absorbentes
-            Devuelve: dict con percK, SE_K, SE_log10K, Cov_log10K, RMS, s2, A, J, yfit
-            """
-            import numpy as np
-
-            k = np.ravel(k)
-            m = Y.shape[1]                     # nº puntos (m)
-            nw = Y.shape[0]                    # nº "observables" (longitudes de onda)
-            C, Co = res.concentraciones(k)     # C: (m × n_abs), Co: (m × nspec)
-
-            # Resolver A en el óptimo (mínimos cuadrados)
-            def _solve_A(C, YT, rcond=1e-10):
-                A, *_ = np.linalg.lstsq(C, YT, rcond=rcond)   # (n_abs × nw)
-                return A
-
-            A = _solve_A(C, Y.T)               # (n_abs × nw)
-
-            npts, n_abs = C.shape
-            p = len(k)
-            nspec = Co.shape[1]
-
-            # Normalizar orientación de 'modelo' y deducir n_comp
-            M_in = np.asarray(modelo, dtype=float)
-            if M_in.shape[0] == nspec:
-                Ms = M_in                      # (nspec × n_comp)
-                n_comp = Ms.shape[1]
-            elif M_in.shape[1] == nspec:
-                Ms = M_in.T                    # (nspec × n_comp)
-                n_comp = Ms.shape[1]
-            else:
-                raise ValueError(f"modelo incompatible con Co: nspec={nspec}, modelo shape={M_in.shape}")
-
-            # Índices de especies absorbentes (para pasar de Co -> C)
-            abs_idx = [j for j in range(nspec) if j not in nas]
-
-            # Mapeo parámetros -> columnas de especies (estándar: COMPLEJOS = n_comp..nspec-1)
-            param_idx = list(range(n_comp, nspec))
-            if len(param_idx) != p:
-                if p <= nspec:
-                    param_idx = list(range(nspec - p, nspec))  # fallback consistente con p
-                else:
-                    raise ValueError(f"p={p} mayor que nspec={nspec}.")
-
-            # Construir Jacobiano de residuos J (p × m*nw)
-            J = np.zeros((p, npts * nw), dtype=float)
-
-            for i in range(npts):
-                # dCspec/dlog10K (nspec × p) en la fila i
-                dC_dlog10K = sensitivities_wrt_logK(Co[i], Ms, param_idx=param_idx)   # (nspec × p)
-
-                # Sólo especies absorbentes
-                dC_abs = dC_dlog10K[abs_idx, :]       # (n_abs × p)
-
-                # y_i = C_i @ A  ⇒ dy_i/dlogK = (dC_abs)^T @ A  (p × nw)
-                dyi_dk = (dC_abs.T @ A)               # (p × nw)
-
-                # residuo: r_i = (C_i @ A) - Y_i  ⇒ dr_i/dlogK = dy_i/dlogK
-                # Si prefieres r = Y_i - (C_i@A), usa el signo opuesto; la covarianza no cambia.
-                J[:, i*nw:(i+1)*nw] = dyi_dk
-
-            # Residuos y métricas
-            yfit = C @ A                               # (m × nw)
-            r = (yfit - Y.T).ravel()                   # (m*nw,)
-            dof = max(r.size - p, 1)
-            s2  = float((r @ r) / dof)
-            Cov_log10K = s2 * pinv_cs(J @ J.T)         # (p × p)
-            SE_log10K  = np.sqrt(np.clip(np.diag(Cov_log10K), 0.0, np.inf))
-            percK, SE_K, _ = percent_error_log10K(k, SE_log10K)
-
-            RMS = float(np.sqrt(np.mean(r*r)))
-
-            return {
-                "percK": percK, "SE_K": SE_K, "SE_log10K": SE_log10K, "Cov_log10K": Cov_log10K,
-                "RMS": RMS, "s2": s2, "A": A, "J": J, "yfit": yfit
-            }
-
-        metrics = compute_errors_spectro_varpro(
-        k=self.r_0.x, res=res, Y=Y, modelo=modelo, nas=nas,
-        rcond=1e-10, use_projector=True
-        )
-        SE_log10K = metrics["SE_log10K"]
-        SE_K      = metrics["SE_K"]
-        percK     = metrics["percK"]
-        rms       = metrics["RMS"]
-        covfit    = metrics["s2"]
-        A         = metrics["A"]
-        yfit      = metrics["yfit"]
-        cov_matrix= metrics["Cov_log10K"]
-
-
-        C, Co = res.concentraciones(k)
-        
-
-        if n_comp == 1:
-            self.figura(H, C, ":o", "[Especies], M", "[H], M", "Perfil de concentraciones")
-
-            y_cal = C @ np.linalg.pinv(C) @ Y.T
-                            
-            ssq, r0 = f_m2(k)
-            #rms = f_m(k)
-            
-            A = solve_A_nnls_pgd(C, Y.T, ridge=0.0, max_iters=300)  
-
-            self.figura(nm, A.T, "-", "Epsilon (u. a.)", r"$\lambda$ (nm)", "Absortividades molares")
-            self.figura2(nm, Y, y_cal.T, "-k", "k:", "Y observada (u. a.)", r"$\lambda$ (nm)", 0.5, "Ajuste")
-            
-        else:
-            self.figura(G, C, ":o", "[Species], M", "[G], M", "Perfil de concentraciones")
-                    
-            y_cal = C @ np.linalg.pinv(C) @ Y.T
-                            
-            ssq, r0 = f_m2(k)
-            #rms = f_m(k)
-            
-            A = solve_A_nnls_pgd(C, Y.T, ridge=0.0, max_iters=300) 
-            
-            if not self.EFA_cb.GetValue():
-                self.figura2(G, Y.T, y_cal, "ko", ":", "Y observada (u. a.)", "[X], M", 1, "Ajuste")
-            else:
-                self.figura(nm, A.T, "-", "Epsilon (u. a.)", r"$\lambda$ (nm)", "Absortividades molares")
-                self.figura2(nm, Y, y_cal.T, "-k", "k:", "Y observada (u. a.)", r"$\lambda$ (nm)", 0.5, "Ajuste")   
-
-                
-        ssq, r0 = f_m2(k)
-        
-        # Lack of fit (porcentaje)
-        # Definido como 100 * SS_res / SS_tot, donde:
-        #   SS_res = sum(r^2) y SS_tot = sum( (Y - mean(Y))^2 )
-        Yvec = Y.T  # mismo arreglo que usamos para r0
-        SS_res = float(np.sum(r0**2))
-        SS_tot = float(np.sum((Yvec - np.mean(Yvec))**2))
-        
-        if SS_tot <= 1e-30:    # evita división por cero si no hay varianza
-            lof = 0.0
-        else:
-            lof = 100.0 * SS_res / SS_tot
-            
-        MAE = np.mean(abs(r0))
-        dif_en_ct = round(max(100 - (np.sum(C, 1) * 100 / max(H))), 2)
-        
-        # Lack of fit (%)
-        Yvec = Y.T
-        SS_res = float(np.sum(r0**2))
-        SS_tot = float(np.sum((Yvec - np.mean(Yvec))**2))
-        lof = 0.0 if SS_tot <= 1e-30 else 100.0 * SS_res / SS_tot
-        
-        dif_en_ct = round(max(100 - (np.sum(C, 1) * 100 / max(H))), 2)
-            
-            
-        ####pasos para imprimir bonito los resultados. 
-        # Función para calcular los anchos máximos necesarios para cada columna
-        def calculate_max_column_widths(headers, data_rows):
-            column_widths = [len(header) for header in headers]
-            for row in data_rows:
-                for i, item in enumerate(row):
-                    # Considerar la longitud del item como cadena
-                    column_widths[i] = max(column_widths[i], len(str(item)))
-            return column_widths
-
-        def fmt(x, pat): 
-            return "—" if not np.isfinite(x) else pat.format(x)
-
-        # Encabezados
-        headers = [
-            "Constant",
-            "log10(K) ± SE(log10K)",
-            "% Error (K, Δ-method)",
-            "RMS",
-            "lof",
-            "s² (var. reducida)"
-        ]
-
-        # Filas
-        data = [
-            [
-                f"K{i+1}",
-                f"{k[i]:.2e} ± {SE_log10K[i]:.2e}",   # ± en log10(K)
-                f"{percK[i]:.2f} %",                  # % en K (delta method)
-                f"{rms:.2e}" if i == 0 else "",
-                f"{lof:.2e}" if i == 0 else "",
-                f"{covfit:.2e}" if i == 0 else "",
-            ]
-            for i in range(len(k))
-        ]
-
-
-        # Calcular los anchos máximos para las columnas
-        max_widths = calculate_max_column_widths(headers, data)
-
-        # Crear la tabla con los anchos ajustados
-        table_lines = []
-
-        # Encabezado
-        header_line = " | ".join(f"{header.ljust(max_widths[i])}" for i, header in enumerate(headers))
-        table_lines.append("-" * len(header_line))
-        table_lines.append(header_line)
-        table_lines.append("-" * len(header_line))
-
-        # Filas de datos
-        for row in data:
-            line = " | ".join(f"{item.ljust(max_widths[i])}" for i, item in enumerate(row))
-            table_lines.append(line)
-
-        # Unir las líneas para formar la tabla
-        adjusted_table = "\n".join(table_lines)
-        print(adjusted_table)
-        ###### Aqui terminan los pasos para la impresión bonita
-
-        nombres = [f"k{i}" for i in range(1, len(k)+1)]
-        k_nombres = [f"{n}" for n in nombres]
-        
-        K = np.array([k, percK]).T
-        
-        Y = pd.DataFrame(Y, index = [list(nm)])
-        modelo = pd.DataFrame(modelo)
-        C = pd.DataFrame(C)
-        Co = pd.DataFrame(Co)
-        k = pd.DataFrame(K, index = [k_nombres])
-        k_ini = pd.DataFrame(k_ini.T, index = [k_nombres])
-        A = pd.DataFrame(A.T, index = [list(nm)])
-        phi = pd.DataFrame(y_cal.T, index = [list(nm)])
-        cov_matrix = covfit
-        
-        if not self.EFA_cb.GetValue():
-            EV = nc
-            
-        stats = onp.array([rms, lof, MAE, dif_en_ct, EV, cov_matrix, optimizer], dtype=object)
-        stats = pd.DataFrame(stats, index= ["RMS", "Falta de ajuste (%)",\
-                                            "Error absoluto medio", "Diferencia en C total (%)", "# Autovalores", "covfit", "optimizer"])
-        
-        # Generar nombres de columnas
-        num_columns_C = len(C.columns)
-        column_names_C = [f"sp_{i}" for i in range(1, num_columns_C + 1)]
-        
-        num_columns_Co = len(Co.columns)
-        column_names_Co = [f"sp_{i}" for i in range(1, num_columns_Co + 1)]
-        
-        num_columns_yobs = len(Y.columns)
-        column_names_yobs = [f"yobs_{i}" for i in range(1, num_columns_yobs + 1)]
-        
-        num_columns_ycal = len(phi.columns)
-        column_names_ycal = [f"ycal_{i}" for i in range(1, num_columns_ycal + 1)]
-        
-        num_columns_A = len(A.columns)
-        column_names_A = [f"A_{i}" for i in range(1, num_columns_A + 1)]
-        
-        num_columns_ct = len(C_T.columns)
-        column_names_ct = [f"ct_{i}" for i in range(1, num_columns_ct + 1)]
-        
-        column_names_k = ["Constants", "Error (%)"]
-        column_names_k_ini = ["Constants"]
-        
-        column_names_stats = ["Stats"]
-        
-        # Asignar nombres de columnas a los DataFrames
-        C.columns = column_names_C
-        Co.columns = column_names_Co
-        Y.columns = column_names_yobs
-        phi.columns = column_names_ycal
-        A.columns = column_names_A
-        k.columns = column_names_k
-        k_ini.columns = column_names_k_ini
-        stats.columns = column_names_stats
-        C_T.columns = column_names_ct
-
-        self.modelo = modelo
-        self.C = C
-        self.Co = Co
-        self.Y = Y
-        self.phi = phi
-        self.A = A
-        self.k = k
-        self.k_ini = k_ini
-        self.stats = stats
-        self.C_T = C_T
-
-
-        
