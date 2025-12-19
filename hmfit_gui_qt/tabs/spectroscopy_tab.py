@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -11,11 +9,9 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFileDialog,
-    QFormLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMessageBox,
@@ -23,20 +19,16 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSpinBox,
     QSplitter,
-    QTableWidget,
-    QTableWidgetItem,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
 from hmfit_core.api import run_spectroscopy_fit
-from hmfit_gui_qt.widgets.file_selectors import FileSelector
+from hmfit_core.exports import write_results_xlsx
 from hmfit_gui_qt.widgets.log_console import LogConsole
+from hmfit_gui_qt.widgets.model_opt_plots import ModelOptPlotsState, ModelOptPlotsWidget
 from hmfit_gui_qt.widgets.mpl_canvas import MplCanvas, NavigationToolbar
 from hmfit_gui_qt.workers.fit_worker import FitWorker
-
-CHANNEL_TOLERANCE = 0.5
 
 
 def _list_excel_sheets(file_path: str) -> list[str]:
@@ -53,811 +45,548 @@ def _list_excel_columns(file_path: str, sheet_name: str) -> list[str]:
     return [str(c) for c in df.columns]
 
 
-def _list_spectroscopy_spectra_columns(file_path: str, spectra_sheet: str) -> tuple[str, list[str]]:
-    columns = _list_excel_columns(file_path, spectra_sheet)
-    if not columns:
-        return "", []
-    axis_col = str(columns[0])
-    return axis_col, [str(c) for c in columns[1:]]
-
-
-def _write_filtered_spectroscopy_workbook(
-    *,
-    src_path: str,
-    dst_path: str,
-    spectra_sheet: str,
-    conc_sheet: str,
-    selected_spectra_columns: list[str],
-) -> None:
+def _list_spectroscopy_axis_values(file_path: str, sheet_name: str) -> list[float]:
     import pandas as pd
 
-    if spectra_sheet == conc_sheet:
-        raise ValueError("Spectra sheet and concentration sheet must be different.")
-
-    spec_df = pd.read_excel(src_path, sheet_name=spectra_sheet, header=0)
-    if int(spec_df.shape[1]) < 2:
-        raise ValueError("Spectra sheet must have at least 2 columns (axis + ≥1 spectrum).")
-
-    axis_col = spec_df.columns[0]
-    available_cols = [str(c) for c in spec_df.columns[1:]]
-    available_set = set(available_cols)
-    missing = [c for c in selected_spectra_columns if str(c) not in available_set]
-    if missing:
-        raise ValueError(f"Selected spectra columns not found in sheet '{spectra_sheet}': {missing}")
-
-    selected_set = {str(c) for c in selected_spectra_columns}
-    keep_cols = [axis_col] + [c for c in spec_df.columns[1:] if str(c) in selected_set]
-    if len(keep_cols) < 2:
-        raise ValueError("Select at least one spectra column.")
-
-    selected_indices = [i for i, c in enumerate(spec_df.columns[1:]) if str(c) in selected_set]
-
-    conc_df = pd.read_excel(src_path, sheet_name=conc_sheet, header=0)
-    expected_rows = int(len(spec_df.columns) - 1)
-    if int(len(conc_df)) != expected_rows:
-        raise ValueError(
-            f"Cannot map selected spectra columns to concentration rows: "
-            f"spectra columns={expected_rows}, conc rows={int(len(conc_df))}."
-        )
-
-    conc_filtered = conc_df.iloc[selected_indices].reset_index(drop=True)
-    spec_filtered = spec_df.loc[:, keep_cols]
-
-    out_dir = Path(dst_path).expanduser().resolve().parent
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    with pd.ExcelWriter(dst_path, engine="openpyxl") as writer:
-        spec_filtered.to_excel(writer, sheet_name=spectra_sheet, index=False)
-        conc_filtered.to_excel(writer, sheet_name=conc_sheet, index=False)
-
-
-def _run_spectroscopy_fit_with_selection(
-    config: dict[str, Any],
-    *,
-    progress_cb=None,
-    cancel=None,
-) -> dict[str, Any]:
-    from hmfit_core.api import FitCancelled
-
-    cfg = dict(config)
-    selected_spectra_columns = list(cfg.pop("spectra_columns", []) or [])
-
-    temp_path: str | None = None
-    try:
-        if cancel is not None and cancel():
-            raise FitCancelled("Fit cancelled.")
-
-        file_path = str(cfg.get("file_path") or "")
-        spectra_sheet = str(cfg.get("spectra_sheet") or "")
-        conc_sheet = str(cfg.get("conc_sheet") or "")
-        if selected_spectra_columns:
-            _, available = _list_spectroscopy_spectra_columns(file_path, spectra_sheet)
-            if selected_spectra_columns != available:
-                if progress_cb is not None:
-                    progress_cb("Preparing filtered workbook (selected spectra columns)…")
-                fd, temp_path = tempfile.mkstemp(prefix="hmfit_spec_", suffix=".xlsx")
-                os.close(fd)
-                if cancel is not None and cancel():
-                    raise FitCancelled("Fit cancelled.")
-                _write_filtered_spectroscopy_workbook(
-                    src_path=file_path,
-                    dst_path=temp_path,
-                    spectra_sheet=spectra_sheet,
-                    conc_sheet=conc_sheet,
-                    selected_spectra_columns=selected_spectra_columns,
-                )
-                if cancel is not None and cancel():
-                    raise FitCancelled("Fit cancelled.")
-                cfg["file_path"] = temp_path
-
-        return run_spectroscopy_fit(cfg, progress_cb=progress_cb, cancel=cancel)
-    finally:
-        if temp_path:
-            try:
-                os.remove(temp_path)
-            except OSError:
-                pass
-
-
-def _parse_custom_channels(raw: str) -> dict[str, Any]:
-    text = str(raw or "").strip()
-    if not text:
-        raise ValueError("Custom channels is empty. Example: 250-450 or 300, 310, 320")
-
-    if "," in text:
-        vals: list[float] = []
-        for part in text.split(","):
-            part = part.strip()
-            if not part:
-                continue
-            vals.append(float(part))
-        if not vals:
-            raise ValueError("No channels parsed. Example: 300, 310, 320")
-        return {"kind": "list", "values": vals, "custom": vals}
-
-    if "-" in text:
-        rng = text.split(":", 1)[0].strip()
-        a_s, b_s = (x.strip() for x in rng.split("-", 1))
-        a = float(a_s)
-        b = float(b_s)
-        lo = min(a, b)
-        hi = max(a, b)
-        return {"kind": "range", "min": lo, "max": hi, "custom": [lo, hi]}
-
-    val = float(text)
-    return {"kind": "list", "values": [val], "custom": [val]}
-
-
-def _load_spectroscopy_axis_values(file_path: str, spectra_sheet: str) -> list[float]:
-    import pandas as pd
-
-    df = pd.read_excel(file_path, spectra_sheet, header=0, usecols=[0])
+    df = pd.read_excel(file_path, sheet_name=sheet_name, header=0, usecols=[0])
     axis = pd.to_numeric(df.iloc[:, 0], errors="coerce")
     axis = axis.loc[axis.notna()].astype(float)
     return [float(x) for x in axis.to_numpy()]
 
 
-def _resolve_custom_channels(parsed: dict[str, Any], axis_values: list[float], tol: float = CHANNEL_TOLERANCE) -> list[float]:
-    axis = [float(v) for v in axis_values if v is not None]
-    if not axis:
-        raise ValueError("Axis not available. Select a valid Spectra sheet first.")
-
-    if parsed.get("kind") == "range":
-        lo = float(parsed["min"])
-        hi = float(parsed["max"])
-        selected = [v for v in axis if lo <= v <= hi]
-        if not selected:
-            raise ValueError(f"Range '{lo}-{hi}' matched 0 axis values.")
-        return selected
-
-    targets = list(parsed.get("values") or [])
-    if not targets:
-        raise ValueError("No channels parsed. Example: 300, 310, 320")
-
-    resolved_set: set[float] = set()
-    for target in targets:
-        best = None
-        best_diff = float("inf")
-        for v in axis:
-            d = abs(v - float(target))
-            if d < best_diff:
-                best = v
-                best_diff = d
-        if best is None or best_diff > float(tol):
-            raise ValueError(f"'{target}' is not within tolerance (tol={tol}) of any axis value.")
-        resolved_set.add(best)
-
-    return [v for v in axis if v in resolved_set]
-
-
-def _ensure_float_or_none(text: str) -> float | None:
-    s = str(text or "").strip()
-    if not s:
-        return None
+def _format_axis_val(v: float) -> str:
     try:
-        return float(s)
-    except ValueError:
-        return None
+        x = float(v)
+    except Exception:
+        return str(v)
+    rounded = round(x)
+    if abs(x - rounded) < 1e-9:
+        return str(int(rounded))
+    return str(x)
 
 
 class SpectroscopyTab(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-
         self._worker: FitWorker | None = None
         self._last_result: dict[str, Any] | None = None
+        self._axis_values: list[float] = []
+        self._file_path: str = ""
+        self._is_running = False
 
         self._build_ui()
+        self._set_running(False)
 
+    # ---- UI ----
     def _build_ui(self) -> None:
         outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
 
-        self._vertical_split = QSplitter(Qt.Orientation.Vertical, self)
-        outer.addWidget(self._vertical_split)
+        self._main_split = QSplitter(Qt.Orientation.Horizontal, self)
+        outer.addWidget(self._main_split, 1)
 
-        top = QWidget(self._vertical_split)
-        top_layout = QVBoxLayout(top)
-        top_layout.setContentsMargins(0, 0, 0, 0)
+        # ----- Left panel (scrollable) -----
+        left_scroll = QScrollArea(self._main_split)
+        left_scroll.setWidgetResizable(True)
+        left_container = QWidget(left_scroll)
+        left_scroll.setWidget(left_container)
+        left_layout = QVBoxLayout(left_container)
 
-        self._horizontal_split = QSplitter(Qt.Orientation.Horizontal, top)
-        top_layout.addWidget(self._horizontal_split)
+        self._data_group = QGroupBox("DATA / INPUT", left_container)
+        data_layout = QVBoxLayout(self._data_group)
 
-        controls_scroll = QScrollArea(self._horizontal_split)
-        controls_scroll.setWidgetResizable(True)
-        controls_container = QWidget(controls_scroll)
-        self._controls_container = controls_container
-        controls_scroll.setWidget(controls_container)
-        self._controls_layout = QVBoxLayout(controls_container)
+        # Select Excel File
+        data_layout.addWidget(QLabel("Select Excel File", self._data_group))
+        file_row = QHBoxLayout()
+        self.btn_choose_file = QPushButton("Choose File…", self._data_group)
+        self.btn_choose_file.clicked.connect(self._on_choose_file_clicked)
+        file_row.addWidget(self.btn_choose_file)
+        self.lbl_file_status = QLabel("No file selected", self._data_group)
+        self.lbl_file_status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        file_row.addWidget(self.lbl_file_status, 1)
+        data_layout.addLayout(file_row)
 
-        self._build_controls()
+        # Sheet dropdowns
+        sheets_row = QHBoxLayout()
+        self.combo_spectra_sheet = QComboBox(self._data_group)
+        self.combo_conc_sheet = QComboBox(self._data_group)
+        self.combo_spectra_sheet.currentIndexChanged.connect(self._on_spectra_sheet_changed)
+        self.combo_conc_sheet.currentIndexChanged.connect(self._on_conc_sheet_changed)
 
-        plot_container = QWidget(self._horizontal_split)
-        plot_layout = QVBoxLayout(plot_container)
-        plot_layout.setContentsMargins(0, 0, 0, 0)
+        spec_box = QVBoxLayout()
+        spec_box.addWidget(QLabel("Spectra Sheet Name", self._data_group))
+        spec_box.addWidget(self.combo_spectra_sheet)
+        conc_box = QVBoxLayout()
+        conc_box.addWidget(QLabel("Concentration Sheet Name", self._data_group))
+        conc_box.addWidget(self.combo_conc_sheet)
+        sheets_row.addLayout(spec_box, 1)
+        sheets_row.addLayout(conc_box, 1)
+        data_layout.addLayout(sheets_row)
 
-        plot_top = QHBoxLayout()
-        plot_top.addWidget(QLabel("Plot:", plot_container))
-        self.plot_selector = QComboBox(plot_container)
-        self.plot_selector.currentIndexChanged.connect(self._on_plot_selection_changed)
-        plot_top.addWidget(self.plot_selector, 1)
-        plot_layout.addLayout(plot_top)
+        # Channels (All / Custom)
+        data_layout.addWidget(QLabel("Channels", self._data_group))
+        channels_top = QHBoxLayout()
+        self.combo_channels_mode = QComboBox(self._data_group)
+        self.combo_channels_mode.addItem("All", "all")
+        self.combo_channels_mode.addItem("Custom", "custom")
+        self.combo_channels_mode.currentIndexChanged.connect(self._on_channels_mode_changed)
+        channels_top.addWidget(self.combo_channels_mode)
+        self.lbl_channels_usage = QLabel("", self._data_group)
+        channels_top.addWidget(self.lbl_channels_usage, 1)
+        data_layout.addLayout(channels_top)
 
-        self.canvas = MplCanvas(plot_container)
-        plot_layout.addWidget(self.canvas, 1)
-        plot_layout.addWidget(NavigationToolbar(self.canvas, plot_container))
+        self._channels_custom_box = QWidget(self._data_group)
+        channels_custom_layout = QVBoxLayout(self._channels_custom_box)
+        channels_custom_layout.setContentsMargins(0, 0, 0, 0)
+        self.list_channels = QListWidget(self._channels_custom_box)
+        self.list_channels.itemChanged.connect(self._on_channels_selection_changed)
+        self.list_channels.setMinimumHeight(120)
+        channels_custom_layout.addWidget(self.list_channels, 1)
+        ch_btns = QHBoxLayout()
+        self.btn_channels_all = QPushButton("Select all", self._channels_custom_box)
+        self.btn_channels_all.clicked.connect(lambda: self._set_list_checked(self.list_channels, True))
+        ch_btns.addWidget(self.btn_channels_all)
+        self.btn_channels_none = QPushButton("Select none", self._channels_custom_box)
+        self.btn_channels_none.clicked.connect(lambda: self._set_list_checked(self.list_channels, False))
+        ch_btns.addWidget(self.btn_channels_none)
+        ch_btns.addStretch(1)
+        channels_custom_layout.addLayout(ch_btns)
+        data_layout.addWidget(self._channels_custom_box)
 
-        self._horizontal_split.setStretchFactor(0, 0)
-        self._horizontal_split.setStretchFactor(1, 1)
+        # Column names (concentration columns)
+        data_layout.addWidget(QLabel("Column names", self._data_group))
+        self._columns_scroll = QScrollArea(self._data_group)
+        self._columns_scroll.setWidgetResizable(True)
+        self._columns_widget = QWidget(self._columns_scroll)
+        self._columns_layout = QVBoxLayout(self._columns_widget)
+        self._columns_layout.setContentsMargins(0, 0, 0, 0)
+        self._columns_scroll.setWidget(self._columns_widget)
+        self._columns_scroll.setMinimumHeight(90)
+        data_layout.addWidget(self._columns_scroll)
 
-        log_container = QWidget(self._vertical_split)
-        log_layout = QVBoxLayout(log_container)
-        log_layout.setContentsMargins(0, 0, 0, 0)
-        log_top = QHBoxLayout()
-        log_top.addWidget(QLabel("Log:", log_container))
-        log_top.addStretch(1)
-        self.btn_clear_log = QPushButton("Clear", log_container)
-        self.btn_clear_log.clicked.connect(self._on_clear_log_clicked)
-        log_top.addWidget(self.btn_clear_log)
-        log_layout.addLayout(log_top)
+        # EFA
+        efa_row = QHBoxLayout()
+        efa_row.addWidget(QLabel("EFA Eigenvalues", self._data_group))
+        self.chk_efa = QCheckBox("EFA", self._data_group)
+        self.chk_efa.setChecked(True)
+        efa_row.addWidget(self.chk_efa)
+        self.spin_efa_eigen = QSpinBox(self._data_group)
+        self.spin_efa_eigen.setRange(0, 999)
+        self.spin_efa_eigen.setValue(0)
+        efa_row.addWidget(self.spin_efa_eigen)
+        efa_row.addStretch(1)
+        data_layout.addLayout(efa_row)
 
-        self.log = LogConsole(log_container)
-        log_layout.addWidget(self.log, 1)
+        left_layout.addWidget(self._data_group)
 
-        self._vertical_split.addWidget(top)
-        self._vertical_split.addWidget(log_container)
-        self._vertical_split.setStretchFactor(0, 3)
-        self._vertical_split.setStretchFactor(1, 1)
+        # Sub-tabs: Model / Optimization / Plots
+        self.model_opt_plots = ModelOptPlotsWidget(left_container)
+        self.model_opt_plots.model_defined.connect(self._on_model_defined)
+        left_layout.addWidget(self.model_opt_plots, 1)
 
-    def _build_controls(self) -> None:
-        data_group = QGroupBox("Data", self._controls_container)
-        self._data_group = data_group
-        data_form = QFormLayout(data_group)
+        # Actions row (Tauri-like)
+        actions_group = QGroupBox("", left_container)
+        actions_layout = QHBoxLayout(actions_group)
+        actions_layout.setContentsMargins(6, 6, 6, 6)
 
-        self.file_selector = FileSelector("Excel file", parent=data_group)
-        data_form.addRow(self.file_selector)
-        self.file_selector.path_changed.connect(self._on_file_path_changed)
+        self.btn_backend = QPushButton("Probar backend", actions_group)
+        self.btn_backend.setEnabled(False)
+        self.btn_backend.setToolTip("N/A en Qt (GUI usa hmfit_core local).")
+        actions_layout.addWidget(self.btn_backend)
 
-        self.btn_load_sheets = QPushButton("Reload sheets", data_group)
-        self.btn_load_sheets.clicked.connect(self._load_sheets)
-        data_form.addRow(self.btn_load_sheets)
-
-        self.spectra_sheet = QComboBox(data_group)
-        self.spectra_sheet.currentIndexChanged.connect(self._on_spectra_sheet_changed)
-        data_form.addRow("Spectra sheet", self.spectra_sheet)
-
-        self.conc_sheet = QComboBox(data_group)
-        self.conc_sheet.currentIndexChanged.connect(self._on_conc_sheet_changed)
-        data_form.addRow("Conc sheet", self.conc_sheet)
-
-        self.btn_load_columns = QPushButton("Reload columns", data_group)
-        self.btn_load_columns.clicked.connect(self._load_conc_columns)
-        data_form.addRow(self.btn_load_columns)
-
-        self.axis_info = QLabel("", data_group)
-        data_form.addRow("Axis (nm)", self.axis_info)
-
-        self.spectra_columns = QListWidget(data_group)
-        self.spectra_columns.setMinimumHeight(120)
-        self.spectra_columns.itemChanged.connect(lambda _item: None)
-        spectra_box = QWidget(data_group)
-        spectra_box_layout = QVBoxLayout(spectra_box)
-        spectra_box_layout.setContentsMargins(0, 0, 0, 0)
-        spectra_box_layout.addWidget(self.spectra_columns, 1)
-        spectra_btns = QHBoxLayout()
-        self.btn_spectra_all = QPushButton("Select all", spectra_box)
-        self.btn_spectra_all.clicked.connect(lambda: self._set_list_checked(self.spectra_columns, True))
-        spectra_btns.addWidget(self.btn_spectra_all)
-        self.btn_spectra_none = QPushButton("Select none", spectra_box)
-        self.btn_spectra_none.clicked.connect(lambda: self._set_list_checked(self.spectra_columns, False))
-        spectra_btns.addWidget(self.btn_spectra_none)
-        spectra_box_layout.addLayout(spectra_btns)
-        data_form.addRow("Spectra columns", spectra_box)
-
-        self.conc_columns = QListWidget(data_group)
-        self.conc_columns.setMinimumHeight(120)
-        self.conc_columns.itemChanged.connect(self._on_conc_columns_changed)
-        conc_box = QWidget(data_group)
-        conc_box_layout = QVBoxLayout(conc_box)
-        conc_box_layout.setContentsMargins(0, 0, 0, 0)
-        conc_box_layout.addWidget(self.conc_columns, 1)
-        conc_btns = QHBoxLayout()
-        self.btn_conc_all = QPushButton("Select all", conc_box)
-        self.btn_conc_all.clicked.connect(lambda: self._set_list_checked(self.conc_columns, True))
-        conc_btns.addWidget(self.btn_conc_all)
-        self.btn_conc_none = QPushButton("Select none", conc_box)
-        self.btn_conc_none.clicked.connect(lambda: self._set_list_checked(self.conc_columns, False))
-        conc_btns.addWidget(self.btn_conc_none)
-        conc_box_layout.addLayout(conc_btns)
-        data_form.addRow("Conc columns", conc_box)
-
-        self.receptor_label = QComboBox(data_group)
-        data_form.addRow("Receptor label", self.receptor_label)
-
-        self.guest_label = QComboBox(data_group)
-        data_form.addRow("Guest label", self.guest_label)
-
-        self.efa_enabled = QCheckBox("Enable EFA", data_group)
-        data_form.addRow(self.efa_enabled)
-        self.efa_eigenvalues = QSpinBox(data_group)
-        self.efa_eigenvalues.setRange(0, 999)
-        data_form.addRow("EFA eigenvalues", self.efa_eigenvalues)
-
-        self.channels_mode = QComboBox(data_group)
-        self.channels_mode.addItems(["all", "custom"])
-        data_form.addRow("Channels mode", self.channels_mode)
-        self.channels_custom = QLineEdit(data_group)
-        self.channels_custom.setPlaceholderText("e.g. 250-450 or 300,310,320")
-        data_form.addRow("Custom channels", self.channels_custom)
-
-        self._controls_layout.addWidget(data_group)
-
-        model_group = QGroupBox("Model", self._controls_container)
-        self._model_group = model_group
-        model_form = QFormLayout(model_group)
-        self.model_preset = QComboBox(model_group)
-        self.model_preset.addItems(["(custom)", "1:1", "1:2", "1:3", "2:1"])
-        self.model_preset.currentIndexChanged.connect(self._apply_model_preset)
-        model_form.addRow("Preset", self.model_preset)
-
-        self.model_matrix = QTextEdit(model_group)
-        self.model_matrix.setPlaceholderText('e.g. [[1,0,1],[0,1,1]]  # rows=components, cols=species')
-        self.model_matrix.setMinimumHeight(90)
-        model_form.addRow("Model matrix", self.model_matrix)
-
-        self.non_abs_species = QLineEdit(model_group)
-        self.non_abs_species.setPlaceholderText("comma-separated species indices, e.g. 0,2")
-        model_form.addRow("Non-abs species", self.non_abs_species)
-
-        self._controls_layout.addWidget(model_group)
-
-        opt_group = QGroupBox("Optimization", self._controls_container)
-        self._opt_group = opt_group
-        opt_layout = QVBoxLayout(opt_group)
-        opt_form = QFormLayout()
-
-        self.algorithm = QComboBox(opt_group)
-        self.algorithm.addItems(["Newton-Raphson", "Levenberg-Marquardt"])
-        opt_form.addRow("Algorithm", self.algorithm)
-
-        self.model_settings = QComboBox(opt_group)
-        self.model_settings.addItems(["Free", "Step by step", "Non-cooperative"])
-        opt_form.addRow("Model settings", self.model_settings)
-
-        self.optimizer = QComboBox(opt_group)
-        self.optimizer.addItems(
-            [
-                "powell",
-                "nelder-mead",
-                "trust-constr",
-                "cg",
-                "bfgs",
-                "l-bfgs-b",
-                "tnc",
-                "cobyla",
-                "slsqp",
-                "differential_evolution",
-            ]
-        )
-        opt_form.addRow("Optimizer", self.optimizer)
-        opt_layout.addLayout(opt_form)
-
-        self.params_table = QTableWidget(0, 5, opt_group)
-        self.params_table.setHorizontalHeaderLabels(["Parameter", "Value", "Min", "Max", "Fixed"])
-        self.params_table.setMinimumHeight(160)
-        opt_layout.addWidget(self.params_table, 1)
-
-        params_buttons = QHBoxLayout()
-        self.btn_add_param = QPushButton("Add K", opt_group)
-        self.btn_add_param.clicked.connect(lambda: self._add_param_row())
-        params_buttons.addWidget(self.btn_add_param)
-        self.btn_remove_param = QPushButton("Remove K", opt_group)
-        self.btn_remove_param.clicked.connect(self._remove_selected_param_rows)
-        params_buttons.addWidget(self.btn_remove_param)
-        params_buttons.addStretch(1)
-        opt_layout.addLayout(params_buttons)
-
-        self._controls_layout.addWidget(opt_group)
-
-        actions_group = QGroupBox("Actions", self._controls_container)
-        self._actions_group = actions_group
-        actions_layout = QVBoxLayout(actions_group)
-
-        btn_row = QHBoxLayout()
-        self.btn_run = QPushButton("Run fit", actions_group)
-        self.btn_run.clicked.connect(self._on_run_clicked)
-        btn_row.addWidget(self.btn_run)
-        self.btn_cancel = QPushButton("Cancel", actions_group)
-        self.btn_cancel.clicked.connect(self._on_cancel_clicked)
-        self.btn_cancel.setEnabled(False)
-        btn_row.addWidget(self.btn_cancel)
-        actions_layout.addLayout(btn_row)
-
-        io_row = QHBoxLayout()
-        self.btn_import = QPushButton("Import config…", actions_group)
+        self.btn_import = QPushButton("Import Config", actions_group)
         self.btn_import.clicked.connect(self._on_import_clicked)
-        io_row.addWidget(self.btn_import)
-        self.btn_export = QPushButton("Export config…", actions_group)
-        self.btn_export.clicked.connect(self._on_export_clicked)
-        io_row.addWidget(self.btn_export)
-        actions_layout.addLayout(io_row)
+        actions_layout.addWidget(self.btn_import)
 
-        self.btn_reset = QPushButton("Reset tab", actions_group)
+        self.btn_export = QPushButton("Export Config", actions_group)
+        self.btn_export.clicked.connect(self._on_export_clicked)
+        actions_layout.addWidget(self.btn_export)
+
+        actions_layout.addStretch(1)
+
+        self.btn_reset = QPushButton("Reset Calculation", actions_group)
         self.btn_reset.clicked.connect(self.reset_tab)
         actions_layout.addWidget(self.btn_reset)
 
-        self._controls_layout.addWidget(actions_group)
-        self._controls_layout.addStretch(1)
+        self.btn_process = QPushButton("Process Data", actions_group)
+        self.btn_process.clicked.connect(self._on_process_clicked)
+        actions_layout.addWidget(self.btn_process)
 
-    def _on_file_path_changed(self, _path: str) -> None:
-        file_path = self.file_selector.path()
-        if not file_path:
-            self._clear_data_selections()
+        self.btn_cancel = QPushButton("Cancel", actions_group)
+        self.btn_cancel.clicked.connect(self._on_cancel_clicked)
+        self.btn_cancel.setEnabled(False)
+        actions_layout.addWidget(self.btn_cancel)
+
+        self.btn_save = QPushButton("Save results", actions_group)
+        self.btn_save.clicked.connect(self._on_save_results_clicked)
+        self.btn_save.setEnabled(False)
+        actions_layout.addWidget(self.btn_save)
+
+        left_layout.addWidget(actions_group)
+
+        # ----- Right panel: main plot + diagnostics -----
+        right_split = QSplitter(Qt.Orientation.Vertical, self._main_split)
+
+        main_plot_panel = QWidget(right_split)
+        main_plot_layout = QVBoxLayout(main_plot_panel)
+        main_plot_layout.setContentsMargins(0, 0, 0, 0)
+        main_plot_layout.addWidget(QLabel("Main spectra / titration plot", main_plot_panel))
+        self.canvas_main = MplCanvas(main_plot_panel)
+        main_plot_layout.addWidget(self.canvas_main, 1)
+        main_plot_layout.addWidget(NavigationToolbar(self.canvas_main, main_plot_panel))
+
+        diag_panel = QWidget(right_split)
+        diag_layout = QVBoxLayout(diag_panel)
+        diag_layout.setContentsMargins(0, 0, 0, 0)
+        diag_header = QHBoxLayout()
+        diag_header.addWidget(QLabel("Residuals / component spectra / diagnostics", diag_panel))
+        diag_header.addStretch(1)
+        self.btn_clear_log = QPushButton("Clear log", diag_panel)
+        self.btn_clear_log.clicked.connect(lambda: self.log.clear())
+        diag_header.addWidget(self.btn_clear_log)
+        diag_layout.addLayout(diag_header)
+
+        self.canvas_diag = MplCanvas(diag_panel)
+        diag_layout.addWidget(self.canvas_diag, 1)
+        diag_layout.addWidget(NavigationToolbar(self.canvas_diag, diag_panel))
+
+        self.log = LogConsole(diag_panel)
+        diag_layout.addWidget(self.log, 1)
+
+        right_split.setStretchFactor(0, 3)
+        right_split.setStretchFactor(1, 2)
+
+        self._main_split.setStretchFactor(0, 0)
+        self._main_split.setStretchFactor(1, 1)
+
+        self._apply_channels_mode_ui()
+
+    # ---- Excel / Data selection ----
+    def _on_choose_file_clicked(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, "Select Excel file", "", "Excel (*.xlsx)")
+        if not path:
             return
-        path = Path(file_path)
+        self._set_file_path(path)
+
+    def _set_file_path(self, file_path: str) -> None:
+        path = Path(str(file_path or ""))
         if not path.exists():
+            QMessageBox.warning(self, "Missing file", f"Excel file not found:\n{path}")
             return
         if path.suffix.lower() != ".xlsx":
             QMessageBox.warning(self, "Unsupported file", "Only .xlsx files are supported.")
             return
+
+        self._file_path = str(path)
+        self.lbl_file_status.setText(self._file_path)
         self._load_sheets()
 
-    def _clear_data_selections(self) -> None:
-        self.spectra_sheet.blockSignals(True)
-        self.conc_sheet.blockSignals(True)
-        self.spectra_sheet.clear()
-        self.conc_sheet.clear()
-        self.spectra_sheet.blockSignals(False)
-        self.conc_sheet.blockSignals(False)
-
-        self.axis_info.setText("")
-        self.spectra_columns.clear()
-        self.conc_columns.clear()
-        self.receptor_label.clear()
-        self.guest_label.clear()
-
-    def _on_spectra_sheet_changed(self, _index: int) -> None:
-        self._load_spectra_columns()
-
-    def _on_conc_sheet_changed(self, _index: int) -> None:
-        self._load_conc_columns()
-
-    def _set_list_checked(self, widget: QListWidget, checked: bool) -> None:
-        widget.blockSignals(True)
-        state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
-        for i in range(widget.count()):
-            item = widget.item(i)
-            if item is not None:
-                item.setCheckState(state)
-        widget.blockSignals(False)
-        if widget is self.conc_columns:
-            self._sync_role_combos_from_conc_selection()
-
-    def _checked_texts(self, widget: QListWidget) -> list[str]:
-        out: list[str] = []
-        for i in range(widget.count()):
-            item = widget.item(i)
-            if item is not None and item.checkState() == Qt.CheckState.Checked:
-                out.append(str(item.text()))
-        return out
-
-    def _on_conc_columns_changed(self, _item: QListWidgetItem) -> None:
-        self._sync_role_combos_from_conc_selection()
-
-    def _sync_role_combos_from_conc_selection(self) -> None:
-        selected = self._checked_texts(self.conc_columns)
-        prev_receptor = self.receptor_label.currentText()
-        prev_guest = self.guest_label.currentText()
-
-        self.receptor_label.blockSignals(True)
-        self.guest_label.blockSignals(True)
-        self.receptor_label.clear()
-        self.guest_label.clear()
-        self.receptor_label.addItems(selected)
-        self.guest_label.addItems(selected)
-        self.receptor_label.blockSignals(False)
-        self.guest_label.blockSignals(False)
-
-        def _restore(combo: QComboBox, value: str) -> None:
-            ix = combo.findText(value)
-            if ix >= 0:
-                combo.setCurrentIndex(ix)
-
-        _restore(self.receptor_label, prev_receptor)
-        _restore(self.guest_label, prev_guest)
-
-    def _apply_model_preset(self) -> None:
-        preset = self.model_preset.currentText()
-        if preset == "(custom)":
-            return
-
-        if preset == "1:1":
-            matrix = [[1, 0, 1], [0, 1, 1]]
-        elif preset == "1:2":
-            matrix = [[1, 0, 1, 1], [0, 1, 1, 2]]
-        elif preset == "1:3":
-            matrix = [[1, 0, 1, 1, 1], [0, 1, 1, 2, 3]]
-        elif preset == "2:1":
-            matrix = [[1, 0, 2], [0, 1, 1]]
-        else:
-            return
-
-        self.model_matrix.setPlainText(json.dumps(matrix))
-        n_complex = max(0, len(matrix[0]) - len(matrix))
-        self._set_param_row_count(n_complex)
-
-    def _set_param_row_count(self, n: int) -> None:
-        n = max(0, int(n))
-        current = self.params_table.rowCount()
-        if current == n:
-            return
-        if current < n:
-            for _ in range(n - current):
-                self._add_param_row()
-        else:
-            for row in reversed(range(n, current)):
-                self.params_table.removeRow(row)
-
-    def _add_param_row(self) -> None:
-        row = self.params_table.rowCount()
-        self.params_table.insertRow(row)
-        name_item = QTableWidgetItem(f"K{row + 1}")
-        name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        self.params_table.setItem(row, 0, name_item)
-        for col in (1, 2, 3):
-            self.params_table.setItem(row, col, QTableWidgetItem(""))
-        fixed_item = QTableWidgetItem("")
-        fixed_item.setFlags(fixed_item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-        fixed_item.setCheckState(Qt.CheckState.Unchecked)
-        self.params_table.setItem(row, 4, fixed_item)
-
-    def _remove_selected_param_rows(self) -> None:
-        rows = sorted({idx.row() for idx in self.params_table.selectedIndexes()}, reverse=True)
-        for row in rows:
-            self.params_table.removeRow(row)
-        for row in range(self.params_table.rowCount()):
-            it = self.params_table.item(row, 0)
-            if it is not None:
-                it.setText(f"K{row + 1}")
-
     def _load_sheets(self) -> None:
-        file_path = self.file_selector.path()
-        if not file_path:
-            QMessageBox.warning(self, "Missing file", "Select an Excel file first.")
+        if not self._file_path:
             return
         try:
-            sheets = _list_excel_sheets(file_path)
+            sheets = _list_excel_sheets(self._file_path)
         except Exception as exc:
             QMessageBox.critical(self, "Excel error", str(exc))
             return
 
         sheets_with_blank = [""] + sheets
-        self.spectra_sheet.blockSignals(True)
-        self.conc_sheet.blockSignals(True)
-        self.spectra_sheet.clear()
-        self.spectra_sheet.addItems(sheets_with_blank)
-        self.spectra_sheet.setCurrentIndex(0)
-        self.conc_sheet.clear()
-        self.conc_sheet.addItems(sheets_with_blank)
-        self.conc_sheet.setCurrentIndex(0)
-        self.spectra_sheet.blockSignals(False)
-        self.conc_sheet.blockSignals(False)
+        self.combo_spectra_sheet.blockSignals(True)
+        self.combo_conc_sheet.blockSignals(True)
+        self.combo_spectra_sheet.clear()
+        self.combo_conc_sheet.clear()
+        self.combo_spectra_sheet.addItems(sheets_with_blank)
+        self.combo_conc_sheet.addItems(sheets_with_blank)
+        self.combo_spectra_sheet.setCurrentIndex(0)
+        self.combo_conc_sheet.setCurrentIndex(0)
+        self.combo_spectra_sheet.blockSignals(False)
+        self.combo_conc_sheet.blockSignals(False)
 
-        self.axis_info.setText("")
-        self.spectra_columns.clear()
-        self.conc_columns.clear()
-        self.receptor_label.clear()
-        self.guest_label.clear()
+        self._axis_values = []
+        self._populate_channels_list([])
+        self._clear_conc_columns()
 
-    def _load_spectra_columns(self) -> None:
-        file_path = self.file_selector.path()
-        spectra_sheet = self.spectra_sheet.currentText().strip()
-        if not file_path or not spectra_sheet:
-            self.axis_info.setText("")
-            self.spectra_columns.clear()
+    def _on_spectra_sheet_changed(self) -> None:
+        sheet = self.combo_spectra_sheet.currentText().strip()
+        if not self._file_path or not sheet:
+            self._axis_values = []
+            self._populate_channels_list([])
+            self._update_channels_usage()
             return
         try:
-            axis_col, spectra_cols = _list_spectroscopy_spectra_columns(file_path, spectra_sheet)
+            axis = _list_spectroscopy_axis_values(self._file_path, sheet)
         except Exception as exc:
             QMessageBox.critical(self, "Excel error", str(exc))
+            self._axis_values = []
+            self._populate_channels_list([])
+            self._update_channels_usage()
             return
+        self._axis_values = axis
+        self._populate_channels_list(axis)
+        self._update_channels_usage()
 
-        self.axis_info.setText(axis_col or "")
-        self.spectra_columns.blockSignals(True)
-        self.spectra_columns.clear()
-        for c in spectra_cols:
-            item = QListWidgetItem(str(c), self.spectra_columns)
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            item.setCheckState(Qt.CheckState.Checked)
-        self.spectra_columns.blockSignals(False)
-
-    def _load_conc_columns(self) -> None:
-        file_path = self.file_selector.path()
-        conc_sheet = self.conc_sheet.currentText().strip()
-        if not file_path or not conc_sheet:
-            self.conc_columns.clear()
-            self.receptor_label.clear()
-            self.guest_label.clear()
+    def _on_conc_sheet_changed(self) -> None:
+        sheet = self.combo_conc_sheet.currentText().strip()
+        if not self._file_path or not sheet:
+            self._clear_conc_columns()
             return
         try:
-            cols = _list_excel_columns(file_path, conc_sheet)
+            cols = _list_excel_columns(self._file_path, sheet)
         except Exception as exc:
             QMessageBox.critical(self, "Excel error", str(exc))
+            self._clear_conc_columns()
+            return
+        self._populate_conc_columns(cols)
+
+    def _clear_conc_columns(self) -> None:
+        while self._columns_layout.count():
+            item = self._columns_layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        self.model_opt_plots.set_available_conc_columns([])
+
+    def _populate_conc_columns(self, columns: list[str]) -> None:
+        self._clear_conc_columns()
+        if not columns:
+            self._columns_layout.addWidget(QLabel("Select a concentration sheet to load columns…", self._columns_widget))
             return
 
-        self.conc_columns.blockSignals(True)
-        self.conc_columns.clear()
-        for c in cols:
-            item = QListWidgetItem(str(c), self.conc_columns)
+        from PySide6.QtWidgets import QCheckBox
+
+        for col in columns:
+            cb = QCheckBox(str(col), self._columns_widget)
+            cb.setChecked(True)  # match Tauri default (all enabled if no selection)
+            cb.toggled.connect(self._on_conc_columns_toggled)
+            self._columns_layout.addWidget(cb)
+
+        self._columns_layout.addStretch(1)
+        self._on_conc_columns_toggled()
+
+    def _on_conc_columns_toggled(self) -> None:
+        selected = self._selected_conc_columns()
+        self.model_opt_plots.set_available_conc_columns(selected)
+
+    def _selected_conc_columns(self) -> list[str]:
+        from PySide6.QtWidgets import QCheckBox
+
+        selected: list[str] = []
+        for i in range(self._columns_layout.count()):
+            w = self._columns_layout.itemAt(i).widget()
+            if isinstance(w, QCheckBox) and w.isChecked():
+                selected.append(str(w.text()))
+        return selected
+
+    # ---- Channels ----
+    def _on_channels_mode_changed(self) -> None:
+        self._apply_channels_mode_ui()
+
+    def _apply_channels_mode_ui(self) -> None:
+        mode = str(self.combo_channels_mode.currentData() or "all")
+        is_custom = mode == "custom"
+        self._channels_custom_box.setVisible(is_custom)
+
+        # EFA requires full spectrum
+        if is_custom:
+            if self.chk_efa.isChecked():
+                self.chk_efa.setChecked(False)
+            self.chk_efa.setEnabled(False)
+            self.chk_efa.setToolTip("EFA requiere espectro completo (Channels=All).")
+        else:
+            self.chk_efa.setEnabled(True)
+            self.chk_efa.setToolTip("")
+
+        self._update_channels_usage()
+
+    def _populate_channels_list(self, axis_values: list[float]) -> None:
+        self.list_channels.blockSignals(True)
+        self.list_channels.clear()
+        for v in axis_values:
+            item = QListWidgetItem(_format_axis_val(v), self.list_channels)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Unchecked)
-        self.conc_columns.blockSignals(False)
+            item.setData(Qt.ItemDataRole.UserRole, float(v))
+        self.list_channels.blockSignals(False)
 
-        self._sync_role_combos_from_conc_selection()
+    def _set_list_checked(self, widget: QListWidget, checked: bool) -> None:
+        widget.blockSignals(True)
+        state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+        for i in range(widget.count()):
+            it = widget.item(i)
+            if it is not None:
+                it.setCheckState(state)
+        widget.blockSignals(False)
+        self._update_channels_usage()
 
-    def _collect_config(self) -> dict[str, Any]:
-        file_path = self.file_selector.path()
-        if not file_path:
-            raise ValueError("Missing Excel file.")
+    def _on_channels_selection_changed(self, _item: QListWidgetItem) -> None:
+        self._update_channels_usage()
 
-        spectra_sheet = self.spectra_sheet.currentText().strip()
-        conc_sheet = self.conc_sheet.currentText().strip()
-        if not spectra_sheet or not conc_sheet:
-            raise ValueError("Select spectra and conc sheets.")
+    def _selected_channels(self) -> list[float]:
+        out: list[float] = []
+        for i in range(self.list_channels.count()):
+            it = self.list_channels.item(i)
+            if it is None:
+                continue
+            if it.checkState() == Qt.CheckState.Checked:
+                try:
+                    out.append(float(it.data(Qt.ItemDataRole.UserRole)))
+                except Exception:
+                    continue
+        return out
 
-        spectra_columns = self._checked_texts(self.spectra_columns)
-        if not spectra_columns:
-            raise ValueError("Select at least one spectra column.")
+    def _update_channels_usage(self) -> None:
+        total = len(self._axis_values)
+        mode = str(self.combo_channels_mode.currentData() or "all")
+        if mode == "all":
+            self.lbl_channels_usage.setText(f"Using {total} / {total} channels" if total else "")
+        else:
+            used = len(self._selected_channels())
+            self.lbl_channels_usage.setText(f"Using {used} / {total} channels" if total else "")
 
-        column_names: list[str] = []
-        for i in range(self.conc_columns.count()):
-            item = self.conc_columns.item(i)
-            if item is not None and item.checkState() == Qt.CheckState.Checked:
-                column_names.append(str(item.text()))
-        if not column_names:
-            raise ValueError("Select at least one concentration column.")
+    # ---- Model / Optimization sync ----
+    def _on_model_defined(self, _n_components: int, _n_species: int) -> None:
+        # Parameter grid is already updated inside ModelOptPlotsWidget.
+        pass
 
-        receptor_label = self.receptor_label.currentText().strip()
-        guest_label = self.guest_label.currentText().strip()
-        if not receptor_label or not guest_label:
-            raise ValueError("Select receptor and guest labels.")
-        if receptor_label == guest_label:
-            raise ValueError("Receptor and guest cannot be the same column.")
-        if receptor_label not in column_names or guest_label not in column_names:
-            raise ValueError("Receptor/guest must be selected among checked concentration columns.")
-
-        channels_mode = (self.channels_mode.currentText() or "all").strip().lower()
-        channels_raw = "All" if channels_mode == "all" else self.channels_custom.text().strip()
-        channels_resolved: list[float] = []
-        if channels_mode == "custom":
-            parsed = _parse_custom_channels(channels_raw)
-            axis_values = _load_spectroscopy_axis_values(file_path, spectra_sheet)
-            channels_resolved = _resolve_custom_channels(parsed, axis_values)
-            if not channels_resolved:
-                raise ValueError("Custom channels matched 0 axis values.")
-
-        model_text = self.model_matrix.toPlainText().strip()
-        if not model_text:
-            raise ValueError("Model matrix is empty.")
-        try:
-            modelo = json.loads(model_text)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"Invalid model matrix JSON: {exc}") from exc
-
-        non_abs_species: list[int] = []
-        raw_nas = self.non_abs_species.text().strip()
-        if raw_nas:
-            try:
-                non_abs_species = [int(x.strip()) for x in raw_nas.split(",") if x.strip()]
-            except ValueError as exc:
-                raise ValueError("Non-abs species must be comma-separated integers.") from exc
-
-        initial_k: list[float] = []
-        bounds: list[list[float | None]] = []
-        for row in range(self.params_table.rowCount()):
-            v_item = self.params_table.item(row, 1)
-            val_s = (v_item.text() if v_item is not None else "").strip()
-            if not val_s:
-                raise ValueError(f"Missing initial value for K{row + 1}.")
-            try:
-                k_val = float(val_s)
-            except ValueError as exc:
-                raise ValueError(f"Invalid value for K{row + 1}.") from exc
-
-            fixed_item = self.params_table.item(row, 4)
-            fixed = fixed_item is not None and fixed_item.checkState() == Qt.CheckState.Checked
-
-            min_item = self.params_table.item(row, 2)
-            max_item = self.params_table.item(row, 3)
-            min_v = _ensure_float_or_none(min_item.text() if min_item is not None else "")
-            max_v = _ensure_float_or_none(max_item.text() if max_item is not None else "")
-
-            if fixed:
-                min_v = k_val
-                max_v = k_val
-
-            initial_k.append(k_val)
-            bounds.append([min_v, max_v])
-
-        return {
-            "file_path": file_path,
-            "spectra_sheet": spectra_sheet,
-            "conc_sheet": conc_sheet,
-            "spectra_columns": spectra_columns,
-            "column_names": column_names,
-            "receptor_label": receptor_label,
-            "guest_label": guest_label,
-            "efa_enabled": bool(self.efa_enabled.isChecked()),
-            "efa_eigenvalues": int(self.efa_eigenvalues.value()),
-            "modelo": modelo,
-            "non_abs_species": non_abs_species,
-            "algorithm": self.algorithm.currentText() or "Newton-Raphson",
-            "model_settings": self.model_settings.currentText() or "Free",
-            "optimizer": self.optimizer.currentText() or "powell",
-            "initial_k": initial_k,
-            "bounds": bounds,
-            "channels_raw": channels_raw,
-            "channels_mode": channels_mode,
-            "channels_resolved": channels_resolved,
-        }
-
+    # ---- Run / Cancel / Results ----
     def _set_running(self, running: bool) -> None:
-        self._data_group.setEnabled(not running)
-        self._model_group.setEnabled(not running)
-        self._opt_group.setEnabled(not running)
-        self.btn_run.setEnabled(not running)
+        self._is_running = bool(running)
+        self.btn_process.setEnabled(not running)
+        self.btn_choose_file.setEnabled(not running)
+        self.combo_spectra_sheet.setEnabled(not running)
+        self.combo_conc_sheet.setEnabled(not running)
+        self.combo_channels_mode.setEnabled(not running)
+        self.list_channels.setEnabled(not running)
+        self.btn_channels_all.setEnabled(not running)
+        self.btn_channels_none.setEnabled(not running)
+        self.chk_efa.setEnabled(not running)
+        self.spin_efa_eigen.setEnabled(not running)
+        self.model_opt_plots.setEnabled(not running)
         self.btn_import.setEnabled(not running)
         self.btn_export.setEnabled(not running)
         self.btn_reset.setEnabled(not running)
         self.btn_cancel.setEnabled(running)
+        self.btn_save.setEnabled(bool(self._last_result) and bool(self._last_result.get("success", True)) and not running)
 
-    def _on_run_clicked(self) -> None:
+        self.btn_process.setText("Processing..." if running else "Process Data")
+        if not running:
+            # Restore EFA enable/disable according to Channels mode.
+            self._apply_channels_mode_ui()
+
+    def _collect_config(self) -> dict[str, Any]:
+        if not self._file_path:
+            raise ValueError("No Excel file selected.")
+
+        spectra_sheet = self.combo_spectra_sheet.currentText().strip()
+        conc_sheet = self.combo_conc_sheet.currentText().strip()
+        if not spectra_sheet or not conc_sheet:
+            raise ValueError("Select Spectra and Concentration sheets.")
+
+        column_names = self._selected_conc_columns()
+        if not column_names:
+            raise ValueError("Select at least one concentration column in 'Column names'.")
+
+        channels_mode = str(self.combo_channels_mode.currentData() or "all")
+        channels_raw = "All" if channels_mode == "all" else "Custom"
+        channels_custom: list[float] = []
+        channels_resolved: list[float] = []
+        if channels_mode == "custom":
+            channels_resolved = self._selected_channels()
+            channels_custom = list(channels_resolved)
+            if not channels_resolved:
+                raise ValueError("Channels=Custom requires selecting at least one channel.")
+
+        # EFA must be off for Custom channels (wx/Tauri behavior)
+        efa_enabled = bool(self.chk_efa.isChecked()) and channels_mode == "all"
+        efa_eigenvalues = int(self.spin_efa_eigen.value())
+
+        state = self.model_opt_plots.collect_state()
+        receptor_label = state.receptor_label
+        guest_label = state.guest_label
+        if not receptor_label or not guest_label:
+            raise ValueError("Select Receptor and Guest roles (or keep Auto with valid column names).")
+        if receptor_label == guest_label:
+            raise ValueError("Receptor and Guest cannot be the same column.")
+
+        config = {
+            "file_path": self._file_path,
+            "spectra_sheet": spectra_sheet,
+            "conc_sheet": conc_sheet,
+            "column_names": column_names,
+            "receptor_label": receptor_label,
+            "guest_label": guest_label,
+            "efa_enabled": efa_enabled,
+            "efa_eigenvalues": efa_eigenvalues,
+            "modelo": state.modelo,
+            "non_abs_species": state.non_abs_species,
+            "algorithm": state.algorithm,
+            "model_settings": state.model_settings,
+            "optimizer": state.optimizer,
+            "initial_k": state.initial_k,
+            "bounds": state.bounds,
+            "fixed_mask": state.fixed_mask,
+            "channels_mode": channels_mode,
+            "channels_custom": channels_custom,
+            "channels_raw": channels_raw,
+            "channels_resolved": channels_resolved,
+        }
+        return config
+
+    def _on_process_clicked(self) -> None:
         if self._worker is not None:
-            QMessageBox.warning(self, "Busy", "A fit is already running.")
+            QMessageBox.warning(self, "Busy", "A fit is already running. Cancel it first.")
             return
         try:
             config = self._collect_config()
         except Exception as exc:
+            self.log.append_text(f"ERROR: {exc}")
             QMessageBox.warning(self, "Config error", str(exc))
             return
 
-        self.log.append_text("Starting spectroscopy fit…")
-        self._set_running(True)
+        self.log.append_text("Starting Spectroscopy processing…")
+        self._last_result = None
+        self.btn_save.setEnabled(False)
+        self.canvas_main.clear()
+        self.canvas_diag.clear()
 
-        worker = FitWorker(_run_spectroscopy_fit_with_selection, config=config, parent=self)
-        self._worker = worker
-        worker.progress.connect(lambda msg: self.log.append_text(str(msg).rstrip()))
-        worker.result.connect(self._on_fit_result)
-        worker.error.connect(self._on_fit_error)
-        worker.finished.connect(self._on_fit_finished)
-        worker.start()
+        self._worker = FitWorker(run_spectroscopy_fit, config=config, parent=self)
+        self._worker.progress.connect(lambda msg: self.log.append_text(str(msg)))
+        self._worker.result.connect(self._on_fit_result)
+        self._worker.error.connect(self._on_fit_error)
+        self._worker.finished.connect(self._on_fit_finished)
+        self._set_running(True)
+        self._worker.start()
 
     def _on_cancel_clicked(self) -> None:
-        if self._worker is not None:
-            self._worker.request_cancel()
-            self.log.append_text("Cancellation requested…")
+        if self._worker is None:
+            return
+        self._worker.request_cancel()
+        self.log.append_text("Cancel requested…")
 
     def _on_fit_result(self, result: object) -> None:
         if not isinstance(result, dict):
-            self.log.append_text("Unexpected result type.")
             return
         self._last_result = result
+        self.btn_save.setEnabled(bool(result.get("success", True)))
 
-        graphs = (result.get("graphs") or result.get("legacy_graphs") or {}) if isinstance(result, dict) else {}
-        self.plot_selector.blockSignals(True)
-        self.plot_selector.clear()
-        self.plot_selector.addItems([str(k) for k in graphs.keys()])
-        self.plot_selector.blockSignals(False)
-        if self.plot_selector.count() > 0:
-            self.plot_selector.setCurrentIndex(0)
-            self._render_selected_plot()
-        else:
-            self.canvas.clear()
+        graphs = result.get("legacy_graphs") or result.get("graphs") or {}
+        if isinstance(graphs, dict):
+            if graphs.get("fit"):
+                self.canvas_main.show_image_base64(str(graphs["fit"]), title="fit")
+            else:
+                # Fallback: show first available graph.
+                for k, v in graphs.items():
+                    if v:
+                        self.canvas_main.show_image_base64(str(v), title=str(k))
+                        break
+
+            diag_key = "absorptivities" if "absorptivities" in graphs else "concentrations"
+            if graphs.get(diag_key):
+                self.canvas_diag.show_image_base64(str(graphs[diag_key]), title=diag_key)
 
         results_text = result.get("results_text") or ""
         if results_text:
-            self.log.append_text("")
-            self.log.append_text(str(results_text).rstrip())
-            self.log.append_text("")
+            self.log.append_text("\n" + str(results_text).rstrip() + "\n")
 
     def _on_fit_error(self, message: str) -> None:
         self.log.append_text(f"ERROR: {message}")
@@ -867,30 +596,7 @@ class SpectroscopyTab(QWidget):
         self._worker = None
         self._set_running(False)
 
-    def _on_plot_selection_changed(self) -> None:
-        self._render_selected_plot()
-
-    def _render_selected_plot(self) -> None:
-        if not self._last_result:
-            return
-        graphs = self._last_result.get("graphs") or self._last_result.get("legacy_graphs") or {}
-        key = self.plot_selector.currentText()
-        if not key or key not in graphs:
-            return
-        self.canvas.show_image_base64(str(graphs[key]), title=str(key))
-
-    def _on_clear_log_clicked(self) -> None:
-        self.log.clear()
-
-    def reset_tab(self) -> None:
-        if self._worker is not None:
-            QMessageBox.warning(self, "Busy", "Cancel the running fit before resetting.")
-            return
-        self.log.clear()
-        self.canvas.clear()
-        self._last_result = None
-        self.plot_selector.clear()
-
+    # ---- Import / Export / Reset / Save ----
     def _on_export_clicked(self) -> None:
         try:
             config = self._collect_config()
@@ -903,6 +609,7 @@ class SpectroscopyTab(QWidget):
         try:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(config, f, indent=2, ensure_ascii=False)
+            self.log.append_text(f"Config exported to {path}")
         except Exception as exc:
             QMessageBox.critical(self, "Export error", str(exc))
 
@@ -918,118 +625,152 @@ class SpectroscopyTab(QWidget):
             return
         try:
             self.load_config(config)
+            self.log.append_text(f"Config imported from {path}")
         except Exception as exc:
             QMessageBox.critical(self, "Config error", str(exc))
 
     def load_config(self, config: dict[str, Any]) -> None:
+        if self._worker is not None:
+            raise RuntimeError("Cancel the running fit before importing config.")
+
         file_path = str(config.get("file_path") or "")
         if not file_path:
             raise ValueError("Config missing 'file_path'.")
         if not Path(file_path).exists():
             raise ValueError(f"Excel file not found: {file_path}")
 
-        self.file_selector.set_path(file_path)
-        self._load_sheets()
-
-        def _set_combo(combo: QComboBox, value: str) -> None:
-            ix = combo.findText(value)
-            if ix >= 0:
-                combo.setCurrentIndex(ix)
-
-        missing: list[str] = []
+        self._set_file_path(file_path)
 
         spectra_sheet = str(config.get("spectra_sheet") or "")
         conc_sheet = str(config.get("conc_sheet") or "")
-
         if spectra_sheet:
-            before = self.spectra_sheet.currentText()
-            _set_combo(self.spectra_sheet, spectra_sheet)
-            if self.spectra_sheet.currentText() == before and before != spectra_sheet:
-                missing.append(f"Spectra sheet '{spectra_sheet}' not found.")
+            ix = self.combo_spectra_sheet.findText(spectra_sheet)
+            if ix >= 0:
+                self.combo_spectra_sheet.setCurrentIndex(ix)
         if conc_sheet:
-            before = self.conc_sheet.currentText()
-            _set_combo(self.conc_sheet, conc_sheet)
-            if self.conc_sheet.currentText() == before and before != conc_sheet:
-                missing.append(f"Conc sheet '{conc_sheet}' not found.")
+            ix = self.combo_conc_sheet.findText(conc_sheet)
+            if ix >= 0:
+                self.combo_conc_sheet.setCurrentIndex(ix)
 
-        self._load_spectra_columns()
-        self._load_conc_columns()
+        # Ensure dependent UI is loaded
+        self._on_spectra_sheet_changed()
+        self._on_conc_sheet_changed()
 
-        wanted_spectra = set(str(c) for c in (config.get("spectra_columns") or []))
-        if wanted_spectra:
-            available = {
-                self.spectra_columns.item(i).text()
-                for i in range(self.spectra_columns.count())
-                if self.spectra_columns.item(i) is not None
-            }
-            missing_spectra = sorted(wanted_spectra - available)
-            if missing_spectra:
-                missing.append(f"Spectra columns not found: {missing_spectra}")
-            self.spectra_columns.blockSignals(True)
-            for i in range(self.spectra_columns.count()):
-                item = self.spectra_columns.item(i)
-                if item is None:
+        missing: list[str] = []
+
+        # Restore column_names
+        wanted_cols = {str(c) for c in (config.get("column_names") or [])}
+        if wanted_cols:
+            from PySide6.QtWidgets import QCheckBox
+
+            available = set()
+            for i in range(self._columns_layout.count()):
+                w = self._columns_layout.itemAt(i).widget()
+                if isinstance(w, QCheckBox):
+                    available.add(str(w.text()))
+                    w.setChecked(str(w.text()) in wanted_cols)
+
+            missing_cols = sorted(wanted_cols - available)
+            if missing_cols:
+                missing.append(f"Missing concentration columns: {missing_cols}")
+
+        self._on_conc_columns_toggled()
+
+        # Restore channels
+        mode = str(config.get("channels_mode") or "all").strip().lower()
+        if mode not in {"all", "custom"}:
+            mode = "all"
+        self.combo_channels_mode.setCurrentIndex(self.combo_channels_mode.findData(mode))
+        self._apply_channels_mode_ui()
+        if mode == "custom":
+            wanted = [float(x) for x in (config.get("channels_resolved") or [])]
+            tol = 1e-8
+            self.list_channels.blockSignals(True)
+            for i in range(self.list_channels.count()):
+                it = self.list_channels.item(i)
+                if it is None:
                     continue
-                item.setCheckState(Qt.CheckState.Checked if item.text() in wanted_spectra else Qt.CheckState.Unchecked)
-            self.spectra_columns.blockSignals(False)
+                v = float(it.data(Qt.ItemDataRole.UserRole))
+                it.setCheckState(
+                    Qt.CheckState.Checked if any(abs(v - t) <= tol for t in wanted) else Qt.CheckState.Unchecked
+                )
+            self.list_channels.blockSignals(False)
+            if wanted and not self._selected_channels():
+                missing.append("Channels selection could not be matched to the Spectra axis values.")
+            self._update_channels_usage()
 
-        selected_cols = set(str(c) for c in (config.get("column_names") or []))
-        if selected_cols:
-            available_conc = {
-                self.conc_columns.item(i).text()
-                for i in range(self.conc_columns.count())
-                if self.conc_columns.item(i) is not None
-            }
-            missing_conc = sorted(selected_cols - available_conc)
-            if missing_conc:
-                missing.append(f"Conc columns not found: {missing_conc}")
-            self.conc_columns.blockSignals(True)
-            for i in range(self.conc_columns.count()):
-                item = self.conc_columns.item(i)
-                if item is None:
-                    continue
-                item.setCheckState(Qt.CheckState.Checked if item.text() in selected_cols else Qt.CheckState.Unchecked)
-            self.conc_columns.blockSignals(False)
-        self._sync_role_combos_from_conc_selection()
+        # Restore EFA
+        self.spin_efa_eigen.setValue(int(config.get("efa_eigenvalues") or 0))
+        self.chk_efa.setChecked(bool(config.get("efa_enabled", False)) and mode == "all")
+        self._apply_channels_mode_ui()
 
-        receptor_value = str(config.get("receptor_label") or "")
-        guest_value = str(config.get("guest_label") or "")
-        if receptor_value:
-            _set_combo(self.receptor_label, receptor_value)
-            if self.receptor_label.currentText() != receptor_value:
-                missing.append(f"Receptor label '{receptor_value}' not found among selected conc columns.")
-        if guest_value:
-            _set_combo(self.guest_label, guest_value)
-            if self.guest_label.currentText() != guest_value:
-                missing.append(f"Guest label '{guest_value}' not found among selected conc columns.")
-
-        self.efa_enabled.setChecked(bool(config.get("efa_enabled", False)))
-        self.efa_eigenvalues.setValue(int(config.get("efa_eigenvalues", 0) or 0))
-
-        _set_combo(self.channels_mode, str(config.get("channels_mode") or "all"))
-        self.channels_custom.setText(str(config.get("channels_raw") or ""))
-
-        self.model_matrix.setPlainText(json.dumps(config.get("modelo") or []))
-        self.non_abs_species.setText(",".join(str(x) for x in (config.get("non_abs_species") or [])))
-
-        _set_combo(self.algorithm, str(config.get("algorithm") or "Newton-Raphson"))
-        _set_combo(self.model_settings, str(config.get("model_settings") or "Free"))
-        _set_combo(self.optimizer, str(config.get("optimizer") or "powell"))
-
-        initial_k = list(config.get("initial_k") or [])
-        bounds = list(config.get("bounds") or [])
-        self.params_table.setRowCount(0)
-        for i, k in enumerate(initial_k):
-            self._add_param_row()
-            self.params_table.item(i, 1).setText(str(k))
-            if i < len(bounds) and isinstance(bounds[i], (list, tuple)) and len(bounds[i]) >= 2:
-                b0, b1 = bounds[i][0], bounds[i][1]
-                if b0 is not None:
-                    self.params_table.item(i, 2).setText(str(b0))
-                if b1 is not None:
-                    self.params_table.item(i, 3).setText(str(b1))
+        # Restore Model/Optimization
+        modelo = config.get("modelo") or []
+        n_rows = len(modelo) if isinstance(modelo, list) else 0
+        n_cols = len(modelo[0]) if n_rows and isinstance(modelo[0], list) else 0
+        n_species = max(0, n_rows - n_cols)
+        state = ModelOptPlotsState(
+            n_components=n_cols,
+            n_species=n_species,
+            modelo=[[float(x or 0.0) for x in (row or [])] for row in (modelo or [])],
+            non_abs_species=list(config.get("non_abs_species") or []),
+            algorithm=str(config.get("algorithm") or "Newton-Raphson"),
+            model_settings=str(config.get("model_settings") or "Free"),
+            optimizer=str(config.get("optimizer") or "powell"),
+            initial_k=list(config.get("initial_k") or []),
+            bounds=list(config.get("bounds") or []),
+            fixed_mask=list(config.get("fixed_mask") or []),
+            receptor_label=str(config.get("receptor_label") or ""),
+            guest_label=str(config.get("guest_label") or ""),
+        )
+        self.model_opt_plots.apply_state(state)
 
         if missing:
             msg = "\n".join(missing)
-            self.log.append_text(f"Config loaded with warnings:\n{msg}")
-            QMessageBox.information(self, "Config warnings", msg)
+            self.log.append_text("WARNING:\n" + msg)
+            QMessageBox.warning(self, "Config partially applied", msg)
+
+    def reset_tab(self) -> None:
+        if self._worker is not None:
+            QMessageBox.warning(self, "Busy", "Cancel the running fit before resetting.")
+            return
+
+        self._file_path = ""
+        self.lbl_file_status.setText("No file selected")
+        self.combo_spectra_sheet.clear()
+        self.combo_conc_sheet.clear()
+        self._axis_values = []
+        self._populate_channels_list([])
+        self.combo_channels_mode.setCurrentIndex(self.combo_channels_mode.findData("all"))
+        self.chk_efa.setChecked(True)
+        self.spin_efa_eigen.setValue(0)
+        self._apply_channels_mode_ui()
+
+        self._clear_conc_columns()
+        self.model_opt_plots.reset()
+
+        self.canvas_main.clear()
+        self.canvas_diag.clear()
+        self.log.clear()
+        self._last_result = None
+        self.btn_save.setEnabled(False)
+
+    def _on_save_results_clicked(self) -> None:
+        if not self._last_result or not bool(self._last_result.get("success", True)):
+            QMessageBox.information(self, "No results", "Run 'Process Data' first.")
+            return
+
+        path, _ = QFileDialog.getSaveFileName(self, "Save results", "hmfit_results.xlsx", "Excel (*.xlsx)")
+        if not path:
+            return
+        try:
+            write_results_xlsx(
+                path,
+                constants=self._last_result.get("constants") or [],
+                statistics=self._last_result.get("statistics") or {},
+                results_text=str(self._last_result.get("results_text") or ""),
+                export_data=self._last_result.get("export_data") or {},
+            )
+            self.log.append_text(f"Results saved to {path}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Save error", str(exc))
