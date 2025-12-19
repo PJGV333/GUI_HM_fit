@@ -1,93 +1,85 @@
-import os
+from __future__ import annotations
+
 import sys
-# import pytest
-import pandas as pd
+import tempfile
+from pathlib import Path
+
 import numpy as np
+import pytest
 
-# Add project root to path
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from backend_fastapi.nmr_processor import process_nmr_data
 
-def test_nmr_regression():
-    # Path to test file
-    file_path = os.path.join(os.path.dirname(__file__), '..', 'test_2_tit_RMN3.xlsx')
-    assert os.path.exists(file_path), "Test file not found"
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[1]
 
-    # Parameters based on user description
-    spectra_sheet = "Chemical Shift (ppm)" # Need to check actual sheet name
-    conc_sheet = "Concentrations (M)"      # Need to check actual sheet name
-    
-    # Let's verify sheet names first
-    xl = pd.ExcelFile(file_path)
-    print(f"Sheet names: {xl.sheet_names}")
-    df = pd.read_excel(file_path, sheet_name="Sheet1")
-    print(f"Columns: {list(df.columns)}")
-    return
-    
-    # Adjust sheet names if needed based on file content
-    if "Chemical Shift (ppm)" not in xl.sheet_names:
-        # Try to guess or fail
-        pass
 
-    # Columns and Signals
-    # User said: "no. of spectra = 39", "no. of resonant nuclei = 7"
-    # We need to pick the correct columns.
-    # Assuming standard format or known columns.
-    # Let's read the file to find columns
-    df_conc = pd.read_excel(file_path, sheet_name=1) # Assuming 2nd sheet is conc
-    df_spec = pd.read_excel(file_path, sheet_name=0) # Assuming 1st sheet is spectra
-    
-    # Update sheet names from what we found if they match expected patterns
-    conc_sheet = xl.sheet_names[1]
-    spectra_sheet = xl.sheet_names[0]
-    
-    column_names = list(df_conc.columns)
-    signal_names = list(df_spec.columns)
-    
-    # Filter signal names to exclude 'Titration' or similar if present
-    # User said 7 signals.
-    # Check if first column is axis
-    if len(signal_names) > 7:
-         # Maybe first column is index
-         signal_names = signal_names[1:8] # Take 7 columns?
-    
-    # Setup Model
-    # User mentioned betas: 111, 101, 011, 200, 201, 211
-    # Model matrix usually: [H, G, L] or similar.
-    # Need to know the components.
-    # Assuming H and G.
-    # Model matrix columns: Species. Rows: Components.
-    # Let's assume components are H and G.
-    # Species: H, G, HG, H2G, etc?
-    # User said: "beta111, beta101, beta011, beta200, beta201, beta211"
-    # This implies 3 components? Metal, Ligand, Proton? Or H, G, something else?
-    # "test_2_tit_RMN3" suggests Titration.
-    
-    # Let's try to infer from "beta111" -> M:1, L:1, H:1?
-    # If components are M, L, H.
-    # But usually in this app we define model matrix manually.
-    # Let's use a standard model that fits these betas if possible, or just a dummy model 
-    # if we can't reproduce exact physics without more info.
-    # BUT, the user gave specific betas to check!
-    # β111 = 7.1888
-    # β101 = 3.5777
-    # β011 = 4.0632
-    # β200 = 0.1 (fixed)
-    # β201 = 6.2558
-    # β211 = 9.4656
-    
-    # This implies species indices:
-    # 111, 101, 011, 200, 201, 211
-    # Plus likely 100, 010, 001 (components themselves)
-    
-    # Let's assume 3 components.
-    # Model matrix (n_species x n_components)
-    # We need to define the model matrix to pass to the processor.
-    # If we don't know the exact model, we might fail to reproduce the exact betas.
-    # However, the user said "Chequeo que debe imprimir HM fit for this dataset: no. of spectra = 39..."
-    
-    # Let's try to read the file first to see headers, maybe they give a clue.
-    pass
+def _write_minimal_nmr_xlsx(path: Path) -> None:
+    pytest.importorskip("openpyxl")
+    from openpyxl import Workbook
 
-if __name__ == "__main__":
-    test_nmr_regression()
+    # Simple 1:1 binding model (H + G <-> HG) with a single H signal.
+    log10K = 3.0
+    K = 10**log10K
+
+    H_tot = 1.0e-3
+    G_tot = np.array([0.0, 0.5e-3, 1.0e-3, 1.5e-3, 2.0e-3], dtype=float)
+    H_arr = np.full_like(G_tot, H_tot, dtype=float)
+
+    # Solve 1:1 equilibrium: K x^2 - (K(H+G)+1)x + KHG = 0
+    a = K
+    b = -(K * (H_arr + G_tot) + 1.0)
+    c = K * H_arr * G_tot
+    disc = np.maximum(b * b - 4.0 * a * c, 0.0)
+    x = (-b - np.sqrt(disc)) / (2.0 * a)  # smaller root
+
+    delta_H = 1.0
+    delta_HG = 2.0
+    delta_obs = delta_H + (x / H_arr) * (delta_HG - delta_H)
+
+    wb = Workbook()
+    ws_conc = wb.active
+    ws_conc.title = "Conc"
+    ws_conc.append(["H (M)", "G (M)"])
+    for h, g in zip(H_arr.tolist(), G_tot.tolist()):
+        ws_conc.append([float(h), float(g)])
+
+    ws_nmr = wb.create_sheet("NMR")
+    ws_nmr.append(["sig (H)"])
+    for d in delta_obs.tolist():
+        ws_nmr.append([float(d)])
+
+    wb.save(str(path))
+
+
+def test_nmr_regression_minimal_xlsx():
+    root = _repo_root()
+    sys.path.insert(0, str(root))
+
+    from backend_fastapi.nmr_processor import process_nmr_data
+
+    with tempfile.TemporaryDirectory() as td:
+        book_path = Path(td) / "mini_nmr.xlsx"
+        _write_minimal_nmr_xlsx(book_path)
+
+        result = process_nmr_data(
+            file_path=str(book_path),
+            spectra_sheet="NMR",
+            conc_sheet="Conc",
+            column_names=["H (M)", "G (M)"],
+            signal_names=["sig (H)"],
+            receptor_label="H (M)",
+            guest_label="G (M)",
+            model_matrix=[
+                [1, 0],  # H
+                [0, 1],  # G
+                [1, 1],  # HG
+            ],
+            k_initial=[3.0],
+            k_bounds=[{"min": 0.0, "max": 10.0}],
+            algorithm="Newton-Raphson",
+            optimizer="powell",
+            model_settings="Free",
+            non_absorbent_species=[],
+            k_fixed=[True],
+        )
+
+        assert result.get("success") is True, result.get("error")

@@ -1,6 +1,11 @@
-import jax
-import jax.numpy as jnp
-print("JAX version:", jax.__version__)
-print("JAX devices:", jax.devices())
-x = jnp.array([1.0, 2.0, 3.0])
-print("JAX array:", x)
+import pytest
+
+jax = pytest.importorskip("jax")
+jnp = pytest.importorskip("jax.numpy")
+
+
+def test_jax_smoke() -> None:
+    assert hasattr(jax, "__version__")
+    _ = jax.devices()
+    x = jnp.array([1.0, 2.0, 3.0])
+    assert x.shape == (3,)

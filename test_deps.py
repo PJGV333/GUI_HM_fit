@@ -1,12 +1,12 @@
-import matplotlib
-import matplotlib.pyplot as plt
-import scipy
-import numpy
-import pandas
-import openpyxl
+import pytest
 
-print("Matplotlib version:", matplotlib.__version__)
-print("Scipy version:", scipy.__version__)
-print("Numpy version:", numpy.__version__)
-print("Pandas version:", pandas.__version__)
-print("Openpyxl version:", openpyxl.__version__)
+matplotlib = pytest.importorskip("matplotlib")
+pytest.importorskip("scipy")
+pytest.importorskip("numpy")
+pytest.importorskip("pandas")
+openpyxl = pytest.importorskip("openpyxl")
+
+
+def test_dependency_imports_smoke() -> None:
+    assert hasattr(matplotlib, "__version__")
+    assert hasattr(openpyxl, "__version__")
