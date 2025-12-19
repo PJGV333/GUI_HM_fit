@@ -6,29 +6,26 @@ from typing import Any
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFileDialog,
-    QFormLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMessageBox,
     QPushButton,
     QScrollArea,
     QSplitter,
-    QTableWidget,
-    QTableWidgetItem,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
 from hmfit_core.api import run_nmr_fit
-from hmfit_gui_qt.widgets.file_selectors import FileSelector
+from hmfit_core.exports import write_results_xlsx
 from hmfit_gui_qt.widgets.log_console import LogConsole
+from hmfit_gui_qt.widgets.model_opt_plots import ModelOptPlotsState, ModelOptPlotsWidget
 from hmfit_gui_qt.widgets.mpl_canvas import MplCanvas, NavigationToolbar
 from hmfit_gui_qt.workers.fit_worker import FitWorker
 
@@ -47,628 +44,417 @@ def _list_excel_columns(file_path: str, sheet_name: str) -> list[str]:
     return [str(c) for c in df.columns]
 
 
-def _ensure_float_or_none(text: str) -> float | None:
-    s = str(text or "").strip()
-    if not s:
-        return None
-    try:
-        return float(s)
-    except ValueError:
-        return None
-
-
 class NMRTab(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-
         self._worker: FitWorker | None = None
         self._last_result: dict[str, Any] | None = None
+        self._file_path: str = ""
 
         self._build_ui()
+        self._set_running(False)
 
+    # ---- UI ----
     def _build_ui(self) -> None:
         outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
 
-        self._vertical_split = QSplitter(Qt.Orientation.Vertical, self)
-        outer.addWidget(self._vertical_split)
+        self._main_split = QSplitter(Qt.Orientation.Horizontal, self)
+        outer.addWidget(self._main_split, 1)
 
-        top = QWidget(self._vertical_split)
-        top_layout = QVBoxLayout(top)
-        top_layout.setContentsMargins(0, 0, 0, 0)
+        # ----- Left panel (scrollable) -----
+        left_scroll = QScrollArea(self._main_split)
+        left_scroll.setWidgetResizable(True)
+        left_container = QWidget(left_scroll)
+        left_scroll.setWidget(left_container)
+        left_layout = QVBoxLayout(left_container)
 
-        self._horizontal_split = QSplitter(Qt.Orientation.Horizontal, top)
-        top_layout.addWidget(self._horizontal_split)
+        self._data_group = QGroupBox("DATA / INPUT", left_container)
+        data_layout = QVBoxLayout(self._data_group)
 
-        controls_scroll = QScrollArea(self._horizontal_split)
-        controls_scroll.setWidgetResizable(True)
-        controls_container = QWidget(controls_scroll)
-        self._controls_container = controls_container
-        controls_scroll.setWidget(controls_container)
-        self._controls_layout = QVBoxLayout(controls_container)
+        # Select Excel File
+        data_layout.addWidget(QLabel("Select Excel File", self._data_group))
+        file_row = QHBoxLayout()
+        self.btn_choose_file = QPushButton("Choose File…", self._data_group)
+        self.btn_choose_file.clicked.connect(self._on_choose_file_clicked)
+        file_row.addWidget(self.btn_choose_file)
+        self.lbl_file_status = QLabel("No file selected", self._data_group)
+        self.lbl_file_status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        file_row.addWidget(self.lbl_file_status, 1)
+        data_layout.addLayout(file_row)
 
-        self._build_controls()
+        # Sheet dropdowns
+        sheets_row = QHBoxLayout()
+        self.combo_conc_sheet = QComboBox(self._data_group)
+        self.combo_shift_sheet = QComboBox(self._data_group)
+        self.combo_conc_sheet.currentIndexChanged.connect(self._on_conc_sheet_changed)
+        self.combo_shift_sheet.currentIndexChanged.connect(self._on_shift_sheet_changed)
 
-        plot_container = QWidget(self._horizontal_split)
-        plot_layout = QVBoxLayout(plot_container)
-        plot_layout.setContentsMargins(0, 0, 0, 0)
+        conc_box = QVBoxLayout()
+        conc_box.addWidget(QLabel("Concentration Sheet Name", self._data_group))
+        conc_box.addWidget(self.combo_conc_sheet)
+        shift_box = QVBoxLayout()
+        shift_box.addWidget(QLabel("Chemical Shift Sheet Name", self._data_group))
+        shift_box.addWidget(self.combo_shift_sheet)
+        sheets_row.addLayout(conc_box, 1)
+        sheets_row.addLayout(shift_box, 1)
+        data_layout.addLayout(sheets_row)
 
-        plot_top = QHBoxLayout()
-        plot_top.addWidget(QLabel("Plot:", plot_container))
-        self.plot_selector = QComboBox(plot_container)
-        self.plot_selector.currentIndexChanged.connect(self._on_plot_selection_changed)
-        plot_top.addWidget(self.plot_selector, 1)
-        plot_layout.addLayout(plot_top)
-
-        self.canvas = MplCanvas(plot_container)
-        plot_layout.addWidget(self.canvas, 1)
-        plot_layout.addWidget(NavigationToolbar(self.canvas, plot_container))
-
-        self._horizontal_split.setStretchFactor(0, 0)
-        self._horizontal_split.setStretchFactor(1, 1)
-
-        log_container = QWidget(self._vertical_split)
-        log_layout = QVBoxLayout(log_container)
-        log_layout.setContentsMargins(0, 0, 0, 0)
-        log_top = QHBoxLayout()
-        log_top.addWidget(QLabel("Log:", log_container))
-        log_top.addStretch(1)
-        self.btn_clear_log = QPushButton("Clear", log_container)
-        self.btn_clear_log.clicked.connect(self._on_clear_log_clicked)
-        log_top.addWidget(self.btn_clear_log)
-        log_layout.addLayout(log_top)
-
-        self.log = LogConsole(log_container)
-        log_layout.addWidget(self.log, 1)
-
-        self._vertical_split.addWidget(top)
-        self._vertical_split.addWidget(log_container)
-        self._vertical_split.setStretchFactor(0, 3)
-        self._vertical_split.setStretchFactor(1, 1)
-
-    def _build_controls(self) -> None:
-        data_group = QGroupBox("Data", self._controls_container)
-        self._data_group = data_group
-        data_form = QFormLayout(data_group)
-
-        self.file_selector = FileSelector("Excel file", parent=data_group)
-        data_form.addRow(self.file_selector)
-        self.file_selector.path_changed.connect(self._on_file_path_changed)
-
-        self.btn_load_sheets = QPushButton("Reload sheets", data_group)
-        self.btn_load_sheets.clicked.connect(self._load_sheets)
-        data_form.addRow(self.btn_load_sheets)
-
-        self.mode = QComboBox(data_group)
-        self.mode.addItem("Single sheet", "single")
-        self.mode.addItem("Multi sheet", "multi")
-        self.mode.currentIndexChanged.connect(self._on_mode_changed)
-        data_form.addRow("Mode", self.mode)
-
-        self.nmr_sheet = QComboBox(data_group)
-        self.nmr_sheet.currentIndexChanged.connect(self._on_sheet_changed)
-        data_form.addRow("NMR sheet", self.nmr_sheet)
-        self._nmr_sheet_label = data_form.labelForField(self.nmr_sheet)
-
-        self.conc_sheet = QComboBox(data_group)
-        self.conc_sheet.currentIndexChanged.connect(self._on_sheet_changed)
-        data_form.addRow("Conc sheet", self.conc_sheet)
-        self._conc_sheet_label = data_form.labelForField(self.conc_sheet)
-
-        self.btn_load_columns = QPushButton("Reload columns", data_group)
-        self.btn_load_columns.clicked.connect(self._load_columns)
-        data_form.addRow(self.btn_load_columns)
-
-        self.conc_columns = QListWidget(data_group)
-        self.conc_columns.setMinimumHeight(100)
-        self.conc_columns.itemChanged.connect(self._on_conc_columns_changed)
-        conc_box = QWidget(data_group)
-        conc_box_layout = QVBoxLayout(conc_box)
-        conc_box_layout.setContentsMargins(0, 0, 0, 0)
-        conc_box_layout.addWidget(self.conc_columns, 1)
-        conc_btns = QHBoxLayout()
-        self.btn_conc_all = QPushButton("Select all", conc_box)
-        self.btn_conc_all.clicked.connect(lambda: self._set_list_checked(self.conc_columns, True))
-        conc_btns.addWidget(self.btn_conc_all)
-        self.btn_conc_none = QPushButton("Select none", conc_box)
-        self.btn_conc_none.clicked.connect(lambda: self._set_list_checked(self.conc_columns, False))
-        conc_btns.addWidget(self.btn_conc_none)
-        conc_box_layout.addLayout(conc_btns)
-        data_form.addRow("Conc columns", conc_box)
-
-        self.signal_columns = QListWidget(data_group)
-        self.signal_columns.setMinimumHeight(100)
-        sig_box = QWidget(data_group)
-        sig_box_layout = QVBoxLayout(sig_box)
-        sig_box_layout.setContentsMargins(0, 0, 0, 0)
-        sig_box_layout.addWidget(self.signal_columns, 1)
+        # Signals selector
+        data_layout.addWidget(QLabel("Chemical Shifts (Signals)", self._data_group))
+        self.list_signals = QListWidget(self._data_group)
+        self.list_signals.setMinimumHeight(120)
+        data_layout.addWidget(self.list_signals, 1)
         sig_btns = QHBoxLayout()
-        self.btn_sig_all = QPushButton("Select all", sig_box)
-        self.btn_sig_all.clicked.connect(lambda: self._set_list_checked(self.signal_columns, True))
-        sig_btns.addWidget(self.btn_sig_all)
-        self.btn_sig_none = QPushButton("Select none", sig_box)
-        self.btn_sig_none.clicked.connect(lambda: self._set_list_checked(self.signal_columns, False))
-        sig_btns.addWidget(self.btn_sig_none)
-        sig_box_layout.addLayout(sig_btns)
-        data_form.addRow("Signal columns", sig_box)
+        self.btn_signals_all = QPushButton("Select all", self._data_group)
+        self.btn_signals_all.clicked.connect(lambda: self._set_list_checked(self.list_signals, True))
+        sig_btns.addWidget(self.btn_signals_all)
+        self.btn_signals_none = QPushButton("Select none", self._data_group)
+        self.btn_signals_none.clicked.connect(lambda: self._set_list_checked(self.list_signals, False))
+        sig_btns.addWidget(self.btn_signals_none)
+        sig_btns.addStretch(1)
+        data_layout.addLayout(sig_btns)
 
-        self.receptor_label = QComboBox(data_group)
-        data_form.addRow("Receptor label", self.receptor_label)
-        self.guest_label = QComboBox(data_group)
-        data_form.addRow("Guest label", self.guest_label)
+        # Column names (concentration columns)
+        data_layout.addWidget(QLabel("Column names", self._data_group))
+        self._columns_scroll = QScrollArea(self._data_group)
+        self._columns_scroll.setWidgetResizable(True)
+        self._columns_widget = QWidget(self._columns_scroll)
+        self._columns_layout = QVBoxLayout(self._columns_widget)
+        self._columns_layout.setContentsMargins(0, 0, 0, 0)
+        self._columns_scroll.setWidget(self._columns_widget)
+        self._columns_scroll.setMinimumHeight(90)
+        data_layout.addWidget(self._columns_scroll)
 
-        self._controls_layout.addWidget(data_group)
+        left_layout.addWidget(self._data_group)
 
-        model_group = QGroupBox("Model", self._controls_container)
-        self._model_group = model_group
-        model_form = QFormLayout(model_group)
-        self.model_preset = QComboBox(model_group)
-        self.model_preset.addItems(["(custom)", "1:1", "1:2", "1:3", "2:1"])
-        self.model_preset.currentIndexChanged.connect(self._apply_model_preset)
-        model_form.addRow("Preset", self.model_preset)
+        # Sub-tabs: Model / Optimization / Plots
+        self.model_opt_plots = ModelOptPlotsWidget(left_container)
+        left_layout.addWidget(self.model_opt_plots, 1)
 
-        self.model_matrix = QTextEdit(model_group)
-        self.model_matrix.setPlaceholderText('e.g. [[1,0,1],[0,1,1]]  # rows=components, cols=species')
-        self.model_matrix.setMinimumHeight(90)
-        model_form.addRow("Model matrix", self.model_matrix)
+        # Actions row (Tauri-like)
+        actions_group = QGroupBox("", left_container)
+        actions_layout = QHBoxLayout(actions_group)
+        actions_layout.setContentsMargins(6, 6, 6, 6)
 
-        self.non_abs_species = QLineEdit(model_group)
-        self.non_abs_species.setPlaceholderText("comma-separated species indices, e.g. 0,2")
-        model_form.addRow("Non-abs species", self.non_abs_species)
+        self.btn_backend = QPushButton("Probar backend", actions_group)
+        self.btn_backend.setEnabled(False)
+        self.btn_backend.setToolTip("N/A en Qt (GUI usa hmfit_core local).")
+        actions_layout.addWidget(self.btn_backend)
 
-        self._controls_layout.addWidget(model_group)
-
-        opt_group = QGroupBox("Optimization", self._controls_container)
-        self._opt_group = opt_group
-        opt_layout = QVBoxLayout(opt_group)
-        opt_form = QFormLayout()
-
-        self.algorithm = QComboBox(opt_group)
-        self.algorithm.addItems(["Newton-Raphson", "Levenberg-Marquardt"])
-        opt_form.addRow("Algorithm", self.algorithm)
-
-        self.model_settings = QComboBox(opt_group)
-        self.model_settings.addItems(["Free", "Step by step", "Non-cooperative"])
-        opt_form.addRow("Model settings", self.model_settings)
-
-        self.optimizer = QComboBox(opt_group)
-        self.optimizer.addItems(
-            [
-                "powell",
-                "nelder-mead",
-                "trust-constr",
-                "cg",
-                "bfgs",
-                "l-bfgs-b",
-                "tnc",
-                "cobyla",
-                "slsqp",
-                "differential_evolution",
-            ]
-        )
-        opt_form.addRow("Optimizer", self.optimizer)
-        opt_layout.addLayout(opt_form)
-
-        self.params_table = QTableWidget(0, 5, opt_group)
-        self.params_table.setHorizontalHeaderLabels(["Parameter", "Value", "Min", "Max", "Fixed"])
-        self.params_table.setMinimumHeight(160)
-        opt_layout.addWidget(self.params_table, 1)
-
-        params_buttons = QHBoxLayout()
-        self.btn_add_param = QPushButton("Add K", opt_group)
-        self.btn_add_param.clicked.connect(lambda: self._add_param_row())
-        params_buttons.addWidget(self.btn_add_param)
-        self.btn_remove_param = QPushButton("Remove K", opt_group)
-        self.btn_remove_param.clicked.connect(self._remove_selected_param_rows)
-        params_buttons.addWidget(self.btn_remove_param)
-        params_buttons.addStretch(1)
-        opt_layout.addLayout(params_buttons)
-
-        self._controls_layout.addWidget(opt_group)
-
-        actions_group = QGroupBox("Actions", self._controls_container)
-        self._actions_group = actions_group
-        actions_layout = QVBoxLayout(actions_group)
-
-        btn_row = QHBoxLayout()
-        self.btn_run = QPushButton("Run fit", actions_group)
-        self.btn_run.clicked.connect(self._on_run_clicked)
-        btn_row.addWidget(self.btn_run)
-        self.btn_cancel = QPushButton("Cancel", actions_group)
-        self.btn_cancel.clicked.connect(self._on_cancel_clicked)
-        self.btn_cancel.setEnabled(False)
-        btn_row.addWidget(self.btn_cancel)
-        actions_layout.addLayout(btn_row)
-
-        io_row = QHBoxLayout()
-        self.btn_import = QPushButton("Import config…", actions_group)
+        self.btn_import = QPushButton("Import Config", actions_group)
         self.btn_import.clicked.connect(self._on_import_clicked)
-        io_row.addWidget(self.btn_import)
-        self.btn_export = QPushButton("Export config…", actions_group)
-        self.btn_export.clicked.connect(self._on_export_clicked)
-        io_row.addWidget(self.btn_export)
-        actions_layout.addLayout(io_row)
+        actions_layout.addWidget(self.btn_import)
 
-        self.btn_reset = QPushButton("Reset tab", actions_group)
+        self.btn_export = QPushButton("Export Config", actions_group)
+        self.btn_export.clicked.connect(self._on_export_clicked)
+        actions_layout.addWidget(self.btn_export)
+
+        actions_layout.addStretch(1)
+
+        self.btn_reset = QPushButton("Reset Calculation", actions_group)
         self.btn_reset.clicked.connect(self.reset_tab)
         actions_layout.addWidget(self.btn_reset)
 
-        self._controls_layout.addWidget(actions_group)
-        self._controls_layout.addStretch(1)
+        self.btn_process = QPushButton("Process Data", actions_group)
+        self.btn_process.clicked.connect(self._on_process_clicked)
+        actions_layout.addWidget(self.btn_process)
 
-        self._apply_mode_ui()
+        self.btn_cancel = QPushButton("Cancel", actions_group)
+        self.btn_cancel.clicked.connect(self._on_cancel_clicked)
+        self.btn_cancel.setEnabled(False)
+        actions_layout.addWidget(self.btn_cancel)
 
-    def _on_file_path_changed(self, _path: str) -> None:
-        file_path = self.file_selector.path()
-        if not file_path:
-            self._clear_data_selections()
+        self.btn_save = QPushButton("Save results", actions_group)
+        self.btn_save.clicked.connect(self._on_save_results_clicked)
+        self.btn_save.setEnabled(False)
+        actions_layout.addWidget(self.btn_save)
+
+        left_layout.addWidget(actions_group)
+
+        # ----- Right panel: main plot + diagnostics -----
+        right_split = QSplitter(Qt.Orientation.Vertical, self._main_split)
+
+        main_plot_panel = QWidget(right_split)
+        main_plot_layout = QVBoxLayout(main_plot_panel)
+        main_plot_layout.setContentsMargins(0, 0, 0, 0)
+        main_plot_layout.addWidget(QLabel("Main spectra / titration plot", main_plot_panel))
+        self.canvas_main = MplCanvas(main_plot_panel)
+        main_plot_layout.addWidget(self.canvas_main, 1)
+        main_plot_layout.addWidget(NavigationToolbar(self.canvas_main, main_plot_panel))
+
+        diag_panel = QWidget(right_split)
+        diag_layout = QVBoxLayout(diag_panel)
+        diag_layout.setContentsMargins(0, 0, 0, 0)
+        diag_header = QHBoxLayout()
+        diag_header.addWidget(QLabel("Residuals / component spectra / diagnostics", diag_panel))
+        diag_header.addStretch(1)
+        self.btn_clear_log = QPushButton("Clear log", diag_panel)
+        self.btn_clear_log.clicked.connect(lambda: self.log.clear())
+        diag_header.addWidget(self.btn_clear_log)
+        diag_layout.addLayout(diag_header)
+
+        self.canvas_diag = MplCanvas(diag_panel)
+        diag_layout.addWidget(self.canvas_diag, 1)
+        diag_layout.addWidget(NavigationToolbar(self.canvas_diag, diag_panel))
+
+        self.log = LogConsole(diag_panel)
+        diag_layout.addWidget(self.log, 1)
+
+        right_split.setStretchFactor(0, 3)
+        right_split.setStretchFactor(1, 2)
+
+        self._main_split.setStretchFactor(0, 0)
+        self._main_split.setStretchFactor(1, 1)
+
+    # ---- Excel / Data selection ----
+    def _on_choose_file_clicked(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, "Select Excel file", "", "Excel (*.xlsx)")
+        if not path:
             return
-        path = Path(file_path)
+        self._set_file_path(path)
+
+    def _set_file_path(self, file_path: str) -> None:
+        path = Path(str(file_path or ""))
         if not path.exists():
+            QMessageBox.warning(self, "Missing file", f"Excel file not found:\n{path}")
             return
         if path.suffix.lower() != ".xlsx":
             QMessageBox.warning(self, "Unsupported file", "Only .xlsx files are supported.")
             return
+
+        self._file_path = str(path)
+        self.lbl_file_status.setText(self._file_path)
         self._load_sheets()
 
-    def _clear_data_selections(self) -> None:
-        self.nmr_sheet.blockSignals(True)
-        self.conc_sheet.blockSignals(True)
-        self.nmr_sheet.clear()
-        self.conc_sheet.clear()
-        self.nmr_sheet.blockSignals(False)
-        self.conc_sheet.blockSignals(False)
-
-        self.conc_columns.clear()
-        self.signal_columns.clear()
-        self.receptor_label.clear()
-        self.guest_label.clear()
-
-    def _on_mode_changed(self, _index: int) -> None:
-        self._apply_mode_ui()
-        self._load_columns()
-
-    def _apply_mode_ui(self) -> None:
-        mode = str(self.mode.currentData() or "single")
-        is_single = mode == "single"
-        if self._conc_sheet_label is not None:
-            self._conc_sheet_label.setVisible(not is_single)
-        self.conc_sheet.setVisible(not is_single)
-        if self._nmr_sheet_label is not None:
-            self._nmr_sheet_label.setText("Sheet" if is_single else "NMR sheet")
-        if is_single:
-            self.conc_sheet.blockSignals(True)
-            self.conc_sheet.setCurrentText(self.nmr_sheet.currentText())
-            self.conc_sheet.blockSignals(False)
-
-    def _on_sheet_changed(self, _index: int) -> None:
-        mode = str(self.mode.currentData() or "single")
-        if mode == "single":
-            self.conc_sheet.blockSignals(True)
-            self.conc_sheet.setCurrentText(self.nmr_sheet.currentText())
-            self.conc_sheet.blockSignals(False)
-        self._load_columns()
-
-    def _set_list_checked(self, widget: QListWidget, checked: bool) -> None:
-        widget.blockSignals(True)
-        state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
-        for i in range(widget.count()):
-            item = widget.item(i)
-            if item is not None:
-                item.setCheckState(state)
-        widget.blockSignals(False)
-        if widget is self.conc_columns:
-            self._sync_role_combos_from_conc_selection()
-
-    def _checked_texts(self, widget: QListWidget) -> list[str]:
-        out: list[str] = []
-        for i in range(widget.count()):
-            item = widget.item(i)
-            if item is not None and item.checkState() == Qt.CheckState.Checked:
-                out.append(str(item.text()))
-        return out
-
-    def _on_conc_columns_changed(self, _item: QListWidgetItem) -> None:
-        self._sync_role_combos_from_conc_selection()
-
-    def _sync_role_combos_from_conc_selection(self) -> None:
-        selected = self._checked_texts(self.conc_columns)
-        prev_receptor = self.receptor_label.currentText()
-        prev_guest = self.guest_label.currentText()
-
-        self.receptor_label.blockSignals(True)
-        self.guest_label.blockSignals(True)
-        self.receptor_label.clear()
-        self.guest_label.clear()
-        self.receptor_label.addItems(selected)
-        self.guest_label.addItems(selected)
-        self.receptor_label.blockSignals(False)
-        self.guest_label.blockSignals(False)
-
-        def _restore(combo: QComboBox, value: str) -> None:
-            ix = combo.findText(value)
-            if ix >= 0:
-                combo.setCurrentIndex(ix)
-
-        _restore(self.receptor_label, prev_receptor)
-        _restore(self.guest_label, prev_guest)
-
-    def _apply_model_preset(self) -> None:
-        preset = self.model_preset.currentText()
-        if preset == "(custom)":
-            return
-
-        if preset == "1:1":
-            matrix = [[1, 0, 1], [0, 1, 1]]
-        elif preset == "1:2":
-            matrix = [[1, 0, 1, 1], [0, 1, 1, 2]]
-        elif preset == "1:3":
-            matrix = [[1, 0, 1, 1, 1], [0, 1, 1, 2, 3]]
-        elif preset == "2:1":
-            matrix = [[1, 0, 2], [0, 1, 1]]
-        else:
-            return
-
-        self.model_matrix.setPlainText(json.dumps(matrix))
-        n_complex = max(0, len(matrix[0]) - len(matrix))
-        self._set_param_row_count(n_complex)
-
-    def _set_param_row_count(self, n: int) -> None:
-        n = max(0, int(n))
-        current = self.params_table.rowCount()
-        if current == n:
-            return
-        if current < n:
-            for _ in range(n - current):
-                self._add_param_row()
-        else:
-            for row in reversed(range(n, current)):
-                self.params_table.removeRow(row)
-
-    def _add_param_row(self) -> None:
-        row = self.params_table.rowCount()
-        self.params_table.insertRow(row)
-        name_item = QTableWidgetItem(f"K{row + 1}")
-        name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        self.params_table.setItem(row, 0, name_item)
-        for col in (1, 2, 3):
-            self.params_table.setItem(row, col, QTableWidgetItem(""))
-        fixed_item = QTableWidgetItem("")
-        fixed_item.setFlags(fixed_item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-        fixed_item.setCheckState(Qt.CheckState.Unchecked)
-        self.params_table.setItem(row, 4, fixed_item)
-
-    def _remove_selected_param_rows(self) -> None:
-        rows = sorted({idx.row() for idx in self.params_table.selectedIndexes()}, reverse=True)
-        for row in rows:
-            self.params_table.removeRow(row)
-        for row in range(self.params_table.rowCount()):
-            it = self.params_table.item(row, 0)
-            if it is not None:
-                it.setText(f"K{row + 1}")
-
     def _load_sheets(self) -> None:
-        file_path = self.file_selector.path()
-        if not file_path:
-            QMessageBox.warning(self, "Missing file", "Select an Excel file first.")
+        if not self._file_path:
             return
         try:
-            sheets = _list_excel_sheets(file_path)
+            sheets = _list_excel_sheets(self._file_path)
         except Exception as exc:
             QMessageBox.critical(self, "Excel error", str(exc))
             return
 
         sheets_with_blank = [""] + sheets
-        self.nmr_sheet.blockSignals(True)
-        self.conc_sheet.blockSignals(True)
-        self.nmr_sheet.clear()
-        self.nmr_sheet.addItems(sheets_with_blank)
-        self.nmr_sheet.setCurrentIndex(0)
-        self.conc_sheet.clear()
-        self.conc_sheet.addItems(sheets_with_blank)
-        self.conc_sheet.setCurrentIndex(0)
-        self.nmr_sheet.blockSignals(False)
-        self.conc_sheet.blockSignals(False)
+        self.combo_conc_sheet.blockSignals(True)
+        self.combo_shift_sheet.blockSignals(True)
+        self.combo_conc_sheet.clear()
+        self.combo_shift_sheet.clear()
+        self.combo_conc_sheet.addItems(sheets_with_blank)
+        self.combo_shift_sheet.addItems(sheets_with_blank)
+        self.combo_conc_sheet.setCurrentIndex(0)
+        self.combo_shift_sheet.setCurrentIndex(0)
+        self.combo_conc_sheet.blockSignals(False)
+        self.combo_shift_sheet.blockSignals(False)
 
-        self._apply_mode_ui()
-        self.conc_columns.clear()
-        self.signal_columns.clear()
-        self.receptor_label.clear()
-        self.guest_label.clear()
+        self._clear_conc_columns()
+        self._populate_signals([])
 
-    def _load_columns(self) -> None:
-        file_path = self.file_selector.path()
-        nmr_sheet = self.nmr_sheet.currentText().strip()
-        conc_sheet = self.conc_sheet.currentText().strip()
-        if not file_path or not nmr_sheet or not conc_sheet:
-            self.conc_columns.clear()
-            self.signal_columns.clear()
-            self.receptor_label.clear()
-            self.guest_label.clear()
+    def _on_conc_sheet_changed(self) -> None:
+        sheet = self.combo_conc_sheet.currentText().strip()
+        if not self._file_path or not sheet:
+            self._clear_conc_columns()
             return
         try:
-            conc_cols = _list_excel_columns(file_path, conc_sheet)
-            sig_cols = _list_excel_columns(file_path, nmr_sheet)
+            cols = _list_excel_columns(self._file_path, sheet)
         except Exception as exc:
             QMessageBox.critical(self, "Excel error", str(exc))
+            self._clear_conc_columns()
+            return
+        self._populate_conc_columns(cols)
+
+    def _on_shift_sheet_changed(self) -> None:
+        sheet = self.combo_shift_sheet.currentText().strip()
+        if not self._file_path or not sheet:
+            self._populate_signals([])
+            return
+        try:
+            cols = _list_excel_columns(self._file_path, sheet)
+        except Exception as exc:
+            QMessageBox.critical(self, "Excel error", str(exc))
+            self._populate_signals([])
+            return
+        self._populate_signals(cols)
+
+    def _clear_conc_columns(self) -> None:
+        while self._columns_layout.count():
+            item = self._columns_layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        self.model_opt_plots.set_available_conc_columns([])
+
+    def _populate_conc_columns(self, columns: list[str]) -> None:
+        self._clear_conc_columns()
+        if not columns:
+            self._columns_layout.addWidget(QLabel("Select a concentration sheet to load columns…", self._columns_widget))
             return
 
-        self.conc_columns.blockSignals(True)
-        self.conc_columns.clear()
-        for c in conc_cols:
-            item = QListWidgetItem(str(c), self.conc_columns)
+        for col in columns:
+            cb = QCheckBox(str(col), self._columns_widget)
+            cb.setChecked(True)  # match Tauri default
+            cb.toggled.connect(self._on_conc_columns_toggled)
+            self._columns_layout.addWidget(cb)
+
+        self._columns_layout.addStretch(1)
+        self._on_conc_columns_toggled()
+
+    def _on_conc_columns_toggled(self) -> None:
+        selected = self._selected_conc_columns()
+        self.model_opt_plots.set_available_conc_columns(selected)
+
+    def _selected_conc_columns(self) -> list[str]:
+        selected: list[str] = []
+        for i in range(self._columns_layout.count()):
+            w = self._columns_layout.itemAt(i).widget()
+            if isinstance(w, QCheckBox) and w.isChecked():
+                selected.append(str(w.text()))
+        return selected
+
+    def _populate_signals(self, columns: list[str]) -> None:
+        self.list_signals.blockSignals(True)
+        self.list_signals.clear()
+        for c in columns or []:
+            item = QListWidgetItem(str(c), self.list_signals)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Unchecked)
-        self.conc_columns.blockSignals(False)
+        self.list_signals.blockSignals(False)
 
-        self.signal_columns.blockSignals(True)
-        self.signal_columns.clear()
-        for c in sig_cols:
-            item = QListWidgetItem(str(c), self.signal_columns)
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            item.setCheckState(Qt.CheckState.Unchecked)
-        self.signal_columns.blockSignals(False)
+    def _set_list_checked(self, widget: QListWidget, checked: bool) -> None:
+        widget.blockSignals(True)
+        state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+        for i in range(widget.count()):
+            it = widget.item(i)
+            if it is not None:
+                it.setCheckState(state)
+        widget.blockSignals(False)
 
-        self._sync_role_combos_from_conc_selection()
+    def _selected_signals(self) -> list[str]:
+        out: list[str] = []
+        for i in range(self.list_signals.count()):
+            it = self.list_signals.item(i)
+            if it is not None and it.checkState() == Qt.CheckState.Checked:
+                out.append(str(it.text()))
+        return out
+
+    # ---- Run / Cancel / Results ----
+    def _set_running(self, running: bool) -> None:
+        self.btn_process.setEnabled(not running)
+        self.btn_choose_file.setEnabled(not running)
+        self.combo_conc_sheet.setEnabled(not running)
+        self.combo_shift_sheet.setEnabled(not running)
+        self.list_signals.setEnabled(not running)
+        self.btn_signals_all.setEnabled(not running)
+        self.btn_signals_none.setEnabled(not running)
+        self.model_opt_plots.setEnabled(not running)
+        self.btn_import.setEnabled(not running)
+        self.btn_export.setEnabled(not running)
+        self.btn_reset.setEnabled(not running)
+        self.btn_cancel.setEnabled(running)
+        self.btn_save.setEnabled(bool(self._last_result) and bool(self._last_result.get("success", True)) and not running)
+
+        self.btn_process.setText("Processing..." if running else "Process Data")
 
     def _collect_config(self) -> dict[str, Any]:
-        file_path = self.file_selector.path()
-        if not file_path:
-            raise ValueError("Missing Excel file.")
+        if not self._file_path:
+            raise ValueError("No Excel file selected.")
 
-        mode = str(self.mode.currentData() or "single")
-        nmr_sheet = self.nmr_sheet.currentText().strip()
-        conc_sheet = self.conc_sheet.currentText().strip()
-        if not nmr_sheet or not conc_sheet:
-            raise ValueError("Select NMR and conc sheets.")
+        conc_sheet = self.combo_conc_sheet.currentText().strip()
+        nmr_sheet = self.combo_shift_sheet.currentText().strip()
+        if not conc_sheet or not nmr_sheet:
+            raise ValueError("Select Concentration and Chemical Shift sheets.")
 
-        column_names: list[str] = []
-        for i in range(self.conc_columns.count()):
-            item = self.conc_columns.item(i)
-            if item is not None and item.checkState() == Qt.CheckState.Checked:
-                column_names.append(str(item.text()))
+        column_names = self._selected_conc_columns()
         if not column_names:
-            raise ValueError("Select at least one concentration column.")
+            raise ValueError("Select at least one concentration column in 'Column names'.")
 
-        signal_names: list[str] = []
-        for i in range(self.signal_columns.count()):
-            item = self.signal_columns.item(i)
-            if item is not None and item.checkState() == Qt.CheckState.Checked:
-                signal_names.append(str(item.text()))
+        signal_names = self._selected_signals()
         if not signal_names:
-            raise ValueError("Select at least one signal column.")
+            raise ValueError("Select at least one signal in 'Chemical Shifts (Signals)'.")
 
-        receptor_label = self.receptor_label.currentText().strip()
-        guest_label = self.guest_label.currentText().strip()
+        state = self.model_opt_plots.collect_state()
+        receptor_label = state.receptor_label
+        guest_label = state.guest_label
         if not receptor_label or not guest_label:
-            raise ValueError("Select receptor and guest labels.")
+            raise ValueError("Select Receptor and Guest roles (or keep Auto with valid column names).")
         if receptor_label == guest_label:
-            raise ValueError("Receptor and guest cannot be the same column.")
-        if receptor_label not in column_names or guest_label not in column_names:
-            raise ValueError("Receptor/guest must be selected among checked concentration columns.")
+            raise ValueError("Receptor and Guest cannot be the same column.")
 
-        model_text = self.model_matrix.toPlainText().strip()
-        if not model_text:
-            raise ValueError("Model matrix is empty.")
-        try:
-            modelo = json.loads(model_text)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"Invalid model matrix JSON: {exc}") from exc
-
-        non_abs_species: list[int] = []
-        raw_nas = self.non_abs_species.text().strip()
-        if raw_nas:
-            try:
-                non_abs_species = [int(x.strip()) for x in raw_nas.split(",") if x.strip()]
-            except ValueError as exc:
-                raise ValueError("Non-abs species must be comma-separated integers.") from exc
-
-        initial_k: list[float] = []
-        bounds: list[list[float | None]] = []
-        fixed_mask: list[bool] = []
-        for row in range(self.params_table.rowCount()):
-            v_item = self.params_table.item(row, 1)
-            val_s = (v_item.text() if v_item is not None else "").strip()
-            if not val_s:
-                raise ValueError(f"Missing initial value for K{row + 1}.")
-            try:
-                k_val = float(val_s)
-            except ValueError as exc:
-                raise ValueError(f"Invalid value for K{row + 1}.") from exc
-
-            fixed_item = self.params_table.item(row, 4)
-            fixed = fixed_item is not None and fixed_item.checkState() == Qt.CheckState.Checked
-
-            min_item = self.params_table.item(row, 2)
-            max_item = self.params_table.item(row, 3)
-            min_v = _ensure_float_or_none(min_item.text() if min_item is not None else "")
-            max_v = _ensure_float_or_none(max_item.text() if max_item is not None else "")
-
-            if fixed:
-                min_v = k_val
-                max_v = k_val
-
-            initial_k.append(k_val)
-            bounds.append([min_v, max_v])
-            fixed_mask.append(bool(fixed))
-
-        return {
-            "file_path": file_path,
-            "nmr_mode": mode,
+        config = {
+            "file_path": self._file_path,
             "nmr_sheet": nmr_sheet,
             "conc_sheet": conc_sheet,
             "column_names": column_names,
             "signal_names": signal_names,
             "receptor_label": receptor_label,
             "guest_label": guest_label,
-            "modelo": modelo,
-            "non_abs_species": non_abs_species,
-            "algorithm": self.algorithm.currentText() or "Newton-Raphson",
-            "model_settings": self.model_settings.currentText() or "Free",
-            "optimizer": self.optimizer.currentText() or "powell",
-            "initial_k": initial_k,
-            "bounds": bounds,
-            "fixed_mask": fixed_mask,
-            "k_fixed": fixed_mask,
+            "modelo": state.modelo,
+            "non_abs_species": state.non_abs_species,
+            "algorithm": state.algorithm,
+            "model_settings": state.model_settings,
+            "optimizer": state.optimizer,
+            "initial_k": state.initial_k,
+            "bounds": state.bounds,
+            "fixed_mask": state.fixed_mask,
+            "k_fixed": state.fixed_mask,
         }
+        return config
 
-    def _set_running(self, running: bool) -> None:
-        self._data_group.setEnabled(not running)
-        self._model_group.setEnabled(not running)
-        self._opt_group.setEnabled(not running)
-        self.btn_run.setEnabled(not running)
-        self.btn_import.setEnabled(not running)
-        self.btn_export.setEnabled(not running)
-        self.btn_reset.setEnabled(not running)
-        self.btn_cancel.setEnabled(running)
-
-    def _on_run_clicked(self) -> None:
+    def _on_process_clicked(self) -> None:
         if self._worker is not None:
-            QMessageBox.warning(self, "Busy", "A fit is already running.")
+            QMessageBox.warning(self, "Busy", "A fit is already running. Cancel it first.")
             return
         try:
             config = self._collect_config()
         except Exception as exc:
+            self.log.append_text(f"ERROR: {exc}")
             QMessageBox.warning(self, "Config error", str(exc))
             return
 
-        self.log.append_text("Starting NMR fit…")
-        self._set_running(True)
+        self.log.append_text("Starting NMR processing…")
+        self._last_result = None
+        self.btn_save.setEnabled(False)
+        self.canvas_main.clear()
+        self.canvas_diag.clear()
 
-        worker = FitWorker(run_nmr_fit, config=config, parent=self)
-        self._worker = worker
-        worker.progress.connect(lambda msg: self.log.append_text(str(msg).rstrip()))
-        worker.result.connect(self._on_fit_result)
-        worker.error.connect(self._on_fit_error)
-        worker.finished.connect(self._on_fit_finished)
-        worker.start()
+        self._worker = FitWorker(run_nmr_fit, config=config, parent=self)
+        self._worker.progress.connect(lambda msg: self.log.append_text(str(msg)))
+        self._worker.result.connect(self._on_fit_result)
+        self._worker.error.connect(self._on_fit_error)
+        self._worker.finished.connect(self._on_fit_finished)
+        self._set_running(True)
+        self._worker.start()
 
     def _on_cancel_clicked(self) -> None:
-        if self._worker is not None:
-            self._worker.request_cancel()
-            self.log.append_text("Cancellation requested…")
+        if self._worker is None:
+            return
+        self._worker.request_cancel()
+        self.log.append_text("Cancel requested…")
 
     def _on_fit_result(self, result: object) -> None:
         if not isinstance(result, dict):
-            self.log.append_text("Unexpected result type.")
             return
         self._last_result = result
+        self.btn_save.setEnabled(bool(result.get("success", True)))
 
-        graphs = (result.get("graphs") or result.get("legacy_graphs") or {}) if isinstance(result, dict) else {}
-        self.plot_selector.blockSignals(True)
-        self.plot_selector.clear()
-        self.plot_selector.addItems([str(k) for k in graphs.keys()])
-        self.plot_selector.blockSignals(False)
-        if self.plot_selector.count() > 0:
-            self.plot_selector.setCurrentIndex(0)
-            self._render_selected_plot()
-        else:
-            self.canvas.clear()
+        graphs = result.get("legacy_graphs") or result.get("graphs") or {}
+        if isinstance(graphs, dict):
+            if graphs.get("fit"):
+                self.canvas_main.show_image_base64(str(graphs["fit"]), title="fit")
+            else:
+                for k, v in graphs.items():
+                    if v:
+                        self.canvas_main.show_image_base64(str(v), title=str(k))
+                        break
+
+            diag_key = "residuals" if "residuals" in graphs else "concentrations"
+            if graphs.get(diag_key):
+                self.canvas_diag.show_image_base64(str(graphs[diag_key]), title=diag_key)
 
         results_text = result.get("results_text") or ""
         if results_text:
-            self.log.append_text("")
-            self.log.append_text(str(results_text).rstrip())
-            self.log.append_text("")
+            self.log.append_text("\n" + str(results_text).rstrip() + "\n")
 
     def _on_fit_error(self, message: str) -> None:
         self.log.append_text(f"ERROR: {message}")
@@ -678,30 +464,7 @@ class NMRTab(QWidget):
         self._worker = None
         self._set_running(False)
 
-    def _on_plot_selection_changed(self) -> None:
-        self._render_selected_plot()
-
-    def _render_selected_plot(self) -> None:
-        if not self._last_result:
-            return
-        graphs = self._last_result.get("graphs") or self._last_result.get("legacy_graphs") or {}
-        key = self.plot_selector.currentText()
-        if not key or key not in graphs:
-            return
-        self.canvas.show_image_base64(str(graphs[key]), title=str(key))
-
-    def _on_clear_log_clicked(self) -> None:
-        self.log.clear()
-
-    def reset_tab(self) -> None:
-        if self._worker is not None:
-            QMessageBox.warning(self, "Busy", "Cancel the running fit before resetting.")
-            return
-        self.log.clear()
-        self.canvas.clear()
-        self._last_result = None
-        self.plot_selector.clear()
-
+    # ---- Import / Export / Reset / Save ----
     def _on_export_clicked(self) -> None:
         try:
             config = self._collect_config()
@@ -714,6 +477,7 @@ class NMRTab(QWidget):
         try:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(config, f, indent=2, ensure_ascii=False)
+            self.log.append_text(f"Config exported to {path}")
         except Exception as exc:
             QMessageBox.critical(self, "Export error", str(exc))
 
@@ -729,128 +493,130 @@ class NMRTab(QWidget):
             return
         try:
             self.load_config(config)
+            self.log.append_text(f"Config imported from {path}")
         except Exception as exc:
             QMessageBox.critical(self, "Config error", str(exc))
 
     def load_config(self, config: dict[str, Any]) -> None:
+        if self._worker is not None:
+            raise RuntimeError("Cancel the running fit before importing config.")
+
         file_path = str(config.get("file_path") or "")
         if not file_path:
             raise ValueError("Config missing 'file_path'.")
         if not Path(file_path).exists():
             raise ValueError(f"Excel file not found: {file_path}")
+        self._set_file_path(file_path)
 
-        raw_mode = str(config.get("nmr_mode") or "").strip().lower()
-        nmr_sheet_value = str(config.get("nmr_sheet") or config.get("spectra_sheet") or "")
-        conc_sheet_value = str(config.get("conc_sheet") or "")
-        if raw_mode not in {"single", "multi"}:
-            if nmr_sheet_value and conc_sheet_value and nmr_sheet_value != conc_sheet_value:
-                raw_mode = "multi"
-            else:
-                raw_mode = "single"
-
-        mode_ix = self.mode.findData(raw_mode)
-        if mode_ix >= 0:
-            self.mode.setCurrentIndex(mode_ix)
-
-        self.file_selector.set_path(file_path)
-        self._load_sheets()
-
-        def _set_combo(combo: QComboBox, value: str) -> None:
-            ix = combo.findText(value)
+        conc_sheet = str(config.get("conc_sheet") or "")
+        nmr_sheet = str(config.get("nmr_sheet") or config.get("spectra_sheet") or config.get("signals_sheet") or "")
+        if conc_sheet:
+            ix = self.combo_conc_sheet.findText(conc_sheet)
             if ix >= 0:
-                combo.setCurrentIndex(ix)
+                self.combo_conc_sheet.setCurrentIndex(ix)
+        if nmr_sheet:
+            ix = self.combo_shift_sheet.findText(nmr_sheet)
+            if ix >= 0:
+                self.combo_shift_sheet.setCurrentIndex(ix)
+
+        # Ensure dependent UI is loaded
+        self._on_conc_sheet_changed()
+        self._on_shift_sheet_changed()
 
         missing: list[str] = []
 
-        if nmr_sheet_value:
-            before = self.nmr_sheet.currentText()
-            _set_combo(self.nmr_sheet, nmr_sheet_value)
-            if self.nmr_sheet.currentText() == before and before != nmr_sheet_value:
-                missing.append(f"NMR sheet '{nmr_sheet_value}' not found.")
+        # Restore column_names
+        wanted_cols = {str(c) for c in (config.get("column_names") or [])}
+        if wanted_cols:
+            available = set()
+            for i in range(self._columns_layout.count()):
+                w = self._columns_layout.itemAt(i).widget()
+                if isinstance(w, QCheckBox):
+                    available.add(str(w.text()))
+                    w.setChecked(str(w.text()) in wanted_cols)
+            missing_cols = sorted(wanted_cols - available)
+            if missing_cols:
+                missing.append(f"Missing concentration columns: {missing_cols}")
+        self._on_conc_columns_toggled()
 
-        if raw_mode == "multi" and conc_sheet_value:
-            before = self.conc_sheet.currentText()
-            _set_combo(self.conc_sheet, conc_sheet_value)
-            if self.conc_sheet.currentText() == before and before != conc_sheet_value:
-                missing.append(f"Conc sheet '{conc_sheet_value}' not found.")
-
-        if raw_mode == "single":
-            self._apply_mode_ui()
-
-        self._load_columns()
-
-        selected_conc = set(str(c) for c in (config.get("column_names") or []))
-        if selected_conc:
-            available_conc = {
-                self.conc_columns.item(i).text()
-                for i in range(self.conc_columns.count())
-                if self.conc_columns.item(i) is not None
-            }
-            missing_conc = sorted(selected_conc - available_conc)
-            if missing_conc:
-                missing.append(f"Conc columns not found: {missing_conc}")
-            self.conc_columns.blockSignals(True)
-            for i in range(self.conc_columns.count()):
-                item = self.conc_columns.item(i)
-                if item is None:
+        # Restore signals
+        wanted_sigs = {str(s) for s in (config.get("signal_names") or [])}
+        if wanted_sigs:
+            available_sigs = {self.list_signals.item(i).text() for i in range(self.list_signals.count()) if self.list_signals.item(i) is not None}
+            missing_sigs = sorted(wanted_sigs - available_sigs)
+            if missing_sigs:
+                missing.append(f"Missing signals: {missing_sigs}")
+            self.list_signals.blockSignals(True)
+            for i in range(self.list_signals.count()):
+                it = self.list_signals.item(i)
+                if it is None:
                     continue
-                item.setCheckState(Qt.CheckState.Checked if item.text() in selected_conc else Qt.CheckState.Unchecked)
-            self.conc_columns.blockSignals(False)
-        self._sync_role_combos_from_conc_selection()
+                it.setCheckState(Qt.CheckState.Checked if it.text() in wanted_sigs else Qt.CheckState.Unchecked)
+            self.list_signals.blockSignals(False)
 
-        selected_sig = set(str(c) for c in (config.get("signal_names") or []))
-        if selected_sig:
-            available_sig = {
-                self.signal_columns.item(i).text()
-                for i in range(self.signal_columns.count())
-                if self.signal_columns.item(i) is not None
-            }
-            missing_sig = sorted(selected_sig - available_sig)
-            if missing_sig:
-                missing.append(f"Signal columns not found: {missing_sig}")
-            self.signal_columns.blockSignals(True)
-            for i in range(self.signal_columns.count()):
-                item = self.signal_columns.item(i)
-                if item is None:
-                    continue
-                item.setCheckState(Qt.CheckState.Checked if item.text() in selected_sig else Qt.CheckState.Unchecked)
-            self.signal_columns.blockSignals(False)
-
-        receptor_value = str(config.get("receptor_label") or "")
-        guest_value = str(config.get("guest_label") or "")
-        if receptor_value:
-            _set_combo(self.receptor_label, receptor_value)
-            if self.receptor_label.currentText() != receptor_value:
-                missing.append(f"Receptor label '{receptor_value}' not found among selected conc columns.")
-        if guest_value:
-            _set_combo(self.guest_label, guest_value)
-            if self.guest_label.currentText() != guest_value:
-                missing.append(f"Guest label '{guest_value}' not found among selected conc columns.")
-
-        self.model_matrix.setPlainText(json.dumps(config.get("modelo") or []))
-        self.non_abs_species.setText(",".join(str(x) for x in (config.get("non_abs_species") or [])))
-
-        _set_combo(self.algorithm, str(config.get("algorithm") or "Newton-Raphson"))
-        _set_combo(self.model_settings, str(config.get("model_settings") or "Free"))
-        _set_combo(self.optimizer, str(config.get("optimizer") or "powell"))
-
-        initial_k = list(config.get("initial_k") or [])
-        bounds = list(config.get("bounds") or [])
+        # Restore Model/Optimization
+        modelo = config.get("modelo") or []
+        n_rows = len(modelo) if isinstance(modelo, list) else 0
+        n_cols = len(modelo[0]) if n_rows and isinstance(modelo[0], list) else 0
+        n_species = max(0, n_rows - n_cols)
         fixed_mask = list(config.get("fixed_mask") or config.get("k_fixed") or [])
-        self.params_table.setRowCount(0)
-        for i, k in enumerate(initial_k):
-            self._add_param_row()
-            self.params_table.item(i, 1).setText(str(k))
-            if i < len(bounds) and isinstance(bounds[i], (list, tuple)) and len(bounds[i]) >= 2:
-                b0, b1 = bounds[i][0], bounds[i][1]
-                if b0 is not None:
-                    self.params_table.item(i, 2).setText(str(b0))
-                if b1 is not None:
-                    self.params_table.item(i, 3).setText(str(b1))
-            if i < len(fixed_mask) and fixed_mask[i]:
-                self.params_table.item(i, 4).setCheckState(Qt.CheckState.Checked)
+        state = ModelOptPlotsState(
+            n_components=n_cols,
+            n_species=n_species,
+            modelo=[[float(x or 0.0) for x in (row or [])] for row in (modelo or [])],
+            non_abs_species=list(config.get("non_abs_species") or []),
+            algorithm=str(config.get("algorithm") or "Newton-Raphson"),
+            model_settings=str(config.get("model_settings") or "Free"),
+            optimizer=str(config.get("optimizer") or "powell"),
+            initial_k=list(config.get("initial_k") or []),
+            bounds=list(config.get("bounds") or []),
+            fixed_mask=fixed_mask,
+            receptor_label=str(config.get("receptor_label") or ""),
+            guest_label=str(config.get("guest_label") or ""),
+        )
+        self.model_opt_plots.apply_state(state)
 
         if missing:
             msg = "\n".join(missing)
-            self.log.append_text(f"Config loaded with warnings:\n{msg}")
-            QMessageBox.information(self, "Config warnings", msg)
+            self.log.append_text("WARNING:\n" + msg)
+            QMessageBox.warning(self, "Config partially applied", msg)
+
+    def reset_tab(self) -> None:
+        if self._worker is not None:
+            QMessageBox.warning(self, "Busy", "Cancel the running fit before resetting.")
+            return
+
+        self._file_path = ""
+        self.lbl_file_status.setText("No file selected")
+        self.combo_conc_sheet.clear()
+        self.combo_shift_sheet.clear()
+        self._clear_conc_columns()
+        self._populate_signals([])
+        self.model_opt_plots.reset()
+
+        self.canvas_main.clear()
+        self.canvas_diag.clear()
+        self.log.clear()
+        self._last_result = None
+        self.btn_save.setEnabled(False)
+
+    def _on_save_results_clicked(self) -> None:
+        if not self._last_result or not bool(self._last_result.get("success", True)):
+            QMessageBox.information(self, "No results", "Run 'Process Data' first.")
+            return
+
+        path, _ = QFileDialog.getSaveFileName(self, "Save results", "hmfit_results.xlsx", "Excel (*.xlsx)")
+        if not path:
+            return
+        try:
+            write_results_xlsx(
+                path,
+                constants=self._last_result.get("constants") or [],
+                statistics=self._last_result.get("statistics") or {},
+                results_text=str(self._last_result.get("results_text") or ""),
+                export_data=self._last_result.get("export_data") or {},
+            )
+            self.log.append_text(f"Results saved to {path}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Save error", str(exc))
+
