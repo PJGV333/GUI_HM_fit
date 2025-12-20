@@ -393,7 +393,7 @@ class NMRTab(QWidget):
 
         for col in columns:
             cb = QCheckBox(str(col), self._columns_widget)
-            cb.setChecked(True)  # match Tauri default
+            cb.setChecked(False)  # match main: start unchecked
             cb.toggled.connect(self._on_conc_columns_toggled)
             self._columns_layout.addWidget(cb)
 
@@ -502,12 +502,57 @@ class NMRTab(QWidget):
         }
         return config
 
+    def _preflight_nmr_shapes(self, config: dict[str, Any]) -> None:
+        import pandas as pd
+
+        file_path = str(config.get("file_path") or "")
+        conc_sheet = str(config.get("conc_sheet") or "")
+        column_names = [str(c) for c in (config.get("column_names") or [])]
+        modelo = config.get("modelo") or []
+
+        if not modelo:
+            raise ValueError("Model matrix is empty. Define model dimensions and grid.")
+
+        n_rows = len(modelo) if isinstance(modelo, list) else 0
+        n_cols = len(modelo[0]) if n_rows and isinstance(modelo[0], list) else 0
+        if n_rows == 0 or n_cols == 0:
+            raise ValueError("Model matrix is empty. Define model dimensions and grid.")
+        for row in modelo:
+            if not isinstance(row, list) or len(row) != n_cols:
+                raise ValueError("Model matrix rows have inconsistent length.")
+
+        m_shape = (n_cols, n_rows)
+        n_comp = n_cols
+        nspec = n_rows
+
+        df = pd.read_excel(file_path, sheet_name=conc_sheet, header=0)
+        missing = [c for c in column_names if c not in df.columns]
+        if missing:
+            raise ValueError(f"Missing concentration columns: {missing}")
+
+        ctot = df[column_names].to_numpy(dtype=float)
+        if ctot.ndim != 2:
+            raise ValueError("Concentration data shape is invalid.")
+
+        ctot_row_shape = (ctot.shape[1],)
+        self.log.append_text(
+            f"Preflight NMR shapes: ctot_row={ctot_row_shape}, M={m_shape}, nspec={nspec}, n_comp={n_comp}"
+        )
+
+        if ctot.shape[1] != n_comp:
+            raise ValueError(
+                "Concentration columns "
+                f"({ctot.shape[1]}) do not match model components ({n_comp}). "
+                "Update Column names or the model dimensions."
+            )
+
     def _on_process_clicked(self) -> None:
         if self._worker is not None:
             QMessageBox.warning(self, "Busy", "A fit is already running. Cancel it first.")
             return
         try:
             config = self._collect_config()
+            self._preflight_nmr_shapes(config)
         except Exception as exc:
             self.log.append_text(f"ERROR: {exc}")
             QMessageBox.warning(self, "Config error", str(exc))
