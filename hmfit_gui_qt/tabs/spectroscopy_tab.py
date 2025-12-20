@@ -215,11 +215,6 @@ class SpectroscopyTab(QWidget):
         actions_layout = QHBoxLayout(actions_group)
         actions_layout.setContentsMargins(6, 6, 6, 6)
 
-        self.btn_backend = QPushButton("Probar backend", actions_group)
-        self.btn_backend.setEnabled(False)
-        self.btn_backend.setToolTip("N/A en Qt (GUI usa hmfit_core local).")
-        actions_layout.addWidget(self.btn_backend)
-
         self.btn_import = QPushButton("Import Config", actions_group)
         self.btn_import.clicked.connect(self._on_import_clicked)
         actions_layout.addWidget(self.btn_import)
