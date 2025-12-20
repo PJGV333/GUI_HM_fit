@@ -29,7 +29,7 @@ from hmfit_core.exports import write_results_xlsx
 from hmfit_gui_qt.widgets.log_console import LogConsole
 from hmfit_gui_qt.widgets.model_opt_plots import ModelOptPlotsState, ModelOptPlotsWidget
 from hmfit_gui_qt.widgets.mpl_canvas import MplCanvas, NavigationToolbar
-from hmfit_gui_qt.widgets.parse_channels import parse_channels_spec, resolve_channels
+from hmfit_gui_qt.widgets.parse_channels import DEFAULT_CHANNEL_TOL, parse_channels_spec, resolve_channels
 from hmfit_gui_qt.workers.fit_worker import FitWorker
 
 
@@ -65,6 +65,12 @@ def _format_axis_val(v: float) -> str:
     if abs(x - rounded) < 1e-9:
         return str(int(rounded))
     return str(x)
+
+
+def _axis_range_text(axis_values: list[float]) -> str:
+    if not axis_values:
+        return ""
+    return f"{_format_axis_val(min(axis_values))}–{_format_axis_val(max(axis_values))}"
 
 
 class SpectroscopyTab(QWidget):
@@ -450,7 +456,7 @@ class SpectroscopyTab(QWidget):
             return
         self._axis_values = axis
         if axis:
-            self.lbl_channels_range.setText(f"{_format_axis_val(min(axis))}–{_format_axis_val(max(axis))} ({len(axis)})")
+            self.lbl_channels_range.setText(f"{_axis_range_text(axis)} ({len(axis)})")
         else:
             self.lbl_channels_range.setText("")
         self._populate_channels_list(axis)
@@ -561,13 +567,18 @@ class SpectroscopyTab(QWidget):
         if errors:
             raise ValueError("\n".join(errors))
 
-        resolved_info = resolve_channels(list(parsed.get("tokens") or []), self._axis_values, tol=1e-6)
+        resolved_info = resolve_channels(list(parsed.get("tokens") or []), self._axis_values, tol=DEFAULT_CHANNEL_TOL)
         resolved = list(resolved_info.get("resolved") or [])
         res_errors = list(resolved_info.get("errors") or [])
         if res_errors:
             raise ValueError("\n".join(res_errors))
         if not resolved:
             raise ValueError("No channels matched.")
+        for adj in resolved_info.get("adjustments") or []:
+            raw = str(adj.get("raw") or "")
+            used = _format_axis_val(adj.get("used"))
+            tol = adj.get("tol", DEFAULT_CHANNEL_TOL)
+            self.log.append_text(f"Channel {raw} not found; using nearest {used} (tol={tol})")
 
         ix = self.combo_channels_mode.findData("custom")
         if ix >= 0:
@@ -633,11 +644,15 @@ class SpectroscopyTab(QWidget):
     def _update_channels_usage(self) -> None:
         total = len(self._axis_values)
         mode = str(self.combo_channels_mode.currentData() or "all")
+        if not total:
+            self.lbl_channels_usage.setText("")
+            return
+        range_text = _axis_range_text(self._axis_values)
         if mode == "all":
-            self.lbl_channels_usage.setText(f"Using {total} / {total} channels" if total else "")
+            used = total
         else:
             used = len(self._selected_channels())
-            self.lbl_channels_usage.setText(f"Using {used} / {total} channels" if total else "")
+        self.lbl_channels_usage.setText(f"Using {used} / {total} ({range_text})")
 
     # ---- Model / Optimization sync ----
     def _on_model_defined(self, _n_components: int, _n_species: int) -> None:

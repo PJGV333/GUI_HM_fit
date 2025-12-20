@@ -5,6 +5,7 @@ import re
 from typing import Any
 
 _RANGE_RE = re.compile(r"^(-?\\d+(?:\\.\\d+)?)\\s*-\\s*(-?\\d+(?:\\.\\d+)?)$")
+DEFAULT_CHANNEL_TOL = 0.5
 
 
 def parse_channels_spec(spec: str) -> dict[str, Any]:
@@ -63,7 +64,12 @@ def parse_channels_spec(spec: str) -> dict[str, Any]:
     return {"mode": "custom", "tokens": tokens, "errors": errors}
 
 
-def resolve_channels(tokens: list[dict[str, Any]], axis_values: list[float], *, tol: float = 1e-6) -> dict[str, Any]:
+def resolve_channels(
+    tokens: list[dict[str, Any]],
+    axis_values: list[float],
+    *,
+    tol: float = DEFAULT_CHANNEL_TOL,
+) -> dict[str, Any]:
     """
     Resolve parsed tokens onto concrete axis values.
 
@@ -80,6 +86,7 @@ def resolve_channels(tokens: list[dict[str, Any]], axis_values: list[float], *, 
 
     errors: list[str] = []
     mapping_lines: list[str] = []
+    adjustments: list[dict[str, Any]] = []
     resolved_set: set[float] = set()
 
     def nearest(target: float) -> tuple[float | None, float]:
@@ -105,10 +112,20 @@ def resolve_channels(tokens: list[dict[str, Any]], axis_values: list[float], *, 
                 errors.append(f"No axis values available to resolve '{raw}'.")
                 continue
             if diff > float(tol):
-                errors.append(f"'{raw}' is not within tolerance (tol={tol}) of any axis value.")
+                errors.append(f"Channel {raw} not found within ±{tol} nm")
                 continue
             resolved_set.add(float(best))
             mapping_lines.append(f"{raw} → {best}")
+            if abs(float(best) - float(target)) > 1e-9:
+                adjustments.append(
+                    {
+                        "raw": raw,
+                        "target": float(target),
+                        "used": float(best),
+                        "diff": float(diff),
+                        "tol": float(tol),
+                    }
+                )
             continue
 
         if ttype == "range":
@@ -133,4 +150,9 @@ def resolve_channels(tokens: list[dict[str, Any]], axis_values: list[float], *, 
         errors.append(f"Unsupported token '{tok.get('raw', '')}'.")
 
     resolved = [v for v in axis if v in resolved_set]
-    return {"resolved": resolved, "mapping_lines": mapping_lines, "errors": errors}
+    return {
+        "resolved": resolved,
+        "mapping_lines": mapping_lines,
+        "errors": errors,
+        "adjustments": adjustments,
+    }
