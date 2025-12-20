@@ -444,10 +444,10 @@ class NMRTab(QWidget):
 
         self._worker = FitWorker(run_nmr_fit, config=config, parent=self)
         self._thread = self._worker.thread()
-        self._worker.progress.connect(self._on_worker_progress)
-        self._worker.result.connect(self._on_fit_result)
-        self._worker.error.connect(self._on_fit_error)
-        self._worker.finished.connect(self._on_fit_finished)
+        self._worker.progress.connect(self._on_worker_progress, Qt.ConnectionType.QueuedConnection)
+        self._worker.result.connect(self._on_fit_result, Qt.ConnectionType.QueuedConnection)
+        self._worker.error.connect(self._on_fit_error, Qt.ConnectionType.QueuedConnection)
+        self._worker.finished.connect(self._on_fit_finished, Qt.ConnectionType.QueuedConnection)
         self._set_running(True)
         self._worker.start()
 
