@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSplitter,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -51,6 +50,8 @@ class NMRTab(QWidget):
         self._worker: FitWorker | None = None
         self._thread: QThread | None = None
         self._last_result: dict[str, Any] | None = None
+        self._plot_pages: list[dict[str, str]] = []
+        self._plot_index: int = -1
         self._file_path: str = ""
 
         self._build_ui()
@@ -181,7 +182,18 @@ class NMRTab(QWidget):
         main_plot_panel = QWidget(right_split)
         main_plot_layout = QVBoxLayout(main_plot_panel)
         main_plot_layout.setContentsMargins(0, 0, 0, 0)
-        main_plot_layout.addWidget(QLabel("Main spectra / titration plot", main_plot_panel))
+        nav = QHBoxLayout()
+        self.btn_plot_prev = QPushButton("Prev", main_plot_panel)
+        self.btn_plot_prev.clicked.connect(lambda: self._navigate_plot(-1))
+        nav.addWidget(self.btn_plot_prev)
+        self.lbl_plot_title = QLabel("Main spectra / titration plot", main_plot_panel)
+        self.lbl_plot_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        nav.addWidget(self.lbl_plot_title, 1)
+        self.btn_plot_next = QPushButton("Next", main_plot_panel)
+        self.btn_plot_next.clicked.connect(lambda: self._navigate_plot(1))
+        nav.addWidget(self.btn_plot_next)
+        main_plot_layout.addLayout(nav)
+
         self.canvas_main = MplCanvas(main_plot_panel)
         main_plot_layout.addWidget(self.canvas_main, 1)
         main_plot_layout.addWidget(NavigationToolbar(self.canvas_main, main_plot_panel))
@@ -189,47 +201,116 @@ class NMRTab(QWidget):
         diag_panel = QWidget(right_split)
         diag_layout = QVBoxLayout(diag_panel)
         diag_layout.setContentsMargins(0, 0, 0, 0)
-        diag_layout.addWidget(QLabel("Residuals / component spectra / diagnostics", diag_panel))
-
-        self.diag_tabs = QTabWidget(diag_panel)
-
-        residuals_tab = QWidget(self.diag_tabs)
-        residuals_layout = QVBoxLayout(residuals_tab)
-        residuals_layout.setContentsMargins(0, 0, 0, 0)
-        self.canvas_diag = MplCanvas(residuals_tab)
-        residuals_layout.addWidget(self.canvas_diag, 1)
-        residuals_layout.addWidget(NavigationToolbar(self.canvas_diag, residuals_tab))
-        self.diag_tabs.addTab(residuals_tab, "Residuals")
-
-        log_tab = QWidget(self.diag_tabs)
-        log_layout = QVBoxLayout(log_tab)
-        log_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.log = LogConsole(log_tab)
-        self.log.setMinimumHeight(160)
+        diag_layout.addWidget(QLabel("Diagnostics / Log", diag_panel))
 
         log_controls = QHBoxLayout()
-        self.chk_autoscroll = QCheckBox("Autoscroll", log_tab)
+        self.chk_autoscroll = QCheckBox("Autoscroll", diag_panel)
         self.chk_autoscroll.setChecked(True)
-        self.chk_autoscroll.toggled.connect(self.log.set_autoscroll)
         log_controls.addWidget(self.chk_autoscroll)
         log_controls.addStretch(1)
-        self.btn_clear_log = QPushButton("Clear log", log_tab)
-        self.btn_clear_log.clicked.connect(self.log.clear)
+        self.btn_clear_log = QPushButton("Clear log", diag_panel)
         log_controls.addWidget(self.btn_clear_log)
-        log_layout.addLayout(log_controls)
-        log_layout.addWidget(self.log, 1)
+        diag_layout.addLayout(log_controls)
 
-        self.diag_tabs.addTab(log_tab, "Log")
-        self.diag_tabs.setCurrentWidget(log_tab)
-
-        diag_layout.addWidget(self.diag_tabs, 1)
+        self.log = LogConsole(diag_panel)
+        self.log.setMinimumHeight(160)
+        self.chk_autoscroll.toggled.connect(self.log.set_autoscroll)
+        self.btn_clear_log.clicked.connect(self.log.clear)
+        diag_layout.addWidget(self.log, 1)
 
         right_split.setStretchFactor(0, 3)
         right_split.setStretchFactor(1, 2)
 
         self._main_split.setStretchFactor(0, 0)
         self._main_split.setStretchFactor(1, 1)
+
+        self._update_plot_nav()
+
+    # ---- Plot navigation (Prev/Next) ----
+    def _plot_title_for_key(self, key: str) -> str:
+        titles = {
+            "fit": "Chemical shifts fit",
+            "concentrations": "Concentration profile",
+            "residuals": "Residuals",
+        }
+        return titles.get(str(key), str(key))
+
+    def _graphs_from_last_result(self) -> dict[str, Any]:
+        if not self._last_result:
+            return {}
+        graphs = self._last_result.get("legacy_graphs") or self._last_result.get("graphs") or {}
+        return graphs if isinstance(graphs, dict) else {}
+
+    def _rebuild_plot_pages_from_result(self) -> None:
+        graphs = self._graphs_from_last_result()
+        if not graphs:
+            self._plot_pages = []
+            self._plot_index = -1
+            self._update_plot_nav()
+            return
+
+        order = ["fit", "concentrations", "residuals"]
+        pages: list[dict[str, str]] = []
+
+        for key in order:
+            if graphs.get(key):
+                pages.append({"key": str(key), "title": self._plot_title_for_key(str(key))})
+
+        for key in graphs.keys():
+            if key in order:
+                continue
+            if graphs.get(key):
+                pages.append({"key": str(key), "title": self._plot_title_for_key(str(key))})
+
+        self._plot_pages = pages
+        self._plot_index = -1
+        for i, p in enumerate(pages):
+            if p.get("key") == "fit":
+                self._plot_index = i
+                break
+        if self._plot_index < 0 and pages:
+            self._plot_index = 0
+        self._update_plot_nav()
+
+    def _update_plot_nav(self) -> None:
+        has_pages = bool(self._plot_pages) and self._plot_index >= 0
+        can_nav = bool(has_pages and len(self._plot_pages) > 1)
+        if hasattr(self, "btn_plot_prev"):
+            self.btn_plot_prev.setEnabled(can_nav)
+        if hasattr(self, "btn_plot_next"):
+            self.btn_plot_next.setEnabled(can_nav)
+        if hasattr(self, "lbl_plot_title"):
+            if has_pages:
+                self.lbl_plot_title.setText(str(self._plot_pages[self._plot_index].get("title") or ""))
+            else:
+                self.lbl_plot_title.setText("Main spectra / titration plot")
+
+    def _render_current_plot(self) -> None:
+        graphs = self._graphs_from_last_result()
+        if not self._plot_pages or self._plot_index < 0:
+            self.canvas_main.clear()
+            self._update_plot_nav()
+            return
+        if self._plot_index >= len(self._plot_pages):
+            self._plot_index = 0
+        page = self._plot_pages[self._plot_index]
+        key = str(page.get("key") or "")
+        b64 = graphs.get(key)
+        if not key or not b64:
+            self.canvas_main.clear()
+            self._update_plot_nav()
+            return
+        self._update_plot_nav()
+        self.canvas_main.show_image_base64(str(b64), title=str(page.get("title") or key))
+
+    def _navigate_plot(self, delta: int) -> None:
+        if not self._plot_pages or self._plot_index < 0:
+            return
+        n = len(self._plot_pages)
+        if n <= 1:
+            return
+        self._plot_index = (self._plot_index + int(delta)) % n
+        self._render_current_plot()
 
     # ---- Excel / Data selection ----
     def _on_choose_file_clicked(self) -> None:
@@ -379,6 +460,7 @@ class NMRTab(QWidget):
         self.btn_save.setEnabled(bool(self._last_result) and bool(self._last_result.get("success", True)) and not running)
 
         self.btn_process.setText("Processing..." if running else "Process Data")
+        self._update_plot_nav()
 
     def _collect_config(self) -> dict[str, Any]:
         if not self._file_path:
@@ -438,9 +520,11 @@ class NMRTab(QWidget):
 
         self.log.append_text("Iniciando optimización…")
         self._last_result = None
+        self._plot_pages = []
+        self._plot_index = -1
+        self._update_plot_nav()
         self.btn_save.setEnabled(False)
         self.canvas_main.clear()
-        self.canvas_diag.clear()
 
         self._worker = FitWorker(run_nmr_fit, config=config, parent=self)
         self._thread = self._worker.thread()
@@ -467,19 +551,8 @@ class NMRTab(QWidget):
         self._last_result = result
         self.btn_save.setEnabled(bool(result.get("success", True)))
 
-        graphs = result.get("legacy_graphs") or result.get("graphs") or {}
-        if isinstance(graphs, dict):
-            if graphs.get("fit"):
-                self.canvas_main.show_image_base64(str(graphs["fit"]), title="fit")
-            else:
-                for k, v in graphs.items():
-                    if v:
-                        self.canvas_main.show_image_base64(str(v), title=str(k))
-                        break
-
-            diag_key = "residuals" if "residuals" in graphs else "concentrations"
-            if graphs.get(diag_key):
-                self.canvas_diag.show_image_base64(str(graphs[diag_key]), title=diag_key)
+        self._rebuild_plot_pages_from_result()
+        self._render_current_plot()
 
         results_text = result.get("results_text") or ""
         if results_text:
@@ -636,7 +709,9 @@ class NMRTab(QWidget):
         self.model_opt_plots.reset()
 
         self.canvas_main.clear()
-        self.canvas_diag.clear()
+        self._plot_pages = []
+        self._plot_index = -1
+        self._update_plot_nav()
         self.log.clear()
         self._last_result = None
         self.btn_save.setEnabled(False)

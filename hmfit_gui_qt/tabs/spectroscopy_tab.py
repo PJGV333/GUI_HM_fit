@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMessageBox,
@@ -19,7 +20,6 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSpinBox,
     QSplitter,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -29,6 +29,7 @@ from hmfit_core.exports import write_results_xlsx
 from hmfit_gui_qt.widgets.log_console import LogConsole
 from hmfit_gui_qt.widgets.model_opt_plots import ModelOptPlotsState, ModelOptPlotsWidget
 from hmfit_gui_qt.widgets.mpl_canvas import MplCanvas, NavigationToolbar
+from hmfit_gui_qt.widgets.parse_channels import parse_channels_spec, resolve_channels
 from hmfit_gui_qt.workers.fit_worker import FitWorker
 
 
@@ -72,6 +73,8 @@ class SpectroscopyTab(QWidget):
         self._worker: FitWorker | None = None
         self._thread: QThread | None = None
         self._last_result: dict[str, Any] | None = None
+        self._plot_pages: list[dict[str, str]] = []
+        self._plot_index: int = -1
         self._axis_values: list[float] = []
         self._file_path: str = ""
         self._is_running = False
@@ -127,16 +130,30 @@ class SpectroscopyTab(QWidget):
         data_layout.addLayout(sheets_row)
 
         # Channels (All / Custom)
-        data_layout.addWidget(QLabel("Channels", self._data_group))
+        channels_header = QHBoxLayout()
+        channels_header.addWidget(QLabel("Channels", self._data_group))
+        self.lbl_channels_range = QLabel("", self._data_group)
+        self.lbl_channels_range.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        channels_header.addWidget(self.lbl_channels_range, 1)
+        data_layout.addLayout(channels_header)
+
         channels_top = QHBoxLayout()
         self.combo_channels_mode = QComboBox(self._data_group)
         self.combo_channels_mode.addItem("All", "all")
         self.combo_channels_mode.addItem("Custom", "custom")
         self.combo_channels_mode.currentIndexChanged.connect(self._on_channels_mode_changed)
         channels_top.addWidget(self.combo_channels_mode)
-        self.lbl_channels_usage = QLabel("", self._data_group)
-        channels_top.addWidget(self.lbl_channels_usage, 1)
+        self.edit_channels_spec = QLineEdit(self._data_group)
+        self.edit_channels_spec.setPlaceholderText("all or 250-400, 485, 510-520")
+        self.edit_channels_spec.returnPressed.connect(self._on_apply_channels_clicked)
+        channels_top.addWidget(self.edit_channels_spec, 1)
+        self.btn_apply_channels = QPushButton("Apply", self._data_group)
+        self.btn_apply_channels.clicked.connect(self._on_apply_channels_clicked)
+        channels_top.addWidget(self.btn_apply_channels)
         data_layout.addLayout(channels_top)
+
+        self.lbl_channels_usage = QLabel("", self._data_group)
+        data_layout.addWidget(self.lbl_channels_usage)
 
         self._channels_custom_box = QWidget(self._data_group)
         channels_custom_layout = QVBoxLayout(self._channels_custom_box)
@@ -233,7 +250,19 @@ class SpectroscopyTab(QWidget):
         main_plot_panel = QWidget(right_split)
         main_plot_layout = QVBoxLayout(main_plot_panel)
         main_plot_layout.setContentsMargins(0, 0, 0, 0)
-        main_plot_layout.addWidget(QLabel("Main spectra / titration plot", main_plot_panel))
+
+        nav = QHBoxLayout()
+        self.btn_plot_prev = QPushButton("Prev", main_plot_panel)
+        self.btn_plot_prev.clicked.connect(lambda: self._navigate_plot(-1))
+        nav.addWidget(self.btn_plot_prev)
+        self.lbl_plot_title = QLabel("Main spectra / titration plot", main_plot_panel)
+        self.lbl_plot_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        nav.addWidget(self.lbl_plot_title, 1)
+        self.btn_plot_next = QPushButton("Next", main_plot_panel)
+        self.btn_plot_next.clicked.connect(lambda: self._navigate_plot(1))
+        nav.addWidget(self.btn_plot_next)
+        main_plot_layout.addLayout(nav)
+
         self.canvas_main = MplCanvas(main_plot_panel)
         main_plot_layout.addWidget(self.canvas_main, 1)
         main_plot_layout.addWidget(NavigationToolbar(self.canvas_main, main_plot_panel))
@@ -241,42 +270,22 @@ class SpectroscopyTab(QWidget):
         diag_panel = QWidget(right_split)
         diag_layout = QVBoxLayout(diag_panel)
         diag_layout.setContentsMargins(0, 0, 0, 0)
-        diag_layout.addWidget(QLabel("Residuals / component spectra / diagnostics", diag_panel))
-
-        self.diag_tabs = QTabWidget(diag_panel)
-
-        residuals_tab = QWidget(self.diag_tabs)
-        residuals_layout = QVBoxLayout(residuals_tab)
-        residuals_layout.setContentsMargins(0, 0, 0, 0)
-        self.canvas_diag = MplCanvas(residuals_tab)
-        residuals_layout.addWidget(self.canvas_diag, 1)
-        residuals_layout.addWidget(NavigationToolbar(self.canvas_diag, residuals_tab))
-        self.diag_tabs.addTab(residuals_tab, "Residuals")
-
-        log_tab = QWidget(self.diag_tabs)
-        log_layout = QVBoxLayout(log_tab)
-        log_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.log = LogConsole(log_tab)
-        self.log.setMinimumHeight(160)
+        diag_layout.addWidget(QLabel("Diagnostics / Log", diag_panel))
 
         log_controls = QHBoxLayout()
-        self.chk_autoscroll = QCheckBox("Autoscroll", log_tab)
+        self.chk_autoscroll = QCheckBox("Autoscroll", diag_panel)
         self.chk_autoscroll.setChecked(True)
-        self.chk_autoscroll.toggled.connect(self.log.set_autoscroll)
         log_controls.addWidget(self.chk_autoscroll)
         log_controls.addStretch(1)
-        self.btn_clear_log = QPushButton("Clear log", log_tab)
-        self.btn_clear_log.clicked.connect(self.log.clear)
+        self.btn_clear_log = QPushButton("Clear log", diag_panel)
         log_controls.addWidget(self.btn_clear_log)
-        log_layout.addLayout(log_controls)
+        diag_layout.addLayout(log_controls)
 
-        log_layout.addWidget(self.log, 1)
-
-        self.diag_tabs.addTab(log_tab, "Log")
-        self.diag_tabs.setCurrentWidget(log_tab)
-
-        diag_layout.addWidget(self.diag_tabs, 1)
+        self.log = LogConsole(diag_panel)
+        self.log.setMinimumHeight(160)
+        self.chk_autoscroll.toggled.connect(self.log.set_autoscroll)
+        self.btn_clear_log.clicked.connect(self.log.clear)
+        diag_layout.addWidget(self.log, 1)
 
         right_split.setStretchFactor(0, 3)
         right_split.setStretchFactor(1, 2)
@@ -284,7 +293,97 @@ class SpectroscopyTab(QWidget):
         self._main_split.setStretchFactor(0, 0)
         self._main_split.setStretchFactor(1, 1)
 
+        self._update_plot_nav()
         self._apply_channels_mode_ui()
+
+    # ---- Plot navigation (Prev/Next) ----
+    def _plot_title_for_key(self, key: str) -> str:
+        titles = {
+            "fit": "Experimental vs fitted spectra",
+            "concentrations": "Concentration profile",
+            "absorptivities": "Molar absorptivities",
+            "eigenvalues": "EFA eigenvalues",
+            "efa": "EFA forward/backward",
+            "residuals": "Residuals",
+        }
+        return titles.get(str(key), str(key))
+
+    def _graphs_from_last_result(self) -> dict[str, Any]:
+        if not self._last_result:
+            return {}
+        graphs = self._last_result.get("legacy_graphs") or self._last_result.get("graphs") or {}
+        return graphs if isinstance(graphs, dict) else {}
+
+    def _rebuild_plot_pages_from_result(self) -> None:
+        graphs = self._graphs_from_last_result()
+        if not graphs:
+            self._plot_pages = []
+            self._plot_index = -1
+            self._update_plot_nav()
+            return
+
+        order = ["fit", "concentrations", "absorptivities", "eigenvalues", "efa", "residuals"]
+        pages: list[dict[str, str]] = []
+
+        for key in order:
+            if graphs.get(key):
+                pages.append({"key": str(key), "title": self._plot_title_for_key(str(key))})
+
+        for key in graphs.keys():
+            if key in order:
+                continue
+            if graphs.get(key):
+                pages.append({"key": str(key), "title": self._plot_title_for_key(str(key))})
+
+        self._plot_pages = pages
+        self._plot_index = -1
+        for i, p in enumerate(pages):
+            if p.get("key") == "fit":
+                self._plot_index = i
+                break
+        if self._plot_index < 0 and pages:
+            self._plot_index = 0
+        self._update_plot_nav()
+
+    def _update_plot_nav(self) -> None:
+        has_pages = bool(self._plot_pages) and self._plot_index >= 0
+        can_nav = bool(has_pages and len(self._plot_pages) > 1)
+        if hasattr(self, "btn_plot_prev"):
+            self.btn_plot_prev.setEnabled(can_nav and not self._is_running)
+        if hasattr(self, "btn_plot_next"):
+            self.btn_plot_next.setEnabled(can_nav and not self._is_running)
+        if hasattr(self, "lbl_plot_title"):
+            if has_pages:
+                self.lbl_plot_title.setText(str(self._plot_pages[self._plot_index].get("title") or ""))
+            else:
+                self.lbl_plot_title.setText("Main spectra / titration plot")
+
+    def _render_current_plot(self) -> None:
+        graphs = self._graphs_from_last_result()
+        if not self._plot_pages or self._plot_index < 0:
+            self.canvas_main.clear()
+            self._update_plot_nav()
+            return
+        if self._plot_index >= len(self._plot_pages):
+            self._plot_index = 0
+        page = self._plot_pages[self._plot_index]
+        key = str(page.get("key") or "")
+        b64 = graphs.get(key)
+        if not key or not b64:
+            self.canvas_main.clear()
+            self._update_plot_nav()
+            return
+        self._update_plot_nav()
+        self.canvas_main.show_image_base64(str(b64), title=str(page.get("title") or key))
+
+    def _navigate_plot(self, delta: int) -> None:
+        if not self._plot_pages or self._plot_index < 0:
+            return
+        n = len(self._plot_pages)
+        if n <= 1:
+            return
+        self._plot_index = (self._plot_index + int(delta)) % n
+        self._render_current_plot()
 
     # ---- Excel / Data selection ----
     def _on_choose_file_clicked(self) -> None:
@@ -328,6 +427,7 @@ class SpectroscopyTab(QWidget):
         self.combo_conc_sheet.blockSignals(False)
 
         self._axis_values = []
+        self.lbl_channels_range.setText("")
         self._populate_channels_list([])
         self._clear_conc_columns()
 
@@ -335,6 +435,7 @@ class SpectroscopyTab(QWidget):
         sheet = self.combo_spectra_sheet.currentText().strip()
         if not self._file_path or not sheet:
             self._axis_values = []
+            self.lbl_channels_range.setText("")
             self._populate_channels_list([])
             self._update_channels_usage()
             return
@@ -343,11 +444,18 @@ class SpectroscopyTab(QWidget):
         except Exception as exc:
             QMessageBox.critical(self, "Excel error", str(exc))
             self._axis_values = []
+            self.lbl_channels_range.setText("")
             self._populate_channels_list([])
             self._update_channels_usage()
             return
         self._axis_values = axis
+        if axis:
+            self.lbl_channels_range.setText(f"{_format_axis_val(min(axis))}–{_format_axis_val(max(axis))} ({len(axis)})")
+        else:
+            self.lbl_channels_range.setText("")
         self._populate_channels_list(axis)
+        if str(self.combo_channels_mode.currentData() or "all") == "all":
+            self._set_list_checked(self.list_channels, True)
         self._update_channels_usage()
 
     def _on_conc_sheet_changed(self) -> None:
@@ -409,7 +517,13 @@ class SpectroscopyTab(QWidget):
     def _apply_channels_mode_ui(self) -> None:
         mode = str(self.combo_channels_mode.currentData() or "all")
         is_custom = mode == "custom"
-        self._channels_custom_box.setVisible(is_custom)
+        self._channels_custom_box.setEnabled(bool(is_custom))
+        self.edit_channels_spec.setEnabled(bool(is_custom))
+        self.btn_apply_channels.setEnabled(bool(is_custom))
+
+        if not is_custom:
+            # Mirror Tauri: "All" is explicit.
+            self.edit_channels_spec.setText("All")
 
         # EFA requires full spectrum
         if is_custom:
@@ -420,6 +534,59 @@ class SpectroscopyTab(QWidget):
         else:
             self.chk_efa.setEnabled(True)
             self.chk_efa.setToolTip("")
+
+        self._update_channels_usage()
+
+    def _on_apply_channels_clicked(self) -> None:
+        raw = str(self.edit_channels_spec.text() or "").strip()
+        try:
+            self._apply_channels_spec(raw)
+        except Exception as exc:
+            msg = str(exc)
+            self.log.append_text(f"ERROR: {msg}")
+            QMessageBox.warning(self, "Channels error", msg)
+
+    def _apply_channels_spec(self, raw: str) -> None:
+        parsed = parse_channels_spec(raw)
+        if parsed.get("mode") == "all":
+            ix = self.combo_channels_mode.findData("all")
+            if ix >= 0:
+                self.combo_channels_mode.setCurrentIndex(ix)
+            self._apply_channels_mode_ui()
+            if self.list_channels.count():
+                self._set_list_checked(self.list_channels, True)
+            return
+
+        errors = list(parsed.get("errors") or [])
+        if errors:
+            raise ValueError("\n".join(errors))
+
+        resolved_info = resolve_channels(list(parsed.get("tokens") or []), self._axis_values, tol=1e-6)
+        resolved = list(resolved_info.get("resolved") or [])
+        res_errors = list(resolved_info.get("errors") or [])
+        if res_errors:
+            raise ValueError("\n".join(res_errors))
+        if not resolved:
+            raise ValueError("No channels matched.")
+
+        ix = self.combo_channels_mode.findData("custom")
+        if ix >= 0:
+            self.combo_channels_mode.setCurrentIndex(ix)
+        self._apply_channels_mode_ui()
+
+        target_set = {float(v) for v in resolved}
+        self.list_channels.setUpdatesEnabled(False)
+        self.list_channels.blockSignals(True)
+        try:
+            for i in range(self.list_channels.count()):
+                it = self.list_channels.item(i)
+                if it is None:
+                    continue
+                v = float(it.data(Qt.ItemDataRole.UserRole))
+                it.setCheckState(Qt.CheckState.Checked if v in target_set else Qt.CheckState.Unchecked)
+        finally:
+            self.list_channels.blockSignals(False)
+            self.list_channels.setUpdatesEnabled(True)
 
         self._update_channels_usage()
 
@@ -434,13 +601,17 @@ class SpectroscopyTab(QWidget):
         self.list_channels.blockSignals(False)
 
     def _set_list_checked(self, widget: QListWidget, checked: bool) -> None:
+        widget.setUpdatesEnabled(False)
         widget.blockSignals(True)
-        state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
-        for i in range(widget.count()):
-            it = widget.item(i)
-            if it is not None:
-                it.setCheckState(state)
-        widget.blockSignals(False)
+        try:
+            state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+            for i in range(widget.count()):
+                it = widget.item(i)
+                if it is not None:
+                    it.setCheckState(state)
+        finally:
+            widget.blockSignals(False)
+            widget.setUpdatesEnabled(True)
         self._update_channels_usage()
 
     def _on_channels_selection_changed(self, _item: QListWidgetItem) -> None:
@@ -497,6 +668,7 @@ class SpectroscopyTab(QWidget):
         if not running:
             # Restore EFA enable/disable according to Channels mode.
             self._apply_channels_mode_ui()
+        self._update_plot_nav()
 
     def _collect_config(self) -> dict[str, Any]:
         if not self._file_path:
@@ -512,14 +684,29 @@ class SpectroscopyTab(QWidget):
             raise ValueError("Select at least one concentration column in 'Column names'.")
 
         channels_mode = str(self.combo_channels_mode.currentData() or "all")
-        channels_raw = "All" if channels_mode == "all" else "Custom"
         channels_custom: list[float] = []
         channels_resolved: list[float] = []
         if channels_mode == "custom":
             channels_resolved = self._selected_channels()
-            channels_custom = list(channels_resolved)
             if not channels_resolved:
                 raise ValueError("Channels=Custom requires selecting at least one channel.")
+
+            raw_spec = str(self.edit_channels_spec.text() or "").strip()
+            if not raw_spec:
+                raw_spec = ", ".join(_format_axis_val(v) for v in channels_resolved)
+
+            parsed = parse_channels_spec(raw_spec)
+            if parsed.get("mode") == "custom" and not list(parsed.get("errors") or []):
+                for tok in list(parsed.get("tokens") or []):
+                    if tok.get("type") == "value":
+                        channels_custom.append(float(tok.get("value")))
+                    elif tok.get("type") == "range":
+                        channels_custom.extend([float(tok.get("min")), float(tok.get("max"))])
+            else:
+                channels_custom = list(channels_resolved)
+            channels_raw = raw_spec
+        else:
+            channels_raw = "All"
 
         # EFA must be off for Custom channels (wx/Tauri behavior)
         efa_enabled = bool(self.chk_efa.isChecked()) and channels_mode == "all"
@@ -570,9 +757,11 @@ class SpectroscopyTab(QWidget):
 
         self.log.append_text("Iniciando optimización…")
         self._last_result = None
+        self._plot_pages = []
+        self._plot_index = -1
+        self._update_plot_nav()
         self.btn_save.setEnabled(False)
         self.canvas_main.clear()
-        self.canvas_diag.clear()
 
         self._worker = FitWorker(run_spectroscopy_fit, config=config, parent=self)
         self._thread = self._worker.thread()
@@ -600,20 +789,8 @@ class SpectroscopyTab(QWidget):
         self._last_result = result
         self.btn_save.setEnabled(bool(result.get("success", True)))
 
-        graphs = result.get("legacy_graphs") or result.get("graphs") or {}
-        if isinstance(graphs, dict):
-            if graphs.get("fit"):
-                self.canvas_main.show_image_base64(str(graphs["fit"]), title="fit")
-            else:
-                # Fallback: show first available graph.
-                for k, v in graphs.items():
-                    if v:
-                        self.canvas_main.show_image_base64(str(v), title=str(k))
-                        break
-
-            diag_key = "absorptivities" if "absorptivities" in graphs else "concentrations"
-            if graphs.get(diag_key):
-                self.canvas_diag.show_image_base64(str(graphs[diag_key]), title=diag_key)
+        self._rebuild_plot_pages_from_result()
+        self._render_current_plot()
 
         results_text = result.get("results_text") or ""
         if results_text:
@@ -723,21 +900,42 @@ class SpectroscopyTab(QWidget):
         mode = str(config.get("channels_mode") or "all").strip().lower()
         if mode not in {"all", "custom"}:
             mode = "all"
-        self.combo_channels_mode.setCurrentIndex(self.combo_channels_mode.findData(mode))
+        raw_spec = str(config.get("channels_raw") or "").strip()
+        mode_ix = self.combo_channels_mode.findData(mode)
+        if mode_ix >= 0:
+            self.combo_channels_mode.setCurrentIndex(mode_ix)
         self._apply_channels_mode_ui()
-        if mode == "custom":
+
+        applied = False
+        if mode == "custom" and raw_spec:
+            self.edit_channels_spec.setText(raw_spec)
+            try:
+                self._apply_channels_spec(raw_spec)
+                applied = True
+            except Exception as exc:
+                missing.append(f"Channels spec could not be applied: {exc}")
+
+        if mode == "custom" and not applied:
             wanted = [float(x) for x in (config.get("channels_resolved") or [])]
-            tol = 1e-8
+            if wanted and not raw_spec:
+                self.edit_channels_spec.setText(", ".join(_format_axis_val(v) for v in wanted))
+
+            tol = 1e-6
+            self.list_channels.setUpdatesEnabled(False)
             self.list_channels.blockSignals(True)
-            for i in range(self.list_channels.count()):
-                it = self.list_channels.item(i)
-                if it is None:
-                    continue
-                v = float(it.data(Qt.ItemDataRole.UserRole))
-                it.setCheckState(
-                    Qt.CheckState.Checked if any(abs(v - t) <= tol for t in wanted) else Qt.CheckState.Unchecked
-                )
-            self.list_channels.blockSignals(False)
+            try:
+                for i in range(self.list_channels.count()):
+                    it = self.list_channels.item(i)
+                    if it is None:
+                        continue
+                    v = float(it.data(Qt.ItemDataRole.UserRole))
+                    it.setCheckState(
+                        Qt.CheckState.Checked if any(abs(v - t) <= tol for t in wanted) else Qt.CheckState.Unchecked
+                    )
+            finally:
+                self.list_channels.blockSignals(False)
+                self.list_channels.setUpdatesEnabled(True)
+
             if wanted and not self._selected_channels():
                 missing.append("Channels selection could not be matched to the Spectra axis values.")
             self._update_channels_usage()
@@ -793,7 +991,9 @@ class SpectroscopyTab(QWidget):
         self.model_opt_plots.reset()
 
         self.canvas_main.clear()
-        self.canvas_diag.clear()
+        self._plot_pages = []
+        self._plot_index = -1
+        self._update_plot_nav()
         self.log.clear()
         self._last_result = None
         self.btn_save.setEnabled(False)
