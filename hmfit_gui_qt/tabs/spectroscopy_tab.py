@@ -26,10 +26,13 @@ from PySide6.QtWidgets import (
 
 from hmfit_core.api import run_spectroscopy_fit
 from hmfit_core.exports import write_results_xlsx
+from hmfit_gui_qt.plots.plot_controller import PlotController
+from hmfit_gui_qt.plots.spectroscopy_registry import build_spectroscopy_registry
+from hmfit_gui_qt.plots.spectroscopy_sources import build_spectroscopy_plot_sources
 from hmfit_gui_qt.widgets.log_console import LogConsole
 from hmfit_gui_qt.widgets.model_opt_plots import ModelOptPlotsState, ModelOptPlotsWidget
 from hmfit_gui_qt.widgets.mpl_canvas import MplCanvas, NavigationToolbar
-from hmfit_gui_qt.widgets.parse_channels import DEFAULT_CHANNEL_TOL, parse_channels_spec, resolve_channels
+from hmfit_gui_qt.widgets.channel_spec import DEFAULT_CHANNEL_TOL, parse_channel_spec, parse_channels_spec
 from hmfit_gui_qt.workers.fit_worker import FitWorker
 
 
@@ -79,13 +82,28 @@ class SpectroscopyTab(QWidget):
         self._worker: FitWorker | None = None
         self._thread: QThread | None = None
         self._last_result: dict[str, Any] | None = None
-        self._plot_pages: list[dict[str, str]] = []
-        self._plot_index: int = -1
+        self._plot_controller: PlotController | None = None
         self._axis_values: list[float] = []
         self._file_path: str = ""
         self._is_running = False
 
         self._build_ui()
+        self._plot_controller = PlotController(
+            canvas=self.canvas_main,
+            log=self.log,
+            model_opt_plots=self.model_opt_plots,
+            btn_prev=self.btn_plot_prev,
+            btn_next=self.btn_plot_next,
+            lbl_title=self.lbl_plot_title,
+            registry=build_spectroscopy_registry(),
+            build_plot_data=build_spectroscopy_plot_sources,
+            legacy_title_for_key=self._plot_title_for_key,
+            legacy_order=["fit", "concentrations", "absorptivities", "eigenvalues", "efa", "residuals"],
+            default_title="Main spectra / titration plot",
+            is_running=lambda: self._is_running,
+        )
+        self._wire_plot_controls()
+        self._reset_plot_state()
         self.log.append_text("Listo. Carga un archivo para comenzar.")
         self._set_running(False)
 
@@ -309,82 +327,29 @@ class SpectroscopyTab(QWidget):
         }
         return titles.get(str(key), str(key))
 
-    def _graphs_from_last_result(self) -> dict[str, Any]:
-        if not self._last_result:
-            return {}
-        graphs = self._last_result.get("legacy_graphs") or self._last_result.get("graphs") or {}
-        return graphs if isinstance(graphs, dict) else {}
+    def _wire_plot_controls(self) -> None:
+        if self._plot_controller is not None:
+            self._plot_controller.wire_controls()
 
-    def _rebuild_plot_pages_from_result(self) -> None:
-        graphs = self._graphs_from_last_result()
-        if not graphs:
-            self._plot_pages = []
-            self._plot_index = -1
-            self._update_plot_nav()
-            return
+    def _reset_plot_state(self) -> None:
+        if self._plot_controller is not None:
+            self._plot_controller.reset()
 
-        order = ["fit", "concentrations", "absorptivities", "eigenvalues", "efa", "residuals"]
-        pages: list[dict[str, str]] = []
-
-        for key in order:
-            if graphs.get(key):
-                pages.append({"key": str(key), "title": self._plot_title_for_key(str(key))})
-
-        for key in graphs.keys():
-            if key in order:
-                continue
-            if graphs.get(key):
-                pages.append({"key": str(key), "title": self._plot_title_for_key(str(key))})
-
-        self._plot_pages = pages
-        self._plot_index = -1
-        for i, p in enumerate(pages):
-            if p.get("key") == "fit":
-                self._plot_index = i
-                break
-        if self._plot_index < 0 and pages:
-            self._plot_index = 0
-        self._update_plot_nav()
-
-    def _update_plot_nav(self) -> None:
-        has_pages = bool(self._plot_pages) and self._plot_index >= 0
-        can_nav = bool(has_pages and len(self._plot_pages) > 1)
-        if hasattr(self, "btn_plot_prev"):
-            self.btn_plot_prev.setEnabled(can_nav and not self._is_running)
-        if hasattr(self, "btn_plot_next"):
-            self.btn_plot_next.setEnabled(can_nav and not self._is_running)
-        if hasattr(self, "lbl_plot_title"):
-            if has_pages:
-                self.lbl_plot_title.setText(str(self._plot_pages[self._plot_index].get("title") or ""))
-            else:
-                self.lbl_plot_title.setText("Main spectra / titration plot")
+    def _build_plot_state_from_result(self, result: dict[str, Any]) -> None:
+        if self._plot_controller is not None:
+            self._plot_controller.build_from_result(result)
 
     def _render_current_plot(self) -> None:
-        graphs = self._graphs_from_last_result()
-        if not self._plot_pages or self._plot_index < 0:
-            self.canvas_main.clear()
-            self._update_plot_nav()
-            return
-        if self._plot_index >= len(self._plot_pages):
-            self._plot_index = 0
-        page = self._plot_pages[self._plot_index]
-        key = str(page.get("key") or "")
-        b64 = graphs.get(key)
-        if not key or not b64:
-            self.canvas_main.clear()
-            self._update_plot_nav()
-            return
-        self._update_plot_nav()
-        self.canvas_main.show_image_base64(str(b64), title=str(page.get("title") or key))
+        if self._plot_controller is not None:
+            self._plot_controller.render_current_plot()
+
+    def _update_plot_nav(self) -> None:
+        if self._plot_controller is not None:
+            self._plot_controller.update_plot_nav()
 
     def _navigate_plot(self, delta: int) -> None:
-        if not self._plot_pages or self._plot_index < 0:
-            return
-        n = len(self._plot_pages)
-        if n <= 1:
-            return
-        self._plot_index = (self._plot_index + int(delta)) % n
-        self._render_current_plot()
+        if self._plot_controller is not None:
+            self._plot_controller.navigate(delta)
 
     # ---- Excel / Data selection ----
     def _on_choose_file_clicked(self) -> None:
@@ -548,8 +513,8 @@ class SpectroscopyTab(QWidget):
             QMessageBox.warning(self, "Channels error", msg)
 
     def _apply_channels_spec(self, raw: str) -> None:
-        parsed = parse_channels_spec(raw)
-        if parsed.get("mode") == "all":
+        resolved_info = parse_channel_spec(raw, self._axis_values, tol=DEFAULT_CHANNEL_TOL)
+        if resolved_info.mode == "all":
             ix = self.combo_channels_mode.findData("all")
             if ix >= 0:
                 self.combo_channels_mode.setCurrentIndex(ix)
@@ -558,29 +523,21 @@ class SpectroscopyTab(QWidget):
                 self._set_list_checked(self.list_channels, True)
             return
 
-        errors = list(parsed.get("errors") or [])
+        errors = list(resolved_info.errors or [])
         if errors:
             raise ValueError("\n".join(errors))
 
-        resolved_info = resolve_channels(list(parsed.get("tokens") or []), self._axis_values, tol=DEFAULT_CHANNEL_TOL)
-        resolved = list(resolved_info.get("resolved") or [])
-        res_errors = list(resolved_info.get("errors") or [])
-        if res_errors:
-            raise ValueError("\n".join(res_errors))
-        if not resolved:
+        if not resolved_info:
             raise ValueError("No channels matched.")
-        for adj in resolved_info.get("adjustments") or []:
-            raw = str(adj.get("raw") or "")
-            used = _format_axis_val(adj.get("used"))
-            tol = adj.get("tol", DEFAULT_CHANNEL_TOL)
-            self.log.append_text(f"Channel {raw} not found; using nearest {used} (tol={tol})")
+        for line in resolved_info.mapping_lines:
+            self.log.append_text(line)
 
         ix = self.combo_channels_mode.findData("custom")
         if ix >= 0:
             self.combo_channels_mode.setCurrentIndex(ix)
         self._apply_channels_mode_ui()
 
-        target_set = {float(v) for v in resolved}
+        target_set = {float(v) for v in resolved_info}
         self.list_channels.setUpdatesEnabled(False)
         self.list_channels.blockSignals(True)
         try:
@@ -767,9 +724,7 @@ class SpectroscopyTab(QWidget):
 
         self.log.append_text("Iniciando optimización…")
         self._last_result = None
-        self._plot_pages = []
-        self._plot_index = -1
-        self._update_plot_nav()
+        self._reset_plot_state()
         self.btn_save.setEnabled(False)
         self.canvas_main.clear()
 
@@ -799,7 +754,7 @@ class SpectroscopyTab(QWidget):
         self._last_result = result
         self.btn_save.setEnabled(bool(result.get("success", True)))
 
-        self._rebuild_plot_pages_from_result()
+        self._build_plot_state_from_result(result)
         self._render_current_plot()
 
         results_text = result.get("results_text") or ""
@@ -1001,9 +956,7 @@ class SpectroscopyTab(QWidget):
         self.model_opt_plots.reset()
 
         self.canvas_main.clear()
-        self._plot_pages = []
-        self._plot_index = -1
-        self._update_plot_nav()
+        self._reset_plot_state()
         self.log.clear()
         self._last_result = None
         self.btn_save.setEnabled(False)

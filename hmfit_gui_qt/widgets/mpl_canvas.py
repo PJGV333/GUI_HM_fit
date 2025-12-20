@@ -40,7 +40,20 @@ class MplCanvas(FigureCanvasQTAgg):
         self.figure.tight_layout()
         self.draw_idle()
 
+    def show_message(self, message: str) -> None:
+        self.ax.clear()
+        self.ax.axis("off")
+        self.ax.text(
+            0.5,
+            0.5,
+            str(message),
+            transform=self.ax.transAxes,
+            ha="center",
+            va="center",
+            color="#9ca3af",
+        )
+        self.draw_idle()
+
 
 class NavigationToolbar(NavigationToolbar2QT):
     pass
-
