@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QThread, Qt, Slot
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSpinBox,
     QSplitter,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -69,12 +70,14 @@ class SpectroscopyTab(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._worker: FitWorker | None = None
+        self._thread: QThread | None = None
         self._last_result: dict[str, Any] | None = None
         self._axis_values: list[float] = []
         self._file_path: str = ""
         self._is_running = False
 
         self._build_ui()
+        self.log.append_text("Listo. Carga un archivo para comenzar.")
         self._set_running(False)
 
     # ---- UI ----
@@ -238,20 +241,42 @@ class SpectroscopyTab(QWidget):
         diag_panel = QWidget(right_split)
         diag_layout = QVBoxLayout(diag_panel)
         diag_layout.setContentsMargins(0, 0, 0, 0)
-        diag_header = QHBoxLayout()
-        diag_header.addWidget(QLabel("Residuals / component spectra / diagnostics", diag_panel))
-        diag_header.addStretch(1)
-        self.btn_clear_log = QPushButton("Clear log", diag_panel)
-        self.btn_clear_log.clicked.connect(lambda: self.log.clear())
-        diag_header.addWidget(self.btn_clear_log)
-        diag_layout.addLayout(diag_header)
+        diag_layout.addWidget(QLabel("Residuals / component spectra / diagnostics", diag_panel))
 
-        self.canvas_diag = MplCanvas(diag_panel)
-        diag_layout.addWidget(self.canvas_diag, 1)
-        diag_layout.addWidget(NavigationToolbar(self.canvas_diag, diag_panel))
+        self.diag_tabs = QTabWidget(diag_panel)
 
-        self.log = LogConsole(diag_panel)
-        diag_layout.addWidget(self.log, 1)
+        residuals_tab = QWidget(self.diag_tabs)
+        residuals_layout = QVBoxLayout(residuals_tab)
+        residuals_layout.setContentsMargins(0, 0, 0, 0)
+        self.canvas_diag = MplCanvas(residuals_tab)
+        residuals_layout.addWidget(self.canvas_diag, 1)
+        residuals_layout.addWidget(NavigationToolbar(self.canvas_diag, residuals_tab))
+        self.diag_tabs.addTab(residuals_tab, "Residuals")
+
+        log_tab = QWidget(self.diag_tabs)
+        log_layout = QVBoxLayout(log_tab)
+        log_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.log = LogConsole(log_tab)
+        self.log.setMinimumHeight(160)
+
+        log_controls = QHBoxLayout()
+        self.chk_autoscroll = QCheckBox("Autoscroll", log_tab)
+        self.chk_autoscroll.setChecked(True)
+        self.chk_autoscroll.toggled.connect(self.log.set_autoscroll)
+        log_controls.addWidget(self.chk_autoscroll)
+        log_controls.addStretch(1)
+        self.btn_clear_log = QPushButton("Clear log", log_tab)
+        self.btn_clear_log.clicked.connect(self.log.clear)
+        log_controls.addWidget(self.btn_clear_log)
+        log_layout.addLayout(log_controls)
+
+        log_layout.addWidget(self.log, 1)
+
+        self.diag_tabs.addTab(log_tab, "Log")
+        self.diag_tabs.setCurrentWidget(log_tab)
+
+        diag_layout.addWidget(self.diag_tabs, 1)
 
         right_split.setStretchFactor(0, 3)
         right_split.setStretchFactor(1, 2)
@@ -543,14 +568,15 @@ class SpectroscopyTab(QWidget):
             QMessageBox.warning(self, "Config error", str(exc))
             return
 
-        self.log.append_text("Starting Spectroscopy processing…")
+        self.log.append_text("Iniciando optimización…")
         self._last_result = None
         self.btn_save.setEnabled(False)
         self.canvas_main.clear()
         self.canvas_diag.clear()
 
         self._worker = FitWorker(run_spectroscopy_fit, config=config, parent=self)
-        self._worker.progress.connect(lambda msg: self.log.append_text(str(msg)))
+        self._thread = self._worker.thread()
+        self._worker.progress.connect(self._on_worker_progress)
         self._worker.result.connect(self._on_fit_result)
         self._worker.error.connect(self._on_fit_error)
         self._worker.finished.connect(self._on_fit_finished)
@@ -562,6 +588,11 @@ class SpectroscopyTab(QWidget):
             return
         self._worker.request_cancel()
         self.log.append_text("Cancel requested…")
+
+    @Slot(str)
+    def _on_worker_progress(self, msg: str) -> None:
+        # Runs in the main thread via queued connection (worker emits from its QThread).
+        self.log.append_text(str(msg))
 
     def _on_fit_result(self, result: object) -> None:
         if not isinstance(result, dict):
@@ -588,12 +619,24 @@ class SpectroscopyTab(QWidget):
         if results_text:
             self.log.append_text("\n" + str(results_text).rstrip() + "\n")
 
+        stats = result.get("statistics") or {}
+        rms = stats.get("RMS")
+        if rms is not None:
+            try:
+                self.log.append_text(f"Finalizado. RMS={float(rms):.6g}")
+            except Exception:
+                self.log.append_text("Finalizado.")
+        else:
+            self.log.append_text("Finalizado.")
+
+    @Slot(str)
     def _on_fit_error(self, message: str) -> None:
         self.log.append_text(f"ERROR: {message}")
         QMessageBox.critical(self, "Fit error", str(message))
 
     def _on_fit_finished(self) -> None:
         self._worker = None
+        self._thread = None
         self._set_running(False)
 
     # ---- Import / Export / Reset / Save ----
