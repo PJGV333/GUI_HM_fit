@@ -30,6 +30,7 @@ class PlotDefaults:
 @dataclass
 class PlotControls:
     dist_x_axis_id: str = ""
+    nmr_x_axis_id: str = ""
     dist_y_selected: set[str] = field(default_factory=set)
     nmr_signals_selected: set[str] = field(default_factory=set)
     nmr_resid_selected: set[str] = field(default_factory=set)
@@ -67,6 +68,7 @@ class PlotDescriptor:
     get_available_vary: Callable[[dict[str, Any]], list[tuple[str, str]]]
     build: Callable[[str, dict[str, Any], PlotControls], PlotBuildResult]
     export_csv: Callable[[dict[str, Any], PlotControls, PlotBuildResult], tuple[list[str], list[list[Any]]] | None]
+    axis_selection_key: str | None = None
 
 
 @dataclass

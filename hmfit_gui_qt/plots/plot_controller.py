@@ -86,6 +86,7 @@ class PlotController:
             self._plot_state.active_plot_index = 0
             self._plot_state.plot_data = self._build_plot_data(result)
             self._plot_state.controls.dist_x_axis_id = "titrant_total"
+            self._plot_state.controls.nmr_x_axis_id = ""
             self._plot_state.controls.dist_y_selected.clear()
             self._plot_state.controls.nmr_signals_selected.clear()
             self._plot_state.controls.nmr_resid_selected.clear()
@@ -271,6 +272,17 @@ class PlotController:
     def _get_series_selection_key(self, descriptor: PlotDescriptor) -> str:
         return descriptor.series_selection_key or "dist_y_selected"
 
+    def _get_axis_selection_key(self, descriptor: PlotDescriptor) -> str:
+        return descriptor.axis_selection_key or "dist_x_axis_id"
+
+    def _get_axis_selection(self, descriptor: PlotDescriptor) -> str:
+        key = self._get_axis_selection_key(descriptor)
+        return str(getattr(self._plot_state.controls, key, ""))
+
+    def _set_axis_selection(self, descriptor: PlotDescriptor, axis_id: str) -> None:
+        key = self._get_axis_selection_key(descriptor)
+        setattr(self._plot_state.controls, key, str(axis_id or ""))
+
     def _get_series_selection(self, descriptor: PlotDescriptor) -> set[str]:
         key = self._get_series_selection_key(descriptor)
         return set(getattr(self._plot_state.controls, key, set()))
@@ -360,11 +372,18 @@ class PlotController:
             if descriptor.supports_axes:
                 axes = descriptor.get_available_axes(data)
                 if axes:
+                    axis_ids = {axis_id for axis_id, _ in axes}
+                    selected_axis_id = self._get_axis_selection(descriptor)
+                    if selected_axis_id not in axis_ids:
+                        default_id = str(data.get("x_default_id") or "")
+                        if default_id in axis_ids:
+                            selected_axis_id = default_id
+                        else:
+                            selected_axis_id = axes[0][0]
+                        self._set_axis_selection(descriptor, selected_axis_id)
                     for axis_id, label in axes:
                         x_axis_combo.addItem(label, axis_id)
-                    if not self._plot_state.controls.dist_x_axis_id and axes:
-                        self._plot_state.controls.dist_x_axis_id = axes[0][0]
-                    ix = x_axis_combo.findData(self._plot_state.controls.dist_x_axis_id)
+                    ix = x_axis_combo.findData(selected_axis_id)
                     if ix >= 0:
                         x_axis_combo.setCurrentIndex(ix)
                     x_axis_combo.setEnabled(True)
@@ -475,7 +494,7 @@ class PlotController:
             return
         axis_id = str(self._model_opt_plots.combo_x_axis.currentData() or "")
         if axis_id:
-            self._plot_state.controls.dist_x_axis_id = axis_id
+            self._set_axis_selection(descriptor, axis_id)
             self.render_current_plot()
 
     def _on_plot_y_series_changed(self) -> None:
