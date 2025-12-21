@@ -50,6 +50,13 @@ def _list_excel_columns(file_path: str, sheet_name: str) -> list[str]:
     return [str(c) for c in df.columns]
 
 
+def _count_excel_rows(file_path: str, sheet_name: str) -> int:
+    import pandas as pd
+
+    df = pd.read_excel(file_path, sheet_name=sheet_name, header=0)
+    return int(df.shape[0])
+
+
 def _list_spectroscopy_axis_values(file_path: str, sheet_name: str) -> list[float]:
     import pandas as pd
 
@@ -84,10 +91,13 @@ class SpectroscopyTab(QWidget):
         self._last_result: dict[str, Any] | None = None
         self._plot_controller: PlotController | None = None
         self._axis_values: list[float] = []
+        self._conc_points_count = 0
         self._file_path: str = ""
         self._is_running = False
 
         self._build_ui()
+        if getattr(self.model_opt_plots, "roles_group", None) is not None:
+            self.model_opt_plots.roles_group.setVisible(False)
         self._plot_controller = PlotController(
             canvas=self.canvas_main,
             log=self.log,
@@ -393,6 +403,7 @@ class SpectroscopyTab(QWidget):
         self.combo_conc_sheet.blockSignals(False)
 
         self._axis_values = []
+        self._conc_points_count = 0
         self.lbl_channels_range.setText("")
         self._populate_channels_list([])
         self._clear_conc_columns()
@@ -427,15 +438,21 @@ class SpectroscopyTab(QWidget):
     def _on_conc_sheet_changed(self) -> None:
         sheet = self.combo_conc_sheet.currentText().strip()
         if not self._file_path or not sheet:
+            self._conc_points_count = 0
             self._clear_conc_columns()
+            self._update_efa_eigen_range()
             return
         try:
             cols = _list_excel_columns(self._file_path, sheet)
+            self._conc_points_count = _count_excel_rows(self._file_path, sheet)
         except Exception as exc:
             QMessageBox.critical(self, "Excel error", str(exc))
+            self._conc_points_count = 0
             self._clear_conc_columns()
+            self._update_efa_eigen_range()
             return
         self._populate_conc_columns(cols)
+        self._update_efa_eigen_range()
 
     def _clear_conc_columns(self) -> None:
         while self._columns_layout.count():
@@ -600,6 +617,7 @@ class SpectroscopyTab(QWidget):
         mode = str(self.combo_channels_mode.currentData() or "all")
         if not total:
             self.lbl_channels_usage.setText("")
+            self._update_efa_eigen_range()
             return
         range_text = _axis_range_text(self._axis_values)
         if mode == "all":
@@ -607,6 +625,20 @@ class SpectroscopyTab(QWidget):
         else:
             used = len(self._selected_channels())
         self.lbl_channels_usage.setText(f"Using {used} / {total} ({range_text})")
+        self._update_efa_eigen_range()
+
+    def _update_efa_eigen_range(self) -> None:
+        n_points = int(self._conc_points_count or 0)
+        total_channels = len(self._axis_values)
+        mode = str(self.combo_channels_mode.currentData() or "all")
+        if mode == "all":
+            used_channels = total_channels
+        else:
+            used_channels = len(self._selected_channels())
+        n_max = max(0, min(n_points, used_channels))
+        self.spin_efa_eigen.setRange(0, n_max)
+        if self.spin_efa_eigen.value() > n_max:
+            self.spin_efa_eigen.setValue(n_max)
 
     # ---- Model / Optimization sync ----
     def _on_model_defined(self, _n_components: int, _n_species: int) -> None:
@@ -948,6 +980,7 @@ class SpectroscopyTab(QWidget):
         self.combo_spectra_sheet.clear()
         self.combo_conc_sheet.clear()
         self._axis_values = []
+        self._conc_points_count = 0
         self._populate_channels_list([])
         self.combo_channels_mode.setCurrentIndex(self.combo_channels_mode.findData("all"))
         self.chk_efa.setChecked(True)

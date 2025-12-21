@@ -499,44 +499,58 @@ def process_spectroscopy_data(
     
     # SVD/EFA function
     def SVD_EFA(spec, nc):
-        u, s, v = onp.linalg.svd(spec, full_matrices=False)
-        
-        L = range(1, (nc + 1), 1)
-        L2 = range(0, nc, 1)
-        
-        X = []
-        for i in L:
-            uj, sj, vj = onp.linalg.svd(spec.T.iloc[:i,:], full_matrices=False)
-            X.append(sj)
-        
-        ev_s = pd.DataFrame(X)
-        ev_s0 = onp.array(ev_s)
-        
-        X2 = []
-        for i in L2:
-            ui, si, vi = onp.linalg.svd(spec.T.iloc[i:,:], full_matrices=False)
-            X2.append(si)
-        
-        ev_s1 = pd.DataFrame(X2)
-        ev_s10 = np.array(ev_s1)
-        
-        # Generate graphs
-        # Evita mismatch de dimensiones: x del tamaño real de s
-        graphs['eigenvalues'] = generate_figure_base64(
-            range(len(s)), np.log10(s), "o", "log(EV)", "# de autovalores", "Eigenvalues"
-        )
-        
-        if G is not None:
-            graphs['efa'] = generate_figure2_base64(
-                G, np.log10(ev_s0), np.log10(ev_s10), "k-o", "b:o", 
-                "log(EV)", "[G], M", 1, "EFA"
-            )
-        
-        EV = efa_eigenvalues if efa_eigenvalues > 0 else nc
+        spec_arr = onp.asarray(spec, dtype=float)
+        n_channels = spec_arr.shape[0]
+        n_points = spec_arr.shape[1] if spec_arr.ndim > 1 else 0
+        n_max = int(min(n_points, n_channels))
+
+        u, s_full, vh = onp.linalg.svd(spec_arr, full_matrices=False)
+
+        requested = int(efa_eigenvalues) if efa_eigenvalues > 0 else n_max
+        EV = max(0, min(requested, n_max))
         log_progress(f"Eigenvalues used: {EV}")
-        
-        Y = u[:,0:EV] @ np.diag(s[0:EV:]) @ v[0:EV:]
-        return Y, EV, s, ev_s0, ev_s10
+        logger.debug(
+            "EFA SVD shapes: spec=%s u=%s s=%s vh=%s EV=%s",
+            spec_arr.shape,
+            u.shape,
+            s_full.shape,
+            vh.shape,
+            EV,
+        )
+
+        forward = np.full((n_points, EV), np.nan)
+        backward = np.full((n_points, EV), np.nan)
+        for i in range(1, n_points + 1):
+            s_sub = onp.linalg.svd(spec_arr.T[:i, :], compute_uv=False)
+            m = min(EV, s_sub.size)
+            forward[i - 1, :m] = s_sub[:m]
+        for i in range(n_points):
+            s_sub = onp.linalg.svd(spec_arr.T[i:, :], compute_uv=False)
+            m = min(EV, s_sub.size)
+            backward[i, :m] = s_sub[:m]
+
+        graphs['eigenvalues'] = generate_figure_base64(
+            range(len(s_full)), np.log10(s_full), "o", "log(EV)", "# de autovalores", "Eigenvalues"
+        )
+
+        if G is not None and n_points > 0:
+            graphs['efa'] = generate_figure2_base64(
+                G,
+                np.log10(forward),
+                np.log10(backward),
+                "k-o",
+                "b:o",
+                "log(EV)",
+                "[G], M",
+                1,
+                "EFA",
+            )
+
+        if EV <= 0:
+            Y = spec_arr
+        else:
+            Y = (u[:, :EV] * s_full[:EV]) @ vh[:EV, :]
+        return Y, EV, s_full, forward, backward
     
     eigenvalues = None
     efa_forward = None
