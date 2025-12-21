@@ -260,6 +260,7 @@ class ModelOptPlotsWidget(QWidget):
         plots_layout = QVBoxLayout(plots_tab)
 
         roles_group = QGroupBox("Roles", plots_tab)
+        self.roles_group = roles_group
         roles_form = QFormLayout(roles_group)
         self.combo_receptor = QComboBox(roles_group)
         self.combo_guest = QComboBox(roles_group)

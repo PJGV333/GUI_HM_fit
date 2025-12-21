@@ -95,7 +95,7 @@ class SpectroscopyTab(QWidget):
             btn_prev=self.btn_plot_prev,
             btn_next=self.btn_plot_next,
             lbl_title=self.lbl_plot_title,
-            registry=build_spectroscopy_registry(),
+            registry=build_spectroscopy_registry(self._selected_conc_columns),
             build_plot_data=build_spectroscopy_plot_sources,
             legacy_title_for_key=self._plot_title_for_key,
             legacy_order=["fit", "concentrations", "absorptivities", "eigenvalues", "efa", "residuals"],
@@ -465,6 +465,8 @@ class SpectroscopyTab(QWidget):
     def _on_conc_columns_toggled(self) -> None:
         selected = self._selected_conc_columns()
         self.model_opt_plots.set_available_conc_columns(selected)
+        if self._last_result is not None:
+            self._render_current_plot()
 
     def _selected_conc_columns(self) -> list[str]:
         from PySide6.QtWidgets import QCheckBox

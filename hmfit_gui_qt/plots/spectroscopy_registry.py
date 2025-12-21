@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 from hmfit_gui_qt.plots.plot_registry import (
     PlotBuildResult,
@@ -131,12 +131,37 @@ def _build_efa_eigenvalues(
     return PlotBuildResult(series=series, title=title, x_label="# eigenvalues", y_label="log10(EV)")
 
 
+def _resolve_spec_axis(data: dict[str, Any], controls: PlotControls) -> tuple[list[Any], str]:
+    axis_vectors = data.get("axisVectors") or {}
+    axis_options = data.get("axisOptions") or []
+    axis_id = str(controls.dist_x_axis_id or "")
+    x_label = str(data.get("xLabel") or "[X]")
+
+    x = list(axis_vectors.get(axis_id) or [])
+    if not x and axis_vectors:
+        default_id = str(data.get("x_default_id") or "")
+        if default_id and default_id in axis_vectors:
+            axis_id = default_id
+        else:
+            axis_id = next(iter(axis_vectors.keys()))
+        x = list(axis_vectors.get(axis_id) or [])
+
+    for opt in axis_options:
+        if str(opt.get("id") or "") == axis_id:
+            x_label = str(opt.get("label") or x_label)
+            break
+
+    return x, x_label
+
+
 def _build_efa_components(
     title: str,
     data: dict[str, Any],
     _controls: PlotControls,
 ) -> PlotBuildResult:
-    x = data.get("xTitrant") or []
+    x, x_label = _resolve_spec_axis(data, _controls)
+    if not x:
+        x = data.get("xTitrant") or []
     fwd = data.get("efaForward") or []
     bwd = data.get("efaBackward") or []
     n_comp = len(fwd[0]) if fwd and isinstance(fwd[0], list) else 0
@@ -170,7 +195,6 @@ def _build_efa_components(
         )
         shown_backward = True
 
-    x_label = str(data.get("xLabel") or "[X]")
     return PlotBuildResult(series=series, title=title, x_label=x_label, y_label="log10(EV)")
 
 
@@ -186,7 +210,18 @@ def _safe_log10(value: Any) -> float | None:
     return math.log10(v)
 
 
-def build_spectroscopy_registry() -> dict[str, PlotDescriptor]:
+def build_spectroscopy_registry(
+    selected_columns_getter: Callable[[], list[str]] | None = None,
+) -> dict[str, PlotDescriptor]:
+    def _filtered_axes(data: dict[str, Any]) -> list[tuple[str, str]]:
+        axes = axis_options(data)
+        if selected_columns_getter is None:
+            return axes
+        selected = {str(c) for c in (selected_columns_getter() or []) if str(c).strip()}
+        if not selected:
+            return []
+        return [(axis_id, label) for axis_id, label in axes if axis_id in selected]
+
     return {
         "spec_species_distribution": PlotDescriptor(
             id="spec_species_distribution",
@@ -195,11 +230,12 @@ def build_spectroscopy_registry() -> dict[str, PlotDescriptor]:
             supports_series=True,
             supports_vary=False,
             series_selection_key="dist_y_selected",
-            get_available_axes=axis_options,
+            get_available_axes=_filtered_axes,
             get_available_series=species_options,
             get_available_vary=lambda _data: [],
             build=build_species_distribution,
             export_csv=export_series_csv,
+            axis_selection_key="dist_x_axis_id",
         ),
         "spec_fit_overlay": PlotDescriptor(
             id="spec_fit_overlay",
@@ -243,14 +279,15 @@ def build_spectroscopy_registry() -> dict[str, PlotDescriptor]:
         "spec_efa_components": PlotDescriptor(
             id="spec_efa_components",
             display_name="EFA forward/backward",
-            supports_axes=False,
+            supports_axes=True,
             supports_series=False,
             supports_vary=False,
             series_selection_key=None,
-            get_available_axes=lambda _data: [],
+            get_available_axes=_filtered_axes,
             get_available_series=lambda _data: [],
             get_available_vary=lambda _data: [],
             build=_build_efa_components,
             export_csv=lambda _data, _controls, _build: None,
+            axis_selection_key="dist_x_axis_id",
         ),
     }

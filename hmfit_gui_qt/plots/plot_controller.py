@@ -389,9 +389,10 @@ class PlotController:
                     x_axis_combo.setEnabled(True)
                     x_axis_combo.setToolTip("")
                 else:
-                    x_axis_combo.addItem("No data for this plot", "")
+                    empty_label = str(data.get("x_axis_empty_label") or "No data for this plot")
+                    x_axis_combo.addItem(empty_label, "")
                     x_axis_combo.setEnabled(False)
-                    x_axis_combo.setToolTip("No data for this plot.")
+                    x_axis_combo.setToolTip(empty_label)
             else:
                 x_axis_combo.addItem("Not applicable for this preset", "")
                 x_axis_combo.setEnabled(False)

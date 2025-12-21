@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 
@@ -14,6 +15,9 @@ def build_spectroscopy_plot_sources(result: dict[str, Any]) -> dict[str, Any]:
     numerics = plot_data.get("numerics") or {}
     if not isinstance(numerics, dict):
         numerics = {}
+    plot_meta = plot_data.get("plot_meta") or {}
+    if not isinstance(plot_meta, dict):
+        plot_meta = {}
     export_data = result.get("export_data") or {}
     if not isinstance(export_data, dict):
         export_data = {}
@@ -26,6 +30,56 @@ def build_spectroscopy_plot_sources(result: dict[str, Any]) -> dict[str, Any]:
         if str(opt.get("id") or "") == "titrant_total":
             x_label = str(opt.get("label") or x_label)
             break
+
+    axes_meta = plot_meta.get("axes") or {}
+    if not isinstance(axes_meta, dict):
+        axes_meta = {}
+    ct_axes = []
+    for axis in axes_meta.values():
+        if not isinstance(axis, dict):
+            continue
+        if str(axis.get("values_key") or "") != "Ct":
+            continue
+        col_idx = axis.get("column")
+        if col_idx is None:
+            continue
+        ct_axes.append(axis)
+    ct_axes.sort(key=lambda a: int(a.get("column") or 0))
+    column_names = [str(a.get("label") or "").strip() for a in ct_axes if str(a.get("label") or "").strip()]
+    if not column_names:
+        column_names = [str(c) for c in (export_data.get("column_names") or []) if str(c).strip()]
+
+    c_tot = numerics.get("Ct") or export_data.get("C_T") or []
+    col_axis_vectors: dict[str, list[Any]] = {}
+    if column_names and isinstance(c_tot, list) and c_tot and isinstance(c_tot[0], list):
+        for idx, col in enumerate(column_names):
+            col_axis_vectors[col] = [
+                row[idx] if isinstance(row, list) and idx < len(row) else None for row in c_tot
+            ]
+
+    default_id = ""
+    if x_label:
+        match = re.search(r"\[([^\]]+)\]", x_label)
+        if match:
+            label = match.group(1)
+            if label in column_names:
+                default_id = label
+    if not default_id and column_names:
+        default_id = column_names[0]
+
+    col_axis_options: list[dict[str, str]] = []
+    if col_axis_vectors:
+        ordered = column_names
+        if default_id in column_names:
+            ordered = [default_id] + [c for c in column_names if c != default_id]
+        for col in ordered:
+            label = x_label if col == default_id and x_label else f"[{col}] total"
+            col_axis_options.append({"id": col, "label": label})
+
+    if not x_titrant and default_id and col_axis_vectors:
+        x_titrant = col_axis_vectors.get(default_id) or []
+    if not x_label and default_id:
+        x_label = f"[{default_id}] total"
 
     nm = numerics.get("nm") or export_data.get("nm") or []
     y_exp = numerics.get("Y_exp") or export_data.get("Y") or []
@@ -80,12 +134,26 @@ def build_spectroscopy_plot_sources(result: dict[str, Any]) -> dict[str, Any]:
         "xLabel": x_label,
         "efaForward": numerics.get("efa_forward") or [],
         "efaBackward": numerics.get("efa_backward") or [],
+        "x_axis_empty_label": "Select columns in Column names.",
     }
+    spec_efa_comp["axisOptions"] = col_axis_options
+    spec_efa_comp["axisVectors"] = col_axis_vectors
+    if default_id:
+        spec_efa_comp["x_default_id"] = default_id
+        spec_efa_comp["x_default"] = col_axis_vectors.get(default_id) or []
 
     merged = dict(spec_data)
+    dist_payload = dict(dist) if isinstance(dist, dict) else {}
+    dist_payload["axisOptions"] = col_axis_options
+    dist_payload["axisVectors"] = col_axis_vectors
+    if default_id:
+        dist_payload["x_default_id"] = default_id
+        dist_payload["x_default"] = col_axis_vectors.get(default_id) or []
+    dist_payload["x_axis_empty_label"] = "Select columns in Column names."
     merged.update(
         {
             "spec_fit_overlay": spec_fit_overlay,
+            "spec_species_distribution": dist_payload,
             "spec_molar_absorptivities": spec_molar_abs,
             "spec_efa_eigenvalues": spec_efa_eig,
             "spec_efa_components": spec_efa_comp,

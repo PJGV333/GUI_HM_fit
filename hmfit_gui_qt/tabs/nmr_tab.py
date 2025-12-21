@@ -58,6 +58,8 @@ class NMRTab(QWidget):
         self._file_path: str = ""
 
         self._build_ui()
+        if getattr(self.model_opt_plots, "roles_group", None) is not None:
+            self.model_opt_plots.roles_group.setVisible(False)
         self._plot_controller = PlotController(
             canvas=self.canvas_main,
             log=self.log,

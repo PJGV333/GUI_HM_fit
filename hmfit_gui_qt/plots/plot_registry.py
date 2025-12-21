@@ -112,6 +112,10 @@ def build_species_distribution(
     axis_vectors = data.get("axisVectors") or {}
     axis_opts = data.get("axisOptions") or []
     x_axis_id = controls.dist_x_axis_id or "titrant_total"
+    if x_axis_id not in axis_vectors:
+        default_id = str(data.get("x_default_id") or "")
+        if default_id and default_id in axis_vectors:
+            x_axis_id = default_id
     x = axis_vectors.get(x_axis_id) or data.get("x_default") or []
     x_label = "Concentration"
     for opt in axis_opts:
