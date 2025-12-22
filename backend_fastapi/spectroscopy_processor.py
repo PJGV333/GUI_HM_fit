@@ -164,6 +164,30 @@ def _solve_A(C, YT, rcond=1e-10):
     A, *_ = np.linalg.lstsq(C, YT, rcond=rcond)
     return A
 
+def apply_efa_svd(Y: onp.ndarray, ev_requested: int | None):
+    """
+    Apply global rank-k SVD reconstruction (EFA denoise).
+    Returns (Y_denoised, ev_used, max_ev).
+    """
+    Y_arr = onp.asarray(Y)
+    if Y_arr.ndim != 2:
+        raise ValueError(f"EFA expects a 2D matrix, got shape={Y_arr.shape}")
+    max_ev = int(min(Y_arr.shape))
+    if max_ev < 1:
+        return Y_arr, 0, max_ev
+    if ev_requested is None:
+        return Y_arr, max_ev, max_ev
+    try:
+        ev_used = int(ev_requested)
+    except (TypeError, ValueError):
+        ev_used = 0
+    if ev_used <= 0:
+        ev_used = max_ev
+    ev_used = max(1, min(ev_used, max_ev))
+    U, s, Vt = onp.linalg.svd(Y_arr, full_matrices=False)
+    Y_rec = (U[:, :ev_used] * s[:ev_used]) @ Vt[:ev_used, :]
+    return Y_rec, ev_used, max_ev
+
 def generate_figure_base64(x, y, mark, ylabel, xlabel, title):
     """Generate a matplotlib figure and return as base64 encoded PNG."""
     try:
@@ -494,11 +518,35 @@ def process_spectroscopy_data(
     n_comp = len(C_T.T)
     nw = len(spec)
     channels_used = int(nw)
+
+    spec_arr = spec.to_numpy(dtype=float)
+    # Fit matrix convention: A_exp = (n_points × n_channels).
+    A_exp_raw = spec_arr.T
+    A_exp_used = A_exp_raw
+    efa_ev_used = None
+    efa_max_ev = int(min(A_exp_raw.shape)) if A_exp_raw.ndim == 2 else 0
+    if efa_enabled:
+        if efa_max_ev < 1:
+            efa_enabled = False
+            warnings_list.append("EFA disabled: empty spectra matrix.")
+        else:
+            A_exp_used, efa_ev_used, efa_max_ev = apply_efa_svd(A_exp_raw, efa_eigenvalues)
+            log_progress(
+                "EFA SVD: Y_raw shape=%s, Y_used shape=%s, ev_requested=%s, ev_used=%s, max_ev=%s"
+                % (A_exp_raw.shape, A_exp_used.shape, efa_eigenvalues, efa_ev_used, efa_max_ev)
+            )
+            assert A_exp_used.shape == A_exp_raw.shape, "EFA shape mismatch"
+            if A_exp_used.shape != A_exp_raw.shape:
+                raise ValueError(
+                    f"EFA shape mismatch: raw={A_exp_raw.shape}, used={A_exp_used.shape}"
+                )
+
+    Y = np.asarray(A_exp_used.T)
     
     graphs = {}
     
     # SVD/EFA function
-    def SVD_EFA(spec, nc):
+    def SVD_EFA(spec, ev_used):
         spec_arr = onp.asarray(spec, dtype=float)
         n_channels = spec_arr.shape[0]
         n_points = spec_arr.shape[1] if spec_arr.ndim > 1 else 0
@@ -506,8 +554,18 @@ def process_spectroscopy_data(
 
         u, s_full, vh = onp.linalg.svd(spec_arr, full_matrices=False)
 
-        requested = int(efa_eigenvalues) if efa_eigenvalues > 0 else n_max
-        EV = max(0, min(requested, n_max))
+        if n_max < 1:
+            EV = 0
+        elif ev_used is None:
+            EV = n_max
+        else:
+            try:
+                EV = int(ev_used)
+            except (TypeError, ValueError):
+                EV = n_max
+            if EV <= 0:
+                EV = n_max
+            EV = max(1, min(EV, n_max))
         log_progress(f"Eigenvalues used: {EV}")
         logger.debug(
             "EFA SVD shapes: spec=%s u=%s s=%s vh=%s EV=%s",
@@ -556,9 +614,8 @@ def process_spectroscopy_data(
     efa_forward = None
     efa_backward = None
     if efa_enabled:
-        Y, EV, eigenvalues, efa_forward, efa_backward = SVD_EFA(spec, nc)
+        _, EV, eigenvalues, efa_forward, efa_backward = SVD_EFA(spec_arr, efa_ev_used)
     else:
-        Y = np.array(spec)
         EV = nc
     
     C_T_df = pd.DataFrame(C_T)
@@ -850,6 +907,8 @@ def process_spectroscopy_data(
         "SE_log10K": np.asarray(SE_log10K).tolist(),
         "nm": nm_list,
         "Y": np.asarray(Y).tolist() if Y is not None else [],
+        "A_exp_raw": onp.asarray(A_exp_raw).tolist() if A_exp_raw is not None else [],
+        "A_exp_used": onp.asarray(A_exp_used).tolist() if A_exp_used is not None else [],
         "yfit": np.asarray(yfit).tolist() if yfit is not None else [],
         "stats_table": [
             ["RMS", float(rms)],
