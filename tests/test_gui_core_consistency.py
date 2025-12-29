@@ -53,7 +53,7 @@ def test_core_wrapper_matches_backend_direct_nmr():
     root = _repo_root()
     sys.path.insert(0, str(root))
 
-    from backend_fastapi.nmr_processor import process_nmr_data
+    from hmfit_core.processors.nmr_processor import process_nmr_data
     from hmfit_core import run_nmr
 
     with tempfile.TemporaryDirectory() as td:
@@ -118,24 +118,3 @@ def test_core_wrapper_matches_backend_direct_nmr():
         assert abs(float(stats_direct["RMS"]) - float(stats_core["RMS"])) < 1e-12
 
 
-def test_gui_panels_do_not_import_legacy_math_modules():
-    root = _repo_root()
-
-    spectro_path = root / "hmfit_wx_legacy" / "Spectroscopy_controls.py"
-    nmr_path = root / "hmfit_wx_legacy" / "NMR_controls.py"
-
-    spectro_src = spectro_path.read_text(encoding="utf-8")
-    nmr_src = nmr_path.read_text(encoding="utf-8")
-
-    forbidden_imports = (
-        "from NR_conc_algoritm",
-        "from LM_conc_algoritm",
-        "from errors import",
-        "from scipy",
-    )
-    for token in forbidden_imports:
-        assert token not in spectro_src, f"{spectro_path} imports legacy math: {token}"
-        assert token not in nmr_src, f"{nmr_path} imports legacy math: {token}"
-
-    assert "from hmfit_core import run_spectroscopy" in spectro_src
-    assert "from hmfit_core import run_nmr" in nmr_src

@@ -5,7 +5,7 @@ import numpy as np
 
 # Add project root to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from backend_fastapi.nmr_processor import process_nmr_data
+from hmfit_core.processors.nmr_processor import process_nmr_data
 
 def test_nmr_regression():
     # Path to test file

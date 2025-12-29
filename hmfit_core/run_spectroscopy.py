@@ -20,7 +20,7 @@ def run_spectroscopy(config: Mapping[str, Any] | Any, progress_cb: ProgressCallb
 
     This must NOT start a FastAPI server; it directly calls `process_spectroscopy_data(...)`.
     """
-    from backend_fastapi.spectroscopy_processor import process_spectroscopy_data, set_progress_callback
+    from hmfit_core.processors.spectroscopy_processor import process_spectroscopy_data, set_progress_callback
 
     cfg = _normalize_config(config)
     set_progress_callback(progress_cb, loop=None)

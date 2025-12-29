@@ -54,7 +54,7 @@ def test_nmr_regression_minimal_xlsx():
     root = _repo_root()
     sys.path.insert(0, str(root))
 
-    from backend_fastapi.nmr_processor import process_nmr_data
+    from hmfit_core.processors.nmr_processor import process_nmr_data
 
     with tempfile.TemporaryDirectory() as td:
         book_path = Path(td) / "mini_nmr.xlsx"

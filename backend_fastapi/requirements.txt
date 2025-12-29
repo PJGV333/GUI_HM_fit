@@ -1,9 +1,0 @@
-fastapi
-uvicorn[standard]
-pandas
-openpyxl
-python-multipart
-websockets
-matplotlib
-scipy
-numpy

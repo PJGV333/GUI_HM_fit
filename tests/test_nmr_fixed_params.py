@@ -47,7 +47,7 @@ def _fake_minimize(fun, x0, method=None, bounds=None):
 
 class TestNmrFixedParams(unittest.TestCase):
     def _run(self, *, fixed_list=None, bounds=None, nas=None):
-        from backend_fastapi.nmr_processor import process_nmr_data
+        from hmfit_core.processors.nmr_processor import process_nmr_data
 
         conc = pd.DataFrame(
             {
@@ -84,11 +84,11 @@ class TestNmrFixedParams(unittest.TestCase):
             ]
 
         with (
-            patch("backend_fastapi.nmr_processor.LevenbergMarquardt", _DummyAlgo),
-            patch("backend_fastapi.nmr_processor.NewtonRaphson", _DummyAlgo),
-            patch("backend_fastapi.nmr_processor.project_coeffs_block_onp_frac", _fake_project),
-            patch("backend_fastapi.nmr_processor.optimize.minimize", _fake_minimize),
-            patch("backend_fastapi.nmr_processor.pd.read_excel", fake_read_excel),
+            patch("hmfit_core.processors.nmr_processor.LevenbergMarquardt", _DummyAlgo),
+            patch("hmfit_core.processors.nmr_processor.NewtonRaphson", _DummyAlgo),
+            patch("hmfit_core.processors.nmr_processor.project_coeffs_block_onp_frac", _fake_project),
+            patch("hmfit_core.processors.nmr_processor.optimize.minimize", _fake_minimize),
+            patch("hmfit_core.processors.nmr_processor.pd.read_excel", fake_read_excel),
         ):
             return process_nmr_data(
                 file_path="dummy.xlsx",
@@ -163,7 +163,7 @@ class TestNmrFixedParams(unittest.TestCase):
                     j[i, i % m_eff] = 1.0
             return {"J": j, "rms": 2.0, "covfit": 0.0}
 
-        with patch("backend_fastapi.nmr_processor.compute_errors_nmr_varpro", fake_compute_errors_nmr_varpro):
+        with patch("hmfit_core.processors.nmr_processor.compute_errors_nmr_varpro", fake_compute_errors_nmr_varpro):
             result = self._run(fixed_list=[False, False, True], nas=[0])
 
         self.assertTrue(result.get("success"), result)

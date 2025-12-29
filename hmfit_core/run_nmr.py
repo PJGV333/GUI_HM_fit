@@ -20,7 +20,7 @@ def run_nmr(config: Mapping[str, Any] | Any, progress_cb: ProgressCallback = Non
 
     This must NOT start a FastAPI server; it directly calls `process_nmr_data(...)`.
     """
-    from backend_fastapi.nmr_processor import process_nmr_data, set_progress_callback
+    from hmfit_core.processors.nmr_processor import process_nmr_data, set_progress_callback
 
     cfg = _normalize_config(config)
     set_progress_callback(progress_cb, loop=None)

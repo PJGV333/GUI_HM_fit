@@ -1,3 +1,9 @@
+import sys
+import os
+
+# Add project root to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 from hmfit_gui_qt.widgets.channel_spec import DEFAULT_CHANNEL_TOL, parse_channel_spec
 
 
