@@ -157,7 +157,7 @@ class NMRTab(QWidget):
         self.model_opt_plots = ModelOptPlotsWidget(left_container)
         left_layout.addWidget(self.model_opt_plots, 1)
 
-        # Actions row (Tauri-like)
+        # Actions row (Historical reference to Tauri buttons)
         actions_group = QGroupBox("", left_container)
         actions_layout = QHBoxLayout(actions_group)
         actions_layout.setContentsMargins(6, 6, 6, 6)

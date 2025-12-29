@@ -1,6 +1,6 @@
 """
 Spectroscopy processor module.
-Extracted business logic for use in FastAPI backend.
+Business logic for data processing (formerly used in FastAPI).
 """
 import io
 import base64
@@ -10,7 +10,7 @@ import pandas as pd
 import matplotlib
 import sys
 
-# When used from a wxPython GUI we don't want to override the interactive backend.
+# When used from a GUI (historical reference to wxPython) we don't want to override the interactive backend.
 # For headless/server usage, force a non-interactive backend before importing pyplot.
 if "matplotlib.pyplot" not in sys.modules:
     matplotlib.use("Agg")
@@ -27,7 +27,7 @@ from ..utils.noncoop_utils import noncoop_derived_from_logK1
 
 logger = logging.getLogger(__name__)
 
-# === Progress tracking (WebSocket support) ===
+# === Progress tracking (Historical WebSocket support) ===
 _progress_callback = None
 _loop = None
 
@@ -93,7 +93,7 @@ def _build_bounds_list(bounds):
     return processed
 
 
-# === Result formatting (shared with wx reference) ===
+# === Result formatting (Historical reference to wx output) ===
 def format_results_table(k, SE_log10K, percK, rms, covfit, lof=None, fixed_mask=None):
     """
     Build an ASCII table with aligned columns for constants and diagnostics.
@@ -201,7 +201,7 @@ def generate_figure_base64(x, y, mark, ylabel, xlabel, title):
     fig = Figure(figsize=(8, 6), dpi=100)
     ax = fig.add_subplot(111)
     
-    # Normaliza dimensiones para evitar mismatches (se comporta como figura de wx)
+    # Normaliza dimensiones para evitar mismatches (se comporta como en la antigua interfaz wx)
     x_arr = np.asarray(x).reshape(-1)
     y_arr = np.asarray(y)
 
@@ -659,10 +659,10 @@ def process_spectroscopy_data(
     
     # Select algorithm
     if algorithm == "Newton-Raphson":
-        from NR_conc_algoritm import NewtonRaphson
+        from ..solvers import NewtonRaphson
         res = NewtonRaphson(C_T_df, modelo, nas, model_settings)
     elif algorithm == "Levenberg-Marquardt":
-        from LM_conc_algoritm import LevenbergMarquardt
+        from ..solvers import LevenbergMarquardt
         res = LevenbergMarquardt(C_T_df, modelo, nas, model_settings)
     else:
         raise ValueError(f"Unknown algorithm: {algorithm}")

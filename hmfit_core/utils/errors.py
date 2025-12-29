@@ -159,7 +159,7 @@ def sensitivities_wrt_logK(c_spec, modelo, param_idx=None, rcond=1e-12):
 
 
 # --- errors.py (añadir al final) ---
-from np_backend import xp as np, USE_JAX, jit
+from .np_backend import xp as np, USE_JAX, jit
 # Usaremos tu sensitivities_wrt_log10K ya existente:
 _sens = sensitivities_wrt_logK
 
@@ -250,7 +250,7 @@ def _build_dC_all(Co, Ms, nas, param_idx):
 
 def _percent_errors_from_cov(k, Cov_log10K):
     SE_log10K = _onp.sqrt(_onp.clip(_onp.diag(_as_onp(Cov_log10K)), 0.0, _onp.inf))
-    from errors import percent_error_log10K  # tu función existente
+    # use local percent_error_log10K
     percK, SE_K, _ = percent_error_log10K(_as_onp(k), SE_log10K)
     return _onp.array(percK), _onp.array(SE_K), _onp.array(SE_log10K)
 

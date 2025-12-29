@@ -238,7 +238,7 @@ class SpectroscopyTab(QWidget):
         self.model_opt_plots.model_defined.connect(self._on_model_defined)
         left_layout.addWidget(self.model_opt_plots, 1)
 
-        # Actions row (Tauri-like)
+        # Actions row (Historical reference to Tauri buttons)
         actions_group = QGroupBox("", left_container)
         actions_layout = QHBoxLayout(actions_group)
         actions_layout.setContentsMargins(6, 6, 6, 6)
@@ -472,7 +472,7 @@ class SpectroscopyTab(QWidget):
 
         for col in columns:
             cb = QCheckBox(str(col), self._columns_widget)
-            cb.setChecked(True)  # match Tauri default (all enabled if no selection)
+            cb.setChecked(True)  # match historical Tauri default (all enabled if no selection)
             cb.toggled.connect(self._on_conc_columns_toggled)
             self._columns_layout.addWidget(cb)
 

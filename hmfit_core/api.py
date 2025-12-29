@@ -21,7 +21,7 @@ def _normalize_config(config: Mapping[str, Any] | Any) -> dict[str, Any]:
 
 def _normalize_nmr_config(config: Mapping[str, Any] | Any) -> dict[str, Any]:
     """
-    Accepted config schema (compatible with wx + Tauri/FastAPI naming):
+    Accepted config schema (compatible with historical wx + Tauri naming):
 
     Required:
     - file_path: str
@@ -31,9 +31,9 @@ def _normalize_nmr_config(config: Mapping[str, Any] | Any) -> dict[str, Any]:
     - modelo: list[list[float]]
 
     Sheet key (either):
-    - nmr_sheet: str (wx / hmfit_core)
-    - spectra_sheet: str (FastAPI endpoint naming; sheet with chemical shifts)
-    - signals_sheet: str (legacy FastAPI form field, alias of spectra_sheet)
+    - nmr_sheet: str (historical wx / current hmfit_core naming)
+    - spectra_sheet: str (historical FastAPI endpoint naming; sheet with chemical shifts)
+    - signals_sheet: str (historical FastAPI naming, alias of spectra_sheet)
 
     Optional:
     - receptor_label: str

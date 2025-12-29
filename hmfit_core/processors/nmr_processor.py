@@ -31,7 +31,7 @@ from .spectroscopy_processor import (
 )
 from ..utils.noncoop_utils import noncoop_derived_from_logK1
 
-# --- Progreso vía callback opcional (WebSocket en main.py) ---
+# --- Progreso vía callback opcional (Historical reference to FastAPI WebSocket) ---
 _progress_callback = None
 _loop = None
 
