@@ -16,15 +16,9 @@ from typing import Dict, List, Optional, Any, Tuple
 from scipy import optimize
 from scipy.optimize import differential_evolution
 
-# Add root directory to path to import algorithm modules
-root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if root_dir not in sys.path:
-    sys.path.insert(0, root_dir)
-
-# Import existing algorithms from the root directory
-from NR_conc_algoritm import NewtonRaphson
-from LM_conc_algoritm import LevenbergMarquardt
-from errors import compute_errors_nmr_varpro
+# Import existing algorithms from the submodules
+from ..solvers import NewtonRaphson, LevenbergMarquardt
+from ..utils.errors import compute_errors_nmr_varpro
 
 # Import helper functions from spectroscopy_processor (relative import)
 from .spectroscopy_processor import (
@@ -35,7 +29,7 @@ from .spectroscopy_processor import (
     generate_figure_base64,
     generate_figure2_base64
 )
-from noncoop_utils import noncoop_derived_from_logK1
+from ..utils.noncoop_utils import noncoop_derived_from_logK1
 
 # --- Progreso vía callback opcional (WebSocket en main.py) ---
 _progress_callback = None

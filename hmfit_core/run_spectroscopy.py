@@ -16,9 +16,9 @@ def _normalize_config(config: Mapping[str, Any] | Any) -> dict[str, Any]:
 
 def run_spectroscopy(config: Mapping[str, Any] | Any, progress_cb: ProgressCallback = None) -> dict[str, Any]:
     """
-    Run the spectroscopy workflow using `backend_fastapi.spectroscopy_processor` as a pure library.
+    Run the spectroscopy workflow using `hmfit_core.processors.spectroscopy_processor`.
 
-    This must NOT start a FastAPI server; it directly calls `process_spectroscopy_data(...)`.
+    This directly calls `process_spectroscopy_data(...)`.
     """
     from hmfit_core.processors.spectroscopy_processor import process_spectroscopy_data, set_progress_callback
 

@@ -17,8 +17,9 @@ def write_results_xlsx(
     """
     Write an XLSX file with results.
 
-    This is a local (non-FastAPI) version of `backend_fastapi.main.export_results_xlsx`.
+    This is a local version of the results exporter.
     """
+    from .processors import nmr_processor
     constants = constants or []
     statistics = statistics or {}
     export_data = export_data or {}
@@ -60,8 +61,6 @@ def write_results_xlsx(
         # --- Export payload sheets (wx-like) ---
         if is_nmr_export:
             import numpy as np
-
-            from backend_fastapi import nmr_processor
 
             modelo = as_dataframe("Model", export_data.get("modelo"), allow_none=False)
             Co = as_dataframe("Absorbent_species", export_data.get("Co"), allow_none=False)

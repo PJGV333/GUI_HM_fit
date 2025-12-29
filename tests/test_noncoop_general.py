@@ -10,8 +10,8 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 class TestNonCooperativeGeneral(unittest.TestCase):
     def test_1_to_3_single_k1_out_of_order_columns(self):
-        from NR_conc_algoritm import NewtonRaphson
-        from noncoop_utils import noncoop_derived_from_logK1
+        from hmfit_core.solvers import NewtonRaphson
+        from hmfit_core.utils import noncoop_derived_from_logK1
 
         # 2 components, 3 complexes (N=3)
         # Columns: [H, G, HG3, HG, HG2] (out of order)
@@ -52,7 +52,7 @@ class TestNonCooperativeGeneral(unittest.TestCase):
         self.assertAlmostEqual(float(derived["logK_by_j"][2]), logK3, places=12)
 
     def test_invalid_noncoop_requires_series(self):
-        from LM_conc_algoritm import LevenbergMarquardt
+        from hmfit_core.solvers import LevenbergMarquardt
 
         # 2 components, but complexes are not a pure 1:N or N:1 series
         modelo = np.array(

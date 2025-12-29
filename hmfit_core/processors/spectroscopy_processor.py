@@ -5,7 +5,7 @@ Extracted business logic for use in FastAPI backend.
 import io
 import base64
 import numpy as onp
-from np_backend import xp as np, jit, jacrev, vmap, lax
+from ..utils.np_backend import xp as np, jit, jacrev, vmap, lax
 import pandas as pd
 import matplotlib
 import sys
@@ -21,9 +21,9 @@ import warnings
 import re
 import logging
 warnings.filterwarnings("ignore")
-from errors import compute_errors_spectro_varpro, pinv_cs, percent_error_log10K, sensitivities_wrt_logK
-from core_ad_probe import solve_A_nnls_pgd
-from noncoop_utils import noncoop_derived_from_logK1
+from ..utils.errors import compute_errors_spectro_varpro, pinv_cs, percent_error_log10K, sensitivities_wrt_logK
+from ..utils.nnls_utils import solve_A_nnls_pgd
+from ..utils.noncoop_utils import noncoop_derived_from_logK1
 
 logger = logging.getLogger(__name__)
 

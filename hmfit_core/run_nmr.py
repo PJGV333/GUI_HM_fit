@@ -16,9 +16,9 @@ def _normalize_config(config: Mapping[str, Any] | Any) -> dict[str, Any]:
 
 def run_nmr(config: Mapping[str, Any] | Any, progress_cb: ProgressCallback = None) -> dict[str, Any]:
     """
-    Run the NMR workflow using `backend_fastapi.nmr_processor` as a pure library.
+    Run the NMR workflow using `hmfit_core.processors.nmr_processor`.
 
-    This must NOT start a FastAPI server; it directly calls `process_nmr_data(...)`.
+    This directly calls `process_nmr_data(...)`.
     """
     from hmfit_core.processors.nmr_processor import process_nmr_data, set_progress_callback
 
