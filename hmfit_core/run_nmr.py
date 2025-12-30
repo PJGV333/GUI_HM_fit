@@ -51,4 +51,5 @@ def run_nmr(config: Mapping[str, Any] | Any, progress_cb: ProgressCallback = Non
         model_settings=str(cfg.get("model_settings") or "Free"),
         non_absorbent_species=list(cfg.get("non_abs_species") or []),
         k_fixed=list((cfg.get("k_fixed") if cfg.get("k_fixed") is not None else cfg.get("fixed_mask")) or []) or None,
+        show_stability_diagnostics=bool(cfg.get("show_stability_diagnostics", False)),
     )

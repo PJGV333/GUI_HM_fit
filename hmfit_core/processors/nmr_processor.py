@@ -213,6 +213,7 @@ def process_nmr_data(
     model_settings: str,
     non_absorbent_species: List[int],
     k_fixed: Optional[List[bool]] = None,
+    show_stability_diagnostics: bool = False,
 ) -> Dict[str, Any]:
     
     # 1. Load Data
@@ -417,6 +418,7 @@ def process_nmr_data(
         try:
             # Always use compute_errors_nmr_varpro for NMR
             # Pass D_cols (calculated per signal parent) instead of H
+            k_names = [f"K{i+1}" for i in range(len(k_opt_full))]
             err_res = compute_errors_nmr_varpro(
                 k_opt_full, res, dq, D_cols, modelo, nas,
                 mask=mask,
@@ -426,10 +428,13 @@ def process_nmr_data(
                 ridge=1e-8,
                 ridge_cov=0.0,
                 use_projector=True,
-                debug=True,  # DEEP DIAGNOSTICS HABILITADO
+                debug=False,
+                param_names=k_names,
             )
             
+            stability_diag = err_res.get("stability_diag", {})
             SE_log10K_full = err_res["SE_log10K"]
+
             percK_full = err_res["percK"]
             covfit_val = err_res["covfit"]
             rms = err_res["rms"]
@@ -486,6 +491,20 @@ def process_nmr_data(
             lof=lof,
             fixed_mask=fixed_mask,
         )
+
+        # Semáforo de Estabilidad
+        if 'stability_diag' in locals() and stability_diag:
+            status = stability_diag.get("status")
+            summary = stability_diag.get("diag_summary", "")
+            full = stability_diag.get("diag_full", "")
+
+            if status == "critical":
+                results_text += f"\n\n>>> CRITICAL WARNING: Ill-conditioned system ({summary}).\nParameters might not be identifiable. Review correlations/model."
+            elif status == "warn":
+                results_text += f"\n\n>>> WARNING: Poor conditioning ({summary}).\nHigh correlations might be present."
+            
+            if show_stability_diagnostics:
+                results_text += f"\n\n{full}"
 
         derived_noncoop = None
         if str(model_settings) in ("Non-cooperative", "Statistical") and np.asarray(k_opt_full).size == 1:
@@ -686,6 +705,11 @@ def process_nmr_data(
             "export_data": export_data,
             "constants": constants,
             "derived_noncoop": export_data.get("derived_noncoop"),
+            "stability_status": stability_diag.get("status") if 'stability_diag' in locals() else None,
+            "condition_number": stability_diag.get("cond_jjt") if 'stability_diag' in locals() else None,
+            "stability_indicator": stability_diag.get("stability_indicator") if 'stability_diag' in locals() else None,
+            "diagnostics_summary": stability_diag.get("diag_summary") if 'stability_diag' in locals() else None,
+            "diagnostics_full": stability_diag.get("diag_full") if 'stability_diag' in locals() else None,
         })
 
     except Exception as e:

@@ -44,5 +44,6 @@ def run_spectroscopy(config: Mapping[str, Any] | Any, progress_cb: ProgressCallb
         channels_raw=str(cfg.get("channels_raw") or "All"),
         channels_mode=str(cfg.get("channels_mode") or "all"),
         channels_resolved=list(cfg.get("channels_resolved") or []),
+        show_stability_diagnostics=bool(cfg.get("show_stability_diagnostics", False)),
     )
 

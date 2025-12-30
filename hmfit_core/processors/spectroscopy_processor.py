@@ -455,6 +455,7 @@ def process_spectroscopy_data(
     channels_raw=None,
     channels_mode=None,
     channels_resolved=None,
+    show_stability_diagnostics: bool = False,
 ):
     """
     Main processing function.
@@ -756,9 +757,11 @@ def process_spectroscopy_data(
     log("Optimización completada")
     
     # Compute errors
+    k_names = [f"K{i+1}" for i in range(len(k))]
     metrics = compute_errors_spectro_varpro(
         k=k, res=res, Y=Y, modelo=modelo, nas=nas,
-        rcond=1e-10, use_projector=True
+        rcond=1e-10, use_projector=True,
+        param_names=k_names
     )
     
     SE_log10K = metrics["SE_log10K"]
@@ -768,6 +771,8 @@ def process_spectroscopy_data(
     covfit = metrics["s2"]
     A = metrics["A"]
     yfit = metrics["yfit"]
+    stability_diag = metrics.get("stability_diag", {})
+
     
     C, Co = res.concentraciones(k)
     species_labels = [f"sp{i+1}" for i in range(C.shape[1])] if C is not None else []
@@ -848,6 +853,20 @@ def process_spectroscopy_data(
 
     # Tabla formateada para resultados (alineada como en wx)
     results_text = format_results_table(k, SE_log10K, percK, rms, covfit, lof=lof)
+
+    # Stability Diagnostics
+    if stability_diag:
+        status = stability_diag.get("status")
+        summary = stability_diag.get("diag_summary", "")
+        full = stability_diag.get("diag_full", "")
+
+        if status == "critical":
+            results_text += f"\n\n>>> CRITICAL WARNING: Ill-conditioned system ({summary}).\nParameters might not be identifiable. Review correlations/model."
+        elif status == "warn":
+            results_text += f"\n\n>>> WARNING: Poor conditioning ({summary}).\nHigh correlations might be present."
+        
+        if show_stability_diagnostics:
+            results_text += f"\n\n{full}"
 
     derived_noncoop = None
     if str(model_settings) in ("Non-cooperative", "Statistical") and np.asarray(k).size == 1:
@@ -1054,6 +1073,11 @@ def process_spectroscopy_data(
         else "all",
         "plot_mode": plot_mode,
         "warnings": warnings_list,
+        "stability_status": stability_diag.get("status") if stability_diag else None,
+        "condition_number": stability_diag.get("cond_jjt") if stability_diag else None,
+        "stability_indicator": stability_diag.get("stability_indicator") if stability_diag else None,
+        "diagnostics_summary": stability_diag.get("diag_summary") if stability_diag else None,
+        "diagnostics_full": stability_diag.get("diag_full") if stability_diag else None,
     }
     
     log_progress("Procesamiento completado exitosamente")

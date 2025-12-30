@@ -305,6 +305,15 @@ class SpectroscopyTab(QWidget):
         self.chk_autoscroll = QCheckBox("Autoscroll", diag_panel)
         self.chk_autoscroll.setChecked(True)
         log_controls.addWidget(self.chk_autoscroll)
+        
+        self.chk_show_diag = QCheckBox("Show stability diagnostics", diag_panel)
+        self.chk_show_diag.setChecked(False)
+        log_controls.addWidget(self.chk_show_diag)
+
+        self.lbl_stability_light = QLabel("Stability: -", diag_panel)
+        self.lbl_stability_light.setStyleSheet("font-weight: bold; margin-left: 10px;")
+        log_controls.addWidget(self.lbl_stability_light)
+
         log_controls.addStretch(1)
         self.btn_clear_log = QPushButton("Clear log", diag_panel)
         log_controls.addWidget(self.btn_clear_log)
@@ -742,6 +751,7 @@ class SpectroscopyTab(QWidget):
             "channels_custom": channels_custom,
             "channels_raw": channels_raw,
             "channels_resolved": channels_resolved,
+            "show_stability_diagnostics": self.chk_show_diag.isChecked(),
         }
         return config
 
@@ -790,6 +800,30 @@ class SpectroscopyTab(QWidget):
 
         self._build_plot_state_from_result(result)
         self._render_current_plot()
+
+        # Update Stability Light
+        indicator = result.get("stability_indicator")
+        if indicator:
+            label = indicator.get("label", "Unknown")
+            icon = indicator.get("icon", "")
+            cond = indicator.get("cond")
+            maxcorr = indicator.get("max_abs_corr")
+            reasons = indicator.get("reasons", [])
+
+            info = f"(cond={cond:.2e}"
+            if maxcorr is not None:
+                info += f", max|r|={maxcorr:.3f}"
+            info += ")"
+
+            reason_str = ""
+            if "singular" in reasons:
+                reason_str = " (singular)"
+            elif "high correlation" in reasons:
+                reason_str = " (high correlation)"
+
+            self.lbl_stability_light.setText(f"Stability: {icon} {label}{reason_str} {info}")
+        else:
+            self.lbl_stability_light.setText("Stability: -")
 
         results_text = result.get("results_text") or ""
         if results_text:
@@ -965,6 +999,9 @@ class SpectroscopyTab(QWidget):
         )
         self.model_opt_plots.apply_state(state)
 
+        if "show_stability_diagnostics" in config:
+            self.chk_show_diag.setChecked(bool(config["show_stability_diagnostics"]))
+
         if missing:
             msg = "\n".join(missing)
             self.log.append_text("WARNING:\n" + msg)
@@ -993,6 +1030,8 @@ class SpectroscopyTab(QWidget):
         self.canvas_main.clear()
         self._reset_plot_state()
         self.log.clear()
+        self.chk_show_diag.setChecked(False)
+        self.lbl_stability_light.setText("Stability: -")
         self._last_result = None
         self.btn_save.setEnabled(False)
 

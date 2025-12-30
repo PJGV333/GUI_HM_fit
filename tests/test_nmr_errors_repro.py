@@ -141,6 +141,30 @@ def test_nmr_errors_fallback_logic():
     assert np.isfinite(s2), f"s2 should be finite, got {s2} (dof={dof})"
     assert dof == 115, f"dof should be 115, got {dof}"
 
+def test_nmr_errors_stability_diag():
+    m = 10
+    nP = 2
+    n_abs = 2
+    nspec = 2
+    k = np.array([2.0])
+    
+    res = MockRes(m, n_abs, nspec)
+    dq = np.random.rand(m, nP)
+    H = np.ones(m)
+    modelo = np.array([[1, 0], [0, 1]])
+    nas = []
+    
+    err_res = compute_errors_nmr_varpro(k, res, dq, H, modelo, nas)
+    
+    assert "stability_diag" in err_res
+    diag = err_res["stability_diag"]
+    assert "status" in diag
+    assert "cond_jjt" in diag
+    assert "diag_summary" in diag
+    assert "diag_full" in diag
+    # Since JJT is random/well-conditioned here, status should be excellent or warn
+    assert diag["status"] in ["excellent", "warn", "critical"]
+
 if __name__ == "__main__":
     test_nmr_errors_dof_logic()
     test_nmr_errors_fallback_logic()
