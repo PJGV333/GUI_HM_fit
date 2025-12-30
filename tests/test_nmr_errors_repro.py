@@ -53,6 +53,35 @@ def test_nmr_errors_realistic_11():
     assert err_res["SE_log10K"][0] > 0
     assert np.isfinite(err_res["covfit"])
 
+def test_nmr_errors_mask_none_uses_signal_h():
+    m = 4
+    nP = 2
+    C_abs = np.array([[1.0], [2.0], [3.0], [4.0]])
+    Co = np.column_stack([C_abs[:, 0], np.full(m, 0.5)])
+
+    class MockRes:
+        def concentraciones(self, k):
+            return C_abs, Co
+
+    res = MockRes()
+    H = np.column_stack([
+        np.array([1.0, 2.0, 3.0, 4.0]),
+        np.array([2.0, 1.0, 4.0, 3.0]),
+    ])
+    deltas = np.array([10.0, 20.0])
+    dq = np.zeros((m, nP), dtype=float)
+    for j in range(nP):
+        dq[:, j] = (C_abs[:, 0] / H[:, j]) * deltas[j]
+
+    modelo = np.array([[1.0], [1.0]])
+    nas = [1]
+    k = np.array([1.0])
+
+    err_res = compute_errors_nmr_varpro(k, res, dq, H, modelo, nas, mask=None)
+
+    assert np.allclose(err_res["coef"][0], deltas, rtol=1e-6, atol=1e-8)
+    assert np.max(np.abs(err_res["residuals_vec"])) < 1e-8
+
 def test_nmr_errors_dof_logic():
     m = 40
     nP = 3

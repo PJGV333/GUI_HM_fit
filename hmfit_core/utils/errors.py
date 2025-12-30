@@ -253,6 +253,20 @@ def _percent_errors_from_cov(k, Cov_log10K):
     percK, SE_K, _ = percent_error_log10K(_as_onp(k), SE_log10K)
     return _onp.array(percK), _onp.array(SE_K), _onp.array(SE_log10K)
 
+def pinv_psd_eigh(A, xp=_onp, rcond=1e-10, ridge=0.0):
+    """
+    Pseudo-inversa para matrices simetricas/hermiticas PSD via eigh con truncamiento.
+    """
+    A = xp.asarray(A)
+    A = 0.5 * (A + A.T.conj())
+    if ridge and ridge > 0.0:
+        A = A + ridge * xp.eye(A.shape[0], dtype=A.dtype)
+    w, V = xp.linalg.eigh(A)
+    wmax = xp.max(w)
+    thr = rcond * wmax
+    w_inv = xp.where(w > thr, 1.0 / w, 0.0)
+    return (V * w_inv) @ V.T.conj()
+
 def compute_errors_spectro_varpro(k, res, Y, modelo, nas, rcond=1e-10, use_projector=True):
     """
     Cálculo robusto (variable projection) para espectroscopía.
@@ -303,10 +317,25 @@ def compute_errors_spectro_varpro(k, res, Y, modelo, nas, rcond=1e-10, use_proje
         "A": _as_onp(A), "J": _as_onp(J), "yfit": _as_onp((C @ A).T)
     }
 
-def compute_errors_nmr_varpro(k, res, dq, H, modelo, nas, rcond=1e-10, use_projector=True, mask=None, fixed_mask=None):
+def compute_errors_nmr_varpro(
+    k,
+    res,
+    dq,
+    H,
+    modelo,
+    nas,
+    rcond=1e-10,
+    use_projector=True,
+    mask=None,
+    fixed_mask=None,
+    ridge=1e-8,
+    rcond_cov=None,
+    ridge_cov=0.0,
+    debug=False,
+):
     """
     NMR version with missing data support.
-    If 'mask' is None, uses dense path.
+    If 'mask' is None, uses all finite dq values.
     If 'mask' is bool (m x nP), ignores unobserved rows per column.
     
     Now supports 'fixed_mask' to correctly account for degrees of freedom.
@@ -343,52 +372,9 @@ def compute_errors_nmr_varpro(k, res, dq, H, modelo, nas, rcond=1e-10, use_proje
     dq = _as_onp(dq)
     m, n_abs = C.shape
 
-    # ---------- CAMINO SIN MÁSCARA (compatibilidad) ----------
     if mask is None:
-        nP = dq.shape[1]
-        # Use first column of H for global Xi if H is 2D, or H itself if 1D.
-        H_global = H[:, 0] if H.ndim == 2 else H
-        # Mask zero H_global to avoid inf
-        valid_H = _onp.abs(H_global) > 1e-12
-        
-        Xi = _onp.zeros_like(C)
-        Xi[valid_H, :] = C[valid_H, :] / H_global[valid_H, None]
-        
-        # Proyectar para obtener coeficientes (deltas)
-        coef = _pinv_backend(Xi, rcond=rcond) @ dq   # (n_abs × nP)
-        r = (Xi @ coef - dq).reshape(-1)
-        
-        dC_all_abs = _build_dC_all(Co, Ms, nas, param_idx) # (m x n_abs x p)
-        
-        if H.ndim == 1:
-            dXi_all = dC_all_abs / _onp.maximum(_onp.abs(H), 1e-12)[:, None, None]
-        else:
-            dXi_all = dC_all_abs / _onp.maximum(_onp.abs(H[:, 0:1]), 1e-12)[:, :, None]
-
-        J_full = _jac_varpro(Xi, coef, dXi_all, use_projector=use_projector, rcond=rcond)
-        nobs = r.size
-        dof = nobs - p_free
-        dof_capped = max(dof, 1)
-        s2 = float((r @ r) / dof_capped)
-
-        if p_free == 0:
-            SE_log10K_full = _onp.zeros(p_total)
-            Cov_free = _onp.zeros((0, 0))
-        else:
-            J = J_full[free_idx, :]
-            JJT = J @ J.T
-            Cov_free = s2 * pinv_cs(JJT, rcond=1e-15)
-            SE_log10K_free = _onp.sqrt(_onp.clip(_onp.diag(_as_onp(Cov_free)), 0.0, _onp.inf))
-            SE_log10K_full = _onp.zeros(p_total)
-            SE_log10K_full[free_idx] = SE_log10K_free
-        
-        pm = percent_metrics_from_log10K(k, SE_log10K_full)
-        return {
-            "percK": pm["perc_linear"], "SE_K": pm["SE_K"], "SE_log10K": SE_log10K_full,
-            "Cov_log10K_free": _as_onp(Cov_free), "rms": float(_onp.sqrt(_onp.mean(r**2))), "covfit": s2,
-            "coef": _as_onp(coef), "xi": Xi, "J": _as_onp(J_full),
-            "dof": dof, "nobs": nobs, "residuals_vec": _as_onp(r)
-        }
+        # usar todo como observado; el filtrado real lo hace Hj_all>1e-12 y finitud
+        mask = _onp.isfinite(dq)
 
     # ---------- CAMINO CON MÁSCARA (ignora huecos por columna) ----------
     mask = _onp.asarray(mask, dtype=bool)
@@ -426,12 +412,15 @@ def compute_errors_nmr_varpro(k, res, dq, H, modelo, nas, rcond=1e-10, use_proje
 
         # coeficiente de la señal j usando SOLO filas observadas
         try:
-            Aj = _pinv_backend(Xi_m, rcond=rcond) @ y[:, None]   # (n_abs × 1)
-        except _onp.linalg.LinAlgError as e:
-            import warnings
-            warnings.warn(f"Signal {j}: SVD calculation failed ({e}). Skipping signal in error estimate.")
-            continue
+            delta, _, _, _ = _onp.linalg.lstsq(Xi_m, y, rcond=rcond)
+        except _onp.linalg.LinAlgError:
+            if ridge and ridge > 0.0:
+                XtX = Xi_m.T @ Xi_m
+                delta = _onp.linalg.solve(XtX + ridge*_onp.eye(XtX.shape[0]), Xi_m.T @ y)
+            else:
+                delta = _onp.linalg.pinv(Xi_m, rcond=rcond) @ y
 
+        Aj = delta.reshape(-1, 1)
         coef[:, j] = Aj[:, 0]
 
         # residuales de la señal j
@@ -458,11 +447,27 @@ def compute_errors_nmr_varpro(k, res, dq, H, modelo, nas, rcond=1e-10, use_proje
         SE_log10K_full = _onp.zeros(p_total)
         Cov_free = _onp.zeros((0, 0))
     else:
+        if rcond_cov is None:
+            rcond_cov = rcond
         J = J_full[free_idx, :]
         JJT = J @ J.T
-        
-        # Stability: if JJT is singular, pinv_cs handles it
-        Cov_free = s2 * pinv_cs(JJT, rcond=1e-15)
+        JJT = 0.5 * (JJT + JJT.T.conj())
+
+        if debug:
+            sv = _onp.linalg.svd(JJT, compute_uv=False)
+            if sv.size:
+                cond = float(sv[0] / sv[-1]) if sv[-1] != 0 else float("inf")
+                rank_eff = int(_onp.sum(sv > sv[0] * rcond_cov))
+            else:
+                cond = float("inf")
+                rank_eff = 0
+            print(
+                f"[NMR errors] dof={dof} p_free={p_free} cond(JJT)={cond:.3e} "
+                f"rank_eff={rank_eff}/{p_free} rcond_cov={rcond_cov} ridge_cov={ridge_cov}"
+            )
+
+        invJJT = pinv_psd_eigh(JJT, xp=_onp, rcond=rcond_cov, ridge=ridge_cov)
+        Cov_free = s2 * invJJT
         SE_log10K_free = _onp.sqrt(_onp.clip(_onp.diag(_as_onp(Cov_free)), 0.0, _onp.inf))
         
         SE_log10K_full = _onp.zeros(p_total)

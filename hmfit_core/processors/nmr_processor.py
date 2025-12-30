@@ -398,7 +398,7 @@ def process_nmr_data(
         
         # Final calculated shifts
         # Note: We use project_coeffs_block_onp_frac for consistency with f_m
-        dq_fit = project_coeffs_block_onp_frac(dq, C_opt, D_cols, mask)
+        dq_fit = project_coeffs_block_onp_frac(dq, C_opt, D_cols, mask, rcond=1e-10, ridge=1e-8)
         
         # Calculate Errors
         # We need to adapt compute_errors_nmr_varpro or implement a custom one here
@@ -418,7 +418,15 @@ def process_nmr_data(
             # Always use compute_errors_nmr_varpro for NMR
             # Pass D_cols (calculated per signal parent) instead of H
             err_res = compute_errors_nmr_varpro(
-                k_opt_full, res, dq, D_cols, modelo, nas, mask=mask, fixed_mask=fixed_mask
+                k_opt_full, res, dq, D_cols, modelo, nas,
+                mask=mask,
+                fixed_mask=fixed_mask,
+                rcond=1e-10,
+                rcond_cov=1e-10,
+                ridge=1e-8,
+                ridge_cov=0.0,
+                use_projector=True,
+                debug=False,
             )
             
             SE_log10K_full = err_res["SE_log10K"]
