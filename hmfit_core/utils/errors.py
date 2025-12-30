@@ -3,6 +3,93 @@ import numpy as _onp
 from .np_backend import xp as np, jit, jacrev, vmap, lax
 from ..solvers.lm_conc import pinv_cs  # complex-step-safe
 
+# ============================================================================
+# DEEP DIAGNOSTICS: Análisis de identificabilidad y correlación
+# ============================================================================
+
+def analyze_identifiability(Hess, param_names=None):
+    """
+    Diagnóstico profundo de la matriz Hessiana (o J.T @ J).
+    Imprime condición, autovalores y advertencias de singularidad.
+    """
+    print("\n--- DIAGNÓSTICO DE IDENTIFICABILIDAD (Hessiana aprox) ---")
+    
+    # 1. Análisis de Autovalores (Espectro)
+    try:
+        # eigh es para matrices simétricas (Hermíticas), más estable
+        vals, vecs = _onp.linalg.eigh(Hess)
+    except Exception as e:
+        print(f"Error calculando autovalores: {e}")
+        return
+        
+    vals = _onp.sort(vals)  # Menor a mayor
+    print(f"Autovalores (min -> max):\n{vals}")
+    
+    # 2. Número de Condición
+    # Evitar división por cero si hay autovalores negativos/cero numéricos
+    max_eig = _onp.max(_onp.abs(vals))
+    min_pos_vals = vals[vals > 1e-15]
+    min_eig = _onp.min(_onp.abs(min_pos_vals)) if min_pos_vals.size > 0 else 1e-30
+    cond_num = max_eig / min_eig
+    
+    print(f"Condición (kappa): {cond_num:.2e}")
+    
+    if cond_num > 1e12:
+        print("CRÍTICO: La matriz es numéricamente singular. El sistema está mal condicionado.")
+    elif cond_num > 1e8:
+        print("ADVERTENCIA: Condicionamiento pobre. Los errores serán grandes.")
+        
+    # 3. Análisis de vectores propios para el modo más débil
+    # El autovector asociado al autovalor más pequeño apunta en la dirección de mayor incertidumbre
+    if param_names and len(param_names) == len(vals):
+        weakest_mode = vecs[:, 0]  # Asociado al menor autovalor
+        print("Modo más débil (combinación lineal de params con mayor error):")
+        comps = [f"{param_names[i]}: {weakest_mode[i]:.2f}" for i in range(len(weakest_mode))]
+        print(", ".join(comps))
+        
+    print("---------------------------------------------------------\n")
+
+
+def print_correlation_matrix(Cov, param_names=None):
+    """
+    Calcula e imprime la matriz de correlación a partir de la covarianza.
+    Ayuda a ver si dos parámetros están 'peleando' (corr -> 1 o -1).
+    """
+    print("\n--- MATRIZ DE CORRELACIÓN ---")
+    d = _onp.sqrt(_onp.diag(Cov))
+    d[d == 0] = 1e-10  # Evitar div/0
+    outer_d = _onp.outer(d, d)
+    Corr = Cov / outer_d
+    
+    # Limitar rango para visualización limpia
+    Corr = _onp.clip(Corr, -1.0, 1.0)
+    
+    rows, cols = Corr.shape
+    print("      " + "  ".join([f"{i:5d}" for i in range(cols)]))
+    for i in range(rows):
+        row_str = f"{i:4d} |"
+        for j in range(cols):
+            val = Corr[i, j]
+            # Resaltar correlaciones altas
+            mark = "*" if abs(val) > 0.95 and i != j else " "
+            row_str += f"{val:6.2f}{mark}"
+        print(row_str)
+    
+    if param_names:
+        # Listar pares con correlación peligrosa
+        print("\nPares altamente correlacionados (|r| > 0.95):")
+        found = False
+        for i in range(rows):
+            for j in range(i+1, cols):
+                if abs(Corr[i, j]) > 0.95:
+                    print(f"  {param_names[i]} <--> {param_names[j]} : {Corr[i, j]:.4f}")
+                    found = True
+        if not found:
+            print("  Ninguno detectado.")
+    print("-----------------------------\n")
+
+# ============================================================================
+
 def jacobian_cs(fun, x, delta=1e-20):
     x = np.asarray(x)
     rows = []
@@ -466,8 +553,19 @@ def compute_errors_nmr_varpro(
                 f"rank_eff={rank_eff}/{p_free} rcond_cov={rcond_cov} ridge_cov={ridge_cov}"
             )
 
+        # --- INICIO BLOQUE DIAGNÓSTICO (antes de inversión) ---
+        if debug:
+            analyze_identifiability(JJT, param_names=None)
+        # --- FIN BLOQUE DIAGNÓSTICO ---
+
         invJJT = pinv_psd_eigh(JJT, xp=_onp, rcond=rcond_cov, ridge=ridge_cov)
         Cov_free = s2 * invJJT
+
+        # --- INICIO BLOQUE DIAGNÓSTICO POST-COVARIANZA ---
+        if debug:
+            print_correlation_matrix(Cov_free, param_names=None)
+        # --- FIN BLOQUE DIAGNÓSTICO ---
+
         SE_log10K_free = _onp.sqrt(_onp.clip(_onp.diag(_as_onp(Cov_free)), 0.0, _onp.inf))
         
         SE_log10K_full = _onp.zeros(p_total)

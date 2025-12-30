@@ -426,7 +426,7 @@ def process_nmr_data(
                 ridge=1e-8,
                 ridge_cov=0.0,
                 use_projector=True,
-                debug=False,
+                debug=True,  # DEEP DIAGNOSTICS HABILITADO
             )
             
             SE_log10K_full = err_res["SE_log10K"]
