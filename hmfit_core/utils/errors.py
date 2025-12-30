@@ -304,23 +304,35 @@ def compute_errors_spectro_varpro(k, res, Y, modelo, nas, rcond=1e-10, use_proje
         "A": _as_onp(A), "J": _as_onp(J), "yfit": _as_onp((C @ A).T)
     }
 
-def compute_errors_nmr_varpro(k, res, dq, H, modelo, nas, rcond=1e-10, use_projector=True, mask=None):
+def compute_errors_nmr_varpro(k, res, dq, H, modelo, nas, rcond=1e-10, use_projector=True, mask=None, fixed_mask=None):
     """
-    Versión NMR con soporte de datos faltantes.
-    Si 'mask' es None, usa el camino denso (compatibilidad).
-    Si 'mask' es bool (m × nP), ignora filas NO observadas por columna (estilo HypNMR).
+    NMR version with missing data support.
+    If 'mask' is None, uses dense path.
+    If 'mask' is bool (m x nP), ignores unobserved rows per column.
+    
+    Now supports 'fixed_mask' to correctly account for degrees of freedom.
     """
     C, Co = res.concentraciones(k)    # C: (m × n_abs), Co: (m × nspec)
     nspec = Co.shape[1]
     Ms, n_comp = _normalize_modelo(modelo, nspec)
 
-    p = len(k)
+    k = _as_onp(k)
+    p_total = len(k)
+    
+    if fixed_mask is None:
+        fixed_mask = _onp.zeros(p_total, dtype=bool)
+    else:
+        fixed_mask = _onp.asarray(fixed_mask, dtype=bool)
+        
+    free_idx = _onp.where(~fixed_mask)[0]
+    p_free = free_idx.size
+
     param_idx = list(range(n_comp, nspec))
-    if len(param_idx) != p:
-        if p <= nspec:
-            param_idx = list(range(nspec - p, nspec))
+    if len(param_idx) != p_total:
+        if p_total <= nspec:
+            param_idx = list(range(nspec - p_total, nspec))
         else:
-            raise ValueError(f"p={p} > nspec={nspec}")
+            raise ValueError(f"p={p_total} > nspec={nspec}")
 
     Xi = C / H[:, None]                      # (m × n_abs)
     m, n_abs = Xi.shape
@@ -331,25 +343,41 @@ def compute_errors_nmr_varpro(k, res, dq, H, modelo, nas, rcond=1e-10, use_proje
         coef = _pinv_backend(Xi, rcond=rcond) @ dq  # (n_abs × nP)
         Yfit = (coef.T @ Xi.T).T                    # (m × nP)
         R    = (Yfit - dq)                          # (m × nP)
-        r    = R.reshape(-1)
-        dof  = max(r.size - p, 1)
-        s2   = float((r @ r) / dof)
+        r    = R.ravel()                            # Robust counting
+        nobs = r.size
+        dof  = nobs - p_free
+        if dof < 1:
+            import warnings
+            warnings.warn(f"Degrees of freedom (dof={dof}) <= 0. Error estimation might be unreliable.")
+            dof_capped = 1
+        else:
+            dof_capped = dof
+            
+        s2   = float((r @ r) / dof_capped)
 
         # Jacobiano proyectado (denso)
-        dC_all_abs = _build_dC_all(Co, Ms, nas, param_idx)      # (m × n_abs × p)
-        dXi_all = dC_all_abs / H.reshape(-1, 1, 1)              # (m × n_abs × p)
-        J = _jac_varpro(Xi, coef, dXi_all, use_projector=use_projector, rcond=rcond)
+        dC_all_abs = _build_dC_all(Co, Ms, nas, param_idx)      # (m × n_abs × p_total)
+        dXi_all = dC_all_abs / H.reshape(-1, 1, 1)              # (m × n_abs × p_total)
+        J_full = _jac_varpro(Xi, coef, dXi_all, use_projector=use_projector, rcond=rcond) # (p_total x nobs)
 
-        Cov_log10K = s2 * _pinv_backend(J @ J.T, rcond=rcond)
-        SE_log10K = _onp.sqrt(_onp.clip(_onp.diag(_as_onp(Cov_log10K)), 0.0, _onp.inf))
-        pm = percent_metrics_from_log10K(_as_onp(k), SE_log10K)
+        # Filter J for free parameters only
+        J = J_full[free_idx, :] if p_free > 0 else _onp.zeros((0, nobs))
+        
+        Cov_free = s2 * _pinv_backend(J @ J.T, rcond=rcond)
+        SE_log10K_free = _onp.sqrt(_onp.clip(_onp.diag(_as_onp(Cov_free)), 0.0, _onp.inf))
+        
+        SE_log10K_full = _onp.zeros(p_total)
+        SE_log10K_full[free_idx] = SE_log10K_free
+        
+        pm = percent_metrics_from_log10K(k, SE_log10K_full)
 
         percK = pm["perc_linear"]; SE_K = pm["SE_K"]
         rms = float(np.sqrt(np.mean(R * R)))
         return {
-            "percK": percK, "SE_K": SE_K, "SE_log10K": SE_log10K,
-            "Cov_log10K": _as_onp(Cov_log10K), "rms": rms, "covfit": s2,
-            "coef": _as_onp(coef), "xi": _as_onp(Xi), "J": _as_onp(J),
+            "percK": percK, "SE_K": SE_K, "SE_log10K": SE_log10K_full,
+            "Cov_log10K_free": _as_onp(Cov_free), "rms": rms, "covfit": s2,
+            "coef": _as_onp(coef), "xi": _as_onp(Xi), "J": _as_onp(J_full),
+            "dof": dof, "nobs": nobs, "residuals_vec": _as_onp(r)
         }
 
     # ---------- CAMINO CON MÁSCARA (ignora huecos por columna) ----------
@@ -387,20 +415,37 @@ def compute_errors_nmr_varpro(k, res, dq, H, modelo, nas, rcond=1e-10, use_proje
         raise ValueError("No hay datos observados para calcular errores (máscara vacía).")
 
     r  = _onp.concatenate([_as_onp(rb) for rb in R_blocks], axis=0)   # (M_eff,)
-    J  = _onp.concatenate([_as_onp(Jc) for Jc in J_cols], axis=1)     # (p × M_eff)
-    dof = max(r.size - p, 1)
-    s2  = float((r @ r) / dof)
+    J_full  = _onp.concatenate([_as_onp(Jc) for Jc in J_cols], axis=1) # (p_total × M_eff)
+    
+    nobs = r.size
+    dof = nobs - p_free
+    if dof < 1:
+        import warnings
+        warnings.warn(f"Degrees of freedom (dof={dof}) <= 0. Error estimation might be unreliable.")
+        dof_capped = 1
+    else:
+        dof_capped = dof
+        
+    s2  = float((r @ r) / dof_capped)
 
-    Cov_log10K = s2 * _pinv_backend(J @ J.T, rcond=rcond)
-    SE_log10K  = _onp.sqrt(_onp.clip(_onp.diag(_as_onp(Cov_log10K)), 0.0, _onp.inf))
-    pm = percent_metrics_from_log10K(_as_onp(k), SE_log10K)
+    # Filter J for free parameters only
+    J = J_full[free_idx, :] if p_free > 0 else _onp.zeros((0, nobs))
+
+    Cov_free = s2 * _pinv_backend(J @ J.T, rcond=rcond)
+    SE_log10K_free = _onp.sqrt(_onp.clip(_onp.diag(_as_onp(Cov_free)), 0.0, _onp.inf))
+    
+    SE_log10K_full = _onp.zeros(p_total)
+    SE_log10K_full[free_idx] = SE_log10K_free
+    
+    pm = percent_metrics_from_log10K(k, SE_log10K_full)
 
     percK = pm["perc_linear"]; SE_K = pm["SE_K"]
     # RMS sobre observados únicamente
-    RMS = float(_onp.sqrt(_onp.mean(_onp.concatenate(R_blocks)**2)))
+    RMS = float(_onp.sqrt(_onp.mean(r**2)))
 
     return {
-        "percK": percK, "SE_K": SE_K, "SE_log10K": SE_log10K,
-        "Cov_log10K": _as_onp(Cov_log10K), "rms": RMS, "covfit": s2,
-        "coef": _as_onp(coef), "xi": _as_onp(Xi), "J": _as_onp(J),
+        "percK": percK, "SE_K": SE_K, "SE_log10K": SE_log10K_full,
+        "Cov_log10K_free": _as_onp(Cov_free), "rms": RMS, "covfit": s2,
+        "coef": _as_onp(coef), "xi": _as_onp(Xi), "J": _as_onp(J_full),
+        "dof": dof, "nobs": nobs, "residuals_vec": _as_onp(r)
     }

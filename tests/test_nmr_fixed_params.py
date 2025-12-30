@@ -153,7 +153,7 @@ class TestNmrFixedParams(unittest.TestCase):
         self.assertIn("± const", result.get("results_text", ""))
 
     def test_varpro_error_path_respects_fixed_mask(self):
-        def fake_compute_errors_nmr_varpro(k, res, dq, h, modelo, nas, rcond=1e-10, use_projector=True, mask=None):
+        def fake_compute_errors_nmr_varpro(k, res, dq, h, modelo, nas, rcond=1e-10, use_projector=True, mask=None, **kwargs):
             k = np.asarray(k, dtype=float).ravel()
             p = k.size
             m_eff = int(np.sum(np.asarray(mask, dtype=bool)))
