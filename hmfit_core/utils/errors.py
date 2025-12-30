@@ -145,8 +145,7 @@ def sensitivities_wrt_logK(c_spec, modelo, param_idx=None, rcond=1e-12):
     except np.linalg.LinAlgError:
         du_dlnK = np.linalg.pinv(Ju, rcond=rcond) @ RHS
 
-    # dCspec/dlnK = diag(c) * (I + M * du/dlnK)  -> (nspec, nspec)
-    dCspec_dlnK = (c[:, None]) * (np.eye(nspec) + Ms @ du_dlnK)
+    dCspec_dlnK = (c[:, None]) * (np.eye(nspec) - Ms @ du_dlnK)
 
     # Pasar a log10: d/d(log10 K) = ln(10) * d/d(ln K)
     dCspec_dlog10K = np.log(10.0) * dCspec_dlnK
@@ -327,6 +326,10 @@ def compute_errors_nmr_varpro(k, res, dq, H, modelo, nas, rcond=1e-10, use_proje
     free_idx = _onp.where(~fixed_mask)[0]
     p_free = free_idx.size
 
+    if p_free == 0:
+        import warnings
+        warnings.warn("All parameters are fixed (p_free=0). SE/log10K and %error will be zero by definition.")
+
     param_idx = list(range(n_comp, nspec))
     if len(param_idx) != p_total:
         if p_total <= nspec:
@@ -334,49 +337,56 @@ def compute_errors_nmr_varpro(k, res, dq, H, modelo, nas, rcond=1e-10, use_proje
         else:
             raise ValueError(f"p={p_total} > nspec={nspec}")
 
-    Xi = C / H[:, None]                      # (m × n_abs)
-    m, n_abs = Xi.shape
+    # Xi calculation is now handled per-signal or per-block to avoid global inf/nan
+    # when some parent concentrations are zero (e.g. at the start of titration).
+    H = _as_onp(H)
     dq = _as_onp(dq)
+    m, n_abs = C.shape
 
     # ---------- CAMINO SIN MÁSCARA (compatibilidad) ----------
     if mask is None:
-        coef = _pinv_backend(Xi, rcond=rcond) @ dq  # (n_abs × nP)
-        Yfit = (coef.T @ Xi.T).T                    # (m × nP)
-        R    = (Yfit - dq)                          # (m × nP)
-        r    = R.ravel()                            # Robust counting
-        nobs = r.size
-        dof  = nobs - p_free
-        if dof < 1:
-            import warnings
-            warnings.warn(f"Degrees of freedom (dof={dof}) <= 0. Error estimation might be unreliable.")
-            dof_capped = 1
+        nP = dq.shape[1]
+        # Use first column of H for global Xi if H is 2D, or H itself if 1D.
+        H_global = H[:, 0] if H.ndim == 2 else H
+        # Mask zero H_global to avoid inf
+        valid_H = _onp.abs(H_global) > 1e-12
+        
+        Xi = _onp.zeros_like(C)
+        Xi[valid_H, :] = C[valid_H, :] / H_global[valid_H, None]
+        
+        # Proyectar para obtener coeficientes (deltas)
+        coef = _pinv_backend(Xi, rcond=rcond) @ dq   # (n_abs × nP)
+        r = (Xi @ coef - dq).reshape(-1)
+        
+        dC_all_abs = _build_dC_all(Co, Ms, nas, param_idx) # (m x n_abs x p)
+        
+        if H.ndim == 1:
+            dXi_all = dC_all_abs / _onp.maximum(_onp.abs(H), 1e-12)[:, None, None]
         else:
-            dof_capped = dof
-            
-        s2   = float((r @ r) / dof_capped)
+            dXi_all = dC_all_abs / _onp.maximum(_onp.abs(H[:, 0:1]), 1e-12)[:, :, None]
 
-        # Jacobiano proyectado (denso)
-        dC_all_abs = _build_dC_all(Co, Ms, nas, param_idx)      # (m × n_abs × p_total)
-        dXi_all = dC_all_abs / H.reshape(-1, 1, 1)              # (m × n_abs × p_total)
-        J_full = _jac_varpro(Xi, coef, dXi_all, use_projector=use_projector, rcond=rcond) # (p_total x nobs)
+        J_full = _jac_varpro(Xi, coef, dXi_all, use_projector=use_projector, rcond=rcond)
+        nobs = r.size
+        dof = nobs - p_free
+        dof_capped = max(dof, 1)
+        s2 = float((r @ r) / dof_capped)
 
-        # Filter J for free parameters only
-        J = J_full[free_idx, :] if p_free > 0 else _onp.zeros((0, nobs))
-        
-        Cov_free = s2 * _pinv_backend(J @ J.T, rcond=rcond)
-        SE_log10K_free = _onp.sqrt(_onp.clip(_onp.diag(_as_onp(Cov_free)), 0.0, _onp.inf))
-        
-        SE_log10K_full = _onp.zeros(p_total)
-        SE_log10K_full[free_idx] = SE_log10K_free
+        if p_free == 0:
+            SE_log10K_full = _onp.zeros(p_total)
+            Cov_free = _onp.zeros((0, 0))
+        else:
+            J = J_full[free_idx, :]
+            JJT = J @ J.T
+            Cov_free = s2 * pinv_cs(JJT, rcond=1e-15)
+            SE_log10K_free = _onp.sqrt(_onp.clip(_onp.diag(_as_onp(Cov_free)), 0.0, _onp.inf))
+            SE_log10K_full = _onp.zeros(p_total)
+            SE_log10K_full[free_idx] = SE_log10K_free
         
         pm = percent_metrics_from_log10K(k, SE_log10K_full)
-
-        percK = pm["perc_linear"]; SE_K = pm["SE_K"]
-        rms = float(np.sqrt(np.mean(R * R)))
         return {
-            "percK": percK, "SE_K": SE_K, "SE_log10K": SE_log10K_full,
-            "Cov_log10K_free": _as_onp(Cov_free), "rms": rms, "covfit": s2,
-            "coef": _as_onp(coef), "xi": _as_onp(Xi), "J": _as_onp(J_full),
+            "percK": pm["perc_linear"], "SE_K": pm["SE_K"], "SE_log10K": SE_log10K_full,
+            "Cov_log10K_free": _as_onp(Cov_free), "rms": float(_onp.sqrt(_onp.mean(r**2))), "covfit": s2,
+            "coef": _as_onp(coef), "xi": Xi, "J": _as_onp(J_full),
             "dof": dof, "nobs": nobs, "residuals_vec": _as_onp(r)
         }
 
@@ -392,14 +402,36 @@ def compute_errors_nmr_varpro(k, res, dq, H, modelo, nas, rcond=1e-10, use_proje
     dC_all_abs = _build_dC_all(Co, Ms, nas, param_idx)
 
     for j in range(nP):
-        mj = mask[:, j]
+        mj_obs = mask[:, j]
+        # Signal-specific parent concentration
+        Hj_all = H[:, j] if H.ndim == 2 else H
+        
+        # Point is valid for signal j if:
+        # 1. It is observed (mask)
+        # 2. Parent concentration > threshold
+        mj = mj_obs & (_onp.abs(Hj_all) > 1e-12)
+        
         if not mj.any():
             continue
-        Xi_m = Xi[mj, :]                        # (m_j × n_abs)
-        y    = dq[mj, j]                         # (m_j,)
+
+        # Calculate Xi_m LOCALLY to avoid global inf
+        Xi_m = C[mj, :] / Hj_all[mj, None]      # (m_j × n_abs)
+        y    = dq[mj, j]                        # (m_j,)
+
+        # Finiteness guard
+        if not _onp.isfinite(Xi_m).all() or not _onp.isfinite(y).all():
+            import warnings
+            warnings.warn(f"Signal {j}: Non-finite values in basis or data. Skipping.")
+            continue
 
         # coeficiente de la señal j usando SOLO filas observadas
-        Aj = _pinv_backend(Xi_m, rcond=rcond) @ y[:, None]   # (n_abs × 1)
+        try:
+            Aj = _pinv_backend(Xi_m, rcond=rcond) @ y[:, None]   # (n_abs × 1)
+        except _onp.linalg.LinAlgError as e:
+            import warnings
+            warnings.warn(f"Signal {j}: SVD calculation failed ({e}). Skipping signal in error estimate.")
+            continue
+
         coef[:, j] = Aj[:, 0]
 
         # residuales de la señal j
@@ -407,45 +439,40 @@ def compute_errors_nmr_varpro(k, res, dq, H, modelo, nas, rcond=1e-10, use_proje
         R_blocks.append(yfit - y)
 
         # Jacobiano para la señal j: dXi en filas observadas
-        dXi_m = (dC_all_abs[mj, :, :] / H[mj].reshape(-1, 1, 1))   # (m_j × n_abs × p)
+        dXi_m = (dC_all_abs[mj, :, :] / Hj_all[mj].reshape(-1, 1, 1))   # (m_j × n_abs × p)
         Jj = _jac_varpro(Xi_m, Aj, dXi_m, use_projector=use_projector, rcond=rcond)  # (p × m_j)
         J_cols.append(Jj)
 
     if not J_cols:
-        raise ValueError("No hay datos observados para calcular errores (máscara vacía).")
+        raise ValueError("No hay datos observados válidos para calcular errores (padre concentracion ~0 o máscara vacía).")
 
     r  = _onp.concatenate([_as_onp(rb) for rb in R_blocks], axis=0)   # (M_eff,)
     J_full  = _onp.concatenate([_as_onp(Jc) for Jc in J_cols], axis=1) # (p_total × M_eff)
     
     nobs = r.size
     dof = nobs - p_free
-    if dof < 1:
-        import warnings
-        warnings.warn(f"Degrees of freedom (dof={dof}) <= 0. Error estimation might be unreliable.")
-        dof_capped = 1
-    else:
-        dof_capped = dof
-        
+    dof_capped = max(dof, 1)
     s2  = float((r @ r) / dof_capped)
 
-    # Filter J for free parameters only
-    J = J_full[free_idx, :] if p_free > 0 else _onp.zeros((0, nobs))
-
-    Cov_free = s2 * _pinv_backend(J @ J.T, rcond=rcond)
-    SE_log10K_free = _onp.sqrt(_onp.clip(_onp.diag(_as_onp(Cov_free)), 0.0, _onp.inf))
-    
-    SE_log10K_full = _onp.zeros(p_total)
-    SE_log10K_full[free_idx] = SE_log10K_free
+    if p_free == 0:
+        SE_log10K_full = _onp.zeros(p_total)
+        Cov_free = _onp.zeros((0, 0))
+    else:
+        J = J_full[free_idx, :]
+        JJT = J @ J.T
+        
+        # Stability: if JJT is singular, pinv_cs handles it
+        Cov_free = s2 * pinv_cs(JJT, rcond=1e-15)
+        SE_log10K_free = _onp.sqrt(_onp.clip(_onp.diag(_as_onp(Cov_free)), 0.0, _onp.inf))
+        
+        SE_log10K_full = _onp.zeros(p_total)
+        SE_log10K_full[free_idx] = SE_log10K_free
     
     pm = percent_metrics_from_log10K(k, SE_log10K_full)
 
-    percK = pm["perc_linear"]; SE_K = pm["SE_K"]
-    # RMS sobre observados únicamente
-    RMS = float(_onp.sqrt(_onp.mean(r**2)))
-
     return {
-        "percK": percK, "SE_K": SE_K, "SE_log10K": SE_log10K_full,
-        "Cov_log10K_free": _as_onp(Cov_free), "rms": RMS, "covfit": s2,
-        "coef": _as_onp(coef), "xi": _as_onp(Xi), "J": _as_onp(J_full),
+        "percK": pm["perc_linear"], "SE_K": pm["SE_K"], "SE_log10K": SE_log10K_full,
+        "Cov_log10K_free": _as_onp(Cov_free), "rms": float(_onp.sqrt(_onp.mean(r**2))), "covfit": s2,
+        "coef": _as_onp(coef), "xi": None, "J": _as_onp(J_full),
         "dof": dof, "nobs": nobs, "residuals_vec": _as_onp(r)
     }

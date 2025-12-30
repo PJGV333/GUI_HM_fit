@@ -1,0 +1,106 @@
+{
+  "file_path": "/home/ccachyavgp/Documentos/comparaciones_titulaciones_con_hmfit/S7_table_3reagents_R_Q_X.xlsx",
+  "nmr_sheet": "Hoja4",
+  "conc_sheet": "Hoja4",
+  "column_names": [
+    "R (host) / M",
+    "Q (TMA⁺) / M",
+    "X (Cl⁻) / M"
+  ],
+  "signal_names": [
+    "NH-2 (R) / ppm",
+    "NH-1 (R) / ppm",
+    "Me (Q) / ppm"
+  ],
+  "receptor_label": "R (host) / M",
+  "guest_label": "Q (TMA⁺) / M",
+  "modelo": [
+    [
+      1.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      1.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ],
+    [
+      1.0,
+      1.0,
+      1.0
+    ],
+    [
+      1.0,
+      0.0,
+      1.0
+    ],
+    [
+      2.0,
+      0.0,
+      0.0
+    ],
+    [
+      2.0,
+      0.0,
+      1.0
+    ],
+    [
+      0.0,
+      1.0,
+      1.0
+    ]
+  ],
+  "non_abs_species": [],
+  "algorithm": "Newton-Raphson",
+  "model_settings": "Free",
+  "optimizer": "powell",
+  "initial_k": [
+    3.0,
+    3.0,
+    3.0,
+    3.0,
+    3.0
+  ],
+  "bounds": [
+    [
+      null,
+      null
+    ],
+    [
+      null,
+      null
+    ],
+    [
+      null,
+      null
+    ],
+    [
+      null,
+      null
+    ],
+    [
+      null,
+      null
+    ]
+  ],
+  "fixed_mask": [
+    false,
+    false,
+    false,
+    false,
+    false
+  ],
+  "k_fixed": [
+    false,
+    false,
+    false,
+    false,
+    false
+  ]
+}

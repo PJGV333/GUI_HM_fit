@@ -415,27 +415,17 @@ def process_nmr_data(
         covfit_val = np.nan
 
         try:
-            # If non-absorbent species are selected, use VarPro-based error estimates.
-            if nas and len(nas) > 0:
-                err_res = compute_errors_nmr_varpro(
-                    k_opt_full, res, dq, H, modelo, nas, mask=mask, fixed_mask=fixed_mask
-                )
-                
-                SE_log10K_full = err_res["SE_log10K"]
-                percK_full = err_res["percK"]
-                covfit_val = err_res["covfit"]
-                rms = err_res["rms"]
-                residuals_vec = err_res.get("residuals_vec", residuals_vec) # Update if provided
-            else:
-                # Basic error estimation when VarPro is not applicable
-                # Note: Currently VarPro-NMR is the standard, but we keep this as fallback
-                N_res = residuals_vec.size
-                N_par = int(free_idx.size)
-                dof = N_res - N_par
-                
-                SS_res = float(np.sum(residuals_vec**2)) if residuals_vec.size else 0.0
-                covfit_val = (SS_res / dof) if dof > 0 else np.nan
-                rms = np.sqrt(SS_res / N_res) if N_res > 0 else 0.0
+            # Always use compute_errors_nmr_varpro for NMR
+            # Pass D_cols (calculated per signal parent) instead of H
+            err_res = compute_errors_nmr_varpro(
+                k_opt_full, res, dq, D_cols, modelo, nas, mask=mask, fixed_mask=fixed_mask
+            )
+            
+            SE_log10K_full = err_res["SE_log10K"]
+            percK_full = err_res["percK"]
+            covfit_val = err_res["covfit"]
+            rms = err_res["rms"]
+            residuals_vec = err_res.get("residuals_vec", residuals_vec) # Update if provided
 
         except Exception as e:
             log_progress(f"Error calculando errores: {e}")
