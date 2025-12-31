@@ -5,7 +5,10 @@ from .errors import (
     compute_errors_spectro_varpro, 
     compute_errors_nmr_varpro, 
     percent_error_log10K,
-    percent_metrics_from_log10K
+    percent_metrics_from_log10K,
+    wild_multipliers,
+    bootstrap_full_refit,
+    BootstrapCancelled,
 )
 
 __all__ = [
@@ -13,5 +16,6 @@ __all__ = [
     "infer_noncoop_series", "noncoop_derived_from_logK1",
     "solve_A_nnls_pgd", "solve_A_nnls_pgd2", "residuals",
     "compute_errors_spectro_varpro", "compute_errors_nmr_varpro",
-    "percent_error_log10K", "percent_metrics_from_log10K"
+    "percent_error_log10K", "percent_metrics_from_log10K",
+    "wild_multipliers", "bootstrap_full_refit", "BootstrapCancelled",
 ]

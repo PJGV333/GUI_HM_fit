@@ -683,17 +683,119 @@ def compute_errors_nmr_varpro(
 
 # === Bootstrap utilities ===
 
-def _wild_weights(rng, shape, wild="rademacher"):
-    wild = str(wild or "rademacher").strip().lower()
-    if wild.startswith("mam"):
+def wild_multipliers(rng, n, kind="rademacher"):
+    n = int(n)
+    if n < 0:
+        raise ValueError("n must be >= 0.")
+    kind = str(kind or "rademacher").strip().lower()
+    if kind.startswith("mam"):
         sqrt5 = _onp.sqrt(5.0)
         a = (1.0 - sqrt5) / 2.0
         b = (1.0 + sqrt5) / 2.0
         p = b / sqrt5
-        u = rng.random(shape)
+        u = rng.random(n)
         return _onp.where(u < p, a, b)
     # default: Rademacher (+/-1)
-    return rng.choice(_onp.array([-1.0, 1.0]), size=shape)
+    return rng.choice(_onp.array([-1.0, 1.0]), size=n)
+
+
+def _wild_weights(rng, shape, wild="rademacher"):
+    size = int(_onp.prod(shape))
+    if size == 0:
+        return _onp.empty(shape, dtype=float)
+    v = wild_multipliers(rng, size, kind=wild)
+    return _onp.asarray(v, dtype=float).reshape(shape)
+
+
+class BootstrapCancelled(RuntimeError):
+    pass
+
+
+def bootstrap_full_refit(
+    theta_hat,
+    make_data_star_fn,
+    refit_fn,
+    B,
+    seed=None,
+    wild="rademacher",
+    max_iter=30,
+    tol=1e-8,
+    fail_policy="skip",
+    progress_cb=None,
+    cancel_cb=None,
+):
+    """
+    Full-refit bootstrap: regenerate dataset via wild residuals and refit each replicate.
+    Returns dict with samples (n_success x p), percentiles, and corr (or None if n_success < 2).
+    """
+    theta_hat = _onp.asarray(theta_hat, dtype=float).ravel()
+    B = int(B)
+    if B <= 0:
+        raise ValueError("B must be > 0.")
+    if fail_policy not in ("skip", "stop"):
+        raise ValueError("fail_policy must be 'skip' or 'stop'.")
+
+    rng = _onp.random.default_rng(seed)
+    samples_list = []
+    n_fail = 0
+
+    for b in range(B):
+        if cancel_cb is not None and cancel_cb():
+            raise BootstrapCancelled("Bootstrap cancelled.")
+        data_star = make_data_star_fn(rng, wild=wild)
+        theta0 = theta_hat.copy()
+        theta_star, ok, info = refit_fn(data_star, theta0, max_iter=max_iter, tol=tol)
+        if ok:
+            samples_list.append(_onp.asarray(theta_star, dtype=float).ravel())
+        else:
+            n_fail += 1
+            if fail_policy == "stop":
+                raise RuntimeError(f"Bootstrap full-refit failed at replicate {b + 1}: {info}")
+        if progress_cb is not None:
+            progress_cb(
+                {
+                    "current": b + 1,
+                    "total": B,
+                    "n_success": len(samples_list),
+                    "n_fail": n_fail,
+                }
+            )
+
+    samples = (
+        _onp.vstack(samples_list)
+        if samples_list
+        else _onp.zeros((0, theta_hat.size), dtype=float)
+    )
+    n_success = samples.shape[0]
+
+    if n_success > 0:
+        median = _onp.median(samples, axis=0)
+        p2_5 = _onp.percentile(samples, 2.5, axis=0)
+        p97_5 = _onp.percentile(samples, 97.5, axis=0)
+        p16 = _onp.percentile(samples, 16.0, axis=0)
+        p84 = _onp.percentile(samples, 84.0, axis=0)
+    else:
+        median = p2_5 = p97_5 = p16 = p84 = None
+
+    corr = None
+    if n_success >= 2:
+        corr = _onp.corrcoef(samples, rowvar=False)
+        corr = _onp.nan_to_num(corr, nan=0.0)
+        if corr.ndim == 2:
+            for i in range(corr.shape[0]):
+                corr[i, i] = 1.0
+
+    return {
+        "samples": samples,
+        "n_success": int(n_success),
+        "n_fail": int(n_fail),
+        "median": median,
+        "p2_5": p2_5,
+        "p97_5": p97_5,
+        "p16": p16,
+        "p84": p84,
+        "corr": corr,
+    }
 
 
 def bootstrap_linearized_wild(

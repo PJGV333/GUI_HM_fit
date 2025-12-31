@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QMessageBox,
     QPlainTextEdit,
+    QProgressBar,
     QPushButton,
     QHeaderView,
     QSizePolicy,
@@ -31,6 +32,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from hmfit_gui_qt.workers.errors_worker import ErrorsWorker
 
 
 def _coerce_float(value: object, *, default: float = 0.0) -> float:
@@ -176,6 +179,7 @@ class ModelOptPlotsWidget(QWidget):
         self._available_conc_columns: list[str] = []
         self._errors_context: dict[str, Any] | None = None
         self._errors_last_output: dict[str, Any] | None = None
+        self._errors_worker: ErrorsWorker | None = None
         self._build_ui()
 
     # ---- UI ----
@@ -359,6 +363,7 @@ class ModelOptPlotsWidget(QWidget):
         self.combo_error_method.addItem("Analytical (VarPro covariance)", "analytic")
         self.combo_error_method.addItem("Bootstrap (linearized + wild)", "bootstrap_linear")
         self.combo_error_method.addItem("Bootstrap (one-step LM)", "bootstrap_onestep")
+        self.combo_error_method.addItem("Bootstrap (full refit, audit)", "bootstrap_full_refit_audit")
         self.combo_error_method.currentIndexChanged.connect(self._on_error_method_changed)
         controls_grid.addWidget(self.combo_error_method, 0, 1, 1, 7)
 
@@ -387,7 +392,39 @@ class ModelOptPlotsWidget(QWidget):
         self.spin_error_lambda.setValue(1e-3)
         controls_grid.addWidget(self.spin_error_lambda, 1, 7)
 
+        self.lbl_error_max_iter = QLabel("Max iter", parent)
+        controls_grid.addWidget(self.lbl_error_max_iter, 2, 0)
+        self.spin_error_max_iter = QSpinBox(parent)
+        self.spin_error_max_iter.setRange(5, 200)
+        self.spin_error_max_iter.setValue(30)
+        controls_grid.addWidget(self.spin_error_max_iter, 2, 1)
+
+        self.lbl_error_tol = QLabel("Tol", parent)
+        controls_grid.addWidget(self.lbl_error_tol, 2, 2)
+        self.spin_error_tol = QDoubleSpinBox(parent)
+        self.spin_error_tol.setDecimals(12)
+        self.spin_error_tol.setRange(1e-12, 1e-2)
+        self.spin_error_tol.setSingleStep(1e-8)
+        self.spin_error_tol.setValue(1e-8)
+        controls_grid.addWidget(self.spin_error_tol, 2, 3)
+
+        self.lbl_error_fail_policy = QLabel("Fail policy", parent)
+        controls_grid.addWidget(self.lbl_error_fail_policy, 2, 4)
+        self.combo_error_fail_policy = QComboBox(parent)
+        self.combo_error_fail_policy.addItem("Skip failed replicates", "skip")
+        self.combo_error_fail_policy.addItem("Stop on first failure", "stop")
+        controls_grid.addWidget(self.combo_error_fail_policy, 2, 5, 1, 3)
+
         layout.addLayout(controls_grid)
+
+        self.lbl_error_audit_warning = QLabel(
+            "Warning: Bootstrap (full refit, audit) can take several minutes. "
+            "Use Cancel to stop the computation if needed.",
+            parent,
+        )
+        self.lbl_error_audit_warning.setWordWrap(True)
+        self.lbl_error_audit_warning.setVisible(False)
+        layout.addWidget(self.lbl_error_audit_warning)
 
         flags_row = QHBoxLayout()
         self.chk_error_ci_16_84 = QCheckBox("Include 16/84 percentiles", parent)
@@ -404,11 +441,25 @@ class ModelOptPlotsWidget(QWidget):
         self.btn_error_compute = QPushButton("Compute", parent)
         self.btn_error_compute.clicked.connect(self._on_error_compute_clicked)
         flags_row.addWidget(self.btn_error_compute)
-        self.btn_error_export = QPushButton("Export CSV", parent)
+        self.btn_error_export = QPushButton("Export XLSX", parent)
         self.btn_error_export.setEnabled(False)
         self.btn_error_export.clicked.connect(self._on_error_export_clicked)
         flags_row.addWidget(self.btn_error_export)
         layout.addLayout(flags_row)
+
+        progress_row = QHBoxLayout()
+        self.lbl_error_status = QLabel("", parent)
+        progress_row.addWidget(self.lbl_error_status)
+        self.progress_error = QProgressBar(parent)
+        self.progress_error.setVisible(False)
+        self.progress_error.setTextVisible(True)
+        self.progress_error.setFormat("Working...")
+        progress_row.addWidget(self.progress_error, 1)
+        self.btn_error_cancel = QPushButton("Cancel", parent)
+        self.btn_error_cancel.setEnabled(False)
+        self.btn_error_cancel.clicked.connect(self._on_error_cancel_clicked)
+        progress_row.addWidget(self.btn_error_cancel)
+        layout.addLayout(progress_row)
 
         layout.addWidget(QLabel("Results", parent))
         self.table_error_results = QTableWidget(parent)
@@ -479,14 +530,27 @@ class ModelOptPlotsWidget(QWidget):
         method = str(self.combo_error_method.currentData() or "")
         is_bootstrap = method.startswith("bootstrap")
         is_onestep = method == "bootstrap_onestep"
+        is_full_refit = method == "bootstrap_full_refit_audit"
         self.spin_error_b.setEnabled(is_bootstrap)
         self.combo_error_wild.setEnabled(is_bootstrap)
         self.spin_error_lambda.setEnabled(is_onestep)
+        self.lbl_error_max_iter.setVisible(is_full_refit)
+        self.spin_error_max_iter.setVisible(is_full_refit)
+        self.lbl_error_tol.setVisible(is_full_refit)
+        self.spin_error_tol.setVisible(is_full_refit)
+        self.lbl_error_fail_policy.setVisible(is_full_refit)
+        self.combo_error_fail_policy.setVisible(is_full_refit)
+        self.spin_error_max_iter.setEnabled(is_full_refit)
+        self.spin_error_tol.setEnabled(is_full_refit)
+        self.combo_error_fail_policy.setEnabled(is_full_refit)
+        self.lbl_error_audit_warning.setVisible(is_full_refit)
 
         # Default B depending on method (keep user's value if it differs).
-        if is_onestep and self.spin_error_b.value() == 500:
+        if is_full_refit and self.spin_error_b.value() in (300, 500):
+            self.spin_error_b.setValue(50)
+        if is_onestep and self.spin_error_b.value() in (50, 500):
             self.spin_error_b.setValue(300)
-        if (not is_onestep) and self.spin_error_b.value() == 300:
+        if (not is_onestep) and (not is_full_refit) and self.spin_error_b.value() in (50, 300):
             self.spin_error_b.setValue(500)
 
     def _apply_errors_ci_visibility(self) -> None:
@@ -518,29 +582,169 @@ class ModelOptPlotsWidget(QWidget):
             return LevenbergMarquardt(C_T, modelo, nas, model_settings)
         raise ValueError(f"Unknown algorithm: {algo}")
 
+    def _collect_errors_options(self) -> dict[str, Any]:
+        method = str(self.combo_error_method.currentData() or "analytic")
+        seed = self._parse_error_seed()
+        wild = str(self.combo_error_wild.currentData() or "rademacher")
+        lam = float(self.spin_error_lambda.value())
+        B = int(self.spin_error_b.value())
+        include_16_84 = bool(self.chk_error_ci_16_84.isChecked())
+        max_iter = int(self.spin_error_max_iter.value())
+        tol = float(self.spin_error_tol.value())
+        fail_policy = str(self.combo_error_fail_policy.currentData() or "skip")
+        return {
+            "method": method,
+            "seed": seed,
+            "wild": wild,
+            "lam": lam,
+            "B": B,
+            "include_16_84": include_16_84,
+            "max_iter": max_iter,
+            "tol": tol,
+            "fail_policy": fail_policy,
+        }
+
     def _on_error_compute_clicked(self) -> None:
+        if self._errors_worker is not None:
+            QMessageBox.information(self, "Errors", "An errors computation is already running.")
+            return
         if not self._errors_context:
             QMessageBox.warning(self, "Errors", "Run a fit first.")
             return
         try:
-            output = self._compute_errors_from_context(self._errors_context)
+            options = self._collect_errors_options()
         except Exception as exc:
-            import traceback
-
-            tb = traceback.format_exc()
-            print(tb)
-            QMessageBox.critical(self, "Errors", f"{exc}\n\n{tb}")
+            QMessageBox.warning(self, "Errors", str(exc))
             return
+        payload = {"ctx": dict(self._errors_context), "options": options}
+        self._start_errors_worker(payload)
+
+    def _start_errors_worker(self, payload: dict[str, Any]) -> None:
+        self._errors_last_output = None
+        self.btn_error_export.setEnabled(False)
+        self._set_errors_busy(True, payload.get("options") or {})
+        self._errors_worker = ErrorsWorker(self._compute_errors_payload, payload=payload, parent=self)
+        self._errors_worker.progress.connect(self._on_error_progress)
+        self._errors_worker.result.connect(self._on_error_worker_result)
+        self._errors_worker.error.connect(self._on_error_worker_error)
+        self._errors_worker.cancelled.connect(self._on_error_worker_cancelled)
+        self._errors_worker.finished.connect(self._on_error_worker_finished)
+        self._errors_worker.start()
+
+    def _compute_errors_payload(
+        self,
+        payload: dict[str, Any],
+        *,
+        progress_cb=None,
+        cancel_cb=None,
+    ) -> dict[str, Any]:
+        ctx = payload.get("ctx") or {}
+        options = payload.get("options") or {}
+        return self._compute_errors_from_context(
+            ctx,
+            options=options,
+            progress_cb=progress_cb,
+            cancel_cb=cancel_cb,
+        )
+
+    def _set_errors_busy(self, running: bool, options: dict[str, Any]) -> None:
+        controls = [
+            self.combo_error_method,
+            self.spin_error_b,
+            self.edit_error_seed,
+            self.combo_error_wild,
+            self.spin_error_lambda,
+            self.spin_error_max_iter,
+            self.spin_error_tol,
+            self.combo_error_fail_policy,
+            self.chk_error_ci_16_84,
+            self.chk_error_show_corr,
+        ]
+        for widget in controls:
+            widget.setEnabled(not running)
+        self.btn_error_compute.setEnabled(not running)
+        self.btn_error_cancel.setEnabled(running)
+        self.progress_error.setVisible(running)
+        self.lbl_error_status.setVisible(running)
+        if running:
+            self._configure_errors_progress(options)
+            self.lbl_error_status.setText("Computing errors...")
+        else:
+            self.lbl_error_status.setText("")
+            self.progress_error.setVisible(False)
+
+    def _configure_errors_progress(self, options: dict[str, Any]) -> None:
+        method = str(options.get("method") or "")
+        if method == "bootstrap_full_refit_audit":
+            total = int(options.get("B") or 0)
+            total = max(total, 1)
+            self.progress_error.setRange(0, total)
+            self.progress_error.setValue(0)
+            self.progress_error.setFormat("Bootstrap %v/%m")
+        else:
+            self.progress_error.setRange(0, 0)
+            self.progress_error.setFormat("Working...")
+
+    def _on_error_progress(self, payload: object) -> None:
+        if isinstance(payload, dict):
+            current = payload.get("current")
+            total = payload.get("total")
+            n_success = payload.get("n_success")
+            n_fail = payload.get("n_fail")
+            if total is not None:
+                try:
+                    total_int = int(total)
+                    current_int = int(current or 0)
+                except Exception:
+                    return
+                if total_int > 0:
+                    self.progress_error.setRange(0, total_int)
+                    self.progress_error.setValue(current_int)
+                    if n_success is not None and n_fail is not None:
+                        self.progress_error.setFormat(
+                            f"Bootstrap {current_int}/{total_int} (ok {int(n_success)}, fail {int(n_fail)})"
+                        )
+            return
+        if isinstance(payload, str):
+            self.lbl_error_status.setText(str(payload))
+
+    def _on_error_cancel_clicked(self) -> None:
+        if self._errors_worker is None:
+            return
+        self._errors_worker.request_cancel()
+        self.lbl_error_status.setText("Cancelling...")
+
+    def _on_error_worker_result(self, output: dict[str, Any]) -> None:
         self._apply_errors_output(output)
 
-    def _compute_errors_from_context(self, ctx: dict[str, Any]) -> dict[str, Any]:
+    def _on_error_worker_error(self, message: str) -> None:
+        QMessageBox.critical(self, "Errors", str(message))
+
+    def _on_error_worker_cancelled(self) -> None:
+        self.text_error_summary.setPlainText("Cancelled by user.")
+        self.lbl_error_status.setText("Cancelled.")
+
+    def _on_error_worker_finished(self) -> None:
+        self._set_errors_busy(False, {})
+        self._errors_worker = None
+
+    def _compute_errors_from_context(
+        self,
+        ctx: dict[str, Any],
+        *,
+        options: dict[str, Any] | None = None,
+        progress_cb=None,
+        cancel_cb=None,
+    ) -> dict[str, Any]:
         from hmfit_core.utils.errors import (
+            bootstrap_full_refit,
             bootstrap_linearized_wild,
             bootstrap_one_step_nmr,
             bootstrap_one_step_spectro,
             compute_errors_nmr_varpro,
             compute_errors_spectro_varpro,
             percent_error_log10K,
+            wild_multipliers,
         )
         from hmfit_core.processors.nmr_processor import build_D_cols
 
@@ -550,6 +754,9 @@ class ModelOptPlotsWidget(QWidget):
         lam = float(self.spin_error_lambda.value())
         B = int(self.spin_error_b.value())
         include_16_84 = bool(self.chk_error_ci_16_84.isChecked())
+        max_iter = int(self.spin_error_max_iter.value())
+        tol = float(self.spin_error_tol.value())
+        fail_policy = str(self.combo_error_fail_policy.currentData() or "skip")
 
         technique = str(ctx.get("technique") or "")
         k_hat_raw = ctx.get("k_hat")
@@ -588,6 +795,9 @@ class ModelOptPlotsWidget(QWidget):
         ci_16 = None
         ci_84 = None
         corr = None
+        n_success = None
+        n_fail = None
+        boot_summary = None
 
         if technique == "spectro":
             Y_raw = ctx.get("Y")
@@ -637,6 +847,42 @@ class ModelOptPlotsWidget(QWidget):
                     use_projector=True,
                 )
                 samples = boot["samples"]
+            elif method == "bootstrap_full_refit_audit":
+                y_fit_hat_raw = ctx.get("y_fit_hat")
+                y_fit_hat = np.asarray(y_fit_hat_raw if y_fit_hat_raw is not None else [], dtype=float)
+                if y_fit_hat.size == 0:
+                    raise ValueError("Missing fitted spectra (y_fit) for full refit.")
+                if y_fit_hat.shape != Y.shape:
+                    raise ValueError(
+                        f"y_fit shape {y_fit_hat.shape} does not match Y {Y.shape}."
+                    )
+                r_hat = Y - y_fit_hat
+
+                def make_data_star_fn(rng, wild=wild):
+                    v = wild_multipliers(rng, r_hat.size, kind=wild).reshape(r_hat.shape)
+                    return y_fit_hat + r_hat * v
+
+                refit_fn = ctx.get("refit_from_data")
+                if not callable(refit_fn):
+                    raise ValueError("Missing refit function for full refit.")
+
+                boot_summary = bootstrap_full_refit(
+                    k_hat,
+                    make_data_star_fn,
+                    refit_fn,
+                    B,
+                    seed=seed,
+                    wild=wild,
+                    max_iter=max_iter,
+                    tol=tol,
+                    fail_policy=fail_policy,
+                    progress_cb=progress_cb,
+                    cancel_cb=cancel_cb,
+                )
+                samples = boot_summary["samples"]
+                n_success = boot_summary["n_success"]
+                n_fail = boot_summary["n_fail"]
+                corr = boot_summary["corr"]
         elif technique == "nmr":
             dq_raw = ctx.get("dq")
             dq_fit_raw = ctx.get("dq_fit")
@@ -657,12 +903,10 @@ class ModelOptPlotsWidget(QWidget):
             D_cols = ctx.get("D_cols")
             if D_cols is None:
                 D_cols, _ = build_D_cols(C_T, column_names, signal_names, default_idx=0)
-                ctx["D_cols"] = D_cols
 
             mask = ctx.get("mask")
             if mask is None:
                 mask = np.isfinite(dq) & np.isfinite(D_cols) & (np.abs(D_cols) > 0)
-                ctx["mask"] = mask
 
             base_metrics = compute_errors_nmr_varpro(
                 k_hat,
@@ -720,6 +964,44 @@ class ModelOptPlotsWidget(QWidget):
                     ridge_cov=0.0,
                 )
                 samples = boot["samples"]
+            elif method == "bootstrap_full_refit_audit":
+                dq_fit = np.asarray(dq_fit, dtype=float)
+                if dq_fit.shape != dq.shape:
+                    raise ValueError(
+                        f"dq_fit shape {dq_fit.shape} does not match dq {dq.shape}."
+                    )
+
+                mask_full = np.asarray(mask, dtype=bool)
+                mask_full &= np.isfinite(dq_fit)
+                r_hat = dq - dq_fit
+
+                def make_data_star_fn(rng, wild=wild):
+                    v = wild_multipliers(rng, r_hat.size, kind=wild).reshape(r_hat.shape)
+                    dq_star = dq_fit + r_hat * v
+                    dq_star[~mask_full] = dq[~mask_full]
+                    return dq_star
+
+                refit_fn = ctx.get("refit_from_data")
+                if not callable(refit_fn):
+                    raise ValueError("Missing refit function for full refit.")
+
+                boot_summary = bootstrap_full_refit(
+                    k_hat,
+                    make_data_star_fn,
+                    refit_fn,
+                    B,
+                    seed=seed,
+                    wild=wild,
+                    max_iter=max_iter,
+                    tol=tol,
+                    fail_policy=fail_policy,
+                    progress_cb=progress_cb,
+                    cancel_cb=cancel_cb,
+                )
+                samples = boot_summary["samples"]
+                n_success = boot_summary["n_success"]
+                n_fail = boot_summary["n_fail"]
+                corr = boot_summary["corr"]
         else:
             raise ValueError("Unknown technique for errors.")
 
@@ -741,6 +1023,34 @@ class ModelOptPlotsWidget(QWidget):
                 ci_84 = k_hat + z68 * se_log10
 
             corr = self._corr_from_cov(base_metrics, k_hat.size)
+        elif method == "bootstrap_full_refit_audit":
+            if samples is None or samples.size == 0:
+                raise ValueError("Bootstrap samples are empty.")
+            if boot_summary is not None and boot_summary.get("median") is not None:
+                median = np.asarray(boot_summary["median"], dtype=float)
+                ci_2p5 = np.asarray(boot_summary["p2_5"], dtype=float)
+                ci_97p5 = np.asarray(boot_summary["p97_5"], dtype=float)
+                if include_16_84:
+                    ci_16 = (
+                        np.asarray(boot_summary["p16"], dtype=float)
+                        if boot_summary.get("p16") is not None
+                        else np.percentile(samples, 16.0, axis=0)
+                    )
+                    ci_84 = (
+                        np.asarray(boot_summary["p84"], dtype=float)
+                        if boot_summary.get("p84") is not None
+                        else np.percentile(samples, 84.0, axis=0)
+                    )
+            else:
+                median = np.median(samples, axis=0)
+                ci_2p5 = np.percentile(samples, 2.5, axis=0)
+                ci_97p5 = np.percentile(samples, 97.5, axis=0)
+                if include_16_84:
+                    ci_16 = np.percentile(samples, 16.0, axis=0)
+                    ci_84 = np.percentile(samples, 84.0, axis=0)
+            ddof = 1 if samples.shape[0] > 1 else 0
+            se_log10 = np.std(samples, axis=0, ddof=ddof)
+            perc_err, _, _ = percent_error_log10K(median, se_log10)
         else:
             if samples is None or samples.size == 0:
                 raise ValueError("Bootstrap samples are empty.")
@@ -762,7 +1072,20 @@ class ModelOptPlotsWidget(QWidget):
             wild=wild,
             lam=lam,
             metrics=base_metrics,
+            max_iter=max_iter,
+            tol=tol,
+            fail_policy=fail_policy,
+            n_success=n_success,
+            n_fail=n_fail,
         )
+
+        rms_val = base_metrics.get("RMS")
+        if rms_val is None:
+            rms_val = base_metrics.get("rms")
+        s2_val = base_metrics.get("s2")
+        if s2_val is None:
+            s2_val = base_metrics.get("covfit")
+        dof_val = base_metrics.get("dof")
 
         return {
             "param_names": param_names,
@@ -776,6 +1099,18 @@ class ModelOptPlotsWidget(QWidget):
             "perc_err": perc_err,
             "corr": corr,
             "summary": summary,
+            "method": method,
+            "B": B,
+            "seed": seed,
+            "wild": wild,
+            "lam": lam,
+            "max_iter": max_iter,
+            "tol": tol,
+            "n_success": n_success,
+            "n_fail": n_fail,
+            "rms": rms_val,
+            "s2": s2_val,
+            "dof": dof_val,
         }
 
     def _corr_from_cov(self, metrics: dict[str, Any], p_total: int) -> np.ndarray:
@@ -820,16 +1155,32 @@ class ModelOptPlotsWidget(QWidget):
         wild: str,
         lam: float,
         metrics: dict[str, Any],
+        max_iter: int | None = None,
+        tol: float | None = None,
+        fail_policy: str | None = None,
+        n_success: int | None = None,
+        n_fail: int | None = None,
     ) -> str:
         method_labels = {
             "analytic": "Analytical (VarPro covariance)",
             "bootstrap_linear": "Bootstrap (linearized + wild)",
             "bootstrap_onestep": "Bootstrap (one-step LM)",
+            "bootstrap_full_refit_audit": "Bootstrap (full refit, audit)",
         }
         lines = [f"Method: {method_labels.get(method, method)}"]
         if method != "analytic":
             seed_txt = "random" if seed is None else str(seed)
-            lines.append(f"B={B}, seed={seed_txt}, wild={wild}, lambda={lam:g}")
+            if method == "bootstrap_full_refit_audit":
+                lines.append("method=full_refit_audit")
+                lines.append(f"B={B}, seed={seed_txt}, wild_type={wild}")
+                if max_iter is not None and tol is not None:
+                    lines.append(f"max_iter={int(max_iter)}, tol={float(tol):.3g}")
+                if fail_policy:
+                    lines.append(f"fail_policy={fail_policy}")
+                if n_success is not None and n_fail is not None:
+                    lines.append(f"n_success={int(n_success)}, n_fail={int(n_fail)}")
+            else:
+                lines.append(f"B={B}, seed={seed_txt}, wild={wild}, lambda={lam:g}")
 
         rms = metrics.get("RMS")
         if rms is None:
@@ -947,9 +1298,11 @@ class ModelOptPlotsWidget(QWidget):
         if not self._errors_last_output:
             QMessageBox.information(self, "Errors", "Compute errors first.")
             return
-        path, _ = QFileDialog.getSaveFileName(self, "Export errors", "errors.csv", "CSV (*.csv)")
+        path, _ = QFileDialog.getSaveFileName(self, "Export errors", "errors.xlsx", "Excel (*.xlsx)")
         if not path:
             return
+        if not str(path).lower().endswith(".xlsx"):
+            path = f"{path}.xlsx"
         try:
             import pandas as pd
 
@@ -969,15 +1322,44 @@ class ModelOptPlotsWidget(QWidget):
                     "%err(K)": output.get("perc_err"),
                 }
             )
+            method_raw = str(output.get("method") or "")
+            method_tag = "full_refit_audit" if method_raw == "bootstrap_full_refit_audit" else method_raw
+            lam_val = output.get("lam") if method_raw == "bootstrap_onestep" else None
+            wild_val = output.get("wild") if method_raw != "analytic" else None
+            seed_raw = output.get("seed") if method_raw != "analytic" else None
+            seed_val = "random" if seed_raw is None and method_raw != "analytic" else seed_raw
+            b_val = output.get("B") if method_raw != "analytic" else None
+            max_iter_val = output.get("max_iter") if method_raw == "bootstrap_full_refit_audit" else None
+            tol_val = output.get("tol") if method_raw == "bootstrap_full_refit_audit" else None
+            n_success_val = output.get("n_success") if method_raw == "bootstrap_full_refit_audit" else None
+            n_fail_val = output.get("n_fail") if method_raw == "bootstrap_full_refit_audit" else None
 
-            with open(path, "w", encoding="utf-8") as f:
-                df.to_csv(f, index=False)
-                corr = output.get("corr")
-                if corr is not None:
-                    f.write("\n")
-                    f.write("Correlation matrix\n")
-                    df_corr = pd.DataFrame(corr, index=param_names, columns=param_names)
-                    df_corr.to_csv(f)
+            meta_rows = [
+                ("method", method_tag),
+                ("B", b_val),
+                ("seed", seed_val),
+                ("wild_type", wild_val),
+                ("lambda", lam_val),
+                ("max_iter", max_iter_val),
+                ("tol", tol_val),
+                ("dof", output.get("dof")),
+                ("RMS", output.get("rms")),
+                ("s2", output.get("s2")),
+                ("n_success", n_success_val),
+                ("n_fail", n_fail_val),
+            ]
+            df_meta = pd.DataFrame(meta_rows, columns=["Key", "Value"])
+
+            corr = output.get("corr")
+            if corr is None:
+                df_corr = pd.DataFrame({"Correlation": ["Not available (n<2)"]})
+            else:
+                df_corr = pd.DataFrame(corr, index=param_names, columns=param_names)
+
+            with pd.ExcelWriter(path) as writer:
+                df.to_excel(writer, sheet_name="Results", index=False)
+                df_corr.to_excel(writer, sheet_name="Correlation")
+                df_meta.to_excel(writer, sheet_name="Meta", index=False)
         except Exception as exc:
             QMessageBox.critical(self, "Export error", str(exc))
             return
