@@ -89,6 +89,7 @@ class SpectroscopyTab(QWidget):
         self._worker: FitWorker | None = None
         self._thread: QThread | None = None
         self._last_result: dict[str, Any] | None = None
+        self._last_config: dict[str, Any] | None = None
         self._plot_controller: PlotController | None = None
         self._axis_values: list[float] = []
         self._conc_points_count = 0
@@ -767,6 +768,7 @@ class SpectroscopyTab(QWidget):
             return
 
         self.log.append_text("Iniciando optimización…")
+        self._last_config = config
         self._last_result = None
         self._reset_plot_state()
         self.btn_save.setEnabled(False)
@@ -838,6 +840,8 @@ class SpectroscopyTab(QWidget):
                 self.log.append_text("Finalizado.")
         else:
             self.log.append_text("Finalizado.")
+
+        self._update_errors_context_from_result(result)
 
     @Slot(str)
     def _on_fit_error(self, message: str) -> None:
@@ -1033,7 +1037,31 @@ class SpectroscopyTab(QWidget):
         self.chk_show_diag.setChecked(False)
         self.lbl_stability_light.setText("Stability: -")
         self._last_result = None
+        self._last_config = None
         self.btn_save.setEnabled(False)
+
+    def _update_errors_context_from_result(self, result: dict[str, Any]) -> None:
+        if not result.get("success", True):
+            self.model_opt_plots.set_errors_context(None)
+            return
+        export_data = result.get("export_data") or {}
+        k_hat = export_data.get("k") or [c.get("log10K") for c in result.get("constants") or []]
+        if not k_hat:
+            self.model_opt_plots.set_errors_context(None)
+            return
+
+        context = {
+            "technique": "spectro",
+            "k_hat": k_hat,
+            "C_T": export_data.get("C_T") or [],
+            "Y": export_data.get("Y") or [],
+            "modelo_solver": export_data.get("modelo") or [],
+            "non_abs_species": export_data.get("non_abs_species") or [],
+            "algorithm": (self._last_config or {}).get("algorithm", "Newton-Raphson"),
+            "model_settings": (self._last_config or {}).get("model_settings", "Free"),
+            "param_names": [f"K{i+1}" for i in range(len(k_hat))],
+        }
+        self.model_opt_plots.set_errors_context(context, auto_compute=True)
 
     def _on_save_results_clicked(self) -> None:
         if not self._last_result or not bool(self._last_result.get("success", True)):

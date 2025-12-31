@@ -435,8 +435,8 @@ def pinv_psd_eigh(A, xp=_onp, rcond=1e-10, ridge=0.0):
     """
     A = xp.asarray(A)
     A = 0.5 * (A + A.T.conj())
-    if ridge and ridge > 0.0:
-        A = A + ridge * xp.eye(A.shape[0], dtype=A.dtype)
+    if ridge is not None and float(ridge) > 0.0:
+        A = A + float(ridge) * xp.eye(A.shape[0], dtype=A.dtype)
     w, V = xp.linalg.eigh(A)
     wmax = xp.max(w)
     thr = rcond * wmax
@@ -500,6 +500,7 @@ def compute_errors_spectro_varpro(k, res, Y, modelo, nas, rcond=1e-10, use_proje
         "percK": percK, "SE_K": SE_K, "SE_log10K": SE_log10K,
         "Cov_log10K": _as_onp(Cov_log10K), "RMS": RMS, "s2": s2,
         "A": _as_onp(A), "J": _as_onp(J), "yfit": _as_onp((C @ A).T),
+        "r": _as_onp(r), "dof": int(dof), "nobs": int(r.size),
         "stability_diag": diag
     }
 
@@ -600,9 +601,9 @@ def compute_errors_nmr_varpro(
         try:
             delta, _, _, _ = _onp.linalg.lstsq(Xi_m, y, rcond=rcond)
         except _onp.linalg.LinAlgError:
-            if ridge and ridge > 0.0:
+            if ridge is not None and float(ridge) > 0.0:
                 XtX = Xi_m.T @ Xi_m
-                delta = _onp.linalg.solve(XtX + ridge*_onp.eye(XtX.shape[0]), Xi_m.T @ y)
+                delta = _onp.linalg.solve(XtX + float(ridge) * _onp.eye(XtX.shape[0]), Xi_m.T @ y)
             else:
                 delta = _onp.linalg.pinv(Xi_m, rcond=rcond) @ y
 
@@ -675,7 +676,207 @@ def compute_errors_nmr_varpro(
         "percK": pm["perc_linear"], "SE_K": pm["SE_K"], "SE_log10K": SE_log10K_full,
         "Cov_log10K_free": _as_onp(Cov_free), "rms": float(_onp.sqrt(_onp.mean(r**2))), "covfit": s2,
         "coef": _as_onp(coef), "xi": None, "J": _as_onp(J_full),
-        "dof": dof, "nobs": nobs, "residuals_vec": _as_onp(r),
+        "dof": dof, "nobs": nobs, "residuals_vec": _as_onp(r), "r": _as_onp(r),
         "stability_diag": stability_diag
     }
 
+
+# === Bootstrap utilities ===
+
+def _wild_weights(rng, shape, wild="rademacher"):
+    wild = str(wild or "rademacher").strip().lower()
+    if wild.startswith("mam"):
+        sqrt5 = _onp.sqrt(5.0)
+        a = (1.0 - sqrt5) / 2.0
+        b = (1.0 + sqrt5) / 2.0
+        p = b / sqrt5
+        u = rng.random(shape)
+        return _onp.where(u < p, a, b)
+    # default: Rademacher (+/-1)
+    return rng.choice(_onp.array([-1.0, 1.0]), size=shape)
+
+
+def bootstrap_linearized_wild(
+    k_hat,
+    J,
+    r,
+    B,
+    seed=None,
+    wild="rademacher",
+    rcond=1e-10,
+    ridge=0.0,
+):
+    """
+    Fast bootstrap via linearized covariance and wild residuals.
+    Returns dict with samples (B x p).
+    """
+    k_hat = _onp.asarray(k_hat, dtype=float).ravel()
+    J = _onp.asarray(J, dtype=float)
+    r = _onp.asarray(r, dtype=float).ravel()
+    B = int(B)
+    if B <= 0:
+        raise ValueError("B must be > 0.")
+    if J.shape[1] != r.size:
+        raise ValueError(f"J and r size mismatch: J has {J.shape[1]} cols, r has {r.size} elems.")
+
+    rng = _onp.random.default_rng(seed)
+    G = J @ J.T
+    G_inv = pinv_psd_eigh(G, xp=_onp, rcond=rcond, ridge=ridge)
+
+    samples = _onp.zeros((B, k_hat.size), dtype=float)
+    for b in range(B):
+        v = _wild_weights(rng, r.size, wild=wild)
+        eps = r * v
+        g = J @ eps
+        dk = G_inv @ g
+        samples[b, :] = k_hat + dk
+
+    return {
+        "samples": samples,
+    }
+
+
+def bootstrap_one_step_spectro(
+    k_hat,
+    res,
+    Y,
+    modelo,
+    nas,
+    B,
+    seed=None,
+    wild="rademacher",
+    lam=1e-3,
+    rcond=1e-10,
+    use_projector=True,
+):
+    """
+    One-step LM bootstrap (spectroscopy): dataset perturbation + recompute J,r at k_hat + 1 LM step.
+    """
+    k_hat = _onp.asarray(k_hat, dtype=float).ravel()
+    B = int(B)
+    if B <= 0:
+        raise ValueError("B must be > 0.")
+
+    metrics0 = compute_errors_spectro_varpro(
+        k_hat, res, Y, modelo, nas, rcond=rcond, use_projector=use_projector
+    )
+    yfit = _onp.asarray(metrics0["yfit"], dtype=float)
+    Y_obs = _onp.asarray(Y, dtype=float)
+    if yfit.shape != Y_obs.shape:
+        raise ValueError(f"yfit shape {yfit.shape} does not match Y {Y_obs.shape}.")
+
+    R = yfit - Y_obs
+    rng = _onp.random.default_rng(seed)
+    samples = _onp.zeros((B, k_hat.size), dtype=float)
+
+    for b in range(B):
+        v = _wild_weights(rng, R.shape, wild=wild)
+        Y_star = yfit - R * v
+
+        metrics_star = compute_errors_spectro_varpro(
+            k_hat, res, Y_star, modelo, nas, rcond=rcond, use_projector=use_projector
+        )
+        J = _onp.asarray(metrics_star["J"], dtype=float)
+        r_star = _onp.asarray(metrics_star["r"], dtype=float).ravel()
+
+        G = J @ J.T + float(lam) * _onp.eye(J.shape[0])
+        try:
+            dk = -_onp.linalg.solve(G, J @ r_star)
+        except _onp.linalg.LinAlgError:
+            dk = -_onp.linalg.pinv(G, rcond=rcond) @ (J @ r_star)
+        samples[b, :] = k_hat + dk
+
+    return {
+        "samples": samples,
+    }
+
+
+def bootstrap_one_step_nmr(
+    k_hat,
+    res,
+    dq,
+    dq_fit,
+    D_cols,
+    modelo,
+    nas,
+    B,
+    seed=None,
+    wild="rademacher",
+    lam=1e-3,
+    rcond=1e-10,
+    use_projector=True,
+    mask=None,
+    fixed_mask=None,
+    rcond_cov=None,
+    ridge=1e-8,
+    ridge_cov=0.0,
+):
+    """
+    One-step LM bootstrap (NMR): dataset perturbation + recompute J,r at k_hat + 1 LM step.
+    """
+    k_hat = _onp.asarray(k_hat, dtype=float).ravel()
+    B = int(B)
+    if B <= 0:
+        raise ValueError("B must be > 0.")
+
+    dq_obs = _onp.asarray(dq, dtype=float)
+    dq_fit = _onp.asarray(dq_fit, dtype=float)
+    if dq_obs.shape != dq_fit.shape:
+        raise ValueError(f"dq_fit shape {dq_fit.shape} does not match dq {dq_obs.shape}.")
+
+    if mask is None:
+        mask = _onp.isfinite(dq_obs)
+    mask = _onp.asarray(mask, dtype=bool)
+
+    if fixed_mask is None:
+        fixed_mask = _onp.zeros(k_hat.size, dtype=bool)
+    else:
+        fixed_mask = _onp.asarray(fixed_mask, dtype=bool)
+    free_idx = _onp.where(~fixed_mask)[0]
+
+    R = dq_fit - dq_obs
+    rng = _onp.random.default_rng(seed)
+    samples = _onp.zeros((B, k_hat.size), dtype=float)
+
+    for b in range(B):
+        v = _wild_weights(rng, R.shape, wild=wild)
+        dq_star = dq_fit - R * v
+        dq_star[~mask] = dq_obs[~mask]
+
+        metrics_star = compute_errors_nmr_varpro(
+            k_hat,
+            res,
+            dq_star,
+            D_cols,
+            modelo,
+            nas,
+            mask=mask,
+            fixed_mask=fixed_mask,
+            rcond=rcond,
+            rcond_cov=rcond_cov if rcond_cov is not None else rcond,
+            ridge=ridge,
+            ridge_cov=ridge_cov,
+            use_projector=use_projector,
+        )
+
+        if free_idx.size == 0:
+            samples[b, :] = k_hat
+            continue
+
+        J_full = _onp.asarray(metrics_star["J"], dtype=float)
+        r_star = _onp.asarray(metrics_star["r"], dtype=float).ravel()
+        J = J_full[free_idx, :]
+
+        G = J @ J.T + float(lam) * _onp.eye(J.shape[0])
+        try:
+            dk = -_onp.linalg.solve(G, J @ r_star)
+        except _onp.linalg.LinAlgError:
+            dk = -_onp.linalg.pinv(G, rcond=rcond) @ (J @ r_star)
+
+        k1 = k_hat.copy()
+        k1[free_idx] = k1[free_idx] + dk
+        samples[b, :] = k1
+
+    return {
+        "samples": samples,
+    }

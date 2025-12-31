@@ -3,10 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable
 
+import numpy as np
+
 from PySide6.QtCore import QItemSelectionModel, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QGridLayout,
     QGroupBox,
@@ -15,7 +20,9 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
+    QHeaderView,
     QSizePolicy,
     QSpinBox,
     QTabWidget,
@@ -167,6 +174,8 @@ class ModelOptPlotsWidget(QWidget):
         super().__init__(parent)
         self._in_table_update = False
         self._available_conc_columns: list[str] = []
+        self._errors_context: dict[str, Any] | None = None
+        self._errors_last_output: dict[str, Any] | None = None
         self._build_ui()
 
     # ---- UI ----
@@ -329,7 +338,121 @@ class ModelOptPlotsWidget(QWidget):
         plots_layout.addLayout(export_row)
         plots_layout.addStretch(1)
 
+        # --- Errors tab ---
+        errors_tab = QWidget(self.tabs)
+        self.tabs.addTab(errors_tab, "Errors")
+        self._build_errors_tab(errors_tab)
+
         self._reset_roles_ui()
+
+    def _build_errors_tab(self, parent: QWidget) -> None:
+        layout = QVBoxLayout(parent)
+
+        controls_grid = QGridLayout()
+        controls_grid.setColumnStretch(1, 1)
+        controls_grid.setColumnStretch(3, 1)
+        controls_grid.setColumnStretch(5, 1)
+        controls_grid.setColumnStretch(7, 1)
+
+        controls_grid.addWidget(QLabel("Error method"), 0, 0)
+        self.combo_error_method = QComboBox(parent)
+        self.combo_error_method.addItem("Analytical (VarPro covariance)", "analytic")
+        self.combo_error_method.addItem("Bootstrap (linearized + wild)", "bootstrap_linear")
+        self.combo_error_method.addItem("Bootstrap (one-step LM)", "bootstrap_onestep")
+        self.combo_error_method.currentIndexChanged.connect(self._on_error_method_changed)
+        controls_grid.addWidget(self.combo_error_method, 0, 1, 1, 7)
+
+        controls_grid.addWidget(QLabel("B (replicates)"), 1, 0)
+        self.spin_error_b = QSpinBox(parent)
+        self.spin_error_b.setRange(50, 5000)
+        self.spin_error_b.setValue(500)
+        controls_grid.addWidget(self.spin_error_b, 1, 1)
+
+        controls_grid.addWidget(QLabel("Seed"), 1, 2)
+        self.edit_error_seed = QLineEdit(parent)
+        self.edit_error_seed.setPlaceholderText("optional")
+        controls_grid.addWidget(self.edit_error_seed, 1, 3)
+
+        controls_grid.addWidget(QLabel("Wild type"), 1, 4)
+        self.combo_error_wild = QComboBox(parent)
+        self.combo_error_wild.addItem("Rademacher (+/-1)", "rademacher")
+        self.combo_error_wild.addItem("Mammen", "mammen")
+        controls_grid.addWidget(self.combo_error_wild, 1, 5)
+
+        controls_grid.addWidget(QLabel("LM lambda"), 1, 6)
+        self.spin_error_lambda = QDoubleSpinBox(parent)
+        self.spin_error_lambda.setDecimals(6)
+        self.spin_error_lambda.setRange(0.0, 1e6)
+        self.spin_error_lambda.setSingleStep(1e-3)
+        self.spin_error_lambda.setValue(1e-3)
+        controls_grid.addWidget(self.spin_error_lambda, 1, 7)
+
+        layout.addLayout(controls_grid)
+
+        flags_row = QHBoxLayout()
+        self.chk_error_ci_16_84 = QCheckBox("Include 16/84 percentiles", parent)
+        self.chk_error_ci_16_84.setChecked(False)
+        self.chk_error_ci_16_84.toggled.connect(self._apply_errors_ci_visibility)
+        flags_row.addWidget(self.chk_error_ci_16_84)
+
+        self.chk_error_show_corr = QCheckBox("Show correlation matrix", parent)
+        self.chk_error_show_corr.setChecked(True)
+        self.chk_error_show_corr.toggled.connect(self._apply_errors_corr_visibility)
+        flags_row.addWidget(self.chk_error_show_corr)
+
+        flags_row.addStretch(1)
+        self.btn_error_compute = QPushButton("Compute", parent)
+        self.btn_error_compute.clicked.connect(self._on_error_compute_clicked)
+        flags_row.addWidget(self.btn_error_compute)
+        self.btn_error_export = QPushButton("Export CSV", parent)
+        self.btn_error_export.setEnabled(False)
+        self.btn_error_export.clicked.connect(self._on_error_export_clicked)
+        flags_row.addWidget(self.btn_error_export)
+        layout.addLayout(flags_row)
+
+        layout.addWidget(QLabel("Results", parent))
+        self.table_error_results = QTableWidget(parent)
+        self.table_error_results.setColumnCount(9)
+        self.table_error_results.setHorizontalHeaderLabels(
+            [
+                "Parameter",
+                "Estimate log10K",
+                "Median",
+                "CI 2.5",
+                "CI 97.5",
+                "CI 16",
+                "CI 84",
+                "SE(log10K)",
+                "%err(K)",
+            ]
+        )
+        self.table_error_results.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table_error_results.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.table_error_results.setAlternatingRowColors(True)
+        self.table_error_results.verticalHeader().setVisible(False)
+        header = self.table_error_results.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        for col in range(1, self.table_error_results.columnCount()):
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
+        layout.addWidget(self.table_error_results, 1)
+
+        self.lbl_error_corr = QLabel("Correlation matrix", parent)
+        layout.addWidget(self.lbl_error_corr)
+        self.table_error_corr = QTableWidget(parent)
+        self.table_error_corr.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table_error_corr.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.table_error_corr.setAlternatingRowColors(True)
+        layout.addWidget(self.table_error_corr)
+
+        layout.addWidget(QLabel("Summary", parent))
+        self.text_error_summary = QPlainTextEdit(parent)
+        self.text_error_summary.setReadOnly(True)
+        self.text_error_summary.setMinimumHeight(90)
+        layout.addWidget(self.text_error_summary)
+
+        self._apply_errors_ci_visibility()
+        self._apply_errors_corr_visibility()
+        self._on_error_method_changed()
 
     # ---- Roles (Plots tab) ----
     def _reset_roles_ui(self) -> None:
@@ -341,6 +464,523 @@ class ModelOptPlotsWidget(QWidget):
         self.combo_guest.addItem("Auto", "")
         self.combo_receptor.blockSignals(False)
         self.combo_guest.blockSignals(False)
+
+    # ---- Errors tab ----
+    def set_errors_context(self, context: dict[str, Any] | None, *, auto_compute: bool = False) -> None:
+        self._errors_context = context
+        self._errors_last_output = None
+        self.btn_error_export.setEnabled(False)
+        self._clear_errors_tables()
+        if context and auto_compute:
+            self.combo_error_method.setCurrentIndex(0)
+            self._on_error_compute_clicked()
+
+    def _on_error_method_changed(self) -> None:
+        method = str(self.combo_error_method.currentData() or "")
+        is_bootstrap = method.startswith("bootstrap")
+        is_onestep = method == "bootstrap_onestep"
+        self.spin_error_b.setEnabled(is_bootstrap)
+        self.combo_error_wild.setEnabled(is_bootstrap)
+        self.spin_error_lambda.setEnabled(is_onestep)
+
+        # Default B depending on method (keep user's value if it differs).
+        if is_onestep and self.spin_error_b.value() == 500:
+            self.spin_error_b.setValue(300)
+        if (not is_onestep) and self.spin_error_b.value() == 300:
+            self.spin_error_b.setValue(500)
+
+    def _apply_errors_ci_visibility(self) -> None:
+        show = bool(self.chk_error_ci_16_84.isChecked())
+        self.table_error_results.setColumnHidden(5, not show)
+        self.table_error_results.setColumnHidden(6, not show)
+
+    def _apply_errors_corr_visibility(self) -> None:
+        show = bool(self.chk_error_show_corr.isChecked())
+        self.lbl_error_corr.setVisible(show)
+        self.table_error_corr.setVisible(show)
+
+    def _parse_error_seed(self) -> int | None:
+        raw = str(self.edit_error_seed.text() or "").strip()
+        if not raw:
+            return None
+        try:
+            return int(raw)
+        except ValueError as exc:
+            raise ValueError("Seed must be an integer.") from exc
+
+    def _build_solver(self, algorithm: str, C_T, modelo, nas, model_settings: str):
+        from hmfit_core.solvers import NewtonRaphson, LevenbergMarquardt
+
+        algo = str(algorithm or "Newton-Raphson")
+        if algo == "Newton-Raphson":
+            return NewtonRaphson(C_T, modelo, nas, model_settings)
+        if algo == "Levenberg-Marquardt":
+            return LevenbergMarquardt(C_T, modelo, nas, model_settings)
+        raise ValueError(f"Unknown algorithm: {algo}")
+
+    def _on_error_compute_clicked(self) -> None:
+        if not self._errors_context:
+            QMessageBox.warning(self, "Errors", "Run a fit first.")
+            return
+        try:
+            output = self._compute_errors_from_context(self._errors_context)
+        except Exception as exc:
+            import traceback
+
+            tb = traceback.format_exc()
+            print(tb)
+            QMessageBox.critical(self, "Errors", f"{exc}\n\n{tb}")
+            return
+        self._apply_errors_output(output)
+
+    def _compute_errors_from_context(self, ctx: dict[str, Any]) -> dict[str, Any]:
+        from hmfit_core.utils.errors import (
+            bootstrap_linearized_wild,
+            bootstrap_one_step_nmr,
+            bootstrap_one_step_spectro,
+            compute_errors_nmr_varpro,
+            compute_errors_spectro_varpro,
+            percent_error_log10K,
+        )
+        from hmfit_core.processors.nmr_processor import build_D_cols
+
+        method = str(self.combo_error_method.currentData() or "analytic")
+        seed = self._parse_error_seed()
+        wild = str(self.combo_error_wild.currentData() or "rademacher")
+        lam = float(self.spin_error_lambda.value())
+        B = int(self.spin_error_b.value())
+        include_16_84 = bool(self.chk_error_ci_16_84.isChecked())
+
+        technique = str(ctx.get("technique") or "")
+        k_hat_raw = ctx.get("k_hat")
+        k_hat = np.asarray(k_hat_raw if k_hat_raw is not None else [], dtype=float).ravel()
+        if k_hat.size == 0:
+            raise ValueError("Missing fitted parameters.")
+
+        C_T_raw = ctx.get("C_T")
+        C_T = np.asarray(C_T_raw if C_T_raw is not None else [], dtype=float)
+        if C_T.size == 0:
+            raise ValueError("Missing concentration matrix (C_T).")
+
+        modelo_raw = ctx.get("modelo_solver")
+        modelo = np.asarray(modelo_raw if modelo_raw is not None else [], dtype=float)
+        nas_raw = ctx.get("non_abs_species")
+        nas = list(nas_raw) if nas_raw is not None else []
+        algorithm = str(ctx.get("algorithm") or "Newton-Raphson")
+        model_settings = str(ctx.get("model_settings") or "Free")
+        param_names_raw = ctx.get("param_names")
+        param_names = (
+            list(param_names_raw)
+            if param_names_raw is not None
+            else [f"K{i+1}" for i in range(k_hat.size)]
+        )
+        fixed_mask_raw = ctx.get("fixed_mask")
+        fixed_mask = (
+            np.asarray(fixed_mask_raw, dtype=bool)
+            if fixed_mask_raw is not None
+            else np.zeros(k_hat.size, dtype=bool)
+        )
+
+        res = self._build_solver(algorithm, C_T, modelo, nas, model_settings)
+
+        base_metrics = None
+        samples = None
+        ci_16 = None
+        ci_84 = None
+        corr = None
+
+        if technique == "spectro":
+            Y_raw = ctx.get("Y")
+            Y = np.asarray(Y_raw if Y_raw is not None else [], dtype=float)
+            if Y.size == 0:
+                raise ValueError("Missing spectra matrix (Y).")
+            base_metrics = compute_errors_spectro_varpro(
+                k_hat,
+                res,
+                Y,
+                modelo,
+                nas,
+                rcond=1e-10,
+                use_projector=True,
+                param_names=param_names,
+            )
+
+            if method == "bootstrap_linear":
+                free_idx = np.where(~fixed_mask)[0]
+                if free_idx.size == 0:
+                    samples = np.tile(k_hat, (B, 1))
+                else:
+                    boot = bootstrap_linearized_wild(
+                        k_hat[free_idx],
+                        np.asarray(base_metrics["J"], dtype=float)[free_idx, :],
+                        base_metrics["r"],
+                        B,
+                        seed=seed,
+                        wild=wild,
+                        rcond=1e-10,
+                        ridge=0.0,
+                    )
+                    samples = np.tile(k_hat, (B, 1))
+                    samples[:, free_idx] = boot["samples"]
+            elif method == "bootstrap_onestep":
+                boot = bootstrap_one_step_spectro(
+                    k_hat,
+                    res,
+                    Y,
+                    modelo,
+                    nas,
+                    B,
+                    seed=seed,
+                    wild=wild,
+                    lam=lam,
+                    rcond=1e-10,
+                    use_projector=True,
+                )
+                samples = boot["samples"]
+        elif technique == "nmr":
+            dq_raw = ctx.get("dq")
+            dq_fit_raw = ctx.get("dq_fit")
+            dq = np.asarray(dq_raw if dq_raw is not None else [], dtype=float)
+            dq_fit = np.asarray(dq_fit_raw if dq_fit_raw is not None else [], dtype=float)
+            if dq.size == 0:
+                raise ValueError("Missing NMR data matrix (dq).")
+            if dq_fit.size == 0:
+                raise ValueError("Missing NMR fit matrix (dq_fit).")
+
+            column_names_raw = ctx.get("column_names")
+            signal_names_raw = ctx.get("signal_names")
+            column_names = list(column_names_raw) if column_names_raw is not None else []
+            signal_names = list(signal_names_raw) if signal_names_raw is not None else []
+            if not signal_names:
+                raise ValueError("Missing signal names for NMR errors.")
+
+            D_cols = ctx.get("D_cols")
+            if D_cols is None:
+                D_cols, _ = build_D_cols(C_T, column_names, signal_names, default_idx=0)
+                ctx["D_cols"] = D_cols
+
+            mask = ctx.get("mask")
+            if mask is None:
+                mask = np.isfinite(dq) & np.isfinite(D_cols) & (np.abs(D_cols) > 0)
+                ctx["mask"] = mask
+
+            base_metrics = compute_errors_nmr_varpro(
+                k_hat,
+                res,
+                dq,
+                D_cols,
+                modelo,
+                nas,
+                mask=mask,
+                fixed_mask=fixed_mask,
+                rcond=1e-10,
+                rcond_cov=1e-10,
+                ridge=1e-8,
+                ridge_cov=0.0,
+                use_projector=True,
+                param_names=param_names,
+            )
+
+            if method == "bootstrap_linear":
+                free_idx = np.where(~fixed_mask)[0]
+                if free_idx.size == 0:
+                    samples = np.tile(k_hat, (B, 1))
+                else:
+                    boot = bootstrap_linearized_wild(
+                        k_hat[free_idx],
+                        np.asarray(base_metrics["J"], dtype=float)[free_idx, :],
+                        base_metrics["r"],
+                        B,
+                        seed=seed,
+                        wild=wild,
+                        rcond=1e-10,
+                        ridge=0.0,
+                    )
+                    samples = np.tile(k_hat, (B, 1))
+                    samples[:, free_idx] = boot["samples"]
+            elif method == "bootstrap_onestep":
+                boot = bootstrap_one_step_nmr(
+                    k_hat,
+                    res,
+                    dq,
+                    dq_fit,
+                    D_cols,
+                    modelo,
+                    nas,
+                    B,
+                    seed=seed,
+                    wild=wild,
+                    lam=lam,
+                    rcond=1e-10,
+                    use_projector=True,
+                    mask=mask,
+                    fixed_mask=fixed_mask,
+                    rcond_cov=1e-10,
+                    ridge=1e-8,
+                    ridge_cov=0.0,
+                )
+                samples = boot["samples"]
+        else:
+            raise ValueError("Unknown technique for errors.")
+
+        if base_metrics is None:
+            raise ValueError("Base metrics unavailable.")
+
+        if method == "analytic":
+            se_raw = base_metrics.get("SE_log10K")
+            perc_raw = base_metrics.get("percK")
+            se_log10 = np.asarray(se_raw if se_raw is not None else [], dtype=float).ravel()
+            perc_err = np.asarray(perc_raw if perc_raw is not None else [], dtype=float).ravel()
+            z95 = 1.96
+            z68 = 1.0
+            median = k_hat.copy()
+            ci_2p5 = k_hat - z95 * se_log10
+            ci_97p5 = k_hat + z95 * se_log10
+            if include_16_84:
+                ci_16 = k_hat - z68 * se_log10
+                ci_84 = k_hat + z68 * se_log10
+
+            corr = self._corr_from_cov(base_metrics, k_hat.size)
+        else:
+            if samples is None or samples.size == 0:
+                raise ValueError("Bootstrap samples are empty.")
+            median = np.median(samples, axis=0)
+            ci_2p5 = np.percentile(samples, 2.5, axis=0)
+            ci_97p5 = np.percentile(samples, 97.5, axis=0)
+            if include_16_84:
+                ci_16 = np.percentile(samples, 16.0, axis=0)
+                ci_84 = np.percentile(samples, 84.0, axis=0)
+            ddof = 1 if samples.shape[0] > 1 else 0
+            se_log10 = np.std(samples, axis=0, ddof=ddof)
+            perc_err, _, _ = percent_error_log10K(median, se_log10)
+            corr = self._corr_from_samples(samples)
+
+        summary = self._build_errors_summary(
+            method=method,
+            B=B,
+            seed=seed,
+            wild=wild,
+            lam=lam,
+            metrics=base_metrics,
+        )
+
+        return {
+            "param_names": param_names,
+            "k_hat": k_hat,
+            "median": median,
+            "ci_2p5": ci_2p5,
+            "ci_97p5": ci_97p5,
+            "ci_16": ci_16,
+            "ci_84": ci_84,
+            "se_log10": se_log10,
+            "perc_err": perc_err,
+            "corr": corr,
+            "summary": summary,
+        }
+
+    def _corr_from_cov(self, metrics: dict[str, Any], p_total: int) -> np.ndarray:
+        cov_full = np.zeros((p_total, p_total), dtype=float)
+        if "Cov_log10K" in metrics:
+            cov = np.asarray(metrics["Cov_log10K"], dtype=float)
+            cov_full = cov
+        elif "Cov_log10K_free" in metrics:
+            cov_free_raw = metrics.get("Cov_log10K_free")
+            cov_free = np.asarray(cov_free_raw if cov_free_raw is not None else [], dtype=float)
+            free_idx = np.arange(p_total)
+            if "SE_log10K" in metrics:
+                se_log10 = np.asarray(metrics["SE_log10K"], dtype=float).ravel()
+                free_idx = np.where(se_log10 > 0)[0]
+            if cov_free.size > 0:
+                cov_full = np.zeros((p_total, p_total), dtype=float)
+                cov_full[np.ix_(free_idx, free_idx)] = cov_free
+
+        d = np.sqrt(np.clip(np.diag(cov_full), 1e-30, None))
+        denom = np.outer(d, d)
+        corr = np.divide(cov_full, denom, where=denom > 0)
+        corr = np.clip(corr, -1.0, 1.0)
+        for i in range(p_total):
+            corr[i, i] = 1.0
+        return corr
+
+    def _corr_from_samples(self, samples: np.ndarray) -> np.ndarray:
+        if samples.shape[0] < 2:
+            return np.eye(samples.shape[1], dtype=float)
+        corr = np.corrcoef(samples, rowvar=False)
+        corr = np.nan_to_num(corr, nan=0.0)
+        for i in range(corr.shape[0]):
+            corr[i, i] = 1.0
+        return corr
+
+    def _build_errors_summary(
+        self,
+        *,
+        method: str,
+        B: int,
+        seed: int | None,
+        wild: str,
+        lam: float,
+        metrics: dict[str, Any],
+    ) -> str:
+        method_labels = {
+            "analytic": "Analytical (VarPro covariance)",
+            "bootstrap_linear": "Bootstrap (linearized + wild)",
+            "bootstrap_onestep": "Bootstrap (one-step LM)",
+        }
+        lines = [f"Method: {method_labels.get(method, method)}"]
+        if method != "analytic":
+            seed_txt = "random" if seed is None else str(seed)
+            lines.append(f"B={B}, seed={seed_txt}, wild={wild}, lambda={lam:g}")
+
+        rms = metrics.get("RMS")
+        if rms is None:
+            rms = metrics.get("rms")
+        s2 = metrics.get("s2")
+        if s2 is None:
+            s2 = metrics.get("covfit")
+        dof = metrics.get("dof")
+        if rms is not None:
+            lines.append(f"RMS={float(rms):.6g}")
+        if s2 is not None:
+            lines.append(f"s2={float(s2):.6g}")
+        if dof is not None:
+            lines.append(f"dof={int(dof)}")
+
+        diag = metrics.get("stability_diag") or {}
+        if isinstance(diag, dict) and diag:
+            status = diag.get("status")
+            summary = diag.get("diag_summary")
+            if status in ("warn", "critical") and summary:
+                lines.append(f"Note: {summary}")
+
+        return "\n".join(lines)
+
+    def _apply_errors_output(self, output: dict[str, Any]) -> None:
+        param_names_raw = output.get("param_names")
+        k_hat_raw = output.get("k_hat")
+        median_raw = output.get("median")
+        ci_2p5_raw = output.get("ci_2p5")
+        ci_97p5_raw = output.get("ci_97p5")
+        param_names = list(param_names_raw) if param_names_raw is not None else []
+        k_hat = np.asarray(k_hat_raw if k_hat_raw is not None else [], dtype=float)
+        median = np.asarray(median_raw if median_raw is not None else [], dtype=float)
+        ci_2p5 = np.asarray(ci_2p5_raw if ci_2p5_raw is not None else [], dtype=float)
+        ci_97p5 = np.asarray(ci_97p5_raw if ci_97p5_raw is not None else [], dtype=float)
+        ci_16 = output.get("ci_16")
+        ci_84 = output.get("ci_84")
+        se_log10_raw = output.get("se_log10")
+        perc_err_raw = output.get("perc_err")
+        se_log10 = np.asarray(se_log10_raw if se_log10_raw is not None else [], dtype=float)
+        perc_err = np.asarray(perc_err_raw if perc_err_raw is not None else [], dtype=float)
+        corr = output.get("corr")
+
+        self.table_error_results.setRowCount(len(param_names))
+        for row, name in enumerate(param_names):
+            self._set_error_cell(row, 0, str(name), align_left=True)
+            self._set_error_cell(row, 1, self._fmt_num(k_hat, row))
+            self._set_error_cell(row, 2, self._fmt_num(median, row))
+            self._set_error_cell(row, 3, self._fmt_num(ci_2p5, row))
+            self._set_error_cell(row, 4, self._fmt_num(ci_97p5, row))
+            self._set_error_cell(row, 5, self._fmt_num(ci_16, row))
+            self._set_error_cell(row, 6, self._fmt_num(ci_84, row))
+            self._set_error_cell(row, 7, self._fmt_num(se_log10, row))
+            self._set_error_cell(row, 8, self._fmt_num(perc_err, row))
+
+        if corr is not None and self.chk_error_show_corr.isChecked():
+            self._populate_corr_table(np.asarray(corr, dtype=float), param_names)
+        else:
+            self._clear_corr_table()
+
+        summary = str(output.get("summary") or "")
+        self.text_error_summary.setPlainText(summary)
+
+        self._errors_last_output = output
+        self.btn_error_export.setEnabled(True)
+
+    def _set_error_cell(self, row: int, col: int, text: str, *, align_left: bool = False) -> None:
+        item = QTableWidgetItem(text)
+        if align_left:
+            item.setTextAlignment(int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter))
+        else:
+            item.setTextAlignment(int(Qt.AlignmentFlag.AlignCenter))
+        self.table_error_results.setItem(row, col, item)
+
+    def _fmt_num(self, arr, idx: int) -> str:
+        if arr is None:
+            return ""
+        try:
+            val = float(np.asarray(arr).ravel()[idx])
+        except Exception:
+            return ""
+        if not np.isfinite(val):
+            return ""
+        return f"{val:.6g}"
+
+    def _populate_corr_table(self, corr: np.ndarray, param_names: list[str]) -> None:
+        if corr.size == 0:
+            self._clear_corr_table()
+            return
+        p = corr.shape[0]
+        self.table_error_corr.setRowCount(p)
+        self.table_error_corr.setColumnCount(p)
+        self.table_error_corr.setHorizontalHeaderLabels(param_names)
+        self.table_error_corr.setVerticalHeaderLabels(param_names)
+        self.table_error_corr.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        for i in range(p):
+            for j in range(p):
+                val = corr[i, j]
+                txt = "" if not np.isfinite(val) else f"{val:.3f}"
+                item = QTableWidgetItem(txt)
+                item.setTextAlignment(int(Qt.AlignmentFlag.AlignCenter))
+                self.table_error_corr.setItem(i, j, item)
+
+    def _clear_corr_table(self) -> None:
+        self.table_error_corr.clear()
+        self.table_error_corr.setRowCount(0)
+        self.table_error_corr.setColumnCount(0)
+
+    def _clear_errors_tables(self) -> None:
+        self.table_error_results.setRowCount(0)
+        self._clear_corr_table()
+        self.text_error_summary.clear()
+
+    def _on_error_export_clicked(self) -> None:
+        if not self._errors_last_output:
+            QMessageBox.information(self, "Errors", "Compute errors first.")
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "Export errors", "errors.csv", "CSV (*.csv)")
+        if not path:
+            return
+        try:
+            import pandas as pd
+
+            output = self._errors_last_output
+            param_names_raw = output.get("param_names")
+            param_names = list(param_names_raw) if param_names_raw is not None else []
+            df = pd.DataFrame(
+                {
+                    "Parameter": param_names,
+                    "Estimate log10K": output.get("k_hat"),
+                    "Median": output.get("median"),
+                    "CI 2.5": output.get("ci_2p5"),
+                    "CI 97.5": output.get("ci_97p5"),
+                    "CI 16": output.get("ci_16"),
+                    "CI 84": output.get("ci_84"),
+                    "SE(log10K)": output.get("se_log10"),
+                    "%err(K)": output.get("perc_err"),
+                }
+            )
+
+            with open(path, "w", encoding="utf-8") as f:
+                df.to_csv(f, index=False)
+                corr = output.get("corr")
+                if corr is not None:
+                    f.write("\n")
+                    f.write("Correlation matrix\n")
+                    df_corr = pd.DataFrame(corr, index=param_names, columns=param_names)
+                    df_corr.to_csv(f)
+        except Exception as exc:
+            QMessageBox.critical(self, "Export error", str(exc))
+            return
 
     def set_available_conc_columns(self, selected_columns: list[str]) -> None:
         self._available_conc_columns = [str(c) for c in (selected_columns or []) if str(c).strip()]
@@ -748,3 +1388,4 @@ class ModelOptPlotsWidget(QWidget):
 
         self._available_conc_columns = []
         self._reset_roles_ui()
+        self.set_errors_context(None)

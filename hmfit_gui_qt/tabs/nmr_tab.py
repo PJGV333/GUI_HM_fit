@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from PySide6.QtCore import QThread, Qt, Slot
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -53,6 +55,7 @@ class NMRTab(QWidget):
         self._worker: FitWorker | None = None
         self._thread: QThread | None = None
         self._last_result: dict[str, Any] | None = None
+        self._last_config: dict[str, Any] | None = None
         self._plot_controller: PlotController | None = None
         self._is_running = False
         self._file_path: str = ""
@@ -538,6 +541,7 @@ class NMRTab(QWidget):
             return
 
         self.log.append_text("Iniciando optimización…")
+        self._last_config = config
         self._last_result = None
         self._reset_plot_state()
         self.btn_save.setEnabled(False)
@@ -618,6 +622,8 @@ class NMRTab(QWidget):
                 self.log.append_text("Finalizado.")
         else:
             self.log.append_text("Finalizado.")
+
+        self._update_errors_context_from_result(result)
 
     @Slot(str)
     def _on_fit_error(self, message: str) -> None:
@@ -768,7 +774,38 @@ class NMRTab(QWidget):
         self.chk_show_diag.setChecked(False)
         self.lbl_stability_light.setText("Stability: -")
         self._last_result = None
+        self._last_config = None
         self.btn_save.setEnabled(False)
+
+    def _update_errors_context_from_result(self, result: dict[str, Any]) -> None:
+        if not result.get("success", True):
+            self.model_opt_plots.set_errors_context(None)
+            return
+        export_data = result.get("export_data") or {}
+        k_hat = export_data.get("k") or [c.get("log10K") for c in result.get("constants") or []]
+        if not k_hat:
+            self.model_opt_plots.set_errors_context(None)
+            return
+
+        model_matrix = export_data.get("modelo") or []
+        modelo_solver = np.asarray(model_matrix, dtype=float).T if model_matrix else []
+
+        context = {
+            "technique": "nmr",
+            "k_hat": k_hat,
+            "C_T": export_data.get("C_T") or [],
+            "dq": export_data.get("Chemical_Shifts") or [],
+            "dq_fit": export_data.get("Calculated_Chemical_Shifts") or [],
+            "column_names": export_data.get("column_names") or [],
+            "signal_names": export_data.get("signal_names") or [],
+            "non_abs_species": export_data.get("non_absorbent_species") or [],
+            "fixed_mask": export_data.get("fixed_mask") or [],
+            "modelo_solver": modelo_solver,
+            "algorithm": (self._last_config or {}).get("algorithm", "Newton-Raphson"),
+            "model_settings": (self._last_config or {}).get("model_settings", "Free"),
+            "param_names": [f"K{i+1}" for i in range(len(k_hat))],
+        }
+        self.model_opt_plots.set_errors_context(context, auto_compute=True)
 
     def _on_save_results_clicked(self) -> None:
         if not self._last_result or not bool(self._last_result.get("success", True)):
