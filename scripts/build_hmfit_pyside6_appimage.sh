@@ -12,6 +12,8 @@ Options:
   --ref <git-ref>       Git ref (tag/branch/commit) to checkout
   --out <dir>           Output directory for AppImage
                         Default: $HOME/BUILD_HMFIT_PYSIDE6/output
+  --out-file <path>     Full output AppImage path (overrides --out)
+                        Example: /path/to/HMFit.AppImage
   --build-root <dir>    Root directory for temporary build
                         Default: $HOME/BUILD_HMFIT_PYSIDE6
   --appimagetool <path> Use a specific appimagetool binary/AppImage
@@ -36,6 +38,7 @@ require_arg() {
 SOURCE=""
 REF=""
 OUT_DIR=""
+OUT_FILE=""
 BUILD_ROOT=""
 APPIMAGETOOL_PATH=""
 KEEP_BUILD=0
@@ -55,6 +58,11 @@ while [[ $# -gt 0 ]]; do
     --out)
       require_arg "$1" "${2:-}"
       OUT_DIR="$2"
+      shift 2
+      ;;
+    --out-file)
+      require_arg "$1" "${2:-}"
+      OUT_FILE="$2"
       shift 2
       ;;
     --build-root)
@@ -188,7 +196,10 @@ log "Installing Python dependencies"
 python -m pip install --upgrade pip wheel
 python -m pip install -r "$WORK_DIR/requirements_qt.txt" pyinstaller
 
-ENTRY="$WORK_DIR/.hmfit_pyside6_entry.py"
+# Write entrypoint OUTSIDE the source tree
+ENTRY_DIR="$BUILD_DIR/entry"
+mkdir -p "$ENTRY_DIR"
+ENTRY="$ENTRY_DIR/hmfit_pyside6_entry.py"
 cat > "$ENTRY" <<'PY'
 from __future__ import annotations
 
@@ -197,17 +208,30 @@ from hmfit_gui_qt.__main__ import main as gui_main
 # Force PyInstaller to include Qt and GUI modules.
 import hmfit_gui_qt.main  # noqa: F401
 
-
 if __name__ == "__main__":
     raise SystemExit(gui_main())
 PY
 
-log "Building PyInstaller binary"
+# Force PyInstaller outputs OUTSIDE the source tree too
+PYI_DIST="$BUILD_DIR/pyinstaller_dist"
+PYI_WORK="$BUILD_DIR/pyinstaller_build"
+PYI_SPEC="$BUILD_DIR/pyinstaller_spec"
+mkdir -p "$PYI_DIST" "$PYI_WORK" "$PYI_SPEC"
+
+log "Building PyInstaller binary (out-of-tree)"
 pushd "$WORK_DIR" >/dev/null
-pyinstaller --noconfirm --clean --name hmfit_pyside6 --windowed --onefile "$ENTRY"
+pyinstaller --noconfirm --clean \
+  --name hmfit_pyside6 \
+  --windowed \
+  --onefile \
+  --paths "$WORK_DIR" \
+  --distpath "$PYI_DIST" \
+  --workpath "$PYI_WORK" \
+  --specpath "$PYI_SPEC" \
+  "$ENTRY"
 popd >/dev/null
 
-BIN="$WORK_DIR/dist/hmfit_pyside6"
+BIN="$PYI_DIST/hmfit_pyside6"
 if [[ ! -x "$BIN" ]]; then
   die "PyInstaller output not found: $BIN"
 fi
@@ -265,12 +289,19 @@ if [[ ! -x "$APPIMAGETOOL" ]]; then
   die "appimagetool not found or not executable: $APPIMAGETOOL"
 fi
 
-OUT_FILE="$OUT_DIR/hmfit_pyside6-${ARCH}.AppImage"
-log "Building AppImage: $OUT_FILE"
-if [[ -r /dev/fuse && -w /dev/fuse ]]; then
-  ARCH="$ARCH" "$APPIMAGETOOL" "$APPDIR" "$OUT_FILE"
+# Output file selection
+if [[ -n "$OUT_FILE" ]]; then
+  mkdir -p "$(dirname "$OUT_FILE")"
+  FINAL_OUT="$OUT_FILE"
 else
-  APPIMAGE_EXTRACT_AND_RUN=1 ARCH="$ARCH" "$APPIMAGETOOL" "$APPDIR" "$OUT_FILE"
+  FINAL_OUT="$OUT_DIR/hmfit_pyside6-${ARCH}.AppImage"
 fi
 
-log "Done: $OUT_FILE"
+log "Building AppImage: $FINAL_OUT"
+if [[ -r /dev/fuse && -w /dev/fuse ]]; then
+  ARCH="$ARCH" "$APPIMAGETOOL" "$APPDIR" "$FINAL_OUT"
+else
+  APPIMAGE_EXTRACT_AND_RUN=1 ARCH="$ARCH" "$APPIMAGETOOL" "$APPDIR" "$FINAL_OUT"
+fi
+
+log "Done: $FINAL_OUT"
