@@ -812,10 +812,20 @@ class SpectroscopyTab(QWidget):
             maxcorr = indicator.get("max_abs_corr")
             reasons = indicator.get("reasons", [])
 
-            info = f"(cond={cond:.2e}"
+            info_parts = []
+            if cond is not None:
+                try:
+                    info_parts.append(f"cond={float(cond):.2e}")
+                except Exception:
+                    info_parts.append("cond=n/a")
+            else:
+                info_parts.append("cond=n/a")
             if maxcorr is not None:
-                info += f", max|r|={maxcorr:.3f}"
-            info += ")"
+                try:
+                    info_parts.append(f"max|r|={float(maxcorr):.3f}")
+                except Exception:
+                    info_parts.append("max|r|=n/a")
+            info = f"({', '.join(info_parts)})"
 
             reason_str = ""
             if "singular" in reasons:
