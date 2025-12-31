@@ -936,6 +936,7 @@ def process_spectroscopy_data(
             ["covfit", float(covfit)],
             ["optimizer", optimizer],
         ],
+        "non_abs_species": non_abs_species,
     }
     if derived_noncoop is not None:
         export_data["derived_noncoop"] = derived_noncoop

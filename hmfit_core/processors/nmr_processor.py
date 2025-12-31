@@ -591,6 +591,7 @@ def process_nmr_data(
                 ["optimizer", optimizer],
                 ["algorithm", algorithm],
             ],
+            "non_absorbent_species": non_absorbent_species,
         }
 
         log_progress("Procesamiento NMR completado.")
