@@ -29,6 +29,7 @@ from hmfit_core.exports import write_results_xlsx
 from hmfit_gui_qt.plots.nmr_registry import build_nmr_registry
 from hmfit_gui_qt.plots.nmr_sources import build_nmr_plot_sources
 from hmfit_gui_qt.plots.plot_controller import PlotController
+from hmfit_gui_qt.widgets.channel_spec import ChannelSpecWidget
 from hmfit_gui_qt.widgets.log_console import LogConsole
 from hmfit_gui_qt.widgets.model_opt_plots import ModelOptPlotsState, ModelOptPlotsWidget
 from hmfit_gui_qt.widgets.mpl_canvas import MplCanvas, NavigationToolbar
@@ -129,31 +130,31 @@ class NMRTab(QWidget):
         sheets_row.addLayout(shift_box, 1)
         data_layout.addLayout(sheets_row)
 
-        # Signals selector
-        data_layout.addWidget(QLabel("Chemical Shifts (Signals)", self._data_group))
-        self.list_signals = QListWidget(self._data_group)
-        self.list_signals.setMinimumHeight(120)
-        data_layout.addWidget(self.list_signals, 1)
-        sig_btns = QHBoxLayout()
-        self.btn_signals_all = QPushButton("Select all", self._data_group)
-        self.btn_signals_all.clicked.connect(lambda: self._set_list_checked(self.list_signals, True))
-        sig_btns.addWidget(self.btn_signals_all)
-        self.btn_signals_none = QPushButton("Select none", self._data_group)
-        self.btn_signals_none.clicked.connect(lambda: self._set_list_checked(self.list_signals, False))
-        sig_btns.addWidget(self.btn_signals_none)
-        sig_btns.addStretch(1)
-        data_layout.addLayout(sig_btns)
-
         # Column names (concentration columns)
-        data_layout.addWidget(QLabel("Column names", self._data_group))
+        data_layout.addWidget(QLabel("Column names / Components", self._data_group))
         self._columns_scroll = QScrollArea(self._data_group)
         self._columns_scroll.setWidgetResizable(True)
         self._columns_widget = QWidget(self._columns_scroll)
         self._columns_layout = QVBoxLayout(self._columns_widget)
         self._columns_layout.setContentsMargins(0, 0, 0, 0)
         self._columns_scroll.setWidget(self._columns_widget)
-        self._columns_scroll.setMinimumHeight(90)
+        self._columns_scroll.setMinimumHeight(100)
         data_layout.addWidget(self._columns_scroll)
+
+        # Signals selector
+        data_layout.addWidget(QLabel("Chemical Shifts (Signals) & Parent Assignment", self._data_group))
+        self.channel_spec_widget = ChannelSpecWidget(self._data_group)
+        self.channel_spec_widget.setMinimumHeight(180)
+        data_layout.addWidget(self.channel_spec_widget, 1)
+        sig_btns = QHBoxLayout()
+        self.btn_signals_all = QPushButton("Select all", self._data_group)
+        self.btn_signals_all.clicked.connect(lambda: self.channel_spec_widget.set_all_checked(True))
+        sig_btns.addWidget(self.btn_signals_all)
+        self.btn_signals_none = QPushButton("Select none", self._data_group)
+        self.btn_signals_none.clicked.connect(lambda: self.channel_spec_widget.set_all_checked(False))
+        sig_btns.addWidget(self.btn_signals_none)
+        sig_btns.addStretch(1)
+        data_layout.addLayout(sig_btns)
 
         left_layout.addWidget(self._data_group)
 
@@ -384,6 +385,8 @@ class NMRTab(QWidget):
     def _on_conc_columns_toggled(self) -> None:
         selected = self._selected_conc_columns()
         self.model_opt_plots.set_available_conc_columns(selected)
+        # Tarea 3: Update parent options in signals widget
+        self.channel_spec_widget.update_parent_options(selected)
 
     def _selected_conc_columns(self) -> list[str]:
         selected: list[str] = []
@@ -394,30 +397,10 @@ class NMRTab(QWidget):
         return selected
 
     def _populate_signals(self, columns: list[str]) -> None:
-        self.list_signals.blockSignals(True)
-        self.list_signals.clear()
-        for c in columns or []:
-            item = QListWidgetItem(str(c), self.list_signals)
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            item.setCheckState(Qt.CheckState.Unchecked)
-        self.list_signals.blockSignals(False)
+        self.channel_spec_widget.set_channels(columns or [])
 
-    def _set_list_checked(self, widget: QListWidget, checked: bool) -> None:
-        widget.blockSignals(True)
-        state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
-        for i in range(widget.count()):
-            it = widget.item(i)
-            if it is not None:
-                it.setCheckState(state)
-        widget.blockSignals(False)
-
-    def _selected_signals(self) -> list[str]:
-        out: list[str] = []
-        for i in range(self.list_signals.count()):
-            it = self.list_signals.item(i)
-            if it is not None and it.checkState() == Qt.CheckState.Checked:
-                out.append(str(it.text()))
-        return out
+    def _selected_signals(self) -> list[dict[str, str]]:
+        return self.channel_spec_widget.get_selected_channels()
 
     # ---- Run / Cancel / Results ----
     def _set_running(self, running: bool) -> None:
@@ -426,7 +409,7 @@ class NMRTab(QWidget):
         self.btn_choose_file.setEnabled(not running)
         self.combo_conc_sheet.setEnabled(not running)
         self.combo_shift_sheet.setEnabled(not running)
-        self.list_signals.setEnabled(not running)
+        self.channel_spec_widget.setEnabled(not running)
         self.btn_signals_all.setEnabled(not running)
         self.btn_signals_none.setEnabled(not running)
         self.model_opt_plots.setEnabled(not running)
@@ -452,9 +435,11 @@ class NMRTab(QWidget):
         if not column_names:
             raise ValueError("Select at least one concentration column in 'Column names'.")
 
-        signal_names = self._selected_signals()
-        if not signal_names:
+        selected_signals = self._selected_signals()
+        if not selected_signals:
             raise ValueError("Select at least one signal in 'Chemical Shifts (Signals)'.")
+            
+        signal_names = [s["col_name"] for s in selected_signals]
 
         state = self.model_opt_plots.collect_state()
         receptor_label = state.receptor_label
@@ -470,6 +455,7 @@ class NMRTab(QWidget):
             "conc_sheet": conc_sheet,
             "column_names": column_names,
             "signal_names": signal_names,
+            "signal_data": selected_signals, # Store parents too
             "receptor_label": receptor_label,
             "guest_label": guest_label,
             "modelo": state.modelo,
@@ -536,6 +522,32 @@ class NMRTab(QWidget):
         try:
             config = self._collect_config()
             self._preflight_nmr_shapes(config)
+            
+            # Tarea 3: Automated stoichiometry_map generation
+            model_mat = np.array(config.get("modelo") or [])
+            comp_names = config.get("column_names") or []
+            sig_data = config.get("signal_data") or []
+            comp_to_idx = {name: i for i, name in enumerate(comp_names)}
+            
+            if model_mat.size > 0 and sig_data:
+                stoich_cols = []
+                for sig in sig_data:
+                    parent = sig.get("parent", "Auto (1:1)")
+                    if parent in comp_to_idx:
+                        # Signal belongs to a specific component
+                        idx = comp_to_idx[parent]
+                        # The coefficient of this component in each species
+                        sig_stoich = model_mat[:, idx]
+                    else:
+                        # Auto or Mezcla -> assume 1.0 for all species (legacy behavior)
+                        sig_stoich = np.ones(model_mat.shape[0])
+                    stoich_cols.append(sig_stoich)
+                
+                # Transpose to (n_species, n_signals)
+                stoich_map = np.array(stoich_cols).T.tolist()
+                config["stoichiometry_map"] = stoich_map
+                self.log.append_text(f"Stoichiometry map generated ({len(stoich_map)}x{len(stoich_map[0])}).")
+
         except Exception as exc:
             self.log.append_text(f"ERROR: {exc}")
             QMessageBox.warning(self, "Config error", str(exc))
@@ -722,19 +734,12 @@ class NMRTab(QWidget):
         self._on_conc_columns_toggled()
 
         # Restore signals
-        wanted_sigs = {str(s) for s in (config.get("signal_names") or [])}
-        if wanted_sigs:
-            available_sigs = {self.list_signals.item(i).text() for i in range(self.list_signals.count()) if self.list_signals.item(i) is not None}
-            missing_sigs = sorted(wanted_sigs - available_sigs)
-            if missing_sigs:
-                missing.append(f"Missing signals: {missing_sigs}")
-            self.list_signals.blockSignals(True)
-            for i in range(self.list_signals.count()):
-                it = self.list_signals.item(i)
-                if it is None:
-                    continue
-                it.setCheckState(Qt.CheckState.Checked if it.text() in wanted_sigs else Qt.CheckState.Unchecked)
-            self.list_signals.blockSignals(False)
+        wanted_sigs = config.get("signal_data")
+        if wanted_sigs and isinstance(wanted_sigs, list) and isinstance(wanted_sigs[0], dict):
+            self.channel_spec_widget.set_selected_data(wanted_sigs)
+        else:
+            wanted_names = config.get("signal_names") or []
+            self.channel_spec_widget.set_selected_channels(wanted_names)
 
         # Restore Model/Optimization
         modelo = config.get("modelo") or []
