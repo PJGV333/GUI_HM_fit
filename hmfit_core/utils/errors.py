@@ -516,16 +516,18 @@ def compute_errors_nmr_varpro(
     use_projector=True,
     mask=None,
     fixed_mask=None,
+    weights=None,  # NEW argument: (nP,) or (m, nP)
     ridge=1e-8,
     rcond_cov=None, ridge_cov=0.0, debug=False,
     param_names=None,
 ):
     """
-    NMR version with missing data support.
+    NMR version with missing data support and Weighted Covariance (IRLS).
     If 'mask' is None, uses all finite dq values.
     If 'mask' is bool (m x nP), ignores unobserved rows per column.
     
     Now supports 'fixed_mask' to correctly account for degrees of freedom.
+    Now supports 'weights' for IRLS (Signal-based weighting).
     """
     C, Co = res.concentraciones(k)    # C: (m × n_abs), Co: (m × nspec)
     nspec = Co.shape[1]
@@ -566,10 +568,29 @@ def compute_errors_nmr_varpro(
     # ---------- CAMINO CON MÁSCARA (ignora huecos por columna) ----------
     mask = _onp.asarray(mask, dtype=bool)
     nP = dq.shape[1]
+    
+    # Process weights
+    # If weights is None, use 1.0
+    # weights can be shape (nP,) -> per signal
+    # or (m, nP) -> per point
+    w_mat = _onp.ones_like(dq)
+    if weights is not None:
+        weights = _onp.asarray(weights, dtype=float)
+        if weights.shape == (nP,):
+            w_mat = w_mat * weights[None, :]
+        elif weights.shape == dq.shape:
+            w_mat = weights
+        else:
+            # Fallback or error? Assuming broadcastable or scalar
+            try:
+                w_mat = w_mat * weights
+            except:
+                pass
 
     coef = _onp.zeros((n_abs, nP), dtype=float)
     R_blocks = []   # lista de residuales por columna, sólo filas observadas
     J_cols   = []   # lista de J (p × m_j) por columna
+    W_blocks = []   # lista de pesos (sqrt) correspondientes a R_blocks
 
     # Precompute dC_all_abs (m × n_abs × p)
     dC_all_abs = _build_dC_all(Co, Ms, nas, param_idx)
@@ -590,6 +611,8 @@ def compute_errors_nmr_varpro(
         # Calculate Xi_m LOCALLY to avoid global inf
         Xi_m = C[mj, :] / Hj_all[mj, None]      # (m_j × n_abs)
         y    = dq[mj, j]                        # (m_j,)
+        w_j  = w_mat[mj, j]                     # (m_j,)
+        sq_w = _onp.sqrt(w_j)                   # (m_j,)
 
         # Finiteness guard
         if not _onp.isfinite(Xi_m).all() or not _onp.isfinite(y).all():
@@ -597,22 +620,34 @@ def compute_errors_nmr_varpro(
             warnings.warn(f"Signal {j}: Non-finite values in basis or data. Skipping.")
             continue
 
-        # coeficiente de la señal j usando SOLO filas observadas
+        # Weighted Least Squares for coeffs:
+        # min || W^(1/2) * (Xi * beta - y) ||^2
+        # equivalent to OLS on (sq_w * Xi, sq_w * y)
+        Xi_w = Xi_m * sq_w[:, None]
+        y_w  = y * sq_w
+        
         try:
-            delta, _, _, _ = _onp.linalg.lstsq(Xi_m, y, rcond=rcond)
+            delta, _, _, _ = _onp.linalg.lstsq(Xi_w, y_w, rcond=rcond)
         except _onp.linalg.LinAlgError:
             if ridge is not None and float(ridge) > 0.0:
-                XtX = Xi_m.T @ Xi_m
-                delta = _onp.linalg.solve(XtX + float(ridge) * _onp.eye(XtX.shape[0]), Xi_m.T @ y)
+                XtX = Xi_w.T @ Xi_w
+                delta = _onp.linalg.solve(XtX + float(ridge) * _onp.eye(XtX.shape[0]), Xi_w.T @ y_w)
             else:
-                delta = _onp.linalg.pinv(Xi_m, rcond=rcond) @ y
+                delta = _onp.linalg.pinv(Xi_w, rcond=rcond) @ y_w
 
         Aj = delta.reshape(-1, 1)
         coef[:, j] = Aj[:, 0]
 
-        # residuales de la señal j
+        # residuales de la señal j (original scale)
         yfit = (Xi_m @ Aj).ravel()              # (m_j,)
+        # Note: 'r' for covariance calculation uses weighted residuals?
+        # Standard approach: Cov = inv(J.T * W * J) * sigma_sq
+        # Where sigma_sq is reduced chi-squared generally. 
+        # But 'R_blocks' is returned as 'residuals_vec'. Often users want raw residuals.
+        # We will store RAW residuals in R_blocks for output, 
+        # but apply weights for J and singular value calculation if needed.
         R_blocks.append(yfit - y)
+        W_blocks.append(sq_w)
 
         # Jacobiano para la señal j: dXi en filas observadas
         dXi_m = (dC_all_abs[mj, :, :] / Hj_all[mj].reshape(-1, 1, 1))   # (m_j × n_abs × p)
@@ -622,13 +657,23 @@ def compute_errors_nmr_varpro(
     if not J_cols:
         raise ValueError("No hay datos observados válidos para calcular errores (padre concentracion ~0 o máscara vacía).")
 
-    r  = _onp.concatenate([_as_onp(rb) for rb in R_blocks], axis=0)   # (M_eff,)
-    J_full  = _onp.concatenate([_as_onp(Jc) for Jc in J_cols], axis=1) # (p_total × M_eff)
+    r_raw   = _onp.concatenate([_as_onp(rb) for rb in R_blocks], axis=0)       # (M_eff,)
+    J_full  = _onp.concatenate([_as_onp(Jc) for Jc in J_cols], axis=1)         # (p_total × M_eff)
+    w_full  = _onp.concatenate([_as_onp(wb) for wb in W_blocks], axis=0)       # (M_eff,)
     
-    nobs = r.size
+    # Weighted Jacobian for Covariance: J_w = J * W^(1/2) (broadcast over columns M_eff)
+    # J_full is (p x M_eff). w_full is (M_eff,)
+    J_w = J_full * w_full[None, :]
+
+    nobs = r_raw.size
     dof = nobs - p_free
     dof_capped = max(dof, 1)
-    s2  = float((r @ r) / dof_capped)
+    
+    # Weighted reduced chi-squared: sum(w * r^2) / dof
+    chi2 = _onp.sum( (r_raw * w_full)**2 )
+    s2   = float(chi2 / dof_capped)
+    # Note: If weights are 1/sigma^2, then s2 should be close to 1 if model fits. 
+    # But usually we still scale Cov by s2 (estimated variance factor).
 
     if p_free == 0:
         SE_log10K_full = _onp.zeros(p_total)
@@ -648,8 +693,10 @@ def compute_errors_nmr_varpro(
     else:
         if rcond_cov is None:
             rcond_cov = rcond
-        J = J_full[free_idx, :]
-        JJT = J @ J.T
+            
+        # Use Weighted Jacobian for Fisher Info Matrix
+        J = J_w[free_idx, :]   # (p_free x M_eff)
+        JJT = J @ J.T          # (p_free x p_free)
         JJT = 0.5 * (JJT + JJT.T.conj())
 
         invJJT = pinv_psd_eigh(JJT, xp=_onp, rcond=rcond_cov, ridge=ridge_cov)
@@ -674,9 +721,9 @@ def compute_errors_nmr_varpro(
 
     return {
         "percK": pm["perc_linear"], "SE_K": pm["SE_K"], "SE_log10K": SE_log10K_full,
-        "Cov_log10K_free": _as_onp(Cov_free), "rms": float(_onp.sqrt(_onp.mean(r**2))), "covfit": s2,
+        "Cov_log10K_free": _as_onp(Cov_free), "rms": float(_onp.sqrt(_onp.mean(r_raw**2))), "covfit": s2,
         "coef": _as_onp(coef), "xi": None, "J": _as_onp(J_full),
-        "dof": dof, "nobs": nobs, "residuals_vec": _as_onp(r), "r": _as_onp(r),
+        "dof": dof, "nobs": nobs, "residuals_vec": _as_onp(r_raw), "r": _as_onp(r_raw),
         "stability_diag": stability_diag
     }
 
