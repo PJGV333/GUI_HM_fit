@@ -505,6 +505,26 @@ def compute_errors_spectro_varpro(k, res, Y, modelo, nas, rcond=1e-10, use_proje
     }
 
 
+def estimate_sigma_blocks(residuals_by_signal, n_params_lin_by_signal=None):
+    """
+    Estimate sigma per signal from residuals.
+    residuals_by_signal: dict[str, np.ndarray]
+    n_params_lin_by_signal: dict[str, int] | None
+    """
+    sigmas = {}
+    n_params_lin_by_signal = n_params_lin_by_signal or {}
+    for name, r in (residuals_by_signal or {}).items():
+        r = _onp.asarray(r, dtype=float).ravel()
+        n = int(r.size)
+        rss = float(_onp.sum(r * r)) if n > 0 else 0.0
+        p_lin = int(n_params_lin_by_signal.get(name, 1) or 1)
+        dof = max(1, n - p_lin)
+        sigma = float(_onp.sqrt(rss / float(dof))) if dof > 0 else 0.0
+        sigma = max(sigma, 1e-12)
+        sigmas[str(name)] = sigma
+    return sigmas
+
+
 def compute_errors_nmr_varpro(
     k,
     res,
@@ -519,6 +539,10 @@ def compute_errors_nmr_varpro(
     ridge=1e-8,
     rcond_cov=None, ridge_cov=0.0, debug=False,
     param_names=None,
+    signal_names=None,
+    parent_idx=None,
+    sigma_blocks=None,
+    contrib_mask=None,
 ):
     """
     NMR version with missing data support.
@@ -567,56 +591,143 @@ def compute_errors_nmr_varpro(
     mask = _onp.asarray(mask, dtype=bool)
     nP = dq.shape[1]
 
+    if signal_names is None:
+        signal_names = [f"signal_{j+1}" for j in range(nP)]
+    else:
+        signal_names = [str(s) for s in signal_names]
+    if len(signal_names) < nP:
+        signal_names = signal_names + [f"signal_{j+1}" for j in range(len(signal_names), nP)]
+
+    parent_idx_list = None
+    if parent_idx is not None:
+        parent_idx_list = [int(x) for x in parent_idx]
+        if len(parent_idx_list) < nP:
+            parent_idx_list = parent_idx_list + [0] * (nP - len(parent_idx_list))
+
+    abs_idx = [j for j in range(nspec) if j not in nas]
+    Ms_abs = Ms[abs_idx, :] if abs_idx else _onp.zeros((0, Ms.shape[1]), dtype=float)
+
+    contrib_mask_arr = None
+    if contrib_mask is not None:
+        if isinstance(contrib_mask, dict):
+            contrib_mask_arr = _onp.ones((nP, n_abs), dtype=bool)
+            for name, mask_val in contrib_mask.items():
+                try:
+                    idx = signal_names.index(str(name))
+                except ValueError:
+                    continue
+                if isinstance(mask_val, (list, tuple, _onp.ndarray)):
+                    mask_val_arr = _onp.asarray(mask_val)
+                    if mask_val_arr.dtype == bool and mask_val_arr.size == n_abs:
+                        contrib_mask_arr[idx, :] = mask_val_arr.astype(bool)
+                    else:
+                        contrib_mask_arr[idx, :] = True
+                        for j in mask_val_arr.astype(int).ravel().tolist():
+                            if 0 <= int(j) < n_abs:
+                                contrib_mask_arr[idx, int(j)] = False
+        else:
+            arr = _onp.asarray(contrib_mask)
+            if arr.shape == (nP, n_abs):
+                contrib_mask_arr = arr.astype(bool)
+
     coef = _onp.zeros((n_abs, nP), dtype=float)
     R_blocks = []   # lista de residuales por columna, sólo filas observadas
     J_cols   = []   # lista de J (p × m_j) por columna
+    block_signal_names: list[str] = []
+    residuals_by_signal: dict[str, _onp.ndarray] = {}
+    n_params_lin_by_signal: dict[str, int] = {}
 
     # Precompute dC_all_abs (m × n_abs × p)
     dC_all_abs = _build_dC_all(Co, Ms, nas, param_idx)
+    valid_C = _onp.isfinite(C).all(axis=1)
+
+    use_hypnmr = parent_idx_list is not None
 
     for j in range(nP):
         mj_obs = mask[:, j]
-        # Signal-specific parent concentration
-        Hj_all = H[:, j] if H.ndim == 2 else H
-        
-        # Point is valid for signal j if:
-        # 1. It is observed (mask)
-        # 2. Parent concentration > threshold
-        mj = mj_obs & (_onp.abs(Hj_all) > 1e-12)
-        
-        if not mj.any():
-            continue
+        sig_name = signal_names[j]
 
-        # Calculate Xi_m LOCALLY to avoid global inf
-        Xi_m = C[mj, :] / Hj_all[mj, None]      # (m_j × n_abs)
-        y    = dq[mj, j]                        # (m_j,)
+        if use_hypnmr:
+            comp_idx = parent_idx_list[j] if parent_idx_list is not None else 0
+            if comp_idx < 0 or comp_idx >= Ms_abs.shape[1]:
+                comp_idx = 0
+            x_comp = Ms_abs[:, comp_idx] if Ms_abs.size else _onp.zeros(n_abs, dtype=float)
+            if contrib_mask_arr is not None:
+                x_eff = _onp.where(contrib_mask_arr[j], x_comp, 0.0)
+            else:
+                x_eff = x_comp
 
-        # Finiteness guard
+            T_all = _onp.sum(C * x_eff.reshape(1, -1), axis=1)
+            mj = mj_obs & valid_C & _onp.isfinite(T_all) & (_onp.abs(T_all) > 1e-12)
+            if not mj.any():
+                continue
+
+            C_m = C[mj, :]
+            T_m = T_all[mj]
+            Xi_m = (C_m * x_eff.reshape(1, -1)) / T_m.reshape(-1, 1)
+        else:
+            # Signal-specific parent concentration
+            Hj_all = H[:, j] if H.ndim == 2 else H
+            mj = mj_obs & valid_C & (_onp.abs(Hj_all) > 1e-12)
+            if not mj.any():
+                continue
+            Xi_m = C[mj, :] / Hj_all[mj, None]
+
+        y = dq[mj, j]
+
         if not _onp.isfinite(Xi_m).all() or not _onp.isfinite(y).all():
             import warnings
-            warnings.warn(f"Signal {j}: Non-finite values in basis or data. Skipping.")
+            warnings.warn(f"Signal {sig_name}: Non-finite values in basis or data. Skipping.")
+            continue
+
+        nonzero_cols = _onp.any(_onp.abs(Xi_m) > 0.0, axis=0)
+        if not nonzero_cols.any():
             continue
 
         # coeficiente de la señal j usando SOLO filas observadas
         try:
-            delta, _, _, _ = _onp.linalg.lstsq(Xi_m, y, rcond=rcond)
+            delta_use, _, _, _ = _onp.linalg.lstsq(Xi_m[:, nonzero_cols], y, rcond=rcond)
         except _onp.linalg.LinAlgError:
             if ridge is not None and float(ridge) > 0.0:
-                XtX = Xi_m.T @ Xi_m
-                delta = _onp.linalg.solve(XtX + float(ridge) * _onp.eye(XtX.shape[0]), Xi_m.T @ y)
+                XtX = Xi_m[:, nonzero_cols].T @ Xi_m[:, nonzero_cols]
+                delta_use = _onp.linalg.solve(
+                    XtX + float(ridge) * _onp.eye(XtX.shape[0]), Xi_m[:, nonzero_cols].T @ y
+                )
             else:
-                delta = _onp.linalg.pinv(Xi_m, rcond=rcond) @ y
+                delta_use = _onp.linalg.pinv(Xi_m[:, nonzero_cols], rcond=rcond) @ y
 
+        delta = _onp.zeros(n_abs, dtype=float)
+        delta[nonzero_cols] = delta_use
         Aj = delta.reshape(-1, 1)
         coef[:, j] = Aj[:, 0]
 
         # residuales de la señal j
-        yfit = (Xi_m @ Aj).ravel()              # (m_j,)
-        R_blocks.append(yfit - y)
+        yfit = (Xi_m @ Aj).ravel()
+        r_block = yfit - y
+        R_blocks.append(r_block)
+        block_signal_names.append(sig_name)
+        residuals_by_signal[sig_name] = _as_onp(r_block)
+        try:
+            rank_val = int(_onp.linalg.matrix_rank(Xi_m[:, nonzero_cols]))
+        except Exception:
+            rank_val = int(nonzero_cols.sum())
+        n_params_lin_by_signal[sig_name] = max(rank_val, 1)
 
         # Jacobiano para la señal j: dXi en filas observadas
-        dXi_m = (dC_all_abs[mj, :, :] / Hj_all[mj].reshape(-1, 1, 1))   # (m_j × n_abs × p)
-        Jj = _jac_varpro(Xi_m, Aj, dXi_m, use_projector=use_projector, rcond=rcond)  # (p × m_j)
+        if use_hypnmr:
+            C_m = C[mj, :]
+            x_eff = x_eff.reshape(1, -1)
+            T_m = _onp.sum(C_m * x_eff, axis=1)
+            T_m = _onp.where(_onp.abs(T_m) > 1e-30, T_m, 1e-30)
+            dC_m = dC_all_abs[mj, :, :]
+            dT_m = _onp.sum(dC_m * x_eff[:, :, None], axis=1)
+            num = dC_m * x_eff[:, :, None] * T_m[:, None, None] - (C_m * x_eff)[:, :, None] * dT_m[:, None, :]
+            dXi_m = num / (T_m[:, None, None] ** 2)
+        else:
+            Hj_all = H[:, j] if H.ndim == 2 else H
+            dXi_m = (dC_all_abs[mj, :, :] / Hj_all[mj].reshape(-1, 1, 1))
+
+        Jj = _jac_varpro(Xi_m, Aj, dXi_m, use_projector=use_projector, rcond=rcond)
         J_cols.append(Jj)
 
     if not J_cols:
@@ -624,11 +735,33 @@ def compute_errors_nmr_varpro(
 
     r  = _onp.concatenate([_as_onp(rb) for rb in R_blocks], axis=0)   # (M_eff,)
     J_full  = _onp.concatenate([_as_onp(Jc) for Jc in J_cols], axis=1) # (p_total × M_eff)
-    
+
+    weighting = None
+    if sigma_blocks is None and residuals_by_signal:
+        sigma_blocks = estimate_sigma_blocks(residuals_by_signal, n_params_lin_by_signal)
+        weighting = "block_sigma_auto"
+    elif sigma_blocks is not None:
+        weighting = "block_sigma_auto"
+
+    r_white = None
+    J_white = None
+    if sigma_blocks:
+        scale_parts = []
+        for sig_name, r_block in zip(block_signal_names, R_blocks):
+            sigma = float(sigma_blocks.get(sig_name, 1.0))
+            sigma = max(sigma, 1e-12)
+            scale_parts.append(_onp.full(len(r_block), sigma, dtype=float))
+        if scale_parts:
+            scale = _onp.concatenate(scale_parts, axis=0)
+            r_white = r / scale
+            J_white = J_full / scale.reshape(1, -1)
+
     nobs = r.size
     dof = nobs - p_free
     dof_capped = max(dof, 1)
-    s2  = float((r @ r) / dof_capped)
+    r_use = r_white if r_white is not None else r
+    J_use = J_white if J_white is not None else J_full
+    s2  = float((r_use @ r_use) / dof_capped)
 
     if p_free == 0:
         SE_log10K_full = _onp.zeros(p_total)
@@ -648,7 +781,7 @@ def compute_errors_nmr_varpro(
     else:
         if rcond_cov is None:
             rcond_cov = rcond
-        J = J_full[free_idx, :]
+        J = J_use[free_idx, :]
         JJT = J @ J.T
         JJT = 0.5 * (JJT + JJT.T.conj())
 
@@ -676,7 +809,12 @@ def compute_errors_nmr_varpro(
         "percK": pm["perc_linear"], "SE_K": pm["SE_K"], "SE_log10K": SE_log10K_full,
         "Cov_log10K_free": _as_onp(Cov_free), "rms": float(_onp.sqrt(_onp.mean(r**2))), "covfit": s2,
         "coef": _as_onp(coef), "xi": None, "J": _as_onp(J_full),
+        "J_white": _as_onp(J_white) if J_white is not None else None,
         "dof": dof, "nobs": nobs, "residuals_vec": _as_onp(r), "r": _as_onp(r),
+        "r_white": _as_onp(r_white) if r_white is not None else None,
+        "sigma_blocks": sigma_blocks,
+        "weighting": weighting,
+        "residuals_by_signal": residuals_by_signal,
         "stability_diag": stability_diag
     }
 
@@ -909,6 +1047,9 @@ def bootstrap_one_step_nmr(
     use_projector=True,
     mask=None,
     fixed_mask=None,
+    signal_names=None,
+    parent_idx=None,
+    sigma_blocks=None,
     rcond_cov=None,
     ridge=1e-8,
     ridge_cov=0.0,
@@ -940,6 +1081,27 @@ def bootstrap_one_step_nmr(
     rng = _onp.random.default_rng(seed)
     samples = _onp.zeros((B, k_hat.size), dtype=float)
 
+    sigma_blocks_use = sigma_blocks
+    if sigma_blocks_use is None:
+        metrics0 = compute_errors_nmr_varpro(
+            k_hat,
+            res,
+            dq_obs,
+            D_cols,
+            modelo,
+            nas,
+            mask=mask,
+            fixed_mask=fixed_mask,
+            rcond=rcond,
+            rcond_cov=rcond_cov if rcond_cov is not None else rcond,
+            ridge=ridge,
+            ridge_cov=ridge_cov,
+            use_projector=use_projector,
+            signal_names=signal_names,
+            parent_idx=parent_idx,
+        )
+        sigma_blocks_use = metrics0.get("sigma_blocks")
+
     for b in range(B):
         v = _wild_weights(rng, R.shape, wild=wild)
         dq_star = dq_fit - R * v
@@ -959,14 +1121,19 @@ def bootstrap_one_step_nmr(
             ridge=ridge,
             ridge_cov=ridge_cov,
             use_projector=use_projector,
+            signal_names=signal_names,
+            parent_idx=parent_idx,
+            sigma_blocks=sigma_blocks_use,
         )
 
         if free_idx.size == 0:
             samples[b, :] = k_hat
             continue
 
-        J_full = _onp.asarray(metrics_star["J"], dtype=float)
-        r_star = _onp.asarray(metrics_star["r"], dtype=float).ravel()
+        J_white = metrics_star.get("J_white")
+        J_full = _onp.asarray(J_white if J_white is not None else metrics_star["J"], dtype=float)
+        r_white = metrics_star.get("r_white")
+        r_star = _onp.asarray(r_white if r_white is not None else metrics_star["r"], dtype=float).ravel()
         J = J_full[free_idx, :]
 
         G = J @ J.T + float(lam) * _onp.eye(J.shape[0])

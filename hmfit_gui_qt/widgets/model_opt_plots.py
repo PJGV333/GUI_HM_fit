@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from hmfit_gui_qt.workers.errors_refit import refit_nmr_from_context, refit_spectro_from_context
 from hmfit_gui_qt.workers.errors_worker import ErrorsWorker
 
 
@@ -862,9 +863,10 @@ class ModelOptPlotsWidget(QWidget):
                     v = wild_multipliers(rng, r_hat.size, kind=wild).reshape(r_hat.shape)
                     return y_fit_hat + r_hat * v
 
-                refit_fn = ctx.get("refit_from_data")
-                if not callable(refit_fn):
-                    raise ValueError("Missing refit function for full refit.")
+                def refit_fn(data_star, theta0, max_iter=max_iter, tol=tol):
+                    return refit_spectro_from_context(
+                        ctx, data_star, theta0, max_iter=max_iter, tol=tol
+                    )
 
                 boot_summary = bootstrap_full_refit(
                     k_hat,
@@ -901,8 +903,11 @@ class ModelOptPlotsWidget(QWidget):
                 raise ValueError("Missing signal names for NMR errors.")
 
             D_cols = ctx.get("D_cols")
+            parent_idx = ctx.get("parent_idx")
             if D_cols is None:
-                D_cols, _ = build_D_cols(C_T, column_names, signal_names, default_idx=0)
+                D_cols, parent_idx = build_D_cols(C_T, column_names, signal_names, default_idx=0)
+            D_cols = np.asarray(D_cols, dtype=float)
+            parent_idx = list(parent_idx) if parent_idx is not None else []
 
             mask = ctx.get("mask")
             if mask is None:
@@ -923,6 +928,8 @@ class ModelOptPlotsWidget(QWidget):
                 ridge_cov=0.0,
                 use_projector=True,
                 param_names=param_names,
+                signal_names=signal_names,
+                parent_idx=parent_idx,
             )
 
             if method == "bootstrap_linear":
@@ -959,6 +966,9 @@ class ModelOptPlotsWidget(QWidget):
                     use_projector=True,
                     mask=mask,
                     fixed_mask=fixed_mask,
+                    signal_names=signal_names,
+                    parent_idx=parent_idx,
+                    sigma_blocks=base_metrics.get("sigma_blocks"),
                     rcond_cov=1e-10,
                     ridge=1e-8,
                     ridge_cov=0.0,
@@ -981,9 +991,10 @@ class ModelOptPlotsWidget(QWidget):
                     dq_star[~mask_full] = dq[~mask_full]
                     return dq_star
 
-                refit_fn = ctx.get("refit_from_data")
-                if not callable(refit_fn):
-                    raise ValueError("Missing refit function for full refit.")
+                def refit_fn(data_star, theta0, max_iter=max_iter, tol=tol):
+                    return refit_nmr_from_context(
+                        ctx, data_star, theta0, max_iter=max_iter, tol=tol
+                    )
 
                 boot_summary = bootstrap_full_refit(
                     k_hat,
@@ -1111,6 +1122,8 @@ class ModelOptPlotsWidget(QWidget):
             "rms": rms_val,
             "s2": s2_val,
             "dof": dof_val,
+            "sigma_blocks": base_metrics.get("sigma_blocks") if isinstance(base_metrics, dict) else None,
+            "weighting": base_metrics.get("weighting") if isinstance(base_metrics, dict) else None,
         }
 
     def _corr_from_cov(self, metrics: dict[str, Any], p_total: int) -> np.ndarray:
@@ -1202,6 +1215,15 @@ class ModelOptPlotsWidget(QWidget):
             summary = diag.get("diag_summary")
             if status in ("warn", "critical") and summary:
                 lines.append(f"Note: {summary}")
+
+        sigma_blocks = metrics.get("sigma_blocks") if isinstance(metrics, dict) else None
+        if isinstance(sigma_blocks, dict) and sigma_blocks:
+            weighting = metrics.get("weighting") if isinstance(metrics, dict) else None
+            if weighting:
+                lines.append(f"weighting={weighting}")
+            parts = [f"sigma({name})={float(val):.3g}" for name, val in sigma_blocks.items()]
+            if parts:
+                lines.append(", ".join(parts))
 
         return "\n".join(lines)
 
@@ -1333,6 +1355,8 @@ class ModelOptPlotsWidget(QWidget):
             tol_val = output.get("tol") if method_raw == "bootstrap_full_refit_audit" else None
             n_success_val = output.get("n_success") if method_raw == "bootstrap_full_refit_audit" else None
             n_fail_val = output.get("n_fail") if method_raw == "bootstrap_full_refit_audit" else None
+            weighting_val = output.get("weighting")
+            sigma_blocks = output.get("sigma_blocks") or {}
 
             meta_rows = [
                 ("method", method_tag),
@@ -1340,6 +1364,7 @@ class ModelOptPlotsWidget(QWidget):
                 ("seed", seed_val),
                 ("wild_type", wild_val),
                 ("lambda", lam_val),
+                ("weighting", weighting_val),
                 ("max_iter", max_iter_val),
                 ("tol", tol_val),
                 ("dof", output.get("dof")),
@@ -1348,6 +1373,9 @@ class ModelOptPlotsWidget(QWidget):
                 ("n_success", n_success_val),
                 ("n_fail", n_fail_val),
             ]
+            if isinstance(sigma_blocks, dict):
+                for name, val in sigma_blocks.items():
+                    meta_rows.append((f"sigma_block:{name}", val))
             df_meta = pd.DataFrame(meta_rows, columns=["Key", "Value"])
 
             corr = output.get("corr")

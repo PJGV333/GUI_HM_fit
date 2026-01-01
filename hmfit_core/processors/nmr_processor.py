@@ -110,7 +110,18 @@ def build_D_cols(CT, conc_colnames, signal_colnames, default_idx=0):
 
     return D_cols, parent_idx
 
-def project_coeffs_block_onp_frac(dq_block, C_block, D_cols, mask_block, rcond=1e-10, ridge=0.0):
+def project_coeffs_block_onp_frac(
+    dq_block,
+    C_block,
+    D_cols,
+    mask_block,
+    *,
+    modelo=None,
+    parent_idx=None,
+    contrib_mask=None,
+    rcond=1e-10,
+    ridge=0.0,
+):
     """
     Proyección por señal usando fracción molar del 'padre' de cada señal.
     Calcula los desplazamientos químicos de las especies (delta_species) y predice dq_calc.
@@ -127,9 +138,32 @@ def project_coeffs_block_onp_frac(dq_block, C_block, D_cols, mask_block, rcond=1
     m, nP = dq_block.shape
     dq_calc = np.full_like(dq_block, np.nan, dtype=float) # Default to NaN
     
-    # Calculate fractions: F = C / D_cols
+    # Calculate fractions:
+    # HypNMR-style if modelo + parent_idx are provided:
+    #   F_s = x_eff * C / T_comp, with T_comp = sum_j x_eff_j * C_j
+    # Fallback: F = C / D_cols
     # Note: D_cols is (n_points, n_signals), C_block is (n_points, n_species)
-    # We need to handle this per signal because D_cols varies per signal (could be H or G)
+    # We need to handle this per signal because denominators vary per signal.
+    use_hypnmr = modelo is not None and parent_idx is not None
+    Ms = None
+    if use_hypnmr:
+        Ms = np.asarray(modelo, dtype=float)
+        if Ms.shape[0] != C_block.shape[1]:
+            if Ms.shape[1] == C_block.shape[1]:
+                Ms = Ms.T
+            else:
+                use_hypnmr = False
+        if Ms is not None and Ms.shape[1] == 0:
+            use_hypnmr = False
+
+    contrib_mask_arr = None
+    if contrib_mask is not None:
+        try:
+            arr = np.asarray(contrib_mask, dtype=bool)
+            if arr.shape == (nP, C_block.shape[1]):
+                contrib_mask_arr = arr
+        except Exception:
+            contrib_mask_arr = None
     
     for j in range(nP):
         # Select valid points for this signal
@@ -138,9 +172,21 @@ def project_coeffs_block_onp_frac(dq_block, C_block, D_cols, mask_block, rcond=1
         # 2. Parent concentration D_cols is finite and > 0
         # 3. Concentrations C_block are finite
         
-        D = D_cols[:, j]
         valid_C = np.isfinite(C_block).all(axis=1)
-        mj = mask_block[:, j] & valid_C & np.isfinite(D) & (np.abs(D) > 1e-12)
+        if use_hypnmr:
+            comp_idx = int(parent_idx[j]) if j < len(parent_idx) else 0
+            if comp_idx < 0 or (Ms is not None and comp_idx >= Ms.shape[1]):
+                comp_idx = 0
+            x_comp = Ms[:, comp_idx] if Ms is not None else np.zeros(C_block.shape[1], dtype=float)
+            if contrib_mask_arr is not None:
+                x_eff = np.where(contrib_mask_arr[j], x_comp, 0.0)
+            else:
+                x_eff = x_comp
+            T_all = np.sum(C_block * x_eff.reshape(1, -1), axis=1)
+            mj = mask_block[:, j] & valid_C & np.isfinite(T_all) & (np.abs(T_all) > 1e-12)
+        else:
+            D = D_cols[:, j]
+            mj = mask_block[:, j] & valid_C & np.isfinite(D) & (np.abs(D) > 1e-12)
         
         nj = mj.sum()
         if nj < 2: # Need at least 2 points to fit? Or just > number of species?
@@ -148,31 +194,47 @@ def project_coeffs_block_onp_frac(dq_block, C_block, D_cols, mask_block, rcond=1
              # Leave as NaN or 0? 
              continue
 
-        # F_j = C[mj] / D[mj]  -> shape (nj, n_species)
-        F_j = C_block[mj, :] / D[mj][:, None]
+        if use_hypnmr:
+            T_m = T_all[mj]
+            F_j = (C_block[mj, :] * x_eff.reshape(1, -1)) / T_m[:, None]
+        else:
+            # F_j = C[mj] / D[mj]  -> shape (nj, n_species)
+            F_j = C_block[mj, :] / D[mj][:, None]
         
         y = dq_block[mj, j] # (nj,)
         
         # Solve F_j * delta_species = y
+        nonzero_cols = np.any(np.abs(F_j) > 0.0, axis=0)
+        if not nonzero_cols.any():
+            continue
         try:
-            delta_species, _, _, _ = np.linalg.lstsq(F_j, y, rcond=rcond)
+            delta_use, _, _, _ = np.linalg.lstsq(F_j[:, nonzero_cols], y, rcond=rcond)
         except np.linalg.LinAlgError:
-             # Fallback
              if ridge > 0.0:
-                 XtX = F_j.T @ F_j
-                 delta_species = np.linalg.solve(XtX + ridge*np.eye(XtX.shape[0]), F_j.T @ y)
+                 XtX = F_j[:, nonzero_cols].T @ F_j[:, nonzero_cols]
+                 delta_use = np.linalg.solve(
+                     XtX + ridge * np.eye(XtX.shape[0]), F_j[:, nonzero_cols].T @ y
+                 )
              else:
-                 delta_species = np.linalg.pinv(F_j, rcond=rcond) @ y
+                 delta_use = np.linalg.pinv(F_j[:, nonzero_cols], rcond=rcond) @ y
+        delta_species = np.zeros(F_j.shape[1], dtype=float)
+        delta_species[nonzero_cols] = delta_use
         
         # Calculate predicted values for ALL points where we have concentrations
         # But we need D to be valid to calculate F
         # We can predict even where dq is missing, as long as we have C and D.
         
         # Prediction mask: where C and D are valid (regardless of dq observation)
-        pred_mask = valid_C & np.isfinite(D) & (np.abs(D) > 1e-12)
+        if use_hypnmr:
+            pred_mask = valid_C & np.isfinite(T_all) & (np.abs(T_all) > 1e-12)
+        else:
+            pred_mask = valid_C & np.isfinite(D) & (np.abs(D) > 1e-12)
         
         if pred_mask.any():
-            F_pred = C_block[pred_mask, :] / D[pred_mask][:, None]
+            if use_hypnmr:
+                F_pred = (C_block[pred_mask, :] * x_eff.reshape(1, -1)) / T_all[pred_mask][:, None]
+            else:
+                F_pred = C_block[pred_mask, :] / D[pred_mask][:, None]
             dq_calc[pred_mask, j] = F_pred @ delta_species
             
     return dq_calc
@@ -275,6 +337,9 @@ def process_nmr_data(
         
         modelo = np.array(model_matrix).T # Transpose to match expected shape (n_species x n_components)
         nas = non_absorbent_species
+        modelo_abs = modelo
+        if nas:
+            modelo_abs = np.delete(modelo, nas, axis=0)
         
         k = np.array(k_initial, dtype=float).ravel()
         bnds = _build_bounds_list(k_bounds)
@@ -325,7 +390,14 @@ def process_nmr_data(
             k_curr_full = pack(theta_free)
             C = res.concentraciones(k_curr_full)[0]
             dq_cal = project_coeffs_block_onp_frac(
-                dq, C, D_cols, mask, rcond=1e-10, ridge=1e-8
+                dq,
+                C,
+                D_cols,
+                mask,
+                modelo=modelo_abs,
+                parent_idx=parent_idx,
+                rcond=1e-10,
+                ridge=1e-8,
             )
             
             # Residuals only on observed points
@@ -399,7 +471,16 @@ def process_nmr_data(
         
         # Final calculated shifts
         # Note: We use project_coeffs_block_onp_frac for consistency with f_m
-        dq_fit = project_coeffs_block_onp_frac(dq, C_opt, D_cols, mask, rcond=1e-10, ridge=1e-8)
+        dq_fit = project_coeffs_block_onp_frac(
+            dq,
+            C_opt,
+            D_cols,
+            mask,
+            modelo=modelo_abs,
+            parent_idx=parent_idx,
+            rcond=1e-10,
+            ridge=1e-8,
+        )
         
         # Calculate Errors
         # We need to adapt compute_errors_nmr_varpro or implement a custom one here
@@ -430,6 +511,8 @@ def process_nmr_data(
                 use_projector=True,
                 debug=False,
                 param_names=k_names,
+                signal_names=signal_names,
+                parent_idx=parent_idx,
             )
             
             stability_diag = err_res.get("stability_diag", {})
@@ -566,6 +649,15 @@ def process_nmr_data(
             x_axis_conc, residuals, "o", "Residuals (ppm)", x_label_conc, "Residuals"
         )
 
+        signal_component = {}
+        for idx, sig in enumerate(signal_names):
+            comp_label = ""
+            if idx < len(parent_idx):
+                comp_idx = parent_idx[idx]
+                if 0 <= comp_idx < len(column_names):
+                    comp_label = str(column_names[comp_idx])
+            signal_component[str(sig)] = comp_label
+
         # Prepare export data structure (matching Spectroscopy pattern)
         export_data = {
             "modelo": modelo.T.tolist() if modelo is not None else [],
@@ -582,6 +674,8 @@ def process_nmr_data(
             "derived_noncoop": derived_noncoop,
             "signal_names": signal_names,
             "column_names": column_names,
+            "signal_parent_idx": parent_idx,
+            "signal_component": signal_component,
             "stats_table": [
                 ["RMS", float(rms)],
                 ["Error absoluto medio", float(MAE)],
