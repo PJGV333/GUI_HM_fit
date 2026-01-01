@@ -305,22 +305,62 @@ def process_nmr_data(
             return k_full
             
         # Validate Stoichiometry
+        # Expected: (n_species, n_signals). Here, `modelo` is (n_components, n_species) because we transposed above.
         stoich_mat = None
         if stoichiometry_map is not None:
             try:
-                stoich_mat = np.array(stoichiometry_map, dtype=float)
-                if stoich_mat.shape[0] != modelo.shape[0]:
-                    log_progress(f"Warning: Stoichiometry rows ({stoich_mat.shape[0]}) != Species ({modelo.shape[0]}). Ignoring.")
+                stoich_mat = np.asarray(stoichiometry_map, dtype=float)
+                n_signals = dq.shape[1]
+                n_species_full = modelo.shape[1]
+                nas_idx = sorted(
+                    {
+                        int(x)
+                        for x in (nas or [])
+                        if isinstance(x, (int, np.integer)) or str(x).lstrip("-").isdigit()
+                    }
+                )
+                nas_idx = [i for i in nas_idx if 0 <= i < n_species_full]
+                n_species_eff = n_species_full - len(nas_idx)
+
+                # Accept (n_species_full, n_signals)
+                if stoich_mat.shape == (n_species_full, n_signals):
+                    pass
+                # Accept transposed (n_signals, n_species_full)
+                elif stoich_mat.shape == (n_signals, n_species_full):
+                    stoich_mat = stoich_mat.T
+                # Accept already-filtered (n_species_eff, n_signals)
+                elif stoich_mat.shape == (n_species_eff, n_signals):
+                    pass
+                # Accept transposed already-filtered (n_signals, n_species_eff)
+                elif stoich_mat.shape == (n_signals, n_species_eff):
+                    stoich_mat = stoich_mat.T
+                else:
+                    log_progress(
+                        f"Warning: Stoichiometry shape {stoich_mat.shape} incompatible. "
+                        f"Expected ({n_species_full}, {n_signals}) (species x signals). Ignoring."
+                    )
                     stoich_mat = None
-                elif stoich_mat.shape[1] != dq.shape[1]:
-                    if stoich_mat.shape[0] == dq.shape[1] and stoich_mat.shape[1] == modelo.shape[0]:
-                         stoich_mat = stoich_mat.T
-                    else:
-                        log_progress(f"Warning: Stoichiometry shape {stoich_mat.shape} incompatible with Species/Signal ({modelo.shape[0]}, {dq.shape[1]}). Ignoring.")
-                        stoich_mat = None
+
+                if stoich_mat is not None and nas_idx and stoich_mat.shape[0] == n_species_full:
+                    stoich_mat = np.delete(stoich_mat, nas_idx, axis=0)
+                    if show_stability_diagnostics:
+                        log_progress(
+                            "[DEBUG] stoich_mat filtered for non_absorbent_species="
+                            f"{nas_idx} -> shape={stoich_mat.shape}"
+                        )
             except Exception as e:
                 log_progress(f"Warning: Error reading stoichiometry: {e}")
                 stoich_mat = None
+
+        if stoich_mat is None:
+            log_progress("[DEBUG] stoich_mat=None -> using default mode (no per-signal stoichiometry).")
+        else:
+            log_progress(f"[DEBUG] stoich_mat OK shape={stoich_mat.shape}")
+            sig = [
+                tuple(np.unique(stoich_mat[:, i]).tolist())
+                for i in range(min(stoich_mat.shape[1], 8))
+            ]
+            log_progress(f"[DEBUG] stoich_mat unique values per signal (first 8 cols): {sig}")
         
     except Exception as e:
          return {"error": f"Error preparing data matrices: {str(e)}"}

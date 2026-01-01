@@ -35,6 +35,29 @@ def run_nmr(config: Mapping[str, Any] | Any, progress_cb: ProgressCallback = Non
         else:
             k_bounds.append({"min": None, "max": None})
 
+    stoich_map = cfg.get("stoichiometry_map") or cfg.get("stoichiometry")
+    if progress_cb is not None:
+        progress_cb(f"[DEBUG] stoichiometry_map present? {stoich_map is not None}")
+        if stoich_map is not None:
+            try:
+                import numpy as np
+
+                arr = np.asarray(stoich_map)
+                min_val = "NA"
+                max_val = "NA"
+                if arr.size:
+                    try:
+                        min_val = float(np.nanmin(arr))
+                        max_val = float(np.nanmax(arr))
+                    except Exception:
+                        min_val = "NA"
+                        max_val = "NA"
+                progress_cb(
+                    f"[DEBUG] stoichiometry_map raw shape={arr.shape}, min={min_val}, max={max_val}"
+                )
+            except Exception as exc:
+                progress_cb(f"[DEBUG] stoichiometry_map raw shape=<error: {exc}>")
+
     return process_nmr_data(
         file_path=str(cfg["file_path"]),
         spectra_sheet=str(cfg["nmr_sheet"]),
@@ -51,6 +74,6 @@ def run_nmr(config: Mapping[str, Any] | Any, progress_cb: ProgressCallback = Non
         model_settings=str(cfg.get("model_settings") or "Free"),
         non_absorbent_species=list(cfg.get("non_abs_species") or []),
         k_fixed=list((cfg.get("k_fixed") if cfg.get("k_fixed") is not None else cfg.get("fixed_mask")) or []) or None,
-        stoichiometry_map=cfg.get("stoichiometry_map") or cfg.get("stoichiometry"),
+        stoichiometry_map=stoich_map,
         show_stability_diagnostics=bool(cfg.get("show_stability_diagnostics", False)),
     )

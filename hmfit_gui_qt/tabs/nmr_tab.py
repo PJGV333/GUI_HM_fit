@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -527,21 +528,38 @@ class NMRTab(QWidget):
             model_mat = np.array(config.get("modelo") or [])
             comp_names = config.get("column_names") or []
             sig_data = config.get("signal_data") or []
-            comp_to_idx = {name: i for i, name in enumerate(comp_names)}
+
+            def _norm(text: str) -> str:
+                return re.sub(r"\s+", " ", str(text or "").strip()).lower()
+
+            comp_names_norm = [_norm(x) for x in comp_names]
+            comp_to_idx = {name: i for i, name in enumerate(comp_names_norm)}
             
             if model_mat.size > 0 and sig_data:
                 stoich_cols = []
                 for sig in sig_data:
-                    parent = sig.get("parent", "Auto (1:1)")
-                    if parent in comp_to_idx:
+                    parent_raw = sig.get("parent", "Auto (1:1)")
+                    parent_norm = _norm(parent_raw)
+                    parent_idx = None
+                    if parent_norm.startswith("auto"):
+                        parent_idx = None
+                    elif parent_norm == "mezcla":
+                        parent_idx = None
+                    else:
+                        parent_idx = comp_to_idx.get(parent_norm)
+
+                    if parent_idx is not None:
                         # Signal belongs to a specific component
-                        idx = comp_to_idx[parent]
+                        idx = parent_idx
                         # The coefficient of this component in each species
                         sig_stoich = model_mat[:, idx]
                     else:
                         # Auto or Mezcla -> assume 1.0 for all species (legacy behavior)
                         sig_stoich = np.ones(model_mat.shape[0])
                     stoich_cols.append(sig_stoich)
+                    self.log.append_text(
+                        f"[DEBUG] signal={sig.get('col_name')} parent='{parent_raw}' -> parent_idx={parent_idx}"
+                    )
                 
                 # Transpose to (n_species, n_signals)
                 stoich_map = np.array(stoich_cols).T.tolist()
