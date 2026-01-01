@@ -795,17 +795,11 @@ class NMRTab(QWidget):
             self._last_fit_context = None
             return
         export_data = result.get("export_data") or {}
-        k_hat_raw = export_data.get("k")
-        k_hat = list(k_hat_raw) if k_hat_raw is not None else []
-        if not k_hat:
-            k_hat = [c.get("log10K") for c in result.get("constants") or []]
+        k_hat = export_data.get("k") or [c.get("log10K") for c in result.get("constants") or []]
         if not k_hat:
             self.model_opt_plots.set_errors_context(None)
             self._last_fit_context = None
             return
-
-        parent_idx_raw = export_data.get("signal_parent_idx")
-        parent_idx = list(parent_idx_raw) if parent_idx_raw is not None else []
 
         model_matrix = export_data.get("modelo") or []
         modelo_solver = np.asarray(model_matrix, dtype=float).T if model_matrix else []
@@ -819,8 +813,6 @@ class NMRTab(QWidget):
             "y_fit_hat": export_data.get("Calculated_Chemical_Shifts") or [],
             "column_names": export_data.get("column_names") or [],
             "signal_names": export_data.get("signal_names") or [],
-            "parent_idx": parent_idx,
-            "signal_component": export_data.get("signal_component") or {},
             "non_abs_species": export_data.get("non_absorbent_species") or [],
             "fixed_mask": export_data.get("fixed_mask") or [],
             "modelo_solver": modelo_solver,
@@ -874,8 +866,6 @@ class NMRTab(QWidget):
             column_names = list(column_names_raw) if column_names_raw is not None else []
             signal_names_raw = ctx.get("signal_names")
             signal_names = list(signal_names_raw) if signal_names_raw is not None else []
-            parent_idx = ctx.get("parent_idx")
-            parent_idx = list(parent_idx) if parent_idx is not None else []
 
             if algorithm == "Newton-Raphson":
                 res = NewtonRaphson(C_T, modelo, nas, model_settings)
@@ -888,14 +878,8 @@ class NMRTab(QWidget):
             if D_cols is None or len(np.asarray(D_cols).shape) == 0:
                 if not column_names or not signal_names:
                     return np.asarray(theta0, dtype=float), False, {"error": "Missing D_cols and signal metadata."}
-                D_cols, parent_idx = build_D_cols(C_T, column_names, signal_names, default_idx=0)
+                D_cols, _ = build_D_cols(C_T, column_names, signal_names, default_idx=0)
             D_cols = np.asarray(D_cols, dtype=float)
-            if not parent_idx:
-                parent_idx_ctx = ctx.get("parent_idx")
-                parent_idx = list(parent_idx_ctx) if parent_idx_ctx is not None else []
-            modelo_abs = modelo
-            if nas:
-                modelo_abs = np.delete(modelo, nas, axis=0)
 
             mask = ctx.get("mask")
             if mask is None:
@@ -932,14 +916,7 @@ class NMRTab(QWidget):
                     k_curr_full = pack(theta_free)
                     C = res.concentraciones(k_curr_full)[0]
                     dq_cal = project_coeffs_block_onp_frac(
-                        dq_star,
-                        C,
-                        D_cols,
-                        mask,
-                        modelo=modelo_abs,
-                        parent_idx=parent_idx,
-                        rcond=1e-10,
-                        ridge=1e-8,
+                        dq_star, C, D_cols, mask, rcond=1e-10, ridge=1e-8
                     )
                     diff = dq_star - dq_cal
                     valid_residuals = mask & np.isfinite(dq_cal)

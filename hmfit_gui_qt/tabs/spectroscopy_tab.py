@@ -1059,10 +1059,7 @@ class SpectroscopyTab(QWidget):
             self._last_fit_context = None
             return
         export_data = result.get("export_data") or {}
-        k_hat_raw = export_data.get("k")
-        k_hat = list(k_hat_raw) if k_hat_raw is not None else []
-        if not k_hat:
-            k_hat = [c.get("log10K") for c in result.get("constants") or []]
+        k_hat = export_data.get("k") or [c.get("log10K") for c in result.get("constants") or []]
         if not k_hat:
             self.model_opt_plots.set_errors_context(None)
             self._last_fit_context = None
