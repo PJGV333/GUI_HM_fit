@@ -385,14 +385,13 @@ def _jac_varpro(C, A, dC_all, use_projector=True, rcond=1e-10):
         P = _projector(C, rcond=rcond)
         IminusP = np.eye(m) - P
 
-    Js = []
-    for q in range(p):
-        dCq = dC_all[:, :, q]     # (m × s)
-        Vq  = dCq @ A             # (m × nw)
-        if use_projector:
-            Vq = IminusP @ Vq
-        Js.append(Vq.reshape(m * nw))
-    J = np.stack(Js, axis=0)      # (p × m*nw)
+    # V: (m × p × nw)
+    V = np.tensordot(dC_all, A, axes=(1, 0))
+    if use_projector:
+        V = (IminusP @ V.reshape(m, p * nw)).reshape(m, p, nw)
+
+    # J: (p × m*nw)
+    J = V.transpose(1, 0, 2).reshape(p, m * nw)
     return J
 
 # --- al final del archivo, después de definir la función ---
@@ -809,6 +808,8 @@ def bootstrap_full_refit(
     fail_policy="skip",
     progress_cb=None,
     cancel_cb=None,
+    gc_collect=False,
+    gc_every=1,
 ):
     """
     Full-refit bootstrap: regenerate dataset via wild residuals and refit each replicate.
@@ -820,10 +821,16 @@ def bootstrap_full_refit(
         raise ValueError("B must be > 0.")
     if fail_policy not in ("skip", "stop"):
         raise ValueError("fail_policy must be 'skip' or 'stop'.")
+    gc_every = int(gc_every)
+    if gc_every <= 0:
+        raise ValueError("gc_every must be >= 1.")
 
     rng = _onp.random.default_rng(seed)
     samples_list = []
     n_fail = 0
+    fail_info = []
+    n_fallback = 0
+    fallback_methods = set()
 
     for b in range(B):
         if cancel_cb is not None and cancel_cb():
@@ -833,8 +840,18 @@ def bootstrap_full_refit(
         theta_star, ok, info = refit_fn(data_star, theta0, max_iter=max_iter, tol=tol)
         if ok:
             samples_list.append(_onp.asarray(theta_star, dtype=float).ravel())
+            if isinstance(info, dict):
+                used = info.get("optimizer_used")
+                requested = info.get("optimizer_requested")
+                fallback_used = bool(info.get("fallback_used"))
+                if fallback_used or (used and requested and used != requested):
+                    n_fallback += 1
+                    if used:
+                        fallback_methods.add(str(used))
         else:
             n_fail += 1
+            if info is not None and len(fail_info) < 3:
+                fail_info.append(info)
             if fail_policy == "stop":
                 raise RuntimeError(f"Bootstrap full-refit failed at replicate {b + 1}: {info}")
         if progress_cb is not None:
@@ -846,6 +863,13 @@ def bootstrap_full_refit(
                     "n_fail": n_fail,
                 }
             )
+        if gc_collect and ((b + 1) % gc_every == 0):
+            data_star = None
+            theta0 = None
+            theta_star = None
+            info = None
+            import gc
+            gc.collect()
 
     samples = (
         _onp.vstack(samples_list)
@@ -881,6 +905,9 @@ def bootstrap_full_refit(
         "p16": p16,
         "p84": p84,
         "corr": corr,
+        "fail_info": fail_info,
+        "n_fallback": int(n_fallback),
+        "fallback_methods": sorted(fallback_methods),
     }
 
 

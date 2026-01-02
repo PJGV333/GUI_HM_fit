@@ -1,13 +1,28 @@
 # np_backend.py
-USE_JAX = False  # ← mañana lo podemos poner en False si algo falla
+import os
+
+# Enable JAX by default; allow override with HMFIT_USE_JAX=0/1.
+_USE_JAX_ENV = os.environ.get("HMFIT_USE_JAX", "").strip().lower()
+_JAX_ON = ("1", "true", "yes", "y", "on")
+_JAX_OFF = ("0", "false", "no", "n", "off")
+if _USE_JAX_ENV in _JAX_OFF:
+    USE_JAX = False
+elif _USE_JAX_ENV in _JAX_ON:
+    USE_JAX = True
+else:
+    USE_JAX = True
 
 if USE_JAX:
-    from jax import config
-    config.update("jax_enable_x64", True)
-    import jax
-    import jax.numpy as xp
-    from jax import jit, jacrev, vmap, value_and_grad, lax
-else:
+    try:
+        from jax import config
+        config.update("jax_enable_x64", True)
+        import jax
+        import jax.numpy as xp
+        from jax import jit, jacrev, vmap, value_and_grad, lax
+    except Exception:
+        USE_JAX = False
+
+if not USE_JAX:
     import numpy as xp
     def jit(f): return f
     def jacrev(f): raise NotImplementedError("jacrev no disponible con NumPy")

@@ -12,6 +12,20 @@
     "NH-1 (R) / ppm",
     "Me (Q) / ppm"
   ],
+  "signal_data": [
+    {
+      "col_name": "NH-2 (R) / ppm",
+      "parent": "R (host) / M"
+    },
+    {
+      "col_name": "NH-1 (R) / ppm",
+      "parent": "R (host) / M"
+    },
+    {
+      "col_name": "Me (Q) / ppm",
+      "parent": "Q (TMA⁺) / M"
+    }
+  ],
   "receptor_label": "R (host) / M",
   "guest_label": "Q (TMA⁺) / M",
   "modelo": [
@@ -56,7 +70,9 @@
       1.0
     ]
   ],
-  "non_abs_species": [],
+  "non_abs_species": [
+    2
+  ],
   "algorithm": "Newton-Raphson",
   "model_settings": "Free",
   "optimizer": "powell",
@@ -102,5 +118,6 @@
     false,
     false,
     false
-  ]
+  ],
+  "show_stability_diagnostics": false
 }

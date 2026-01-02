@@ -778,6 +778,7 @@ class SpectroscopyTab(QWidget):
 
         self._worker = FitWorker(run_spectroscopy_fit, config=config, parent=self)
         self._thread = self._worker.thread()
+        self._thread.finished.connect(self._on_fit_thread_finished, Qt.ConnectionType.QueuedConnection)
         self._worker.progress.connect(self._on_worker_progress, Qt.ConnectionType.QueuedConnection)
         self._worker.result.connect(self._on_fit_result, Qt.ConnectionType.QueuedConnection)
         self._worker.error.connect(self._on_fit_error, Qt.ConnectionType.QueuedConnection)
@@ -861,9 +862,11 @@ class SpectroscopyTab(QWidget):
         QMessageBox.critical(self, "Fit error", str(message))
 
     def _on_fit_finished(self) -> None:
+        self._set_running(False)
+
+    def _on_fit_thread_finished(self) -> None:
         self._worker = None
         self._thread = None
-        self._set_running(False)
 
     # ---- Import / Export / Reset / Save ----
     def _on_export_clicked(self) -> None:
@@ -1167,20 +1170,20 @@ class SpectroscopyTab(QWidget):
             else:
                 k_free0 = p0_full[free_idx]
                 bounds_free = [bnds[i] for i in free_idx]
-                if optimizer == "differential_evolution":
-                    opt_res = differential_evolution(
-                        f_m,
-                        bounds_free,
-                        x0=k_free0,
-                        strategy="best1bin",
-                        maxiter=int(max_iter),
-                        popsize=15,
-                        tol=float(tol),
-                        mutation=(0.5, 1),
-                        recombination=0.7,
-                        init="latinhypercube",
-                    )
-                else:
+                def _run_optimizer(method_name: str):
+                    if method_name == "differential_evolution":
+                        return differential_evolution(
+                            f_m,
+                            bounds_free,
+                            x0=k_free0,
+                            strategy="best1bin",
+                            maxiter=int(max_iter),
+                            popsize=15,
+                            tol=float(tol),
+                            mutation=(0.5, 1),
+                            recombination=0.7,
+                            init="latinhypercube",
+                        )
                     options = {"maxiter": int(max_iter)}
                     if tol is not None:
                         options.update(
@@ -1192,9 +1195,45 @@ class SpectroscopyTab(QWidget):
                                 "fatol": float(tol),
                             }
                         )
-                    opt_res = optimize.minimize(
-                        f_m, k_free0, method=optimizer, bounds=bounds_free, options=options
+                    return optimize.minimize(
+                        f_m, k_free0, method=method_name, bounds=bounds_free, options=options
                     )
+
+                def _valid_opt_res(res) -> bool:
+                    if res is None:
+                        return False
+                    x = getattr(res, "x", None)
+                    if x is None:
+                        return False
+                    x = np.asarray(x, dtype=float).ravel()
+                    if x.size != free_idx.size:
+                        return False
+                    return bool(np.all(np.isfinite(x)))
+
+                opt_res = None
+                opt_err = None
+                opt_method = optimizer
+                try:
+                    opt_res = _run_optimizer(optimizer)
+                except Exception as exc:
+                    opt_err = str(exc)
+
+                if not _valid_opt_res(opt_res):
+                    fallback_method = "nelder-mead" if optimizer != "nelder-mead" else None
+                    if fallback_method is not None:
+                        try:
+                            opt_res = _run_optimizer(fallback_method)
+                            opt_method = fallback_method
+                            opt_err = None
+                        except Exception as exc:
+                            opt_err = str(exc)
+
+                if not _valid_opt_res(opt_res):
+                    return np.asarray(theta0, dtype=float), False, {
+                        "error": opt_err or "Optimization failed.",
+                        "optimizer": optimizer,
+                    }
+
                 theta_star = pack(opt_res.x)
                 success = bool(getattr(opt_res, "success", True))
                 n_iter = int(getattr(opt_res, "nit", 0) or 0)
@@ -1202,7 +1241,14 @@ class SpectroscopyTab(QWidget):
             final_rms = f_m(theta_star[free_idx] if free_idx.size else np.array([]))
             theta_star = np.asarray(theta_star, dtype=float).ravel()
             ok = bool(np.isfinite(final_rms) and np.all(np.isfinite(theta_star)))
-            info = {"n_iter": n_iter, "final_rms": final_rms, "success": success}
+            info = {
+                "n_iter": n_iter,
+                "final_rms": final_rms,
+                "success": success,
+                "optimizer_requested": optimizer,
+                "optimizer_used": opt_method if free_idx.size else None,
+                "fallback_used": bool(free_idx.size and opt_method != optimizer),
+            }
             return theta_star, ok, info
         except Exception as exc:
             return np.asarray(theta0, dtype=float), False, {"error": str(exc)}

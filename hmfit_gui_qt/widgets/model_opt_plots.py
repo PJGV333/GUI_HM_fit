@@ -624,6 +624,8 @@ class ModelOptPlotsWidget(QWidget):
         self.btn_error_export.setEnabled(False)
         self._set_errors_busy(True, payload.get("options") or {})
         self._errors_worker = ErrorsWorker(self._compute_errors_payload, payload=payload, parent=self)
+        worker_thread = self._errors_worker.thread()
+        worker_thread.finished.connect(self._on_error_thread_finished)
         self._errors_worker.progress.connect(self._on_error_progress)
         self._errors_worker.result.connect(self._on_error_worker_result)
         self._errors_worker.error.connect(self._on_error_worker_error)
@@ -726,6 +728,8 @@ class ModelOptPlotsWidget(QWidget):
 
     def _on_error_worker_finished(self) -> None:
         self._set_errors_busy(False, {})
+
+    def _on_error_thread_finished(self) -> None:
         self._errors_worker = None
 
     def _compute_errors_from_context(
@@ -807,6 +811,8 @@ class ModelOptPlotsWidget(QWidget):
         n_success = None
         n_fail = None
         boot_summary = None
+        n_fallback = None
+        fallback_methods = None
 
         if technique == "spectro":
             Y_raw = ctx.get("Y")
@@ -892,6 +898,8 @@ class ModelOptPlotsWidget(QWidget):
                 n_success = boot_summary["n_success"]
                 n_fail = boot_summary["n_fail"]
                 corr = boot_summary["corr"]
+                n_fallback = boot_summary.get("n_fallback")
+                fallback_methods = boot_summary.get("fallback_methods")
         elif technique == "nmr":
             dq_raw = ctx.get("dq")
             dq_fit_raw = ctx.get("dq_fit")
@@ -1036,7 +1044,22 @@ class ModelOptPlotsWidget(QWidget):
             corr = self._corr_from_cov(base_metrics, k_hat.size)
         elif method == "bootstrap_full_refit_audit":
             if samples is None or samples.size == 0:
-                raise ValueError("Bootstrap samples are empty.")
+                detail = ""
+                if boot_summary is not None:
+                    n_fail = boot_summary.get("n_fail")
+                    fail_info = boot_summary.get("fail_info") or []
+                    if n_fail is not None:
+                        detail = f" All {int(n_fail)} replicates failed."
+                    if fail_info:
+                        last_info = fail_info[-1]
+                        last_err = (
+                            last_info.get("error")
+                            if isinstance(last_info, dict)
+                            else str(last_info)
+                        )
+                        if last_err:
+                            detail = f"{detail} Last error: {last_err}"
+                raise ValueError(f"Bootstrap samples are empty.{detail}")
             if boot_summary is not None and boot_summary.get("median") is not None:
                 median = np.asarray(boot_summary["median"], dtype=float)
                 ci_2p5 = np.asarray(boot_summary["p2_5"], dtype=float)
@@ -1064,7 +1087,22 @@ class ModelOptPlotsWidget(QWidget):
             perc_err, _, _ = percent_error_log10K(median, se_log10)
         else:
             if samples is None or samples.size == 0:
-                raise ValueError("Bootstrap samples are empty.")
+                detail = ""
+                if boot_summary is not None:
+                    n_fail = boot_summary.get("n_fail")
+                    fail_info = boot_summary.get("fail_info") or []
+                    if n_fail is not None:
+                        detail = f" All {int(n_fail)} replicates failed."
+                    if fail_info:
+                        last_info = fail_info[-1]
+                        last_err = (
+                            last_info.get("error")
+                            if isinstance(last_info, dict)
+                            else str(last_info)
+                        )
+                        if last_err:
+                            detail = f"{detail} Last error: {last_err}"
+                raise ValueError(f"Bootstrap samples are empty.{detail}")
             median = np.median(samples, axis=0)
             ci_2p5 = np.percentile(samples, 2.5, axis=0)
             ci_97p5 = np.percentile(samples, 97.5, axis=0)
@@ -1088,6 +1126,8 @@ class ModelOptPlotsWidget(QWidget):
             fail_policy=fail_policy,
             n_success=n_success,
             n_fail=n_fail,
+            n_fallback=n_fallback,
+            fallback_methods=fallback_methods,
         )
 
         rms_val = base_metrics.get("RMS")
@@ -1171,6 +1211,8 @@ class ModelOptPlotsWidget(QWidget):
         fail_policy: str | None = None,
         n_success: int | None = None,
         n_fail: int | None = None,
+        n_fallback: int | None = None,
+        fallback_methods: list[str] | None = None,
     ) -> str:
         method_labels = {
             "analytic": "Analytical (VarPro covariance)",
@@ -1190,6 +1232,10 @@ class ModelOptPlotsWidget(QWidget):
                     lines.append(f"fail_policy={fail_policy}")
                 if n_success is not None and n_fail is not None:
                     lines.append(f"n_success={int(n_success)}, n_fail={int(n_fail)}")
+                if n_fallback:
+                    methods = ", ".join(fallback_methods or [])
+                    suffix = f" [{methods}]" if methods else ""
+                    lines.append(f"fallback_used={int(n_fallback)}{suffix}")
             else:
                 lines.append(f"B={B}, seed={seed_txt}, wild={wild}, lambda={lam:g}")
 
