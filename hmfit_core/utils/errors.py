@@ -512,6 +512,7 @@ def compute_errors_nmr_varpro(
     H,
     modelo,
     nas,
+    stoichiometry=None,
     rcond=1e-10,
     use_projector=True,
     mask=None,
@@ -525,9 +526,10 @@ def compute_errors_nmr_varpro(
     NMR version with missing data support and Weighted Covariance (IRLS).
     If 'mask' is None, uses all finite dq values.
     If 'mask' is bool (m x nP), ignores unobserved rows per column.
-    
+
     Now supports 'fixed_mask' to correctly account for degrees of freedom.
     Now supports 'weights' for IRLS (Signal-based weighting).
+    Optional 'stoichiometry' enables per-signal fractions for Xi (HypNMR-like).
     """
     C, Co = res.concentraciones(k)    # C: (m × n_abs), Co: (m × nspec)
     nspec = Co.shape[1]
@@ -592,24 +594,55 @@ def compute_errors_nmr_varpro(
     J_cols   = []   # lista de J (p × m_j) por columna
     W_blocks = []   # lista de pesos (sqrt) correspondientes a R_blocks
 
+    S = None
+    if stoichiometry is not None:
+        try:
+            S = _onp.asarray(stoichiometry, dtype=float)
+            if S.size == 0 or S.ndim != 2:
+                S = None
+            else:
+                if S.shape == (nP, n_abs):
+                    S = S.T
+                if S.shape == (nspec, nP):
+                    nas_idx = []
+                    try:
+                        if nas is not None:
+                            nas_idx = [i for i in list(nas) if 0 <= int(i) < nspec]
+                    except Exception:
+                        nas_idx = []
+                    if nas_idx:
+                        S = _onp.delete(S, nas_idx, axis=0)
+                if S.shape != (n_abs, nP):
+                    S = None
+        except Exception:
+            S = None
+
     # Precompute dC_all_abs (m × n_abs × p)
     dC_all_abs = _build_dC_all(Co, Ms, nas, param_idx)
 
     for j in range(nP):
         mj_obs = mask[:, j]
-        # Signal-specific parent concentration
-        Hj_all = H[:, j] if H.ndim == 2 else H
-        
-        # Point is valid for signal j if:
-        # 1. It is observed (mask)
-        # 2. Parent concentration > threshold
-        mj = mj_obs & (_onp.abs(Hj_all) > 1e-12)
+        if S is not None:
+            S_j = S[:, j]
+            D_all = C @ S_j
+            mj = mj_obs & _onp.isfinite(D_all) & (_onp.abs(D_all) > 1e-12)
+        else:
+            # Signal-specific parent concentration
+            Hj_all = H[:, j] if H.ndim == 2 else H
+            # Point is valid for signal j if:
+            # 1. It is observed (mask)
+            # 2. Parent concentration > threshold
+            mj = mj_obs & (_onp.abs(Hj_all) > 1e-12)
         
         if not mj.any():
             continue
 
         # Calculate Xi_m LOCALLY to avoid global inf
-        Xi_m = C[mj, :] / Hj_all[mj, None]      # (m_j × n_abs)
+        if S is not None:
+            D = D_all[mj]
+            Xi_m = (C[mj, :] * S_j[None, :]) / D[:, None]  # (m_j × n_abs)
+        else:
+            Xi_m = C[mj, :] / Hj_all[mj, None]      # (m_j × n_abs)
         y    = dq[mj, j]                        # (m_j,)
         w_j  = w_mat[mj, j]                     # (m_j,)
         sq_w = _onp.sqrt(w_j)                   # (m_j,)
@@ -650,7 +683,13 @@ def compute_errors_nmr_varpro(
         W_blocks.append(sq_w)
 
         # Jacobiano para la señal j: dXi en filas observadas
-        dXi_m = (dC_all_abs[mj, :, :] / Hj_all[mj].reshape(-1, 1, 1))   # (m_j × n_abs × p)
+        if S is not None:
+            dC_m = dC_all_abs[mj, :, :]
+            dD_m = _onp.tensordot(dC_m, S_j, axes=(1, 0))
+            dXi_m = (dC_m * S_j[None, :, None]) / D[:, None, None]
+            dXi_m = dXi_m - Xi_m[:, :, None] * dD_m[:, None, :] / D[:, None, None]
+        else:
+            dXi_m = (dC_all_abs[mj, :, :] / Hj_all[mj].reshape(-1, 1, 1))   # (m_j × n_abs × p)
         Jj = _jac_varpro(Xi_m, Aj, dXi_m, use_projector=use_projector, rcond=rcond)  # (p × m_j)
         J_cols.append(Jj)
 
@@ -949,6 +988,7 @@ def bootstrap_one_step_nmr(
     modelo,
     nas,
     B,
+    stoichiometry=None,
     seed=None,
     wild="rademacher",
     lam=1e-3,
@@ -999,6 +1039,7 @@ def bootstrap_one_step_nmr(
             D_cols,
             modelo,
             nas,
+            stoichiometry=stoichiometry,
             mask=mask,
             fixed_mask=fixed_mask,
             rcond=rcond,

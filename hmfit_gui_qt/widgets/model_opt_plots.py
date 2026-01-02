@@ -787,6 +787,15 @@ class ModelOptPlotsWidget(QWidget):
             if fixed_mask_raw is not None
             else np.zeros(k_hat.size, dtype=bool)
         )
+        stoich_raw = ctx.get("stoichiometry_map")
+        stoichiometry = None
+        if stoich_raw is not None:
+            try:
+                stoichiometry = np.asarray(stoich_raw, dtype=float)
+                if stoichiometry.size == 0:
+                    stoichiometry = None
+            except Exception:
+                stoichiometry = None
 
         res = self._build_solver(algorithm, C_T, modelo, nas, model_settings)
 
@@ -915,6 +924,7 @@ class ModelOptPlotsWidget(QWidget):
                 D_cols,
                 modelo,
                 nas,
+                stoichiometry=stoichiometry,
                 mask=mask,
                 fixed_mask=fixed_mask,
                 rcond=1e-10,
@@ -952,6 +962,7 @@ class ModelOptPlotsWidget(QWidget):
                     modelo,
                     nas,
                     B,
+                    stoichiometry=stoichiometry,
                     seed=seed,
                     wild=wild,
                     lam=lam,

@@ -838,6 +838,7 @@ class NMRTab(QWidget):
             "signal_names": export_data.get("signal_names") or [],
             "non_abs_species": export_data.get("non_absorbent_species") or [],
             "fixed_mask": export_data.get("fixed_mask") or [],
+            "stoichiometry_map": export_data.get("stoichiometry_map") or [],
             "modelo_solver": modelo_solver,
             "algorithm": (self._last_config or {}).get("algorithm", "Newton-Raphson"),
             "model_settings": (self._last_config or {}).get("model_settings", "Free"),
@@ -889,6 +890,15 @@ class NMRTab(QWidget):
             column_names = list(column_names_raw) if column_names_raw is not None else []
             signal_names_raw = ctx.get("signal_names")
             signal_names = list(signal_names_raw) if signal_names_raw is not None else []
+            stoich_raw = ctx.get("stoichiometry_map")
+            stoichiometry = None
+            if stoich_raw is not None:
+                try:
+                    stoichiometry = np.asarray(stoich_raw, dtype=float)
+                    if stoichiometry.size == 0:
+                        stoichiometry = None
+                except Exception:
+                    stoichiometry = None
 
             if algorithm == "Newton-Raphson":
                 res = NewtonRaphson(C_T, modelo, nas, model_settings)
@@ -939,7 +949,7 @@ class NMRTab(QWidget):
                     k_curr_full = pack(theta_free)
                     C = res.concentraciones(k_curr_full)[0]
                     dq_cal = project_coeffs_block_onp_frac(
-                        dq_star, C, D_cols, mask, rcond=1e-10, ridge=1e-8
+                        dq_star, C, D_cols, mask, stoichiometry=stoichiometry, rcond=1e-10, ridge=1e-8
                     )
                     diff = dq_star - dq_cal
                     valid_residuals = mask & np.isfinite(dq_cal)

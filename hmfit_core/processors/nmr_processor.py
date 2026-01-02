@@ -521,6 +521,7 @@ def process_nmr_data(
             k_names = [f"K{i+1}" for i in range(len(k_opt_full))]
             err_res = compute_errors_nmr_varpro(
                 k_opt_full, res, dq, D_cols, modelo, nas,
+                stoichiometry=stoich_mat,
                 mask=mask,
                 fixed_mask=fixed_mask,
                 weights=weights_per_signal, # Use final weights
@@ -659,6 +660,7 @@ def process_nmr_data(
             "derived_noncoop": derived_noncoop,
             "signal_names": signal_names,
             "column_names": column_names,
+            "stoichiometry_map": stoich_mat.tolist() if stoich_mat is not None else [],
             "stats_table": [
                 ["RMS", float(rms)],
                 ["Error absoluto medio", float(MAE)],
