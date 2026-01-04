@@ -254,6 +254,18 @@ class ModelOptPlotsWidget(QWidget):
             ]
         )
         opt_form.addRow("Optimizer", self.combo_optimizer)
+
+        self.chk_multistart = QCheckBox("Multi-start", opt_tab)
+        self.edit_multistart = QLineEdit(opt_tab)
+        self.edit_multistart.setPlaceholderText("runs o rango de semillas (ej. 10 o 1-10)")
+        self.edit_multistart.setEnabled(False)
+        self.chk_multistart.toggled.connect(self.edit_multistart.setEnabled)
+        multi_widget = QWidget(opt_tab)
+        multi_layout = QHBoxLayout(multi_widget)
+        multi_layout.setContentsMargins(0, 0, 0, 0)
+        multi_layout.addWidget(self.chk_multistart)
+        multi_layout.addWidget(self.edit_multistart, 1)
+        opt_form.addRow(multi_widget)
         opt_layout.addLayout(opt_form)
 
         opt_layout.addWidget(QLabel("Parameters (Initial Estimates)"), 0)
@@ -1774,6 +1786,68 @@ class ModelOptPlotsWidget(QWidget):
             if it is not None:
                 self._on_params_item_changed(it)
 
+    def get_multi_start(self) -> tuple[int, list[int] | None]:
+        if not self.chk_multistart.isChecked():
+            return 1, None
+        raw = (self.edit_multistart.text() or "").strip()
+        if not raw:
+            return 10, None
+        if "-" in raw:
+            try:
+                a_str, b_str = raw.split("-", 1)
+                a = int(a_str.strip())
+                b = int(b_str.strip())
+                if a > b:
+                    a, b = b, a
+                seeds = list(range(a, b + 1))
+                return len(seeds), seeds
+            except Exception:
+                pass
+        try:
+            runs = int(raw)
+            return max(1, runs), None
+        except Exception:
+            return 10, None
+
+    def set_multi_start(self, runs: int | None, seeds: list[int] | None = None) -> None:
+        runs_val = 1
+        try:
+            if runs is not None:
+                runs_val = int(runs)
+        except Exception:
+            runs_val = 1
+
+        seeds_list: list[int] | None = None
+        if seeds is not None and isinstance(seeds, (list, tuple)):
+            tmp: list[int] = []
+            for s in seeds:
+                try:
+                    tmp.append(int(s))
+                except Exception:
+                    continue
+            if tmp:
+                seeds_list = tmp
+
+        if seeds_list:
+            seq = list(seeds_list)
+            is_range = len(seq) >= 2 and all(seq[i] + 1 == seq[i + 1] for i in range(len(seq) - 1))
+            if is_range:
+                text = f"{seq[0]}-{seq[-1]}"
+            elif len(seq) == 1:
+                text = str(seq[0])
+            else:
+                text = str(max(runs_val, len(seq)))
+            self.chk_multistart.setChecked(True)
+            self.edit_multistart.setText(text)
+            return
+
+        if runs_val > 1:
+            self.chk_multistart.setChecked(True)
+            self.edit_multistart.setText(str(runs_val))
+        else:
+            self.chk_multistart.setChecked(False)
+            self.edit_multistart.clear()
+
     # ---- Export / Import ----
     def collect_state(self) -> ModelOptPlotsState:
         initial_k, bounds, fixed_mask = self.get_optimization()
@@ -1824,6 +1898,8 @@ class ModelOptPlotsWidget(QWidget):
         self.combo_model_settings.setCurrentIndex(0)
         self.combo_optimizer.setCurrentIndex(0)
         self.params_table.setRowCount(0)
+        self.chk_multistart.setChecked(False)
+        self.edit_multistart.clear()
 
         self._available_conc_columns = []
         self._reset_roles_ui()

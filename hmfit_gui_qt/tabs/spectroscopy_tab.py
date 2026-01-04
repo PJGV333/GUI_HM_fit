@@ -733,6 +733,7 @@ class SpectroscopyTab(QWidget):
         if receptor_label == guest_label:
             raise ValueError("Receptor and Guest cannot be the same column.")
 
+        runs, seeds = self.model_opt_plots.get_multi_start()
         config = {
             "file_path": self._file_path,
             "spectra_sheet": spectra_sheet,
@@ -755,7 +756,10 @@ class SpectroscopyTab(QWidget):
             "channels_raw": channels_raw,
             "channels_resolved": channels_resolved,
             "show_stability_diagnostics": self.chk_show_diag.isChecked(),
+            "multi_start_runs": runs,
         }
+        if seeds is not None:
+            config["multi_start_seeds"] = seeds
         return config
 
     def _on_process_clicked(self) -> None:
@@ -1017,6 +1021,10 @@ class SpectroscopyTab(QWidget):
             guest_label=str(config.get("guest_label") or ""),
         )
         self.model_opt_plots.apply_state(state)
+        self.model_opt_plots.set_multi_start(
+            config.get("multi_start_runs", 1),
+            config.get("multi_start_seeds"),
+        )
 
         if "show_stability_diagnostics" in config:
             self.chk_show_diag.setChecked(bool(config["show_stability_diagnostics"]))

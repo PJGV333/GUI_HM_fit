@@ -25,6 +25,9 @@ def run_spectroscopy(config: Mapping[str, Any] | Any, progress_cb: ProgressCallb
     cfg = _normalize_config(config)
     set_progress_callback(progress_cb, loop=None)
 
+    multi_runs = int(cfg.get("multi_start_runs", 1) or 1)
+    multi_seeds = cfg.get("multi_start_seeds")
+
     return process_spectroscopy_data(
         file_path=str(cfg["file_path"]),
         spectra_sheet=str(cfg["spectra_sheet"]),
@@ -45,5 +48,6 @@ def run_spectroscopy(config: Mapping[str, Any] | Any, progress_cb: ProgressCallb
         channels_mode=str(cfg.get("channels_mode") or "all"),
         channels_resolved=list(cfg.get("channels_resolved") or []),
         show_stability_diagnostics=bool(cfg.get("show_stability_diagnostics", False)),
+        multi_start_runs=multi_runs,
+        multi_start_seeds=multi_seeds,
     )
-

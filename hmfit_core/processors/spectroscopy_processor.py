@@ -456,6 +456,8 @@ def process_spectroscopy_data(
     channels_mode=None,
     channels_resolved=None,
     show_stability_diagnostics: bool = False,
+    multi_start_runs: int = 1,
+    multi_start_seeds=None,
 ):
     """
     Main processing function.
@@ -702,24 +704,23 @@ def process_spectroscopy_data(
             return 1e50
     
     # Best-so-far tracking
-    best_result = {"rms": float('inf'), "k": np.copy(k)}
+    best_result = {"rms": float("inf"), "k": onp.copy(k)}
 
-    # Optimization callback
-    def callback_log(xk, convergence=None):
-        # convergence arg is for differential_evolution, minimize passes only xk
-        val = f_m(xk)
-        
-        # Update best
-        if val < best_result["rms"]:
-            best_result["rms"] = val
-            best_result["k"] = np.copy(xk)
-            
-            log(f"Iter: f(x)={val:.6e} | x={[float(xi) for xi in xk]}")
+    def _random_start(base, bounds_list, rng):
+        start = onp.empty_like(onp.asarray(base, dtype=float), dtype=float)
+        for ii, (lb, ub) in enumerate(bounds_list):
+            lb_val = lb if lb is not None and onp.isfinite(lb) else None
+            ub_val = ub if ub is not None and onp.isfinite(ub) else None
+            if lb_val is not None and ub_val is not None:
+                start[ii] = rng.uniform(lb_val, ub_val)
+            else:
+                start[ii] = onp.asarray(base, dtype=float)[ii] + rng.uniform(-1.0, 1.0)
+        return start
 
     # Optimization
     log(f"Optimizer: {optimizer}")
     log(f"Bounds (procesados): {processed_bounds}")  # keep visible for debugging powell with ±inf
-    
+
     if optimizer == "differential_evolution":
         # differential_evolution requiere límites finitos
         for (min_val, max_val) in processed_bounds:
@@ -727,30 +728,74 @@ def process_spectroscopy_data(
                 msg = "Differential evolution requires all bounds to be finite. Please set Min/Max for each parameter."
                 log_progress(msg)
                 raise ValueError(msg)
-        
-        r_0 = differential_evolution(
-            f_m,
-            processed_bounds,
-            x0=k,
-            strategy='best1bin',
-            maxiter=1000,
-            popsize=15,
-            tol=0.01,
-            mutation=(0.5, 1),
-            recombination=0.7,
-            init='latinhypercube',
-            callback=callback_log,
-        )
-    else:
-        r_0 = optimize.minimize(f_m, k, method=optimizer, bounds=processed_bounds, callback=callback_log)
-    
-    # Check if final result is better or worse than best seen
-    final_rms = f_m(r_0.x)
-    if final_rms > best_result["rms"]:
-        log_progress(f"Warning: Final result (RMS={final_rms:.6e}) is worse than best seen (RMS={best_result['rms']:.6e}). Restoring best parameters.")
-        k = best_result["k"]
-    else:
-        k = r_0.x
+
+    ms_runs = max(int(multi_start_runs), 1)
+    seed_list = None
+    if multi_start_seeds is not None:
+        try:
+            seeds = [int(s) for s in multi_start_seeds]
+        except Exception:
+            seeds = []
+        if seeds and len(seeds) == ms_runs:
+            seed_list = seeds
+
+    for ms_iter in range(ms_runs):
+        seed = seed_list[ms_iter] if seed_list else None
+        if ms_iter == 0:
+            start_k = onp.asarray(k, dtype=float)
+        else:
+            rng = onp.random.default_rng(seed)
+            start_k = _random_start(k, processed_bounds, rng)
+
+        local_best = {"rms": float("inf"), "k": onp.copy(start_k)}
+
+        # Optimization callback
+        def callback_log(xk, convergence=None):
+            # convergence arg is for differential_evolution, minimize passes only xk
+            val = f_m(xk)
+            if val < local_best["rms"]:
+                local_best["rms"] = val
+                local_best["k"] = onp.copy(xk)
+                log(f"Iter: f(x)={val:.6e} | x={[float(xi) for xi in xk]}")
+
+        run_failed = False
+        try:
+            if optimizer == "differential_evolution":
+                r_0 = differential_evolution(
+                    f_m,
+                    processed_bounds,
+                    x0=start_k,
+                    strategy='best1bin',
+                    maxiter=1000,
+                    popsize=15,
+                    tol=0.01,
+                    mutation=(0.5, 1),
+                    recombination=0.7,
+                    init='latinhypercube',
+                    callback=callback_log,
+                    seed=seed,
+                )
+            else:
+                r_0 = optimize.minimize(f_m, start_k, method=optimizer, bounds=processed_bounds, callback=callback_log)
+            run_rms = f_m(r_0.x)
+            run_k = r_0.x
+            if onp.isfinite(local_best["rms"]) and local_best["rms"] < run_rms:
+                run_rms = local_best["rms"]
+                run_k = local_best["k"]
+            if run_rms < best_result["rms"]:
+                best_result["rms"] = run_rms
+                best_result["k"] = onp.copy(run_k)
+        except Exception as run_exc:
+            run_failed = True
+            log_progress(f"[DEBUG] optimization run {ms_iter+1}/{ms_runs} failed: {run_exc}")
+
+        if ms_runs > 1:
+            best_msg = f"{best_result['rms']:.6e}" if onp.isfinite(best_result["rms"]) else "inf"
+            log_progress(f"[MS] run {ms_iter+1}/{ms_runs} best={best_msg}")
+        if run_failed:
+            continue
+
+    k = best_result["k"]
 
     k = np.ravel(k)
     

@@ -25,6 +25,9 @@ def run_nmr(config: Mapping[str, Any] | Any, progress_cb: ProgressCallback = Non
     cfg = _normalize_config(config)
     set_progress_callback(progress_cb, loop=None)
 
+    multi_runs = int(cfg.get("multi_start_runs", 1) or 1)
+    multi_seeds = cfg.get("multi_start_seeds")
+
     bounds_raw = list(cfg.get("bounds") or [])
     k_bounds: list[dict[str, float]] = []
     for b in bounds_raw:
@@ -76,4 +79,6 @@ def run_nmr(config: Mapping[str, Any] | Any, progress_cb: ProgressCallback = Non
         k_fixed=list((cfg.get("k_fixed") if cfg.get("k_fixed") is not None else cfg.get("fixed_mask")) or []) or None,
         stoichiometry_map=stoich_map,
         show_stability_diagnostics=bool(cfg.get("show_stability_diagnostics", False)),
+        multi_start_runs=multi_runs,
+        multi_start_seeds=multi_seeds,
     )
