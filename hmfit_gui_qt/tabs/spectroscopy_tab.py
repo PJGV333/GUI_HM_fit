@@ -241,7 +241,7 @@ class SpectroscopyTab(QWidget):
         self.model_opt_plots.model_defined.connect(self._on_model_defined)
         left_layout.addWidget(self.model_opt_plots, 1)
 
-        # Actions row (Historical reference to Tauri buttons)
+        # Actions row (historical reference to previous UI buttons)
         actions_group = QGroupBox("", left_container)
         actions_layout = QHBoxLayout(actions_group)
         actions_layout.setContentsMargins(6, 6, 6, 6)
@@ -484,7 +484,7 @@ class SpectroscopyTab(QWidget):
 
         for col in columns:
             cb = QCheckBox(str(col), self._columns_widget)
-            cb.setChecked(True)  # match historical Tauri default (all enabled if no selection)
+            cb.setChecked(True)  # match historical default (all enabled if no selection)
             cb.toggled.connect(self._on_conc_columns_toggled)
             self._columns_layout.addWidget(cb)
 
@@ -519,7 +519,7 @@ class SpectroscopyTab(QWidget):
         self.btn_apply_channels.setEnabled(bool(is_custom))
 
         if not is_custom:
-            # Mirror Tauri: "All" is explicit.
+            # Mirror historical behavior: "All" is explicit.
             self.edit_channels_spec.setText("All")
 
         # EFA requires full spectrum
@@ -721,7 +721,7 @@ class SpectroscopyTab(QWidget):
         else:
             channels_raw = "All"
 
-        # EFA must be off for Custom channels (wx/Tauri behavior)
+        # EFA must be off for Custom channels (historical behavior)
         efa_enabled = bool(self.chk_efa.isChecked()) and channels_mode == "all"
         efa_eigenvalues = int(self.spin_efa_eigen.value())
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # NR_conc_algoritm.py
 # ---------------------------------------------
 # Newton–Raphson para balance de masa con:

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
@@ -21,7 +22,7 @@ def _normalize_config(config: Mapping[str, Any] | Any) -> dict[str, Any]:
 
 def _normalize_nmr_config(config: Mapping[str, Any] | Any) -> dict[str, Any]:
     """
-    Accepted config schema (compatible with historical wx + Tauri naming):
+    Accepted config schema (compatible with historical UI naming):
 
     Required:
     - file_path: str
@@ -31,7 +32,7 @@ def _normalize_nmr_config(config: Mapping[str, Any] | Any) -> dict[str, Any]:
     - modelo: list[list[float]]
 
     Sheet key (either):
-    - nmr_sheet: str (historical wx / current hmfit_core naming)
+    - nmr_sheet: str (historical / current hmfit_core naming)
     - spectra_sheet: str (historical FastAPI endpoint naming; sheet with chemical shifts)
     - signals_sheet: str (historical FastAPI naming, alias of spectra_sheet)
 

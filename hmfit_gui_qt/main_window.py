@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
 from PySide6.QtWidgets import QMainWindow, QTabWidget
@@ -18,4 +19,3 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(tabs)
         self.resize(1200, 800)
-

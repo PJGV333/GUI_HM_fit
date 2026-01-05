@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # LM_conc_algoritm.py
 # ---------------------------------------------------------
 # Levenberg–Marquardt para resolver el balance de masa (c de componentes)

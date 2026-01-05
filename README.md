@@ -26,3 +26,7 @@ python -m hmfit_gui_qt
 - PySide6
 - NumPy, SciPy, Pandas
 - Matplotlib, Plotly
+
+## License
+
+GPL-3.0-or-later

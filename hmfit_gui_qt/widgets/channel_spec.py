@@ -25,7 +25,7 @@ class ChannelSpecResult(set):
 
 def parse_channels_spec(spec: str) -> dict[str, Any]:
     """
-    Parse a Channels specification string (ported from hmfit_tauri/src/main.js).
+    Parse a Channels specification string (ported from the legacy UI).
 
     Supported (case-insensitive):
     - "all"

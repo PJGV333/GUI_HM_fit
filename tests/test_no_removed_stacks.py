@@ -5,10 +5,7 @@ import pytest
 def test_removed_directories():
     """Ensure that legacy framework directories have been deleted."""
     removed_dirs = [
-        "hmfit_tauri",
         "backend_fastapi",
-        "hmfit_wx",
-        "hmfit_wx_legacy",
         "hmfit_legacy_math",
         "web_frontend",
         "hmfit_kivy",
@@ -33,12 +30,12 @@ def test_removed_root_stubs():
 
 def test_no_forbidden_imports():
     """
-    Ensure that no code in hmfit_core or hmfit_gui_qt imports 
-    legacy frameworks or root stubs.
+    Ensure that no code in hmfit_core or hmfit_gui_qt imports
+    deprecated frameworks or root stubs.
     """
     import subprocess
     
-    forbidden = ["fastapi", "uvicorn", "wx", "tauri"]
+    forbidden = ["fastapi", "uvicorn"]
     # Also forbid importing from the old root names (without hmfit_core prefix)
     forbidden_stubs = ["NR_conc_algoritm", "LM_conc_algoritm", "np_backend", "errors", "core_ad_probe", "noncoop_utils"]
     

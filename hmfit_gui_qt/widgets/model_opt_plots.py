@@ -84,7 +84,7 @@ def resolve_receptor_guest(
     guest_preference: str = "",
 ) -> tuple[str, str]:
     """
-    Port of Tauri's Auto mapping (hmfit_tauri/src/main.js -> resolveMapping).
+    Port of legacy auto-mapping logic.
 
     - If receptor/guest are explicitly selected and present in selected_columns, keep them.
     - Otherwise, guess by regex patterns, then fall back to first/second selected column.
@@ -170,7 +170,7 @@ class ModelOptPlotsState:
 
 class ModelOptPlotsWidget(QWidget):
     """
-    Shared (Spectroscopy + NMR) controls matching the Tauri workflow:
+    Shared (Spectroscopy + NMR) controls matching the legacy workflow:
     - Sub-tabs: Model / Optimization / Plots
     - Model grid: stoichiometry matrix + non-absorbent species (row selection)
     - Optimization: algorithm/model_settings/optimizer + K table (Value/Min/Max/Fixed)
@@ -1716,7 +1716,7 @@ class ModelOptPlotsWidget(QWidget):
 
             val = _coerce_float_or_none(value_item.text() if value_item is not None else "")
             if val is None:
-                val = 1.0  # matches Tauri behavior
+                val = 1.0  # matches legacy behavior
             initial_k.append(float(val))
 
             min_v = _coerce_float_or_none(min_item.text() if min_item is not None else "")

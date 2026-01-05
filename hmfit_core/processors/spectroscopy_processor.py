@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 Spectroscopy processor module.
 Business logic for data processing (formerly used in FastAPI).
@@ -10,7 +11,7 @@ import pandas as pd
 import matplotlib
 import sys
 
-# When used from a GUI (historical reference to wxPython) we don't want to override the interactive backend.
+# When used from a GUI (historical reference) we don't want to override the interactive backend.
 # For headless/server usage, force a non-interactive backend before importing pyplot.
 if "matplotlib.pyplot" not in sys.modules:
     matplotlib.use("Agg")
@@ -93,7 +94,7 @@ def _build_bounds_list(bounds):
     return processed
 
 
-# === Result formatting (Historical reference to wx output) ===
+# === Result formatting (Historical reference to previous UI output) ===
 def format_results_table(k, SE_log10K, percK, rms, covfit, lof=None, fixed_mask=None):
     """
     Build an ASCII table with aligned columns for constants and diagnostics.
@@ -201,7 +202,7 @@ def generate_figure_base64(x, y, mark, ylabel, xlabel, title):
     fig = Figure(figsize=(8, 6), dpi=100)
     ax = fig.add_subplot(111)
     
-    # Normaliza dimensiones para evitar mismatches (se comporta como en la antigua interfaz wx)
+    # Normaliza dimensiones para evitar mismatches (se comporta como en la interfaz anterior)
     x_arr = np.asarray(x).reshape(-1)
     y_arr = np.asarray(y)
 
@@ -655,7 +656,7 @@ def process_spectroscopy_data(
     modelo = np.array(modelo).T if isinstance(modelo, list) else np.array(modelo)
     nas = non_abs_species
 
-    # ---- Inicialización de parámetros y límites (replica flujo wx) ----
+    # ---- Inicialización de parámetros y límites (replica flujo anterior) ----
     def _safe_float_list(seq):
         vals = []
         for v in seq:
@@ -955,7 +956,7 @@ def process_spectroscopy_data(
     else:
         dif_en_ct = 0.0
 
-    # Tabla formateada para resultados (alineada como en wx)
+    # Tabla formateada para resultados (alineada como en la interfaz anterior)
     results_text = format_results_table(k, SE_log10K, percK, rms, covfit, lof=lof)
 
     # Stability Diagnostics
@@ -1003,8 +1004,8 @@ def process_spectroscopy_data(
     ]
     results_text += "\n\nEstadísticas:\n" + "\n".join(extra_stats)
     
-    # Export payload to mimic wx save_results (DataFrames per sheet)
-    # Preparar payload de exportación (imitando wx save_results)
+    # Export payload to mimic previous save_results (DataFrames per sheet)
+    # Preparar payload de exportación (imitando el flujo anterior)
     A_export = None
     nm_list = nm.tolist() if hasattr(nm, "tolist") else []
     if A is not None:
