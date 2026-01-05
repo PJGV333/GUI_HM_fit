@@ -874,7 +874,7 @@ class NMRTab(QWidget):
                 return np.asarray(theta0, dtype=float), False, {"error": "Missing fit context."}
 
             from scipy import optimize
-            from scipy.optimize import differential_evolution
+            from scipy.optimize import differential_evolution, dual_annealing, basinhopping
 
             from hmfit_core.processors.nmr_processor import (
                 build_D_cols,
@@ -978,7 +978,26 @@ class NMRTab(QWidget):
             else:
                 k_free0 = p0_full[free_idx]
                 bounds_free = [bnds[i] for i in free_idx]
+                def _bounds_finite(bounds_list: list[tuple[float | None, float | None]]) -> bool:
+                    for lb, ub in bounds_list:
+                        if lb is None or ub is None:
+                            return False
+                        if not np.isfinite(lb) or not np.isfinite(ub):
+                            return False
+                    return True
+
                 def _run_optimizer(method_name: str):
+                    options = {"maxiter": int(max_iter)}
+                    if tol is not None:
+                        options.update(
+                            {
+                                "xtol": float(tol),
+                                "ftol": float(tol),
+                                "gtol": float(tol),
+                                "xatol": float(tol),
+                                "fatol": float(tol),
+                            }
+                        )
                     if method_name == "differential_evolution":
                         return differential_evolution(
                             f_m,
@@ -992,16 +1011,32 @@ class NMRTab(QWidget):
                             recombination=0.7,
                             init="latinhypercube",
                         )
-                    options = {"maxiter": int(max_iter)}
-                    if tol is not None:
-                        options.update(
-                            {
-                                "xtol": float(tol),
-                                "ftol": float(tol),
-                                "gtol": float(tol),
-                                "xatol": float(tol),
-                                "fatol": float(tol),
-                            }
+                    if method_name == "dual_annealing":
+                        if not _bounds_finite(bounds_free):
+                            raise ValueError("Dual annealing requires all bounds to be finite.")
+                        return dual_annealing(f_m, bounds_free, maxiter=int(max_iter))
+                    if method_name == "basinhopping":
+                        minimizer_kwargs = {"method": "L-BFGS-B", "bounds": bounds_free, "options": options}
+                        return basinhopping(
+                            f_m, k_free0, niter=int(max_iter), minimizer_kwargs=minimizer_kwargs
+                        )
+                    if method_name == "global_local":
+                        if not _bounds_finite(bounds_free):
+                            raise ValueError("Global-local optimization requires all bounds to be finite.")
+                        global_res = differential_evolution(
+                            f_m,
+                            bounds_free,
+                            x0=k_free0,
+                            strategy="best1bin",
+                            maxiter=int(max_iter),
+                            popsize=15,
+                            tol=float(tol),
+                            mutation=(0.5, 1),
+                            recombination=0.7,
+                            init="latinhypercube",
+                        )
+                        return optimize.minimize(
+                            f_m, global_res.x, method="L-BFGS-B", bounds=bounds_free, options=options
                         )
                     return optimize.minimize(
                         f_m, k_free0, method=method_name, bounds=bounds_free, options=options

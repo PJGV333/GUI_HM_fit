@@ -251,6 +251,9 @@ class ModelOptPlotsWidget(QWidget):
                 "cobyla",
                 "slsqp",
                 "differential_evolution",
+                "dual_annealing",
+                "basinhopping",
+                "global_local",
             ]
         )
         opt_form.addRow("Optimizer", self.combo_optimizer)

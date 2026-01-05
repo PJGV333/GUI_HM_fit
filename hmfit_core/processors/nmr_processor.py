@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional, Any, Tuple
 from scipy import optimize
-from scipy.optimize import differential_evolution
+from scipy.optimize import differential_evolution, dual_annealing, basinhopping
 import logging
 
 logger = logging.getLogger(__name__)
@@ -415,6 +415,50 @@ def process_nmr_data(
             else:
                 k_free0 = p0_full[free_idx]
                 bounds_free = [bnds[i] for i in free_idx]
+                def _bounds_finite(bounds_list: list[tuple[float | None, float | None]]) -> bool:
+                    for lb, ub in bounds_list:
+                        if lb is None or ub is None:
+                            return False
+                        if not np.isfinite(lb) or not np.isfinite(ub):
+                            return False
+                    return True
+
+                def _run_optimizer(start_free, seed):
+                    if optimizer == "differential_evolution" and cycle_count == 1:
+                        return differential_evolution(
+                            f_m,
+                            bounds_free,
+                            x0=start_free,
+                            strategy='best1bin',
+                            maxiter=1000,
+                            popsize=15,
+                            tol=0.01,
+                            seed=seed,
+                        )
+                    if optimizer == "dual_annealing":
+                        if not _bounds_finite(bounds_free):
+                            msg = "Dual annealing requires finite bounds. Set Min/Max for each K."
+                            log_progress(msg)
+                            raise ValueError(msg)
+                        return dual_annealing(f_m, bounds_free, seed=seed)
+                    if optimizer == "basinhopping":
+                        minimizer_kwargs = {"method": "L-BFGS-B", "bounds": bounds_free}
+                        return basinhopping(
+                            f_m, start_free, niter=100, minimizer_kwargs=minimizer_kwargs, seed=seed
+                        )
+                    if optimizer == "global_local":
+                        if not _bounds_finite(bounds_free):
+                            msg = "Global-local optimization requires finite bounds. Set Min/Max for each K."
+                            log_progress(msg)
+                            raise ValueError(msg)
+                        global_res = differential_evolution(
+                            f_m, bounds_free, x0=start_free, maxiter=200, popsize=10, tol=0.05, seed=seed
+                        )
+                        return optimize.minimize(
+                            f_m, global_res.x, method="L-BFGS-B", bounds=bounds_free
+                        )
+                    method = optimizer if optimizer != "differential_evolution" else "powell"
+                    return optimize.minimize(f_m, start_free, method=method, bounds=bounds_free)
                 # Multi-start optimization: run the optimizer multiple times with different initial guesses
                 best_rms_val = np.inf
                 best_full_params = None
@@ -447,20 +491,7 @@ def process_nmr_data(
                                 start_free[ii] = k_free0[ii] + perturb
                     run_failed = False
                     try:
-                        if optimizer == "differential_evolution" and cycle_count == 1:
-                            opt_res = differential_evolution(
-                                f_m,
-                                bounds_free,
-                                x0=start_free,
-                                strategy='best1bin',
-                                maxiter=1000,
-                                popsize=15,
-                                tol=0.01,
-                                seed=seed,
-                            )
-                        else:
-                            method = optimizer if optimizer != "differential_evolution" else "powell"
-                            opt_res = optimize.minimize(f_m, start_free, method=method, bounds=bounds_free)
+                        opt_res = _run_optimizer(start_free, seed)
                         try:
                             fval = float(opt_res.fun)
                             current_full = pack(opt_res.x)
@@ -481,14 +512,7 @@ def process_nmr_data(
                 if best_full_params is not None:
                     k_opt_full = best_full_params
                 else:
-                    if optimizer == "differential_evolution" and cycle_count == 1:
-                        opt_res = differential_evolution(
-                            f_m, bounds_free, x0=k_free0, strategy='best1bin',
-                            maxiter=1000, popsize=15, tol=0.01
-                        )
-                    else:
-                        method = optimizer if optimizer != "differential_evolution" else "powell"
-                        opt_res = optimize.minimize(f_m, k_free0, method=method, bounds=bounds_free)
+                    opt_res = _run_optimizer(k_free0, seed_list[0] if seed_list else None)
                     k_opt_full = pack(opt_res.x)
                 p0_full = k_opt_full
         except Exception as e:

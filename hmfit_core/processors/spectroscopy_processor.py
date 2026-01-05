@@ -16,7 +16,7 @@ if "matplotlib.pyplot" not in sys.modules:
     matplotlib.use("Agg")
 from matplotlib.figure import Figure
 from scipy import optimize
-from scipy.optimize import differential_evolution
+from scipy.optimize import differential_evolution, dual_annealing, basinhopping
 import warnings
 import re
 import logging
@@ -721,11 +721,16 @@ def process_spectroscopy_data(
     log(f"Optimizer: {optimizer}")
     log(f"Bounds (procesados): {processed_bounds}")  # keep visible for debugging powell with ±inf
 
-    if optimizer == "differential_evolution":
-        # differential_evolution requiere límites finitos
+    if optimizer in ("differential_evolution", "dual_annealing", "global_local"):
+        # differential_evolution/dual_annealing/global_local requieren límites finitos
         for (min_val, max_val) in processed_bounds:
             if np.isinf(min_val) or np.isinf(max_val):
-                msg = "Differential evolution requires all bounds to be finite. Please set Min/Max for each parameter."
+                if optimizer == "dual_annealing":
+                    msg = "Dual annealing requires all bounds to be finite. Please set Min/Max for each parameter."
+                elif optimizer == "global_local":
+                    msg = "Global-local optimization requires all bounds to be finite. Please set Min/Max for each parameter."
+                else:
+                    msg = "Differential evolution requires all bounds to be finite. Please set Min/Max for each parameter."
                 log_progress(msg)
                 raise ValueError(msg)
 
@@ -775,10 +780,34 @@ def process_spectroscopy_data(
                     callback=callback_log,
                     seed=seed,
                 )
+                run_rms = f_m(r_0.x)
+                run_k = r_0.x
+            elif optimizer == "dual_annealing":
+                r_0 = dual_annealing(f_m, processed_bounds, seed=seed)
+                run_rms = f_m(r_0.x)
+                run_k = r_0.x
+            elif optimizer == "basinhopping":
+                minimizer_kwargs = {"method": "L-BFGS-B", "bounds": processed_bounds}
+                r_0 = basinhopping(
+                    f_m, start_k, niter=100, minimizer_kwargs=minimizer_kwargs, seed=seed
+                )
+                run_rms = f_m(r_0.x)
+                run_k = r_0.x
+            elif optimizer == "global_local":
+                global_res = differential_evolution(
+                    f_m, processed_bounds, x0=start_k, maxiter=200, popsize=10, tol=0.05, seed=seed
+                )
+                local_res = optimize.minimize(
+                    f_m, global_res.x, method="L-BFGS-B", bounds=processed_bounds, callback=callback_log
+                )
+                run_rms = f_m(local_res.x)
+                run_k = local_res.x
             else:
-                r_0 = optimize.minimize(f_m, start_k, method=optimizer, bounds=processed_bounds, callback=callback_log)
-            run_rms = f_m(r_0.x)
-            run_k = r_0.x
+                r_0 = optimize.minimize(
+                    f_m, start_k, method=optimizer, bounds=processed_bounds, callback=callback_log
+                )
+                run_rms = f_m(r_0.x)
+                run_k = r_0.x
             if onp.isfinite(local_best["rms"]) and local_best["rms"] < run_rms:
                 run_rms = local_best["rms"]
                 run_k = local_best["k"]
