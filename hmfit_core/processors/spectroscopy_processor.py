@@ -503,6 +503,10 @@ def process_spectroscopy_data(
     
     concentracion = pd.read_excel(file_path, conc_sheet, header=0)
     C_T = concentracion[column_names].to_numpy()
+    n_comp = len(column_names)
+    model_raw = np.asarray(modelo, dtype=float) if modelo is not None else np.zeros((0, 0))
+    model_cols = model_raw.shape[1] if model_raw.ndim == 2 else 0
+    model_rows = model_raw.shape[0] if model_raw.ndim == 2 else 0
     
     # Create column index mapping
     column_indices_in_C_T = {name: index for index, name in enumerate(column_names)}
@@ -516,9 +520,35 @@ def process_spectroscopy_data(
         G = C_T[:, guest_index_in_C_T]
     if receptor_index_in_C_T != -1:
         H = C_T[:, receptor_index_in_C_T]
+
+    guest_missing = (guest_label is None) or (str(guest_label).strip() == "") or (G is None)
+    expand_dummy_guest = guest_missing and model_cols == 1 and model_rows > 0
+    if expand_dummy_guest:
+        dummy_name = "__DUMMY_GUEST__"
+        if dummy_name not in concentracion.columns:
+            concentracion[dummy_name] = 0.0
+            column_names = list(column_names) + [dummy_name]
+            C_T = concentracion[column_names].to_numpy()
+            n_comp = len(column_names)
+        G = None
+        if model_rows > 0:
+            dummy_col = np.zeros((model_rows, 1), dtype=float)
+            model_raw = np.concatenate([model_raw, dummy_col], axis=1)
+            dummy_row = np.zeros((1, model_cols + 1), dtype=float)
+            dummy_row[0, model_cols] = 1.0
+            model_raw = np.concatenate(
+                [model_raw[:model_cols, :], dummy_row, model_raw[model_cols:, :]], axis=0
+            )
+            modelo = model_raw.tolist()
+        if non_abs_species:
+            non_abs_species = [
+                (int(idx) + 1) if int(idx) >= model_cols else int(idx)
+                for idx in non_abs_species
+            ]
+    guest_label_display = str(receptor_label or "") if guest_missing else str(guest_label or "")
+    n_comp_plot = n_comp - 1 if expand_dummy_guest else n_comp
     
     nc = len(C_T)
-    n_comp = len(C_T.T)
     nw = len(spec)
     channels_used = int(nw)
 
@@ -860,7 +890,7 @@ def process_spectroscopy_data(
         plot_mode = "spectra"
 
     # Generate concentration and spectra plots
-    if n_comp == 1 and H is not None:
+    if n_comp_plot == 1 and H is not None:
         graphs['concentrations'] = generate_figure_base64(
             H, C, ":o", "[Especies], M", "[H], M", "Perfil de concentraciones"
         )
@@ -1078,7 +1108,7 @@ def process_spectroscopy_data(
             })
     
     # Build axis options for species distribution
-    axis_options = [{"id": "titrant_total", "label": f"[{guest_label}] total"}]
+    axis_options = [{"id": "titrant_total", "label": f"[{guest_label_display}] total"}]
     axis_vectors = {"titrant_total": (G if G is not None else H).tolist() if (G is not None or H is not None) else []}
     
     # Build species options with id/label and C_by_species for direct lookup

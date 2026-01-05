@@ -284,6 +284,43 @@ def process_nmr_data(
             G = C_T[:, g_idx]
         except ValueError:
             pass
+        model_raw = np.asarray(model_matrix, dtype=float) if model_matrix is not None else np.zeros((0, 0))
+        model_cols = model_raw.shape[1] if model_raw.ndim == 2 else 0
+        model_rows = model_raw.shape[0] if model_raw.ndim == 2 else 0
+        guest_missing = (guest_label is None) or (str(guest_label).strip() == "") or (G is None)
+        expand_dummy_guest = guest_missing and model_cols == 1 and model_rows > 0
+        if expand_dummy_guest:
+            dummy_name = "__DUMMY_GUEST__"
+            if dummy_name not in C_T_df.columns:
+                C_T_df[dummy_name] = 0.0
+                column_names = list(column_names) + [dummy_name]
+                C_T = C_T_df.to_numpy(dtype=float)
+            G = None
+            if model_rows > 0:
+                dummy_col = np.zeros((model_rows, 1), dtype=float)
+                model_raw = np.concatenate([model_raw, dummy_col], axis=1)
+                dummy_row = np.zeros((1, model_cols + 1), dtype=float)
+                dummy_row[0, model_cols] = 1.0
+                model_raw = np.concatenate(
+                    [model_raw[:model_cols, :], dummy_row, model_raw[model_cols:, :]], axis=0
+                )
+                model_matrix = model_raw.tolist()
+            if non_absorbent_species:
+                non_absorbent_species = [
+                    (int(idx) + 1) if int(idx) >= model_cols else int(idx)
+                    for idx in non_absorbent_species
+                ]
+            if stoichiometry_map is not None and model_rows > 0:
+                try:
+                    stoich_arr = np.asarray(stoichiometry_map, dtype=float)
+                    if stoich_arr.ndim == 2 and stoich_arr.shape[0] == model_rows:
+                        zero_row = np.zeros((1, stoich_arr.shape[1]), dtype=float)
+                        stoich_arr = np.concatenate(
+                            [stoich_arr[:model_cols, :], zero_row, stoich_arr[model_cols:, :]], axis=0
+                        )
+                        stoichiometry_map = stoich_arr.tolist()
+                except Exception:
+                    pass
         if H is None and G is None:
             return {"error": "Could not identify Receptor or Guest columns."}
         if H is None:

@@ -74,6 +74,9 @@ def _first_match(items: Iterable[str], patterns: list[str]) -> str:
     return ""
 
 
+_GUEST_NONE_SENTINEL = "__NONE__"
+
+
 def resolve_receptor_guest(
     selected_columns: list[str],
     *,
@@ -91,6 +94,9 @@ def resolve_receptor_guest(
 
     receptor = str(receptor_preference or "").strip()
     guest = str(guest_preference or "").strip()
+    force_no_guest = guest == _GUEST_NONE_SENTINEL
+    if force_no_guest:
+        guest = ""
 
     if receptor and receptor not in selected:
         receptor = ""
@@ -131,12 +137,12 @@ def resolve_receptor_guest(
 
     if not receptor:
         receptor = _first_match(selected, receptor_patterns)
-    if not guest:
+    if not guest and not force_no_guest:
         guest = _first_match(selected, guest_patterns)
 
     if not receptor and len(selected) >= 1:
         receptor = selected[0]
-    if not guest and len(selected) >= 2:
+    if not guest and not force_no_guest and len(selected) >= 2:
         guest = selected[1]
 
     if receptor and guest and receptor == guest:
@@ -528,6 +534,7 @@ class ModelOptPlotsWidget(QWidget):
         self.combo_guest.clear()
         self.combo_receptor.addItem("Auto", "")
         self.combo_guest.addItem("Auto", "")
+        self.combo_guest.addItem("None (self-association)", _GUEST_NONE_SENTINEL)
         self.combo_receptor.blockSignals(False)
         self.combo_guest.blockSignals(False)
 
@@ -1447,6 +1454,7 @@ class ModelOptPlotsWidget(QWidget):
         self.combo_guest.clear()
         self.combo_receptor.addItem("Auto", "")
         self.combo_guest.addItem("Auto", "")
+        self.combo_guest.addItem("None (self-association)", _GUEST_NONE_SENTINEL)
         for col in self._available_conc_columns:
             self.combo_receptor.addItem(col, col)
             self.combo_guest.addItem(col, col)
@@ -1469,6 +1477,11 @@ class ModelOptPlotsWidget(QWidget):
             receptor_preference=receptor_pref,
             guest_preference=guest_pref,
         )
+
+    def set_guest_none(self) -> None:
+        ix = self.combo_guest.findData(_GUEST_NONE_SENTINEL)
+        if ix >= 0:
+            self.combo_guest.setCurrentIndex(ix)
 
     # ---- Model tab ----
     def _on_define_model_clicked(self) -> None:
@@ -1885,7 +1898,20 @@ class ModelOptPlotsWidget(QWidget):
 
         # Restore roles if possible
         self.set_available_conc_columns(self._available_conc_columns)
+        needs_guest = True
+        try:
+            modelo = np.array(state.modelo, dtype=float).T
+            if modelo.ndim == 2 and modelo.size:
+                if modelo.shape[0] >= 2:
+                    needs_guest = bool(np.any(np.abs(modelo[1, :]) > 0))
+                elif modelo.shape[0] == 1:
+                    needs_guest = False
+        except Exception:
+            needs_guest = True
+
         for combo, raw in ((self.combo_receptor, state.receptor_label), (self.combo_guest, state.guest_label)):
+            if combo is self.combo_guest and not str(raw or "").strip() and not needs_guest:
+                raw = _GUEST_NONE_SENTINEL
             ix = combo.findData(raw)
             if ix >= 0:
                 combo.setCurrentIndex(ix)

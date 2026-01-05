@@ -728,10 +728,25 @@ class SpectroscopyTab(QWidget):
         state = self.model_opt_plots.collect_state()
         receptor_label = state.receptor_label
         guest_label = state.guest_label
-        if not receptor_label or not guest_label:
+        needs_guest = True
+        try:
+            modelo = np.array(state.modelo, dtype=float).T
+            if modelo.ndim == 2 and modelo.size:
+                if modelo.shape[0] >= 2:
+                    needs_guest = bool(np.any(np.abs(modelo[1, :]) > 0))
+                elif modelo.shape[0] == 1:
+                    needs_guest = False
+        except Exception:
+            needs_guest = True
+        if not receptor_label:
+            raise ValueError("Select Receptor role (or keep Auto with valid column names).")
+        if needs_guest and not guest_label:
             raise ValueError("Select Receptor and Guest roles (or keep Auto with valid column names).")
-        if receptor_label == guest_label:
+        if needs_guest and receptor_label == guest_label:
             raise ValueError("Receptor and Guest cannot be the same column.")
+        if not needs_guest:
+            guest_label = ""
+            self.model_opt_plots.set_guest_none()
 
         runs, seeds = self.model_opt_plots.get_multi_start()
         config = {
