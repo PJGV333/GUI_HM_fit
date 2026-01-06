@@ -1,0 +1,8 @@
+PySide6
+matplotlib
+numpy
+scipy
+pandas
+openpyxl
+Pillow
+pytest
