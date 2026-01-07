@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from hmfit.kinetics.fit.variable_projection import solve_A_ls
+from hmfit.kinetics.fit.variable_projection import solve_A_ls, solve_A_nnls
 
 
 def test_solve_A_ls_recovers_coefficients() -> None:
@@ -19,13 +19,13 @@ def test_solve_A_ls_recovers_coefficients() -> None:
     assert np.max(np.abs(A_est - A_true)) < 1e-3
 
 
-def test_solve_A_ls_nnls_non_negative() -> None:
+def test_solve_A_nnls_non_negative() -> None:
     rng = np.random.default_rng(1)
     C = rng.random((60, 3))
     A_true = rng.random((3, 2))
     D = C @ A_true
 
-    A_est, _ = solve_A_ls(C, D, nnls=True)
+    A_est, _ = solve_A_nnls(C, D)
 
     assert np.all(A_est >= -1e-10)
     assert np.max(np.abs(A_est - A_true)) < 1e-3

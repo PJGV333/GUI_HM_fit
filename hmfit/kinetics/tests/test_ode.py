@@ -77,3 +77,25 @@ def test_reversible_reaction_equilibrium() -> None:
 
     assert abs(a_end - 1.0 / 3.0) < 1e-3
     assert abs(b_end - 2.0 / 3.0) < 1e-3
+
+
+def test_temperature_callable_runs() -> None:
+    text = """
+    species: A, B
+    A -> B ; k1
+    """
+    model = KineticsModel(parse_mechanism(text))
+
+    t = np.linspace(0.0, 2.0, 21)
+    y0 = {"A": 1.0, "B": 0.0}
+    params = {"k1": 0.5}
+    dataset = KineticsDataset(
+        t=t,
+        y0=y0,
+        fixed_conc={},
+        temperature=lambda time: 298.15 + 0.0 * time,
+    )
+
+    conc = model.solve_concentrations(t, y0, params, dataset)
+
+    assert conc.shape == (t.shape[0], 2)

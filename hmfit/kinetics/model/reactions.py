@@ -24,7 +24,19 @@ def expand_reactions(mechanism: MechanismAST) -> List[Reaction]:
 
 
 def _expand_reaction(reaction: ReactionAST) -> List[Reaction]:
-    expanded = [Reaction(reaction.reactants, reaction.products, reaction.k_forward)]
+    expanded = [
+        Reaction(
+            dict(reaction.reactants),
+            dict(reaction.products),
+            reaction.k_forward,
+        )
+    ]
     if reaction.k_reverse:
-        expanded.append(Reaction(reaction.products, reaction.reactants, reaction.k_reverse))
+        expanded.append(
+            Reaction(
+                dict(reaction.products),
+                dict(reaction.reactants),
+                reaction.k_reverse,
+            )
+        )
     return expanded

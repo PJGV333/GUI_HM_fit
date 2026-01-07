@@ -10,7 +10,7 @@ import numpy as np
 from ..data.dataset import KineticsDataset
 from ..model.kinetics_model import KineticsModel
 from ..observation.linear_matrix import prepare_weights
-from .variable_projection import solve_A_ls
+from .variable_projection import solve_A_ls, solve_A_nnls
 
 
 @dataclass
@@ -27,11 +27,18 @@ class GlobalKineticsObjective:
         if dataset.D is None:
             raise ValueError("Dataset is missing observed data D.")
 
-        C = self.model.solve_concentrations(
-            dataset.t, dataset.y0, params_dict, dataset
-        )
+        try:
+            C = self.model.solve_concentrations(
+                dataset.t, dataset.y0, params_dict, dataset
+            )
+        except RuntimeError as exc:
+            name = dataset.name or "dataset"
+            raise RuntimeError(f"ODE solver failed for {name}: {exc}") from exc
         weights = _dataset_weights(dataset)
-        A, D_hat = solve_A_ls(C, dataset.D, weights=weights, nnls=self.nnls)
+        if self.nnls:
+            A, D_hat = solve_A_nnls(C, dataset.D, weights=weights)
+        else:
+            A, D_hat = solve_A_ls(C, dataset.D, weights=weights)
         return C, A, D_hat
 
     def residuals(self, params: Mapping[str, float] | np.ndarray) -> np.ndarray:
@@ -42,11 +49,18 @@ class GlobalKineticsObjective:
             if dataset.D is None:
                 raise ValueError("Dataset is missing observed data D.")
 
-            C = self.model.solve_concentrations(
-                dataset.t, dataset.y0, params_dict, dataset
-            )
+            try:
+                C = self.model.solve_concentrations(
+                    dataset.t, dataset.y0, params_dict, dataset
+                )
+            except RuntimeError as exc:
+                name = dataset.name or "dataset"
+                raise RuntimeError(f"ODE solver failed for {name}: {exc}") from exc
             weights = _dataset_weights(dataset)
-            A, D_hat = solve_A_ls(C, dataset.D, weights=weights, nnls=self.nnls)
+            if self.nnls:
+                A, D_hat = solve_A_nnls(C, dataset.D, weights=weights)
+            else:
+                A, D_hat = solve_A_ls(C, dataset.D, weights=weights)
             resid = dataset.D - D_hat
 
             if weights is not None:

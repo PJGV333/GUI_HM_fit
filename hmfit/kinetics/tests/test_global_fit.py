@@ -25,18 +25,18 @@ def test_global_fit_recovers_rates() -> None:
     rng = np.random.default_rng(2)
     A_true = rng.random((3, 4))
 
-    dataset = generate_dataset(
+    datasets = generate_dataset(
         mechanism_text,
         params_true,
         A_true,
         t,
         y0,
         noise_level=1e-4,
-        temperatures=298.15,
+        temperatures=[298.15, 310.0],
     )
 
     model = KineticsModel(parse_mechanism(mechanism_text))
-    objective = GlobalKineticsObjective(model, [dataset])
+    objective = GlobalKineticsObjective(model, datasets)
     result = fit_global(
         objective,
         params0,

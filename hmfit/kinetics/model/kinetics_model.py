@@ -52,6 +52,7 @@ class KineticsModel:
         temperature: TemperatureType,
     ) -> np.ndarray:
         temp_value = temperature(t) if callable(temperature) else temperature
+        temp_value = float(temp_value)
         k_values = self.param_resolver.resolve(params, temp_value)
 
         rates = np.empty(len(self.reactions), dtype=float)
@@ -79,10 +80,13 @@ class KineticsModel:
         rtol: float = 1e-8,
         atol: float = 1e-12,
     ) -> np.ndarray:
+        t_grid = _validate_time_grid(t_grid)
         if y0 is None:
-            if context is None or not hasattr(context, "y0"):
+            if context is None:
                 raise ValueError("Initial conditions y0 are required.")
-            y0 = context.y0
+            y0 = getattr(context, "y0", None)
+            if y0 is None:
+                raise ValueError("Initial conditions y0 are required.")
 
         y0_vec = _coerce_y0(y0, self.dynamic_species)
         fixed_conc = _extract_fixed_conc(context)
@@ -171,3 +175,12 @@ def _extract_temperature(
         return 298.15
     temperature = getattr(context, "temperature", 298.15)
     return temperature if temperature is not None else 298.15
+
+
+def _validate_time_grid(t_grid: np.ndarray | Sequence[float]) -> np.ndarray:
+    t = np.asarray(t_grid, dtype=float).reshape(-1)
+    if t.size < 2:
+        return t
+    if not np.all(np.diff(t) > 0):
+        raise ValueError("Time values must be strictly increasing.")
+    return t
