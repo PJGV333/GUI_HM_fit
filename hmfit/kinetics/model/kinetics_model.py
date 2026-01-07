@@ -51,7 +51,8 @@ class KineticsModel:
         fixed_conc: Mapping[str, float],
         temperature: TemperatureType,
     ) -> np.ndarray:
-        k_values = self.param_resolver.resolve(params, temperature)
+        temp_value = temperature(t) if callable(temperature) else temperature
+        k_values = self.param_resolver.resolve(params, temp_value)
 
         rates = np.empty(len(self.reactions), dtype=float)
         for idx, reaction in enumerate(self.reactions):

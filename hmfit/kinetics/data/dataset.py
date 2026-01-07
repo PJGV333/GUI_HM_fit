@@ -17,3 +17,6 @@ class KineticsDataset:
     fixed_conc: Mapping[str, float]
     temperature: float | Callable[[float], float] = 298.15
     name: str | None = None
+    D: np.ndarray | None = None
+    sigma: np.ndarray | None = None
+    weights: np.ndarray | None = None
