@@ -1,0 +1,4 @@
+# SN1-like single step
+species: A, B
+
+A -> B ; k1

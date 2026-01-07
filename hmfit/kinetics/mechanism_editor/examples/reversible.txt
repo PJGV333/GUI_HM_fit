@@ -1,0 +1,5 @@
+# Reversible reaction example
+species: A, B, C
+
+A <-> B ; k1, k_1
+B -> C ; k2

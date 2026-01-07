@@ -1,0 +1,5 @@
+# Consecutive reaction: A -> B -> C
+species: A, B, C
+
+A -> B ; k1
+B -> C ; k2
