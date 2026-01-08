@@ -8,8 +8,10 @@ from pathlib import Path
 from typing import Sequence
 
 import numpy as np
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSettings, Qt
+from PySide6.QtGui import QAction, QColor
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QDialog,
     QFileDialog,
@@ -20,6 +22,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMenu,
     QMessageBox,
     QPushButton,
     QSpinBox,
@@ -51,8 +54,10 @@ class KineticsMainWidget(QWidget):
         self._datasets: list[KineticsFitDataset] = []
         self._model: KineticsModel | None = None
         self._mechanism_text: str = ""
-        self._param_settings: dict[str, tuple[float, float, float, bool]] = {}
+        self._param_settings: dict[str, tuple[float, float, float, bool, bool]] = {}
+        self._param_defaults: dict[str, tuple[float, float, float, bool, bool]] = {}
         self._last_fit_result = None
+        self._settings = QSettings("HMFit", "Kinetics")
 
         self._build_ui()
         self._update_fit_state()
@@ -65,7 +70,15 @@ class KineticsMainWidget(QWidget):
         # Left panel
         left_panel = QVBoxLayout()
         self._dataset_list = QListWidget(self)
+        self._dataset_list.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection
+        )
         self._dataset_list.currentRowChanged.connect(self._on_dataset_selected)
+        self._dataset_list.itemSelectionChanged.connect(self._update_fit_state)
+        self._dataset_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._dataset_list.customContextMenuRequested.connect(
+            self._on_dataset_context_menu
+        )
         left_panel.addWidget(QLabel("Datasets", self))
         left_panel.addWidget(self._dataset_list, 1)
 
@@ -87,6 +100,13 @@ class KineticsMainWidget(QWidget):
         btn_row2.addWidget(self._btn_delete)
         left_panel.addLayout(btn_row2)
 
+        btn_row3 = QHBoxLayout()
+        self._btn_batch_edit = QPushButton("Batch edit metadata...", self)
+        self._btn_batch_edit.clicked.connect(self._on_batch_edit_metadata)
+        btn_row3.addWidget(self._btn_batch_edit)
+        btn_row3.addStretch(1)
+        left_panel.addLayout(btn_row3)
+
         self._btn_preprocess = QPushButton("Preprocess", self)
         self._btn_preprocess.clicked.connect(self._on_preprocess)
         left_panel.addWidget(self._btn_preprocess)
@@ -99,6 +119,11 @@ class KineticsMainWidget(QWidget):
         self._btn_save_session.clicked.connect(self._on_save_session)
         session_row.addWidget(self._btn_save_session)
         left_panel.addLayout(session_row)
+
+        self._status_label = QLabel("", self)
+        self._status_label.setStyleSheet("color: #B00020;")
+        self._status_label.setWordWrap(True)
+        left_panel.addWidget(self._status_label)
 
         left_container = QWidget(self)
         left_container.setLayout(left_panel)
@@ -156,9 +181,9 @@ class KineticsMainWidget(QWidget):
         layout = QVBoxLayout(self._tab_fit)
 
         self._param_table = QTableWidget(self._tab_fit)
-        self._param_table.setColumnCount(5)
+        self._param_table.setColumnCount(6)
         self._param_table.setHorizontalHeaderLabels(
-            ["Name", "Value", "Min", "Max", "Fixed"]
+            ["Name", "Value", "Min", "Max", "Fixed", "Log10?"]
         )
         layout.addWidget(self._param_table, 2)
 
@@ -168,13 +193,29 @@ class KineticsMainWidget(QWidget):
         options_row.addStretch(1)
         layout.addLayout(options_row)
 
+        fit_row = QHBoxLayout()
         self._btn_fit = QPushButton("Fit", self._tab_fit)
         self._btn_fit.clicked.connect(self._on_fit)
-        layout.addWidget(self._btn_fit)
+        fit_row.addWidget(self._btn_fit)
+        self._btn_fit_selected = QPushButton("Fit selected", self._tab_fit)
+        self._btn_fit_selected.clicked.connect(self._on_fit_selected)
+        fit_row.addWidget(self._btn_fit_selected)
+        self._btn_reset_fit = QPushButton("Reset fit", self._tab_fit)
+        self._btn_reset_fit.clicked.connect(self._reset_fit)
+        fit_row.addWidget(self._btn_reset_fit)
+        fit_row.addStretch(1)
+        layout.addLayout(fit_row)
 
         self._fit_output = QTextEdit(self._tab_fit)
         self._fit_output.setReadOnly(True)
         layout.addWidget(self._fit_output, 1)
+
+        self._corr_label = QLabel("Parameter correlations", self._tab_fit)
+        self._corr_label.setVisible(False)
+        layout.addWidget(self._corr_label)
+        self._corr_table = QTableWidget(self._tab_fit)
+        self._corr_table.setVisible(False)
+        layout.addWidget(self._corr_table)
 
         self._fit_plots = QTabWidget(self._tab_fit)
         self._fit_c_canvas = self._create_plot_tab("C(t)")
@@ -212,6 +253,59 @@ class KineticsMainWidget(QWidget):
         dataset.fit_A = None
         dataset.fit_D_hat = None
         dataset.fit_residuals = None
+
+    def _reset_fit(self) -> None:
+        for dataset in self._datasets:
+            self._clear_fit_results(dataset)
+        self._fit_output.clear()
+        self._last_fit_result = None
+        self._update_fit_plots(None)
+        self._reset_param_table()
+        self._clear_correlation_table()
+        self._update_fit_state()
+
+    def _reset_param_table(self) -> None:
+        if not self._param_defaults:
+            return
+        self._param_settings = dict(self._param_defaults)
+        for row in range(self._param_table.rowCount()):
+            name_item = self._param_table.item(row, 0)
+            if name_item is None:
+                continue
+            name = name_item.text().strip()
+            if not name or name not in self._param_defaults:
+                continue
+            value, min_val, max_val, fixed, log = self._param_defaults[name]
+            self._param_table.setItem(row, 1, QTableWidgetItem(f"{value:.6g}"))
+            self._param_table.setItem(row, 2, QTableWidgetItem(f"{min_val:.6g}"))
+            self._param_table.setItem(row, 3, QTableWidgetItem(f"{max_val:.6g}"))
+            fixed_item = QTableWidgetItem()
+            fixed_item.setFlags(
+                Qt.ItemFlag.ItemIsUserCheckable
+                | Qt.ItemFlag.ItemIsEnabled
+                | Qt.ItemFlag.ItemIsSelectable
+            )
+            fixed_item.setCheckState(
+                Qt.CheckState.Checked if fixed else Qt.CheckState.Unchecked
+            )
+            self._param_table.setItem(row, 4, fixed_item)
+            log_item = QTableWidgetItem()
+            log_item.setFlags(
+                Qt.ItemFlag.ItemIsUserCheckable
+                | Qt.ItemFlag.ItemIsEnabled
+                | Qt.ItemFlag.ItemIsSelectable
+            )
+            log_item.setCheckState(
+                Qt.CheckState.Checked if log else Qt.CheckState.Unchecked
+            )
+            self._param_table.setItem(row, 5, log_item)
+
+    def _clear_correlation_table(self) -> None:
+        self._corr_table.clear()
+        self._corr_table.setRowCount(0)
+        self._corr_table.setColumnCount(0)
+        self._corr_table.setVisible(False)
+        self._corr_label.setVisible(False)
 
     def _update_fit_plots(self, dataset: KineticsFitDataset | None) -> None:
         if dataset is None or dataset.fit_C is None or self._model is None:
@@ -355,10 +449,10 @@ class KineticsMainWidget(QWidget):
         )
         if wizard.exec() != QDialog.DialogCode.Accepted:
             return
-        dataset = wizard.dataset
-        if dataset is None:
+        datasets = wizard.datasets
+        if not datasets:
             return
-        self._datasets.append(dataset)
+        self._datasets.extend(datasets)
         self._refresh_dataset_list()
         self._dataset_list.setCurrentRow(len(self._datasets) - 1)
         self._update_fit_state()
@@ -396,6 +490,120 @@ class KineticsMainWidget(QWidget):
         del self._datasets[row]
         self._refresh_dataset_list()
         self._update_fit_state()
+
+    def _on_batch_edit_metadata(self) -> None:
+        datasets = self._selected_datasets()
+        if not datasets:
+            QMessageBox.warning(self, "Batch edit", "Select one or more datasets.")
+            return
+        template = copy.deepcopy(datasets[0])
+        dialog = DatasetEditorDialog(
+            template,
+            dynamic_species=self._dynamic_species(),
+            fixed_species=self._fixed_species(),
+            parent=self,
+        )
+        dialog.setWindowTitle("Batch Edit Metadata")
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        updated = dialog.dataset
+        for dataset in datasets:
+            dataset.temperature = updated.temperature
+            dataset.time_unit = updated.time_unit
+            dataset.x_unit = updated.x_unit
+            dataset.signal_unit = updated.signal_unit
+            dataset.y0 = copy.deepcopy(updated.y0)
+            dataset.fixed_conc = copy.deepcopy(updated.fixed_conc)
+            self._clear_fit_results(dataset)
+        self._refresh_dataset_list()
+        self._update_fit_state()
+
+    def _save_metadata_template(self) -> None:
+        dataset = self._selected_dataset()
+        if dataset is None:
+            QMessageBox.warning(self, "Template", "Select a dataset first.")
+            return
+        template = {
+            "y0": dict(dataset.y0) if dataset.y0 is not None else None,
+            "fixed_conc": dict(dataset.fixed_conc) if dataset.fixed_conc is not None else None,
+            "temperature": float(dataset.temperature),
+            "time_unit": dataset.time_unit,
+            "x_unit": dataset.x_unit,
+            "signal_unit": dataset.signal_unit,
+        }
+        self._settings.setValue("metadata_template", json.dumps(template))
+
+    def _apply_metadata_template(self) -> None:
+        template = self._load_metadata_template()
+        if template is None:
+            QMessageBox.warning(self, "Template", "No metadata template saved.")
+            return
+        datasets = self._selected_datasets()
+        if not datasets:
+            QMessageBox.warning(self, "Template", "Select one or more datasets.")
+            return
+        for dataset in datasets:
+            dataset.y0 = copy.deepcopy(template.get("y0"))
+            dataset.fixed_conc = copy.deepcopy(template.get("fixed_conc") or {})
+            dataset.temperature = float(template.get("temperature", dataset.temperature))
+            dataset.time_unit = str(template.get("time_unit", dataset.time_unit))
+            dataset.x_unit = str(template.get("x_unit", dataset.x_unit))
+            dataset.signal_unit = str(template.get("signal_unit", dataset.signal_unit))
+            self._clear_fit_results(dataset)
+        self._refresh_dataset_list()
+        self._update_fit_state()
+
+    def _load_metadata_template(self) -> dict[str, object] | None:
+        raw = self._settings.value("metadata_template")
+        if not raw:
+            return None
+        try:
+            return json.loads(str(raw))
+        except json.JSONDecodeError:
+            return None
+
+    def _on_delete_selected(self) -> None:
+        indices = self._selected_indices()
+        if not indices:
+            return
+        for idx in reversed(indices):
+            del self._datasets[idx]
+        self._refresh_dataset_list()
+        self._update_fit_state()
+
+    def _on_duplicate_all(self) -> None:
+        if not self._datasets:
+            return
+        clones = []
+        for dataset in self._datasets:
+            cloned = copy.deepcopy(dataset)
+            cloned.name = f"{dataset.name} (copy)"
+            clones.append(cloned)
+        self._datasets.extend(clones)
+        self._refresh_dataset_list()
+        self._update_fit_state()
+
+    def _on_dataset_context_menu(self, pos) -> None:
+        menu = QMenu(self)
+        action_edit = QAction("Edit metadata for selected", self)
+        action_edit.triggered.connect(self._on_batch_edit_metadata)
+        menu.addAction(action_edit)
+        action_save_template = QAction("Save metadata template", self)
+        action_save_template.triggered.connect(self._save_metadata_template)
+        menu.addAction(action_save_template)
+        action_apply_template = QAction("Apply metadata template", self)
+        action_apply_template.triggered.connect(self._apply_metadata_template)
+        menu.addAction(action_apply_template)
+        action_duplicate = QAction("Duplicate all", self)
+        action_duplicate.triggered.connect(self._on_duplicate_all)
+        menu.addAction(action_duplicate)
+        action_delete = QAction("Delete selected", self)
+        action_delete.triggered.connect(self._on_delete_selected)
+        menu.addAction(action_delete)
+        action_fit = QAction("Fit selected", self)
+        action_fit.triggered.connect(self._on_fit_selected)
+        menu.addAction(action_fit)
+        menu.exec(self._dataset_list.mapToGlobal(pos))
 
     def _on_svd_efa(self) -> None:
         dataset = self._selected_dataset()
@@ -463,8 +671,9 @@ class KineticsMainWidget(QWidget):
                     "min": min_val,
                     "max": max_val,
                     "fixed": fixed,
+                    "log": log,
                 }
-                for name, (value, min_val, max_val, fixed) in self._param_settings.items()
+                for name, (value, min_val, max_val, fixed, log) in self._param_settings.items()
             },
         }
         if self._last_fit_result is not None:
@@ -506,6 +715,7 @@ class KineticsMainWidget(QWidget):
         self._model = None
         self._mechanism_text = ""
         self._param_settings = {}
+        self._param_defaults = {}
         self._last_fit_result = None
 
         text = str(session.get("mechanism_text", "") or "")
@@ -553,6 +763,42 @@ class KineticsMainWidget(QWidget):
             self._plot_canvas.show_message("No dataset selected")
 
         self._update_fit_state()
+        self._clear_correlation_table()
+        self._fit_output.clear()
+        if (
+            isinstance(self._last_fit_result, dict)
+            and self._model is not None
+            and self._datasets
+        ):
+            params = self._last_fit_result.get("params")
+            if isinstance(params, dict):
+                objective = GlobalKineticsObjective(
+                    self._model,
+                    self._datasets,
+                    param_names=list(params.keys()),
+                    nnls=self._nnls_check.isChecked(),
+                    log_params={name for name, settings in self._param_settings.items() if settings[4]},
+                )
+                try:
+                    for dataset in self._datasets:
+                        C, A, D_hat = objective.predict_dataset(params, dataset)
+                        dataset.fit_C = C
+                        dataset.fit_A = A
+                        dataset.fit_D_hat = D_hat
+                        dataset.fit_residuals = (
+                            dataset.D - D_hat if dataset.D is not None else None
+                        )
+                    lines = [
+                        "Fit loaded.",
+                        f"SSQ: {float(self._last_fit_result.get('ssq', 0.0)):.6g}",
+                        f"nfev: {self._last_fit_result.get('nfev', '')}",
+                    ]
+                    for name, value in params.items():
+                        lines.append(f"{name} = {float(value):.6g}")
+                    self._fit_output.setText("\n".join(lines))
+                    self._update_fit_plots(self._selected_dataset())
+                except Exception:
+                    self._fit_output.clear()
         if errors:
             QMessageBox.warning(
                 self,
@@ -679,10 +925,12 @@ class KineticsMainWidget(QWidget):
         )
         return dataset
 
-    def _load_param_settings(self, settings: object) -> dict[str, tuple[float, float, float, bool]]:
+    def _load_param_settings(
+        self, settings: object
+    ) -> dict[str, tuple[float, float, float, bool, bool]]:
         if not isinstance(settings, dict):
             return {}
-        parsed: dict[str, tuple[float, float, float, bool]] = {}
+        parsed: dict[str, tuple[float, float, float, bool, bool]] = {}
         for name, values in settings.items():
             if not isinstance(values, dict):
                 continue
@@ -692,6 +940,7 @@ class KineticsMainWidget(QWidget):
                     float(values.get("min", -np.inf)),
                     float(values.get("max", np.inf)),
                     bool(values.get("fixed", False)),
+                    bool(values.get("log", False)),
                 )
             except (TypeError, ValueError):
                 continue
@@ -699,10 +948,21 @@ class KineticsMainWidget(QWidget):
 
     def _refresh_dataset_list(self) -> None:
         self._dataset_list.clear()
+        incomplete_count = 0
         for dataset in self._datasets:
             label = f"{dataset.name} ({dataset.technique})"
             item = QListWidgetItem(label)
+            if not self._dataset_is_complete(dataset):
+                item.setForeground(QColor("#B00020"))
+                item.setToolTip("Incomplete metadata - click Edit metadata.")
+                incomplete_count += 1
             self._dataset_list.addItem(item)
+        if incomplete_count:
+            self._status_label.setText(
+                "Incomplete metadata: edit y0/fixed concentrations before fitting."
+            )
+        else:
+            self._status_label.clear()
 
     def _selected_dataset(self) -> KineticsFitDataset | None:
         row = self._dataset_list.currentRow()
@@ -710,16 +970,27 @@ class KineticsMainWidget(QWidget):
             return None
         return self._datasets[row]
 
+    def _selected_indices(self) -> list[int]:
+        indices = {self._dataset_list.row(item) for item in self._dataset_list.selectedItems()}
+        if not indices and self._dataset_list.currentRow() >= 0:
+            indices = {self._dataset_list.currentRow()}
+        return sorted(idx for idx in indices if 0 <= idx < len(self._datasets))
+
+    def _selected_datasets(self) -> list[KineticsFitDataset]:
+        return [self._datasets[idx] for idx in self._selected_indices()]
+
     def _on_dataset_selected(self, row: int) -> None:
         if row < 0 or row >= len(self._datasets):
             self._data_preview.setRowCount(0)
             self._data_preview.setColumnCount(0)
             self._plot_canvas.show_message("No dataset selected")
             self._clear_fit_plots()
+            self._update_fit_state()
             return
         dataset = self._datasets[row]
         self._update_data_view(dataset)
         self._update_fit_plots(dataset)
+        self._update_fit_state()
 
     def _update_data_view(self, dataset: KineticsFitDataset) -> None:
         if dataset.D is None:
@@ -784,46 +1055,79 @@ class KineticsMainWidget(QWidget):
             f"Parameters: {', '.join(params)}",
         ]
         self._mechanism_output.setText("\n".join(summary))
+        self._refresh_dataset_list()
         self._update_fit_state()
         self._update_fit_plots(self._selected_dataset())
 
     def _update_param_table(self, params: Sequence[str]) -> None:
         self._param_table.setRowCount(len(params))
         for row, name in enumerate(params):
-            value, min_val, max_val, fixed = self._param_settings.get(
-                name, (1.0, 0.0, np.inf, False)
+            value, min_val, max_val, fixed, log = self._param_settings.get(
+                name, (1.0, 0.0, np.inf, False, False)
             )
             self._param_table.setItem(row, 0, QTableWidgetItem(name))
             self._param_table.setItem(row, 1, QTableWidgetItem(f"{value:.6g}"))
             self._param_table.setItem(row, 2, QTableWidgetItem(f"{min_val:.6g}"))
             self._param_table.setItem(row, 3, QTableWidgetItem(f"{max_val:.6g}"))
             fixed_item = QTableWidgetItem()
-            fixed_item.setCheckState(Qt.CheckState.Checked if fixed else Qt.CheckState.Unchecked)
+            fixed_item.setFlags(
+                Qt.ItemFlag.ItemIsUserCheckable
+                | Qt.ItemFlag.ItemIsEnabled
+                | Qt.ItemFlag.ItemIsSelectable
+            )
+            fixed_item.setCheckState(
+                Qt.CheckState.Checked if fixed else Qt.CheckState.Unchecked
+            )
             self._param_table.setItem(row, 4, fixed_item)
+            log_item = QTableWidgetItem()
+            log_item.setFlags(
+                Qt.ItemFlag.ItemIsUserCheckable
+                | Qt.ItemFlag.ItemIsEnabled
+                | Qt.ItemFlag.ItemIsSelectable
+            )
+            log_item.setCheckState(
+                Qt.CheckState.Checked if log else Qt.CheckState.Unchecked
+            )
+            self._param_table.setItem(row, 5, log_item)
+            self._param_settings[name] = (value, min_val, max_val, fixed, log)
+        self._param_defaults = dict(self._param_settings)
 
     # ---- Fit ----
     def _on_fit(self) -> None:
+        self._run_fit(self._datasets, title="Fit")
+
+    def _on_fit_selected(self) -> None:
+        selected = self._selected_datasets()
+        if not selected:
+            QMessageBox.warning(self, "Fit selected", "Select one or more datasets.")
+            return
+        self._run_fit(selected, title="Fit selected")
+
+    def _run_fit(self, datasets: Sequence[KineticsFitDataset], *, title: str) -> None:
         if self._model is None:
-            QMessageBox.warning(self, "Fit", "Validate a mechanism first.")
+            QMessageBox.warning(self, title, "Validate a mechanism first.")
             return
-        if not self._datasets:
-            QMessageBox.warning(self, "Fit", "No datasets loaded.")
+        if not datasets:
+            QMessageBox.warning(self, title, "No datasets loaded.")
             return
-        if not self._datasets_complete():
-            QMessageBox.warning(self, "Fit", "Some datasets are incomplete (missing y0/fixed).")
+        if not self._datasets_complete(datasets):
+            QMessageBox.warning(
+                self, title, "Some datasets are incomplete (missing y0/fixed)."
+            )
             return
 
         try:
-            params0, bounds, param_names = self._read_params_from_table()
+            params0, bounds, param_names, log_params = self._read_params_from_table()
         except ValueError as exc:
-            QMessageBox.warning(self, "Fit", str(exc))
+            QMessageBox.warning(self, title, str(exc))
             return
 
         objective = GlobalKineticsObjective(
             self._model,
-            self._datasets,
+            datasets,
             param_names=param_names,
             nnls=self._nnls_check.isChecked(),
+            log_params=log_params,
         )
         try:
             result = fit_global(
@@ -832,7 +1136,7 @@ class KineticsMainWidget(QWidget):
                 bounds=bounds,
                 max_nfev=300,
             )
-            for dataset in self._datasets:
+            for dataset in datasets:
                 C, A, D_hat = objective.predict_dataset(result.params, dataset)
                 dataset.fit_C = C
                 dataset.fit_A = A
@@ -849,17 +1153,46 @@ class KineticsMainWidget(QWidget):
             f"SSQ: {result.ssq:.6g}",
             f"nfev: {result.nfev}",
         ]
+        errors = result.errors
+        error_lookup = None
+        if errors is not None and errors.shape[0] == len(param_names):
+            error_lookup = {
+                name: float(err) for name, err in zip(param_names, errors, strict=True)
+            }
         for name, value in result.params.items():
-            lines.append(f"{name} = {value:.6g}")
+            if error_lookup and name in error_lookup:
+                lines.append(f"{name} = {value:.6g} ± {error_lookup[name]:.3g}")
+            else:
+                lines.append(f"{name} = {value:.6g}")
+
+        strong_corr = False
+        if result.correlations is not None and result.correlations.size:
+            off_diag = result.correlations.copy()
+            np.fill_diagonal(off_diag, 0.0)
+            strong_corr = bool(np.any(np.abs(off_diag) >= 0.95))
+        if strong_corr or (result.condition_number is not None and result.condition_number > 1e8):
+            lines.append(
+                "Warning: parameters are strongly correlated; consider fixing one."
+            )
+
         self._fit_output.setText("\n".join(lines))
         self._last_fit_result = result
+        self._update_correlation_table(param_names, result.correlations)
         self._update_fit_plots(self._selected_dataset())
 
-    def _read_params_from_table(self) -> tuple[dict[str, float], tuple[np.ndarray, np.ndarray], list[str]]:
+    def _read_params_from_table(
+        self,
+    ) -> tuple[
+        dict[str, float],
+        tuple[np.ndarray, np.ndarray],
+        list[str],
+        set[str],
+    ]:
         param_names: list[str] = []
         values: list[float] = []
         lower: list[float] = []
         upper: list[float] = []
+        log_params: set[str] = set()
 
         for row in range(self._param_table.rowCount()):
             name_item = self._param_table.item(row, 0)
@@ -867,6 +1200,7 @@ class KineticsMainWidget(QWidget):
             min_item = self._param_table.item(row, 2)
             max_item = self._param_table.item(row, 3)
             fixed_item = self._param_table.item(row, 4)
+            log_item = self._param_table.item(row, 5)
 
             if name_item is None or value_item is None:
                 raise ValueError("Parameter table is incomplete.")
@@ -877,38 +1211,92 @@ class KineticsMainWidget(QWidget):
             min_val = float(min_item.text()) if min_item and min_item.text() else -np.inf
             max_val = float(max_item.text()) if max_item and max_item.text() else np.inf
             fixed = fixed_item and fixed_item.checkState() == Qt.CheckState.Checked
+            log_param = log_item and log_item.checkState() == Qt.CheckState.Checked
             if fixed:
                 min_val = value
                 max_val = value
             if min_val > max_val:
                 raise ValueError(f"Min > Max for parameter '{name}'.")
 
+            opt_value = value
+            opt_min = min_val
+            opt_max = max_val
+            if log_param:
+                if value <= 0:
+                    raise ValueError(f"Parameter '{name}' must be > 0 for log10.")
+                if np.isfinite(min_val) and min_val <= 0:
+                    raise ValueError(f"Min for '{name}' must be > 0 for log10.")
+                if np.isfinite(max_val) and max_val <= 0:
+                    raise ValueError(f"Max for '{name}' must be > 0 for log10.")
+                opt_value = float(np.log10(value))
+                opt_min = float(np.log10(min_val)) if np.isfinite(min_val) else -np.inf
+                opt_max = float(np.log10(max_val)) if np.isfinite(max_val) else np.inf
+                log_params.add(name)
+
             param_names.append(name)
-            values.append(value)
-            lower.append(min_val)
-            upper.append(max_val)
-            self._param_settings[name] = (value, min_val, max_val, fixed)
+            values.append(opt_value)
+            lower.append(opt_min)
+            upper.append(opt_max)
+            self._param_settings[name] = (value, min_val, max_val, fixed, log_param)
 
         params0 = {name: value for name, value in zip(param_names, values, strict=True)}
-        return params0, (np.array(lower, dtype=float), np.array(upper, dtype=float)), param_names
+        return (
+            params0,
+            (np.array(lower, dtype=float), np.array(upper, dtype=float)),
+            param_names,
+            log_params,
+        )
 
-    def _datasets_complete(self) -> bool:
+    def _update_correlation_table(
+        self,
+        param_names: Sequence[str],
+        correlations: np.ndarray | None,
+    ) -> None:
+        if correlations is None or correlations.size == 0:
+            self._clear_correlation_table()
+            return
+        n_params = len(param_names)
+        if correlations.shape != (n_params, n_params):
+            self._clear_correlation_table()
+            return
+        self._corr_table.setRowCount(n_params)
+        self._corr_table.setColumnCount(n_params)
+        self._corr_table.setHorizontalHeaderLabels(list(param_names))
+        self._corr_table.setVerticalHeaderLabels(list(param_names))
+        for row in range(n_params):
+            for col in range(n_params):
+                item = QTableWidgetItem("")
+                item.setFlags(
+                    Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled
+                )
+                if col <= row:
+                    item.setText(f"{correlations[row, col]:.3f}")
+                self._corr_table.setItem(row, col, item)
+        self._corr_label.setVisible(True)
+        self._corr_table.setVisible(True)
+
+    def _dataset_is_complete(self, dataset: KineticsFitDataset) -> bool:
         dynamic = set(self._dynamic_species())
         fixed = set(self._fixed_species())
-        for dataset in self._datasets:
-            if dataset.D is None:
+        if dataset.D is None:
+            return False
+        if dynamic:
+            if dataset.y0 is None:
                 return False
-            if dynamic:
-                if dataset.y0 is None:
-                    return False
-                if any(species not in dataset.y0 for species in dynamic):
-                    return False
-            if fixed:
-                if dataset.fixed_conc is None:
-                    return False
-                if any(species not in dataset.fixed_conc for species in fixed):
-                    return False
+            if any(species not in dataset.y0 for species in dynamic):
+                return False
+        if fixed:
+            if dataset.fixed_conc is None:
+                return False
+            if any(species not in dataset.fixed_conc for species in fixed):
+                return False
         return True
+
+    def _datasets_complete(
+        self, datasets: Sequence[KineticsFitDataset] | None = None
+    ) -> bool:
+        datasets = list(datasets) if datasets is not None else self._datasets
+        return all(self._dataset_is_complete(dataset) for dataset in datasets)
 
     def _update_fit_state(self) -> None:
         fit_enabled = (
@@ -917,6 +1305,14 @@ class KineticsMainWidget(QWidget):
             and self._datasets_complete()
         )
         self._btn_fit.setEnabled(fit_enabled)
+        selected = self._selected_datasets()
+        fit_selected_enabled = (
+            self._model is not None
+            and bool(selected)
+            and self._datasets_complete(selected)
+        )
+        self._btn_fit_selected.setEnabled(fit_selected_enabled)
+        self._btn_reset_fit.setEnabled(bool(self._datasets) or self._last_fit_result is not None)
 
     def _dynamic_species(self) -> list[str]:
         if self._model is None:

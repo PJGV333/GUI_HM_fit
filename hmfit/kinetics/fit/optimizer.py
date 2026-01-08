@@ -18,6 +18,10 @@ class GlobalFitResult:
     ssq: float
     nfev: int
     njev: int | None
+    errors: np.ndarray | None = None
+    covariance: np.ndarray | None = None
+    correlations: np.ndarray | None = None
+    condition_number: float | None = None
 
 
 def fit_global(
@@ -44,13 +48,49 @@ def fit_global(
         **kwargs,
     )
 
-    params = {name: float(value) for name, value in zip(param_names, result.x, strict=True)}
+    params = objective._coerce_params(result.x)
+
+    errors = None
+    covariance = None
+    correlations = None
+    condition_number = None
+    if result.jac is not None:
+        J = np.asarray(result.jac, dtype=float)
+        if J.size:
+            n_data = result.fun.size if result.fun is not None else J.shape[0]
+            m = J.shape[1]
+            dof = max(n_data - m, 1)
+            sigma2 = 2.0 * result.cost / dof
+            jt_j = J.T @ J
+            try:
+                condition_number = float(np.linalg.cond(jt_j))
+            except np.linalg.LinAlgError:
+                condition_number = None
+            covariance = sigma2 * np.linalg.pinv(jt_j)
+            if objective.log_params:
+                scale = np.ones(m, dtype=float)
+                for idx, name in enumerate(param_names):
+                    if name in objective.log_params:
+                        scale[idx] = np.log(10.0) * float(params[name])
+                covariance = (scale[:, None] * covariance) * scale[None, :]
+            errors = np.sqrt(np.diag(covariance))
+            denom = np.outer(errors, errors)
+            correlations = np.divide(
+                covariance,
+                denom,
+                out=np.zeros_like(covariance),
+                where=denom != 0,
+            )
     return GlobalFitResult(
         params=params,
         result=result,
         ssq=float(2.0 * result.cost),
         nfev=result.nfev,
         njev=result.njev,
+        errors=errors,
+        covariance=covariance,
+        correlations=correlations,
+        condition_number=condition_number,
     )
 
 

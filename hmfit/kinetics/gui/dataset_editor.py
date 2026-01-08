@@ -53,12 +53,15 @@ class DatasetEditorWidget(QWidget):
 
         self.time_unit_edit = QLineEdit(self)
         self.time_unit_edit.setText("s")
+        self.time_unit_edit.setToolTip("Time unit: typically seconds (s).")
         self._form.addRow("Time unit", self.time_unit_edit)
 
         self.x_unit_edit = QLineEdit(self)
+        self.x_unit_edit.setToolTip("X unit: wavelength (nm) or ppm for NMR.")
         self._form.addRow("X unit", self.x_unit_edit)
 
         self.signal_unit_edit = QLineEdit(self)
+        self.signal_unit_edit.setToolTip("Signal unit: absorbance, intensity, or a.u.")
         self._form.addRow("Signal unit", self.signal_unit_edit)
 
         self._y0_label = QLabel("y0 (dynamic species)", self)

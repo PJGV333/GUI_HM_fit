@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping, Sequence
 
 import numpy as np
@@ -19,6 +19,10 @@ class GlobalKineticsObjective:
     datasets: Sequence[KineticsDataset]
     param_names: Sequence[str] | None = None
     nnls: bool = False
+    log_params: set[str] = field(default_factory=set)
+
+    def __post_init__(self) -> None:
+        self.log_params = set(self.log_params)
 
     def predict_dataset(
         self, params: Mapping[str, float] | np.ndarray, dataset: KineticsDataset
@@ -83,9 +87,13 @@ class GlobalKineticsObjective:
         values = np.asarray(params, dtype=float).reshape(-1)
         if values.shape[0] != len(self.param_names):
             raise ValueError("Parameter vector length does not match param_names.")
-        return {
-            name: float(value) for name, value in zip(self.param_names, values, strict=True)
-        }
+        params_dict: dict[str, float] = {}
+        for name, value in zip(self.param_names, values, strict=True):
+            if name in self.log_params:
+                params_dict[name] = float(10.0**value)
+            else:
+                params_dict[name] = float(value)
+        return params_dict
 
 
 def _dataset_weights(dataset: KineticsDataset) -> np.ndarray | None:

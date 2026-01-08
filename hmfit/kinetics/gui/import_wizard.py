@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 from typing import Sequence
 
@@ -32,7 +33,7 @@ from PySide6.QtWidgets import (
 
 from ..data.fit_dataset import KineticsFitDataset, TechniqueType
 from ..data.loaders import load_matrix_file, load_xlsx
-from .dataset_editor import DatasetEditorWidget
+from .dataset_editor import DatasetEditorDialog, DatasetEditorWidget
 
 
 class ImportWizard(QDialog):
@@ -50,6 +51,8 @@ class ImportWizard(QDialog):
         self._dynamic_species = list(dynamic_species or [])
         self._fixed_species = list(fixed_species or [])
         self._dataset: KineticsFitDataset | None = None
+        self._datasets: list[KineticsFitDataset] = []
+        self._paths: list[str] = []
         self._raw_t = None
         self._raw_D = None
         self._raw_x = None
@@ -59,8 +62,12 @@ class ImportWizard(QDialog):
         self._update_nav()
 
     @property
+    def datasets(self) -> list[KineticsFitDataset]:
+        return list(self._datasets)
+
+    @property
     def dataset(self) -> KineticsFitDataset | None:
-        return self._dataset
+        return self._datasets[0] if self._datasets else None
 
     # ---- UI ----
     def _build_ui(self) -> None:
@@ -121,7 +128,7 @@ class ImportWizard(QDialog):
 
         file_row = QHBoxLayout()
         self._path_edit = QLineEdit(widget)
-        self._path_edit.setPlaceholderText("Select a data file")
+        self._path_edit.setPlaceholderText("Select data file(s)")
         file_row.addWidget(self._path_edit, 1)
         btn_browse = QPushButton("Browse…", widget)
         btn_browse.clicked.connect(self._on_browse)
@@ -200,6 +207,13 @@ class ImportWizard(QDialog):
             fixed_species=self._fixed_species,
         )
         layout.addWidget(self._metadata_editor)
+        self._metadata_warning = QLabel(
+            "Complete initial concentrations before finishing.", widget
+        )
+        self._metadata_warning.setStyleSheet("color: #B00020;")
+        self._metadata_warning.setWordWrap(True)
+        self._metadata_warning.setVisible(False)
+        layout.addWidget(self._metadata_warning)
         return widget
 
     # ---- Navigation ----
@@ -213,35 +227,77 @@ class ImportWizard(QDialog):
 
     def _on_finish(self) -> None:
         try:
-            self._build_dataset()
+            self._build_datasets()
         except Exception as exc:
             QMessageBox.warning(self, "Import error", str(exc))
             return
+        if not self._datasets:
+            QMessageBox.warning(self, "Import error", "No datasets imported.")
+            return
+        if any(
+            not self._metadata_editor.is_complete(dataset)
+            for dataset in self._datasets
+        ):
+            template = copy.deepcopy(self._datasets[0])
+            dialog = DatasetEditorDialog(
+                template,
+                dynamic_species=self._dynamic_species,
+                fixed_species=self._fixed_species,
+                parent=self,
+            )
+            dialog.setWindowTitle("Complete Metadata")
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+            updated = dialog.dataset
+            for dataset in self._datasets:
+                dataset.temperature = updated.temperature
+                dataset.time_unit = updated.time_unit
+                dataset.x_unit = updated.x_unit
+                dataset.signal_unit = updated.signal_unit
+                dataset.y0 = dict(updated.y0) if updated.y0 is not None else None
+                dataset.fixed_conc = (
+                    dict(updated.fixed_conc) if updated.fixed_conc is not None else None
+                )
         self.accept()
 
     def _update_nav(self) -> None:
         idx = self._stack.currentIndex()
+        is_last = idx == self._stack.count() - 1
         self._btn_back.setEnabled(idx > 0)
         self._btn_next.setEnabled(idx < self._stack.count() - 1)
-        self._btn_finish.setEnabled(idx == self._stack.count() - 1)
+        if is_last:
+            complete = self._metadata_complete()
+            self._btn_finish.setEnabled(complete)
+            self._metadata_warning.setVisible(not complete)
+        else:
+            self._btn_finish.setEnabled(False)
+            self._metadata_warning.setVisible(False)
+
+    def _metadata_complete(self) -> bool:
+        if self._dataset is None:
+            return True
+        self._metadata_editor.apply_to_dataset(self._dataset)
+        return self._metadata_editor.is_complete(self._dataset)
 
     # ---- Data loading ----
     def _on_browse(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
+        paths, _ = QFileDialog.getOpenFileNames(
             self,
             "Select Data File",
             "",
             "Data Files (*.csv *.tsv *.txt *.xlsx *.xls);;All Files (*)",
         )
-        if not path:
+        if not paths:
             return
-        self._path_edit.setText(path)
-        suffix = Path(path).suffix.lower()
+        self._paths = list(paths)
+        display = paths[0] if len(paths) == 1 else f"{len(paths)} files selected"
+        self._path_edit.setText(display)
+        suffix = Path(paths[0]).suffix.lower()
         if suffix == ".tsv":
             self._delimiter_edit.setText("\\t")
         elif suffix in {".csv", ".txt"}:
             self._delimiter_edit.setText("")
-        self._populate_sheets(path)
+        self._populate_sheets(paths[0])
         self._reload_data()
 
     def _populate_sheets(self, path: str) -> None:
@@ -256,7 +312,7 @@ class ImportWizard(QDialog):
             self._sheet_combo.setEnabled(False)
 
     def _reload_data(self) -> None:
-        path = self._path_edit.text().strip()
+        path = self._current_path()
         if not path:
             return
 
@@ -277,6 +333,12 @@ class ImportWizard(QDialog):
         self._populate_channels(labels)
         self._time_col_spin.setMaximum(len(labels))
         self._initialize_metadata(path, t, D, x, labels)
+        self._update_nav()
+
+    def _current_path(self) -> str:
+        if self._paths:
+            return self._paths[0]
+        return self._path_edit.text().strip()
 
     def _load_data(self, path: str):
         settings = self._loader_settings(path)
@@ -389,26 +451,57 @@ class ImportWizard(QDialog):
         pass
 
     # ---- Final dataset ----
-    def _build_dataset(self) -> None:
-        if self._raw_t is None or self._raw_D is None:
-            raise ValueError("No data loaded.")
-        if self._dataset is None:
-            raise ValueError("Dataset metadata not initialized.")
-
+    def _build_datasets(self) -> None:
+        path_list = self._paths or [self._path_edit.text().strip()]
+        path_list = [path for path in path_list if path]
+        if not path_list:
+            raise ValueError("No data file selected.")
         indices = self._selected_channel_indices()
         if not indices:
             raise ValueError("Select at least one channel.")
+        datasets: list[KineticsFitDataset] = []
+        for path in path_list:
+            dataset = self._build_dataset_for_path(path, indices, multi=len(path_list) > 1)
+            datasets.append(dataset)
+        self._datasets = datasets
 
-        D = self._raw_D[:, indices]
-        labels = [self._raw_labels[idx] for idx in indices]
-        x = self._raw_x[indices] if self._raw_x is not None else None
-
-        self._dataset.D = D
-        self._dataset.channel_labels = labels
-        self._dataset.x = x
-        self._dataset.channel_indices = indices
-        self._dataset.technique = self._current_technique()
-        self._metadata_editor.apply_to_dataset(self._dataset)
+    def _build_dataset_for_path(
+        self, path: str, indices: list[int], *, multi: bool
+    ) -> KineticsFitDataset:
+        t, D, x, labels = self._load_data(path)
+        if any(idx >= len(labels) or idx < 0 for idx in indices):
+            raise ValueError(f"Channel indices out of range for {path}.")
+        D_sel = D[:, indices]
+        labels_sel = [labels[idx] for idx in indices]
+        x_sel = x[indices] if x is not None else None
+        technique = self._current_technique()
+        name = Path(path).stem
+        time_unit, x_unit, signal_unit = _default_units(technique)
+        settings = self._loader_settings(path)
+        dataset = KineticsFitDataset(
+            t=t,
+            D=D_sel,
+            x=x_sel,
+            channel_labels=list(labels_sel),
+            technique=technique,
+            time_unit=time_unit,
+            x_unit=x_unit,
+            signal_unit=signal_unit,
+            name=name,
+            source_path=str(path),
+            y0=None,
+            loader_kind=settings["kind"],
+            loader_delimiter=settings["delimiter"],
+            loader_header=settings["header"],
+            loader_transpose=settings["transpose"],
+            loader_time_col=settings["time_col"],
+            loader_sheet=settings["sheet"],
+            channel_indices=list(indices),
+        )
+        self._metadata_editor.apply_to_dataset(dataset)
+        if multi:
+            dataset.name = name
+        return dataset
 
     def _selected_channel_indices(self) -> list[int]:
         indices = []
