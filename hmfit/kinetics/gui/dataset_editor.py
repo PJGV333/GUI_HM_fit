@@ -66,10 +66,16 @@ class DatasetEditorWidget(QWidget):
 
         self._y0_label = QLabel("y0 (dynamic species)", self)
         self._y0_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self._y0_label.setToolTip(
+            "Initial concentrations (y0) are required for all dynamic species."
+        )
         self._form.addRow(self._y0_label)
 
         self._fixed_label = QLabel("fixed_conc (fixed species)", self)
         self._fixed_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self._fixed_label.setToolTip(
+            "Fixed concentrations are required when the mechanism defines fixed species."
+        )
         self._form.addRow(self._fixed_label)
 
         self._empty_species_label = QLabel(

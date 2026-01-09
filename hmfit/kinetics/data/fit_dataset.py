@@ -32,8 +32,13 @@ class KineticsFitDataset(KineticsDataset):
     loader_transpose: bool = False
     loader_time_col: int | str = 0
     loader_sheet: str | None = None
+    loader_conc_sheet: str | None = None
+    loader_shift_sheet: str | None = None
     channel_indices: list[int] = field(default_factory=list)
+    channel_parents: list[str] = field(default_factory=list)
     fit_C: np.ndarray | None = None
     fit_A: np.ndarray | None = None
     fit_D_hat: np.ndarray | None = None
     fit_residuals: np.ndarray | None = None
+    efa_enabled: bool = False
+    efa_eigen: int = 0

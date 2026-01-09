@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import numpy as np
 from pathlib import Path
 from typing import Sequence
 
@@ -34,6 +35,7 @@ from PySide6.QtWidgets import (
 from ..data.fit_dataset import KineticsFitDataset, TechniqueType
 from ..data.loaders import load_matrix_file, load_xlsx
 from .dataset_editor import DatasetEditorDialog, DatasetEditorWidget
+from hmfit_gui_qt.widgets.channel_spec import ChannelSpecWidget
 
 
 class ImportWizard(QDialog):
@@ -57,6 +59,9 @@ class ImportWizard(QDialog):
         self._raw_D = None
         self._raw_x = None
         self._raw_labels: list[str] = []
+        self._raw_shift_x = None
+        self._selected_channel_parents: list[str] = []
+        self._ui_ready = False
 
         self._build_ui()
         self._update_nav()
@@ -96,6 +101,8 @@ class ImportWizard(QDialog):
         self._btn_cancel.clicked.connect(self.reject)
         nav_layout.addWidget(self._btn_cancel)
         layout.addLayout(nav_layout)
+        self._apply_technique_ui()
+        self._ui_ready = True
 
     def _build_step_type(self) -> QWidget:
         widget = QWidget(self)
@@ -106,16 +113,17 @@ class ImportWizard(QDialog):
 
         self._technique_buttons: dict[TechniqueType, QRadioButton] = {}
         options = [
-            ("spec_full", "Spectroscopy: full spectrum (time × λ)"),
+            ("spec_full", "Spectroscopy: full spectrum (time x lambda)"),
             ("spec_channels", "Spectroscopy: few channels"),
-            ("nmr_integrals", "NMR: integrals (time × peaks)"),
-            ("nmr_full", "NMR: full spectrum (time × ppm)"),
+            ("nmr_integrals", "NMR: integrals (time x peaks)"),
+            ("nmr_full", "NMR: full spectrum (time x ppm)"),
         ]
         for technique, label in options:
             button = QRadioButton(label, group)
             self._technique_group.addButton(button)
             self._technique_buttons[technique] = button
             group_layout.addWidget(button)
+            button.toggled.connect(self._on_technique_changed)
         self._technique_buttons["spec_channels"].setChecked(True)
 
         layout.addWidget(group)
@@ -130,15 +138,26 @@ class ImportWizard(QDialog):
         self._path_edit = QLineEdit(widget)
         self._path_edit.setPlaceholderText("Select data file(s)")
         file_row.addWidget(self._path_edit, 1)
-        btn_browse = QPushButton("Browse…", widget)
+        btn_browse = QPushButton("Browse...", widget)
         btn_browse.clicked.connect(self._on_browse)
         file_row.addWidget(btn_browse)
         layout.addLayout(file_row)
 
         options_layout = QFormLayout()
+        self._sheet_label = QLabel("Sheet", widget)
         self._sheet_combo = QComboBox(widget)
         self._sheet_combo.currentIndexChanged.connect(self._reload_data)
-        options_layout.addRow("Sheet", self._sheet_combo)
+        options_layout.addRow(self._sheet_label, self._sheet_combo)
+
+        self._conc_sheet_label = QLabel("Concentration sheet (optional)", widget)
+        self._conc_sheet_combo = QComboBox(widget)
+        self._conc_sheet_combo.currentIndexChanged.connect(self._update_nav)
+        options_layout.addRow(self._conc_sheet_label, self._conc_sheet_combo)
+
+        self._shift_sheet_label = QLabel("Shift sheet", widget)
+        self._shift_sheet_combo = QComboBox(widget)
+        self._shift_sheet_combo.currentIndexChanged.connect(self._reload_data)
+        options_layout.addRow(self._shift_sheet_label, self._shift_sheet_combo)
 
         self._header_check = QCheckBox("Header row", widget)
         self._header_check.setChecked(True)
@@ -171,31 +190,64 @@ class ImportWizard(QDialog):
     def _build_step_channels(self) -> QWidget:
         widget = QWidget(self)
         layout = QVBoxLayout(widget)
+        self._channels_stack = QStackedWidget(widget)
 
-        self._channels_list = QListWidget(widget)
+        list_page = QWidget(self._channels_stack)
+        list_layout = QVBoxLayout(list_page)
+        self._channels_list = QListWidget(list_page)
         self._channels_list.itemChanged.connect(self._on_channel_item_changed)
-        layout.addWidget(self._channels_list, 1)
+        list_layout.addWidget(self._channels_list, 1)
 
         actions_layout = QHBoxLayout()
-        btn_all = QPushButton("All", widget)
+        btn_all = QPushButton("All", list_page)
         btn_all.clicked.connect(lambda: self._set_all_channels(True))
         actions_layout.addWidget(btn_all)
-        btn_none = QPushButton("None", widget)
+        btn_none = QPushButton("None", list_page)
         btn_none.clicked.connect(lambda: self._set_all_channels(False))
         actions_layout.addWidget(btn_none)
         actions_layout.addStretch(1)
 
-        self._range_min = QLineEdit(widget)
+        self._range_min = QLineEdit(list_page)
         self._range_min.setPlaceholderText("min")
-        self._range_max = QLineEdit(widget)
+        self._range_max = QLineEdit(list_page)
         self._range_max.setPlaceholderText("max")
-        btn_range = QPushButton("Apply range", widget)
+        btn_range = QPushButton("Apply range", list_page)
         btn_range.clicked.connect(self._apply_range)
         actions_layout.addWidget(self._range_min)
         actions_layout.addWidget(self._range_max)
         actions_layout.addWidget(btn_range)
+        list_layout.addLayout(actions_layout)
 
-        layout.addLayout(actions_layout)
+        efa_row = QHBoxLayout()
+        efa_row.addWidget(QLabel("EFA Eigenvalues", list_page))
+        self._efa_check = QCheckBox("EFA", list_page)
+        self._efa_check.setChecked(True)
+        efa_row.addWidget(self._efa_check)
+        self._efa_spin = QSpinBox(list_page)
+        self._efa_spin.setRange(0, 999)
+        self._efa_spin.setValue(0)
+        efa_row.addWidget(self._efa_spin)
+        efa_row.addStretch(1)
+        list_layout.addLayout(efa_row)
+
+        self._channels_stack.addWidget(list_page)
+
+        spec_page = QWidget(self._channels_stack)
+        spec_layout = QVBoxLayout(spec_page)
+        self._channel_spec_widget = ChannelSpecWidget(spec_page)
+        spec_layout.addWidget(self._channel_spec_widget, 1)
+        spec_btns = QHBoxLayout()
+        btn_spec_all = QPushButton("Select all", spec_page)
+        btn_spec_all.clicked.connect(lambda: self._channel_spec_widget.set_all_checked(True))
+        spec_btns.addWidget(btn_spec_all)
+        btn_spec_none = QPushButton("Select none", spec_page)
+        btn_spec_none.clicked.connect(lambda: self._channel_spec_widget.set_all_checked(False))
+        spec_btns.addWidget(btn_spec_none)
+        spec_btns.addStretch(1)
+        spec_layout.addLayout(spec_btns)
+        self._channels_stack.addWidget(spec_page)
+
+        layout.addWidget(self._channels_stack, 1)
         return widget
 
     def _build_step_metadata(self) -> QWidget:
@@ -208,13 +260,51 @@ class ImportWizard(QDialog):
         )
         layout.addWidget(self._metadata_editor)
         self._metadata_warning = QLabel(
-            "Complete initial concentrations before finishing.", widget
+            "Initial concentrations (y0) are required. "
+            "Validate the mechanism to enable y0/fixed fields. "
+            "Missing values will be requested when you finish.",
+            widget,
         )
         self._metadata_warning.setStyleSheet("color: #B00020;")
         self._metadata_warning.setWordWrap(True)
         self._metadata_warning.setVisible(False)
         layout.addWidget(self._metadata_warning)
         return widget
+
+    def _on_technique_changed(self) -> None:
+        if not self._ui_ready:
+            return
+        self._apply_technique_ui()
+        self._reload_data()
+        self._update_nav()
+
+    def _apply_technique_ui(self) -> None:
+        technique = self._current_technique()
+        is_spec = technique in {"spec_full", "spec_channels"}
+        self._sheet_label.setText("Spectra sheet" if is_spec else "Integrals sheet")
+
+        show_conc = technique == "spec_full"
+        self._conc_sheet_label.setVisible(show_conc)
+        self._conc_sheet_combo.setVisible(show_conc)
+
+        show_shift = technique == "nmr_full"
+        self._shift_sheet_label.setVisible(show_shift)
+        self._shift_sheet_combo.setVisible(show_shift)
+
+        if technique == "nmr_full":
+            self._channels_stack.setCurrentIndex(1)
+        else:
+            self._channels_stack.setCurrentIndex(0)
+
+        show_efa = technique == "spec_full"
+        self._efa_check.setVisible(show_efa)
+        self._efa_spin.setVisible(show_efa)
+        if not show_efa:
+            self._efa_check.setChecked(False)
+            self._efa_spin.setValue(0)
+
+        if self._channel_spec_widget is not None:
+            self._channel_spec_widget.update_parent_options(list(self._dynamic_species))
 
     # ---- Navigation ----
     def _on_back(self) -> None:
@@ -266,17 +356,20 @@ class ImportWizard(QDialog):
         self._btn_back.setEnabled(idx > 0)
         self._btn_next.setEnabled(idx < self._stack.count() - 1)
         if is_last:
-            complete = self._metadata_complete()
-            self._btn_finish.setEnabled(complete)
-            self._metadata_warning.setVisible(not complete)
+            has_dataset = self._dataset is not None
+            complete = self._metadata_complete() if has_dataset else False
+            self._btn_finish.setEnabled(has_dataset)
+            self._metadata_warning.setVisible(has_dataset and not complete)
         else:
             self._btn_finish.setEnabled(False)
             self._metadata_warning.setVisible(False)
 
     def _metadata_complete(self) -> bool:
         if self._dataset is None:
-            return True
+            return False
         self._metadata_editor.apply_to_dataset(self._dataset)
+        if not self._dynamic_species and not self._fixed_species:
+            return False
         return self._metadata_editor.is_complete(self._dataset)
 
     # ---- Data loading ----
@@ -302,14 +395,23 @@ class ImportWizard(QDialog):
 
     def _populate_sheets(self, path: str) -> None:
         self._sheet_combo.clear()
+        self._conc_sheet_combo.clear()
+        self._shift_sheet_combo.clear()
         if Path(path).suffix.lower() in {".xlsx", ".xls"}:
             import pandas as pd
 
             xls = pd.ExcelFile(path)
-            self._sheet_combo.addItems([str(name) for name in xls.sheet_names])
+            names = [str(name) for name in xls.sheet_names]
+            self._sheet_combo.addItems(names)
+            self._conc_sheet_combo.addItems([""] + names)
+            self._shift_sheet_combo.addItems([""] + names)
             self._sheet_combo.setEnabled(True)
+            self._conc_sheet_combo.setEnabled(True)
+            self._shift_sheet_combo.setEnabled(True)
         else:
             self._sheet_combo.setEnabled(False)
+            self._conc_sheet_combo.setEnabled(False)
+            self._shift_sheet_combo.setEnabled(False)
 
     def _reload_data(self) -> None:
         path = self._current_path()
@@ -318,6 +420,12 @@ class ImportWizard(QDialog):
 
         try:
             t, D, x, labels = self._load_data(path)
+            if self._current_technique() == "nmr_full":
+                shift_sheet = self._shift_sheet_combo.currentText().strip()
+                shift_axis = self._load_shift_axis(path, shift_sheet, len(labels))
+                if shift_axis is not None:
+                    x = shift_axis
+                    self._raw_shift_x = shift_axis
         except Exception as exc:
             self._preview.setRowCount(0)
             self._preview.setColumnCount(0)
@@ -331,7 +439,7 @@ class ImportWizard(QDialog):
 
         self._update_preview(t, D, labels)
         self._populate_channels(labels)
-        self._time_col_spin.setMaximum(len(labels))
+        self._time_col_spin.setMaximum(max(len(labels), 1))
         self._initialize_metadata(path, t, D, x, labels)
         self._update_nav()
 
@@ -358,6 +466,30 @@ class ImportWizard(QDialog):
             header=settings["header"],
         )
 
+    def _load_shift_axis(self, path: str, sheet: str, expected: int) -> np.ndarray | None:
+        if not sheet:
+            return None
+        if Path(path).suffix.lower() not in {".xlsx", ".xls"}:
+            return None
+        try:
+            import pandas as pd
+        except Exception:
+            return None
+        try:
+            df = pd.read_excel(path, sheet_name=sheet, header=0)
+        except Exception:
+            return None
+        if expected <= 0:
+            return None
+        labels = [str(c) for c in df.columns]
+        axis = _parse_axis(labels)
+        if axis is not None and axis.size == expected:
+            return axis
+        col = pd.to_numeric(df.iloc[:, 0], errors="coerce").dropna()
+        if col.size == expected:
+            return np.asarray(col.to_numpy(), dtype=float)
+        return None
+
     def _update_preview(self, t, D, labels) -> None:
         max_rows = min(50, D.shape[0])
         max_cols = min(10, D.shape[1])
@@ -375,6 +507,12 @@ class ImportWizard(QDialog):
                 )
 
     def _populate_channels(self, labels: Sequence[str]) -> None:
+        technique = self._current_technique()
+        if technique == "nmr_full":
+            self._channel_spec_widget.set_channels([str(label) for label in labels])
+            self._channel_spec_widget.update_parent_options(list(self._dynamic_species))
+            return
+
         self._channels_list.blockSignals(True)
         self._channels_list.clear()
         for label in labels:
@@ -414,7 +552,11 @@ class ImportWizard(QDialog):
             loader_transpose=settings["transpose"],
             loader_time_col=settings["time_col"],
             loader_sheet=settings["sheet"],
+            loader_conc_sheet=self._conc_sheet_combo.currentText().strip() or None,
+            loader_shift_sheet=self._shift_sheet_combo.currentText().strip() or None,
             channel_indices=list(range(len(labels))),
+            efa_enabled=bool(self._efa_check.isChecked()),
+            efa_eigen=int(self._efa_spin.value()),
         )
         self._dataset = dataset
         self._metadata_editor.set_dataset(dataset)
@@ -459,16 +601,32 @@ class ImportWizard(QDialog):
         indices = self._selected_channel_indices()
         if not indices:
             raise ValueError("Select at least one channel.")
+        parents = list(self._selected_channel_parents) if self._selected_channel_parents else None
         datasets: list[KineticsFitDataset] = []
         for path in path_list:
-            dataset = self._build_dataset_for_path(path, indices, multi=len(path_list) > 1)
+            dataset = self._build_dataset_for_path(
+                path,
+                indices,
+                parents=parents,
+                multi=len(path_list) > 1,
+            )
             datasets.append(dataset)
         self._datasets = datasets
 
     def _build_dataset_for_path(
-        self, path: str, indices: list[int], *, multi: bool
+        self,
+        path: str,
+        indices: list[int],
+        *,
+        parents: list[str] | None = None,
+        multi: bool,
     ) -> KineticsFitDataset:
         t, D, x, labels = self._load_data(path)
+        if self._current_technique() == "nmr_full":
+            shift_sheet = self._shift_sheet_combo.currentText().strip()
+            shift_axis = self._load_shift_axis(path, shift_sheet, len(labels))
+            if shift_axis is not None:
+                x = shift_axis
         if any(idx >= len(labels) or idx < 0 for idx in indices):
             raise ValueError(f"Channel indices out of range for {path}.")
         D_sel = D[:, indices]
@@ -496,14 +654,35 @@ class ImportWizard(QDialog):
             loader_transpose=settings["transpose"],
             loader_time_col=settings["time_col"],
             loader_sheet=settings["sheet"],
+            loader_conc_sheet=self._conc_sheet_combo.currentText().strip() or None,
+            loader_shift_sheet=self._shift_sheet_combo.currentText().strip() or None,
             channel_indices=list(indices),
+            efa_enabled=bool(self._efa_check.isChecked()),
+            efa_eigen=int(self._efa_spin.value()),
         )
+        if parents:
+            dataset.channel_parents = list(parents)
         self._metadata_editor.apply_to_dataset(dataset)
         if multi:
             dataset.name = name
         return dataset
 
     def _selected_channel_indices(self) -> list[int]:
+        technique = self._current_technique()
+        if technique == "nmr_full":
+            selected = self._channel_spec_widget.get_selected_channels()
+            label_to_index = {str(label): i for i, label in enumerate(self._raw_labels)}
+            indices: list[int] = []
+            parents: list[str] = []
+            for entry in selected:
+                name = str(entry.get("col_name") or "")
+                if name not in label_to_index:
+                    continue
+                indices.append(label_to_index[name])
+                parents.append(str(entry.get("parent") or ""))
+            self._selected_channel_parents = parents
+            return indices
+
         indices = []
         for idx in range(self._channels_list.count()):
             item = self._channels_list.item(idx)
@@ -511,6 +690,7 @@ class ImportWizard(QDialog):
                 continue
             if item.checkState() == Qt.CheckState.Checked:
                 indices.append(idx)
+        self._selected_channel_parents = []
         return indices
 
     def _current_technique(self) -> TechniqueType:
@@ -549,3 +729,13 @@ def _default_units(technique: TechniqueType) -> tuple[str, str, str]:
     if technique in {"spec_full", "spec_channels"}:
         return "s", "nm", "a.u."
     return "s", "ppm", "a.u."
+
+
+def _parse_axis(labels: Sequence[str]) -> np.ndarray | None:
+    axis: list[float] = []
+    for label in labels:
+        try:
+            axis.append(float(label))
+        except ValueError:
+            return None
+    return np.asarray(axis, dtype=float)
