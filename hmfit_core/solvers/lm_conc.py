@@ -5,8 +5,10 @@
 # Internamente usa NumPy (onp) para mutabilidad; al salir convierte al backend (np).
 
 import numpy as onp
+from typing import Optional
 from ..utils.np_backend import xp as np
 from ..utils.noncoop_utils import infer_noncoop_series
+from ..graph.hmgraph import HMGraph
 
 # ---------------------------------------------------------
 # Pseudoinversa robusta en NumPy real (fallback si el sistema es mal condicionado)
@@ -33,12 +35,23 @@ class LevenbergMarquardt:
     """
 
     def __init__(self, C_T, modelo, nas, model_sett,
+                 graph: Optional[HMGraph] = None,
                  tol=1e-10, max_iter=200,
                  lam0=1e-2, lam_up=10.0, lam_down=0.2,
                  max_step=2.0, max_backtrack=8):
+        self.graph = graph
+        self._graph_revision = None
+
         self.C_T = onp.asarray(C_T, dtype=float)            # (n_reac, n_comp)
-        self.modelo = onp.asarray(modelo, dtype=float)      # (n_comp, nspec)
-        self.nas = onp.asarray(nas if nas is not None else [], dtype=int)
+
+        if self.graph is not None:
+            modelo_g, nas_g = self.graph.compile()
+            self._graph_revision = self.graph.revision
+            self.modelo = onp.asarray(modelo_g, dtype=float)
+            self.nas = onp.asarray(nas_g if nas is None else nas, dtype=int)
+        else:
+            self.modelo = onp.asarray(modelo, dtype=float)  # (n_comp, nspec)
+            self.nas = onp.asarray(nas if nas is not None else [], dtype=int)
         #self.model_sett = model_sett
         self.model_sett = model_sett or "Free"
 
@@ -58,6 +71,18 @@ class LevenbergMarquardt:
         self.n_reac, self.n_comp = self.C_T.shape
         self.nspec = self.modelo.shape[1]
         self.mt = self.modelo.T  # (nspec, n_comp)
+
+    def _recompile_graph_if_needed(self) -> None:
+        if self.graph is None:
+            return
+        rev = self.graph.revision
+        if self._graph_revision != rev:
+            modelo_g, nas_g = self.graph.compile()
+            self.modelo = onp.asarray(modelo_g, dtype=float)
+            self.nas = onp.asarray(nas_g, dtype=int)
+            self.n_componentes, self.nspec = self.modelo.shape
+            self.mt = self.modelo.T
+            self._graph_revision = rev
 
     # ----- transformaciones K (siguiendo tu convención actual) -----
     def step_by_step(self, K_log):
@@ -153,6 +178,7 @@ class LevenbergMarquardt:
     def concentraciones(self, K, tol=None, max_iter=None,
                         lam0=None, lam_up=None, lam_down=None,
                         max_step=None, max_backtrack=None):
+        self._recompile_graph_if_needed()
         # Overwrites opcionales
         tol = self.tol if tol is None else float(tol)
         max_iter = self.max_iter if max_iter is None else int(max_iter)
@@ -264,6 +290,9 @@ class LevenbergMarquardt:
                     it += 1
 
             c_calculada[i, :] = c_spec
+
+        if self.graph is not None:
+            self.graph.set_last_solution(c_calculada)
 
         # Eliminar especies no absorbentes (NumPy real)
         if self.nas.size > 0:

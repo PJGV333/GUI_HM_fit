@@ -7,8 +7,10 @@
 #  - Cálculo interno en NumPy real (onp), salida en backend (np)
 
 import numpy as onp
+from typing import Optional
 from ..utils.np_backend import xp as np  # backend conmutable (JAX/NumPy)
 from ..utils.noncoop_utils import infer_noncoop_series
+from ..graph.hmgraph import HMGraph
 
 # ------------------------------------------------------------------
 def pinv_cs(A, rcond=1e-12):
@@ -33,12 +35,23 @@ class NewtonRaphson:
     """
 
     def __init__(self, ctot, modelo, nas=None, model_sett=None,
+                 graph: Optional[HMGraph] = None,
                  tol=1e-10, max_iter=200, k_is_log10=True,
                  max_step=2.0, max_backtrack=8):
 
-        self.modelo = onp.asarray(modelo, dtype=float)
-        self.ctot   = onp.asarray(ctot,   dtype=float)
-        self.nas    = onp.asarray(nas if nas is not None else [], dtype=int)
+        self.graph = graph
+        self._graph_revision = None
+
+        if self.graph is not None:
+            modelo_g, nas_g = self.graph.compile()
+            self._graph_revision = self.graph.revision
+            self.modelo = onp.asarray(modelo_g, dtype=float)
+            self.nas = onp.asarray(nas_g if nas is None else nas, dtype=int)
+        else:
+            self.modelo = onp.asarray(modelo, dtype=float)
+            self.nas = onp.asarray(nas if nas is not None else [], dtype=int)
+
+        self.ctot = onp.asarray(ctot, dtype=float)
         self.model_sett = model_sett or "Free"
 
         self.tol = float(tol)
@@ -53,6 +66,18 @@ class NewtonRaphson:
         self.n_reacciones = self.ctot.shape[0]
 
         self.mt = self.modelo.T  # (nspec, n_componentes)
+
+    def _recompile_graph_if_needed(self) -> None:
+        if self.graph is None:
+            return
+        rev = self.graph.revision
+        if self._graph_revision != rev:
+            modelo_g, nas_g = self.graph.compile()
+            self.modelo = onp.asarray(modelo_g, dtype=float)
+            self.nas = onp.asarray(nas_g, dtype=int)
+            self.n_componentes, self.nspec = self.modelo.shape
+            self.mt = self.modelo.T
+            self._graph_revision = rev
 
     # ----- transformaciones de K según configuración -----
 
@@ -253,6 +278,7 @@ class NewtonRaphson:
           C            : (n_reacciones, nspec - len(nas))  (solo absorbentes)
           c_calculada  : (n_reacciones, nspec)             (todas las especies)
         """
+        self._recompile_graph_if_needed()
         K_num = self._prepare_K_numeric(k)
 
         # chequeo defensivo
@@ -265,6 +291,9 @@ class NewtonRaphson:
         for i in range(self.n_reacciones):
             _, _, c_spec_i = self._solve_single_nr(self.ctot[i, :], K_num)
             c_calculada[i, :] = c_spec_i
+
+        if self.graph is not None:
+            self.graph.set_last_solution(c_calculada)
 
         # eliminar no-absorbentes en NumPy real
         if self.nas.size > 0:
