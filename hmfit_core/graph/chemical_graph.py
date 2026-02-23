@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import re
-from typing import Dict, Iterable, List, Mapping, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Tuple
 
 import numpy as np
 
@@ -13,7 +13,7 @@ _TERM_RE = re.compile(r"^\s*(?:(\d+(?:\.\d+)?)\s*)?([A-Za-z][A-Za-z0-9_]*)\s*$")
 _EPS = 1e-12
 
 
-def _parse_formula(formula: str) -> Dict[str, float]:
+def parse_formula_tokens(formula: str) -> Dict[str, float]:
     """Best-effort parser for simple formulas (e.g., H2O, ML2)."""
     clean = formula.strip()
     if not clean:
@@ -40,16 +40,16 @@ def _merge_delta(
     delta: Dict[str, float], side: Mapping[SpeciesNode, float], sign: float
 ) -> None:
     for species, coeff in side.items():
-        for token, count in _parse_formula(species.name).items():
+        for token, count in parse_formula_tokens(species.name).items():
             delta[token] = delta.get(token, 0.0) + (sign * coeff * count)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True, unsafe_hash=True)
 class SpeciesNode:
     name: str
     charge: int = 0
-    is_solid: bool = False
-    initial_concentration: float = 0.0
+    is_solid: bool = field(default=False, compare=False, hash=False)
+    initial_concentration: float = field(default=0.0, compare=False, hash=False)
 
     def __post_init__(self) -> None:
         clean_name = self.name.strip()
@@ -57,7 +57,7 @@ class SpeciesNode:
             raise ValueError("SpeciesNode.name cannot be empty.")
         if self.initial_concentration < 0.0:
             raise ValueError("SpeciesNode.initial_concentration must be >= 0.")
-        object.__setattr__(self, "name", clean_name)
+        self.name = clean_name
 
 
 @dataclass(slots=True)
@@ -80,15 +80,25 @@ class ReactionEdge:
     def _validate_side(
         side: Mapping[SpeciesNode, float], side_name: str
     ) -> Dict[SpeciesNode, float]:
-        out: Dict[SpeciesNode, float] = {}
+        out_by_name: Dict[str, Tuple[SpeciesNode, float]] = {}
         for species, coeff in side.items():
             value = float(coeff)
             if value <= 0.0:
                 raise ValueError(
                     f"ReactionEdge.{side_name} coefficients must be > 0. Got {value} for {species.name!r}."
                 )
-            out[species] = out.get(species, 0.0) + value
-        return out
+            existing = out_by_name.get(species.name)
+            if existing is None:
+                out_by_name[species.name] = (species, value)
+                continue
+            prev_species, prev_coeff = existing
+            if prev_species.charge != species.charge:
+                raise ValueError(
+                    f"ReactionEdge.{side_name} contains duplicated species {species.name!r} with different charge."
+                )
+            out_by_name[species.name] = (prev_species, prev_coeff + value)
+
+        return {species: coeff for species, coeff in out_by_name.values()}
 
     @property
     def charge_balance(self) -> float:
@@ -125,14 +135,32 @@ class ChemicalGraph:
     def reactions(self) -> Tuple[ReactionEdge, ...]:
         return tuple(self._reactions)
 
+    def get_species(self, name: str) -> SpeciesNode | None:
+        return self._species_by_name.get(name)
+
+    def set_species_solid(self, name: str, is_solid: bool) -> None:
+        species = self._species_by_name.get(name)
+        if species is None:
+            raise KeyError(f"Unknown species {name!r}.")
+        species.is_solid = bool(is_solid)
+
     def add_species(self, node: SpeciesNode) -> None:
         existing = self._species_by_name.get(node.name)
         if existing is None:
             self._species_by_name[node.name] = node
             return
-        if existing != node:
+
+        if existing.charge != node.charge:
             raise ValueError(
-                f"Species {node.name!r} already exists with different attributes: {existing!r}"
+                f"Species {node.name!r} already exists with different charge ({existing.charge} != {node.charge})."
+            )
+        if existing.is_solid != node.is_solid:
+            raise ValueError(
+                f"Species {node.name!r} already exists with different is_solid flag."
+            )
+        if abs(existing.initial_concentration - node.initial_concentration) > _EPS:
+            raise ValueError(
+                f"Species {node.name!r} already exists with different initial concentration."
             )
 
     def add_reaction(self, edge: ReactionEdge) -> None:
@@ -184,6 +212,67 @@ class ChemicalGraph:
         self.add_reaction(edge)
         return edge
 
+    def validate_thermodynamic_cycles(self, tolerance: float = 1e-6) -> None:
+        if tolerance <= 0.0:
+            raise ValueError("tolerance must be > 0.")
+
+        adjacency = self._build_adjacency()
+
+        for start in sorted(adjacency.keys()):
+            visited = {start}
+            path_nodes: List[str] = [start]
+            path_edges: List[str] = []
+
+            def dfs(current: str, acc_weight: float) -> None:
+                for nxt, weight, edge_tag in adjacency.get(current, []):
+                    # Evitar el backtracking inmediato para reducir ciclos triviales.
+                    if len(path_nodes) >= 2 and nxt == path_nodes[-2]:
+                        continue
+
+                    if nxt == start and len(path_nodes) >= 2:
+                        loop_weight = acc_weight + weight
+                        if abs(loop_weight) > tolerance:
+                            cycle_path = " -> ".join(path_nodes + [start])
+                            edge_path = ", ".join(path_edges + [edge_tag])
+                            raise ValueError(
+                                "Thermodynamic inconsistency detected in cycle "
+                                f"{cycle_path} (delta_log_beta={loop_weight:.6g}; edges={edge_path})."
+                            )
+                        continue
+
+                    if nxt in visited:
+                        continue
+
+                    visited.add(nxt)
+                    path_nodes.append(nxt)
+                    path_edges.append(edge_tag)
+                    dfs(nxt, acc_weight + weight)
+                    path_edges.pop()
+                    path_nodes.pop()
+                    visited.remove(nxt)
+
+            dfs(start, 0.0)
+
+    def _build_adjacency(self) -> Dict[str, List[Tuple[str, float, str]]]:
+        adjacency: Dict[str, List[Tuple[str, float, str]]] = {
+            name: [] for name in self._species_by_name.keys()
+        }
+        for edge in self._reactions:
+            reactant_names = [species.name for species in edge.reactants.keys()]
+            product_names = [species.name for species in edge.products.keys()]
+            if not reactant_names or not product_names:
+                continue
+
+            for src in reactant_names:
+                for dst in product_names:
+                    adjacency.setdefault(src, []).append(
+                        (dst, float(edge.log_beta), f"{edge.id}:fwd")
+                    )
+                    adjacency.setdefault(dst, []).append(
+                        (src, -float(edge.log_beta), f"{edge.id}:rev")
+                    )
+        return adjacency
+
     def _next_reaction_id(self) -> str:
         next_idx = len(self._reactions) + 1
         while any(edge.id == f"R{next_idx}" for edge in self._reactions):
@@ -227,7 +316,7 @@ def _infer_component_indices(matrix: np.ndarray) -> np.ndarray:
     components = np.flatnonzero(consumed & ~produced)
     if components.size > 0:
         return components
-    # Fallback conservador si el sistema no es estrictamente de formación.
+    # Fallback conservador si el sistema no es estrictamente de formacion.
     return np.flatnonzero(consumed)
 
 
@@ -280,7 +369,7 @@ def _infer_complex_log_beta(
     return out
 
 
-def create_solver_inputs_from_graph(graph: ChemicalGraph) -> Dict[str, object]:
+def create_solver_inputs_from_graph(graph: ChemicalGraph) -> Dict[str, Any]:
     species_list, matrix = graph.to_stoichiometric_matrix()
     total_concentrations = np.asarray(
         [species.initial_concentration for species in species_list], dtype=float

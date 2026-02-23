@@ -7,8 +7,11 @@ from .chemical_graph import (
     ChemicalGraph,
     ReactionEdge,
     SpeciesNode as ChemicalSpeciesNode,
+    parse_formula_tokens,
     create_solver_inputs_from_graph,
 )
+from .graph_solver_bridge import calculate_free_species
+from .phase_manager import update_phase_states
 
 __all__ = [
     "Node",
@@ -19,5 +22,8 @@ __all__ = [
     "ChemicalSpeciesNode",
     "ReactionEdge",
     "ChemicalGraph",
+    "parse_formula_tokens",
     "create_solver_inputs_from_graph",
+    "calculate_free_species",
+    "update_phase_states",
 ]
