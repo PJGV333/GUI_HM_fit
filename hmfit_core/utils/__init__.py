@@ -10,6 +10,7 @@ from .errors import (
     bootstrap_full_refit,
     BootstrapCancelled,
 )
+from .graph_gui_parser import parse_multiline_equilibria
 
 __all__ = [
     "xp", "to_xp",
@@ -18,4 +19,5 @@ __all__ = [
     "compute_errors_spectro_varpro", "compute_errors_nmr_varpro",
     "percent_error_log10K", "percent_metrics_from_log10K",
     "wild_multipliers", "bootstrap_full_refit", "BootstrapCancelled",
+    "parse_multiline_equilibria",
 ]

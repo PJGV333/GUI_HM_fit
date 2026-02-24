@@ -1,0 +1,27 @@
+import pytest
+
+from hmfit_core.utils.graph_gui_parser import parse_multiline_equilibria
+
+
+def test_parse_multiline_equilibria_valid_block():
+    text = """
+    # comment
+    H + C <=> HC ; 3.0
+    H + A <=> HA ; logB=4.0
+    HC + A <=> HCA ; log_beta = 4.5
+    """
+
+    graph, payload = parse_multiline_equilibria(text)
+
+    assert len(graph.reactions) == 3
+    assert payload["components"]["names"] == ["H", "C", "A"]
+    assert set(payload["complexes"]["names"]) == {"HC", "HA", "HCA"}
+
+
+def test_parse_multiline_equilibria_reports_line_errors():
+    text = """
+    H + C <=> HC ; 3.0
+    bad line without separator
+    """
+    with pytest.raises(ValueError, match="Line 3"):
+        parse_multiline_equilibria(text)

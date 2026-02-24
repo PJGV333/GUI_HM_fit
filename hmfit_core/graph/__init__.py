@@ -10,8 +10,14 @@ from .chemical_graph import (
     parse_formula_tokens,
     create_solver_inputs_from_graph,
 )
-from .graph_solver_bridge import calculate_free_species
 from .phase_manager import update_phase_states
+
+
+def calculate_free_species(*args, **kwargs):
+    # Lazy import to avoid circular dependency with hmfit_core.solvers.
+    from .graph_solver_bridge import calculate_free_species as _calculate_free_species
+
+    return _calculate_free_species(*args, **kwargs)
 
 __all__ = [
     "Node",

@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSplitter,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -31,6 +32,7 @@ from hmfit_gui_qt.plots.nmr_registry import build_nmr_registry
 from hmfit_gui_qt.plots.nmr_sources import build_nmr_plot_sources
 from hmfit_gui_qt.plots.plot_controller import PlotController
 from hmfit_gui_qt.widgets.channel_spec import ChannelSpecWidget
+from hmfit_gui_qt.widgets.equation_editor import EquationEditorWidget
 from hmfit_gui_qt.widgets.log_console import LogConsole
 from hmfit_gui_qt.widgets.model_opt_plots import ModelOptPlotsState, ModelOptPlotsWidget
 from hmfit_gui_qt.widgets.mpl_canvas import MplCanvas, NavigationToolbar
@@ -56,6 +58,10 @@ class NMRTab(QWidget):
         super().__init__(parent)
         self._worker: FitWorker | None = None
         self._thread: QThread | None = None
+        self._preview_worker: FitWorker | None = None
+        self._preview_thread: QThread | None = None
+        self._pending_graph_preview = False
+        self._graph_solver_inputs: dict[str, Any] | None = None
         self._last_result: dict[str, Any] | None = None
         self._last_config: dict[str, Any] | None = None
         self._last_fit_context: dict[str, Any] | None = None
@@ -159,9 +165,15 @@ class NMRTab(QWidget):
 
         left_layout.addWidget(self._data_group)
 
-        # Sub-tabs: Model / Optimization / Plots
-        self.model_opt_plots = ModelOptPlotsWidget(left_container)
-        left_layout.addWidget(self.model_opt_plots, 1)
+        # Hybrid model-definition area: equation editor + classical matrix.
+        self.model_def_tabs = QTabWidget(left_container)
+        self.equation_editor = EquationEditorWidget(self.model_def_tabs)
+        self.equation_editor.model_parsed.connect(self._on_equation_model_parsed)
+        self.model_def_tabs.addTab(self.equation_editor, "Editor de Ecuaciones")
+
+        self.model_opt_plots = ModelOptPlotsWidget(self.model_def_tabs)
+        self.model_def_tabs.addTab(self.model_opt_plots, "Matriz Clásica")
+        left_layout.addWidget(self.model_def_tabs, 1)
 
         # Actions row (historical reference to previous UI buttons)
         actions_group = QGroupBox("", left_container)
@@ -403,6 +415,116 @@ class NMRTab(QWidget):
     def _selected_signals(self) -> list[dict[str, str]]:
         return self.channel_spec_widget.get_selected_channels()
 
+    # ---- Graph-driven model sync ----
+    @Slot(object)
+    def _on_equation_model_parsed(self, solver_inputs_obj: object) -> None:
+        if not isinstance(solver_inputs_obj, dict):
+            return
+        solver_inputs = dict(solver_inputs_obj)
+        self._graph_solver_inputs = solver_inputs
+        try:
+            self._apply_solver_inputs_to_classic_matrix(solver_inputs)
+            self._pending_graph_preview = True
+            self._trigger_forward_preview_from_graph()
+        except Exception as exc:
+            self.log.append_text(f"[Graph] Could not apply parsed model: {exc}")
+
+    def _apply_solver_inputs_to_classic_matrix(self, solver_inputs: dict[str, Any]) -> None:
+        solver_block = solver_inputs.get("solver_inputs") or {}
+
+        model_raw = solver_block.get("modelo")
+        model = np.asarray(model_raw if model_raw is not None else [], dtype=float)
+        if model.ndim != 2 or model.size == 0:
+            raise ValueError("Parsed model matrix is empty.")
+
+        n_components, nspec_total = model.shape
+        if n_components <= 0 or nspec_total <= 0:
+            raise ValueError("Parsed model has invalid dimensions.")
+
+        n_complex = max(0, int(nspec_total - n_components))
+        self.model_opt_plots.set_model_dimensions(int(n_components), n_complex)
+        self.model_opt_plots.set_modelo(model.T.tolist())
+
+        nas_raw = solver_block.get("nas")
+        nas = np.asarray(nas_raw if nas_raw is not None else [], dtype=int).ravel().tolist()
+        self.model_opt_plots.set_non_abs_species([int(x) for x in nas])
+
+        k_raw = solver_block.get("k")
+        k_values = np.asarray(k_raw if k_raw is not None else [], dtype=float).ravel().tolist()
+        model_sett = str(solver_block.get("model_sett") or "Free")
+        self.model_opt_plots.set_optimization(
+            model_settings=model_sett,
+            initial_k=k_values,
+            fixed_mask=[False] * len(k_values),
+        )
+
+    def _trigger_forward_preview_from_graph(self) -> None:
+        if not self._pending_graph_preview:
+            return
+        if self._worker is not None:
+            return
+
+        if self._preview_worker is not None:
+            self._preview_worker.request_cancel()
+            return
+
+        try:
+            config = self._collect_config()
+            self._preflight_nmr_shapes(config)
+            self._inject_stoichiometry_map(config, debug=False)
+        except Exception:
+            # No bloquea la edición si aún faltan entradas (archivo/columnas/señales).
+            return
+
+        initial_k = list(config.get("initial_k") or [])
+        if not initial_k:
+            return
+
+        config["optimizer"] = "powell"
+        config["multi_start_runs"] = 1
+        fixed_mask = [True] * len(initial_k)
+        config["fixed_mask"] = fixed_mask
+        config["k_fixed"] = fixed_mask
+        config["show_stability_diagnostics"] = False
+
+        self._pending_graph_preview = False
+        self._preview_worker = FitWorker(run_nmr_fit, config=config, parent=self)
+        self._preview_thread = self._preview_worker.thread()
+        self._preview_thread.finished.connect(
+            self._on_preview_thread_finished, Qt.ConnectionType.QueuedConnection
+        )
+        self._preview_worker.result.connect(
+            self._on_preview_result, Qt.ConnectionType.QueuedConnection
+        )
+        self._preview_worker.error.connect(
+            self._on_preview_error, Qt.ConnectionType.QueuedConnection
+        )
+        self._preview_worker.finished.connect(
+            self._on_preview_finished, Qt.ConnectionType.QueuedConnection
+        )
+        self._preview_worker.start()
+
+    @Slot(object)
+    def _on_preview_result(self, result: object) -> None:
+        if not isinstance(result, dict):
+            return
+        self._build_plot_state_from_result(result)
+        self._render_current_plot()
+        self.log.append_text("[Graph] Forward preview updated.")
+
+    @Slot(str)
+    def _on_preview_error(self, message: str) -> None:
+        self.log.append_text(f"[Graph] Preview error: {message}")
+
+    def _on_preview_finished(self) -> None:
+        pass
+
+    def _on_preview_thread_finished(self) -> None:
+        self._preview_worker = None
+        self._preview_thread = None
+        if self._pending_graph_preview:
+            self._trigger_forward_preview_from_graph()
+
     # ---- Run / Cancel / Results ----
     def _set_running(self, running: bool) -> None:
         self._is_running = bool(running)
@@ -413,6 +535,7 @@ class NMRTab(QWidget):
         self.channel_spec_widget.setEnabled(not running)
         self.btn_signals_all.setEnabled(not running)
         self.btn_signals_none.setEnabled(not running)
+        self.equation_editor.setEnabled(not running)
         self.model_opt_plots.setEnabled(not running)
         self.btn_import.setEnabled(not running)
         self.btn_export.setEnabled(not running)
@@ -535,6 +658,50 @@ class NMRTab(QWidget):
                 "Update Column names or the model dimensions."
             )
 
+    def _inject_stoichiometry_map(self, config: dict[str, Any], *, debug: bool = True) -> None:
+        model_mat = np.array(config.get("modelo") or [])
+        comp_names = config.get("column_names") or []
+        sig_data = config.get("signal_data") or []
+
+        def _norm(text: str) -> str:
+            return re.sub(r"\s+", " ", str(text or "").strip()).lower()
+
+        comp_names_norm = [_norm(x) for x in comp_names]
+        comp_to_idx = {name: i for i, name in enumerate(comp_names_norm)}
+
+        if model_mat.size <= 0 or not sig_data:
+            return
+
+        stoich_cols = []
+        for sig in sig_data:
+            parent_raw = sig.get("parent", "Auto (1:1)")
+            parent_norm = _norm(parent_raw)
+            parent_idx = None
+            if parent_norm.startswith("auto"):
+                parent_idx = None
+            elif parent_norm == "mezcla":
+                parent_idx = None
+            else:
+                parent_idx = comp_to_idx.get(parent_norm)
+
+            if parent_idx is not None:
+                sig_stoich = model_mat[:, parent_idx]
+            else:
+                sig_stoich = np.ones(model_mat.shape[0])
+
+            stoich_cols.append(sig_stoich)
+            if debug:
+                self.log.append_text(
+                    f"[DEBUG] signal={sig.get('col_name')} parent='{parent_raw}' -> parent_idx={parent_idx}"
+                )
+
+        stoich_map = np.array(stoich_cols).T.tolist()
+        config["stoichiometry_map"] = stoich_map
+        if debug:
+            self.log.append_text(
+                f"Stoichiometry map generated ({len(stoich_map)}x{len(stoich_map[0])})."
+            )
+
     def _on_process_clicked(self) -> None:
         if self._worker is not None:
             QMessageBox.warning(self, "Busy", "A fit is already running. Cancel it first.")
@@ -542,48 +709,7 @@ class NMRTab(QWidget):
         try:
             config = self._collect_config()
             self._preflight_nmr_shapes(config)
-            
-            # Tarea 3: Automated stoichiometry_map generation
-            model_mat = np.array(config.get("modelo") or [])
-            comp_names = config.get("column_names") or []
-            sig_data = config.get("signal_data") or []
-
-            def _norm(text: str) -> str:
-                return re.sub(r"\s+", " ", str(text or "").strip()).lower()
-
-            comp_names_norm = [_norm(x) for x in comp_names]
-            comp_to_idx = {name: i for i, name in enumerate(comp_names_norm)}
-            
-            if model_mat.size > 0 and sig_data:
-                stoich_cols = []
-                for sig in sig_data:
-                    parent_raw = sig.get("parent", "Auto (1:1)")
-                    parent_norm = _norm(parent_raw)
-                    parent_idx = None
-                    if parent_norm.startswith("auto"):
-                        parent_idx = None
-                    elif parent_norm == "mezcla":
-                        parent_idx = None
-                    else:
-                        parent_idx = comp_to_idx.get(parent_norm)
-
-                    if parent_idx is not None:
-                        # Signal belongs to a specific component
-                        idx = parent_idx
-                        # The coefficient of this component in each species
-                        sig_stoich = model_mat[:, idx]
-                    else:
-                        # Auto or Mezcla -> assume 1.0 for all species (legacy behavior)
-                        sig_stoich = np.ones(model_mat.shape[0])
-                    stoich_cols.append(sig_stoich)
-                    self.log.append_text(
-                        f"[DEBUG] signal={sig.get('col_name')} parent='{parent_raw}' -> parent_idx={parent_idx}"
-                    )
-                
-                # Transpose to (n_species, n_signals)
-                stoich_map = np.array(stoich_cols).T.tolist()
-                config["stoichiometry_map"] = stoich_map
-                self.log.append_text(f"Stoichiometry map generated ({len(stoich_map)}x{len(stoich_map[0])}).")
+            self._inject_stoichiometry_map(config, debug=True)
 
         except Exception as exc:
             self.log.append_text(f"ERROR: {exc}")
@@ -596,6 +722,8 @@ class NMRTab(QWidget):
         self._reset_plot_state()
         self.btn_save.setEnabled(False)
         self.canvas_main.clear()
+        if self._preview_worker is not None:
+            self._preview_worker.request_cancel()
 
         self._worker = FitWorker(run_nmr_fit, config=config, parent=self)
         self._thread = self._worker.thread()
@@ -819,6 +947,8 @@ class NMRTab(QWidget):
         if self._worker is not None:
             QMessageBox.warning(self, "Busy", "Cancel the running fit before resetting.")
             return
+        if self._preview_worker is not None:
+            self._preview_worker.request_cancel()
 
         self._file_path = ""
         self.lbl_file_status.setText("No file selected")
@@ -826,6 +956,7 @@ class NMRTab(QWidget):
         self.combo_shift_sheet.clear()
         self._clear_conc_columns()
         self._populate_signals([])
+        self.equation_editor.set_text("")
         self.model_opt_plots.reset()
 
         self.canvas_main.clear()
@@ -836,6 +967,8 @@ class NMRTab(QWidget):
         self._last_result = None
         self._last_config = None
         self._last_fit_context = None
+        self._graph_solver_inputs = None
+        self._pending_graph_preview = False
         self.btn_save.setEnabled(False)
 
     def _update_errors_context_from_result(self, result: dict[str, Any]) -> None:
