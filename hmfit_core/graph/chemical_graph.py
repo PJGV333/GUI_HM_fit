@@ -215,43 +215,51 @@ class ChemicalGraph:
     def validate_thermodynamic_cycles(self, tolerance: float = 1e-6) -> None:
         if tolerance <= 0.0:
             raise ValueError("tolerance must be > 0.")
+        if not self._reactions or len(self._species_by_name) <= 1:
+            return
 
-        adjacency = self._build_adjacency()
+        species_names = list(self._species_by_name.keys())
+        reference = species_names[0]
+        unknown_names = [name for name in species_names if name != reference]
+        if not unknown_names:
+            return
 
-        for start in sorted(adjacency.keys()):
-            visited = {start}
-            path_nodes: List[str] = [start]
-            path_edges: List[str] = []
+        unknown_index = {name: idx for idx, name in enumerate(unknown_names)}
+        rows: List[np.ndarray] = []
+        rhs: List[float] = []
+        edge_ids: List[str] = []
 
-            def dfs(current: str, acc_weight: float) -> None:
-                for nxt, weight, edge_tag in adjacency.get(current, []):
-                    # Evitar el backtracking inmediato para reducir ciclos triviales.
-                    if len(path_nodes) >= 2 and nxt == path_nodes[-2]:
-                        continue
+        for edge in self._reactions:
+            row = np.zeros(len(unknown_names), dtype=float)
+            for species, coeff in edge.products.items():
+                idx = unknown_index.get(species.name)
+                if idx is not None:
+                    row[idx] += float(coeff)
+            for species, coeff in edge.reactants.items():
+                idx = unknown_index.get(species.name)
+                if idx is not None:
+                    row[idx] -= float(coeff)
 
-                    if nxt == start and len(path_nodes) >= 2:
-                        loop_weight = acc_weight + weight
-                        if abs(loop_weight) > tolerance:
-                            cycle_path = " -> ".join(path_nodes + [start])
-                            edge_path = ", ".join(path_edges + [edge_tag])
-                            raise ValueError(
-                                "Thermodynamic inconsistency detected in cycle "
-                                f"{cycle_path} (delta_log_beta={loop_weight:.6g}; edges={edge_path})."
-                            )
-                        continue
+            if np.any(np.abs(row) > _EPS):
+                rows.append(row)
+                rhs.append(float(edge.log_beta))
+                edge_ids.append(edge.id)
 
-                    if nxt in visited:
-                        continue
+        if not rows:
+            return
 
-                    visited.add(nxt)
-                    path_nodes.append(nxt)
-                    path_edges.append(edge_tag)
-                    dfs(nxt, acc_weight + weight)
-                    path_edges.pop()
-                    path_nodes.pop()
-                    visited.remove(nxt)
-
-            dfs(start, 0.0)
+        a_mat = np.vstack(rows)
+        b_vec = np.asarray(rhs, dtype=float)
+        solution, _, _, _ = np.linalg.lstsq(a_mat, b_vec, rcond=None)
+        residual = a_mat @ solution - b_vec
+        max_residual = float(np.max(np.abs(residual)))
+        if max_residual > tolerance:
+            worst_idx = int(np.argmax(np.abs(residual)))
+            raise ValueError(
+                "Thermodynamic inconsistency detected in cycle constraints "
+                f"(edge={edge_ids[worst_idx]!r}, residual={residual[worst_idx]:.6g}, "
+                f"tolerance={tolerance:.6g})."
+            )
 
     def _build_adjacency(self) -> Dict[str, List[Tuple[str, float, str]]]:
         adjacency: Dict[str, List[Tuple[str, float, str]]] = {
@@ -328,8 +336,24 @@ def _infer_complex_indices(matrix: np.ndarray, component_idx: np.ndarray) -> np.
     )
 
 
+def _formula_based_component_vector(
+    species_name: str, component_names: List[str]
+) -> np.ndarray | None:
+    token_counts = parse_formula_tokens(species_name)
+    if any(token not in component_names for token in token_counts.keys()):
+        return None
+
+    vec = np.asarray([token_counts.get(name, 0.0) for name in component_names], dtype=float)
+    if not np.any(vec > _EPS):
+        return None
+    return vec
+
+
 def _build_model_matrix(
-    matrix: np.ndarray, component_idx: np.ndarray, complex_idx: np.ndarray
+    species_list: List[SpeciesNode],
+    matrix: np.ndarray,
+    component_idx: np.ndarray,
+    complex_idx: np.ndarray,
 ) -> np.ndarray:
     n_comp = int(component_idx.size)
     n_complex = int(complex_idx.size)
@@ -339,7 +363,14 @@ def _build_model_matrix(
     if n_comp == 0 or n_complex == 0:
         return model
 
+    component_names = [species_list[idx].name for idx in component_idx.tolist()]
     for j, species_col in enumerate(complex_idx.tolist()):
+        species_name = species_list[species_col].name
+        formula_vec = _formula_based_component_vector(species_name, component_names)
+        if formula_vec is not None:
+            model[:, n_comp + j] = formula_vec
+            continue
+
         candidates: List[np.ndarray] = []
         for row in range(matrix.shape[0]):
             prod_coeff = matrix[row, species_col]
@@ -356,7 +387,7 @@ def _build_model_matrix(
     return model
 
 
-def _infer_complex_log_beta(
+def _infer_complex_log_beta_first_hit(
     reactions: Tuple[ReactionEdge, ...], matrix: np.ndarray, complex_idx: np.ndarray
 ) -> np.ndarray:
     out = np.zeros(complex_idx.size, dtype=float)
@@ -367,6 +398,73 @@ def _infer_complex_log_beta(
                 out[j] = float(edge.log_beta) / coeff
                 break
     return out
+
+
+def _infer_complex_log_beta(
+    graph: ChemicalGraph,
+    matrix: np.ndarray,
+    component_names: List[str],
+    complex_names: List[str],
+    complex_idx: np.ndarray,
+) -> np.ndarray:
+    n_complex = len(complex_names)
+    if n_complex == 0:
+        return np.asarray([], dtype=float)
+
+    complex_index = {name: idx for idx, name in enumerate(complex_names)}
+    active_names = set(component_names) | set(complex_names)
+
+    rows: List[np.ndarray] = []
+    rhs: List[float] = []
+    for edge in graph.reactions:
+        row = np.zeros(n_complex, dtype=float)
+        has_unknown = False
+
+        for species, coeff in edge.products.items():
+            species_name = species.name
+            if species_name not in active_names:
+                continue
+            idx = complex_index.get(species_name)
+            if idx is not None:
+                row[idx] += float(coeff)
+                has_unknown = True
+
+        for species, coeff in edge.reactants.items():
+            species_name = species.name
+            if species_name not in active_names:
+                continue
+            idx = complex_index.get(species_name)
+            if idx is not None:
+                row[idx] -= float(coeff)
+                has_unknown = True
+
+        if has_unknown:
+            rows.append(row)
+            rhs.append(float(edge.log_beta))
+
+    if not rows:
+        return np.zeros(n_complex, dtype=float)
+
+    a_mat = np.vstack(rows)
+    b_vec = np.asarray(rhs, dtype=float)
+
+    solution, _, rank, _ = np.linalg.lstsq(a_mat, b_vec, rcond=None)
+    if rank < n_complex:
+        return _infer_complex_log_beta_first_hit(
+            graph.reactions,
+            matrix,
+            complex_idx,
+        )
+
+    residual = np.max(np.abs(a_mat @ solution - b_vec))
+    if residual > 1e-6:
+        return _infer_complex_log_beta_first_hit(
+            graph.reactions,
+            matrix,
+            complex_idx,
+        )
+
+    return np.asarray(solution, dtype=float)
 
 
 def create_solver_inputs_from_graph(graph: ChemicalGraph) -> Dict[str, Any]:
@@ -381,9 +479,17 @@ def create_solver_inputs_from_graph(graph: ChemicalGraph) -> Dict[str, Any]:
 
     component_species = [species_list[idx] for idx in component_idx.tolist()]
     complex_species = [species_list[idx] for idx in complex_idx.tolist()]
+    component_names = [species.name for species in component_species]
+    complex_names = [species.name for species in complex_species]
 
-    model_matrix = _build_model_matrix(matrix, component_idx, complex_idx)
-    complex_log_beta = _infer_complex_log_beta(graph.reactions, matrix, complex_idx)
+    model_matrix = _build_model_matrix(species_list, matrix, component_idx, complex_idx)
+    complex_log_beta = _infer_complex_log_beta(
+        graph=graph,
+        matrix=matrix,
+        component_names=component_names,
+        complex_names=complex_names,
+        complex_idx=complex_idx,
+    )
     ctot = total_concentrations[component_idx][np.newaxis, :]
 
     return {
@@ -393,13 +499,13 @@ def create_solver_inputs_from_graph(graph: ChemicalGraph) -> Dict[str, Any]:
         "edge_log_beta": edge_log_beta,
         "components": {
             "species": component_species,
-            "names": [species.name for species in component_species],
+            "names": component_names,
             "indices": component_idx,
             "total_concentrations": total_concentrations[component_idx],
         },
         "complexes": {
             "species": complex_species,
-            "names": [species.name for species in complex_species],
+            "names": complex_names,
             "indices": complex_idx,
             "log_beta": complex_log_beta,
         },

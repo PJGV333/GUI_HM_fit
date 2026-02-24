@@ -21,6 +21,20 @@ def _ionic_product_from_components(
     return ionic_product
 
 
+def _ionic_product_for_species(
+    species_name: str, current_concentrations: Mapping[str, float]
+) -> float:
+    direct = current_concentrations.get(species_name)
+    if direct is not None:
+        direct_value = float(direct)
+        if direct_value < 0.0:
+            raise ValueError(
+                f"Concentration for species {species_name!r} must be >= 0. Got {direct_value}."
+            )
+        return direct_value
+    return _ionic_product_from_components(species_name, current_concentrations)
+
+
 def update_phase_states(
     graph: ChemicalGraph,
     current_concentrations: Mapping[str, float],
@@ -44,7 +58,7 @@ def update_phase_states(
         if kps <= 0.0:
             raise ValueError(f"Kps for {species_name!r} must be > 0. Got {kps}.")
 
-        ionic_product = _ionic_product_from_components(
+        ionic_product = _ionic_product_for_species(
             species_name=species_name,
             current_concentrations=current_concentrations,
         )
