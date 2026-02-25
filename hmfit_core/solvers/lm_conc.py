@@ -189,38 +189,75 @@ class LevenbergMarquardt:
         max_backtrack = self.max_backtrack if max_backtrack is None else int(max_backtrack)
 
         ridge = 1e-12
+        eye_n = onp.eye(self.n_comp, dtype=float)
         c_calculada = onp.zeros((self.n_reac, self.nspec), dtype=float)
 
         K_num = self._prepare_K_numeric(K)
 
+        # Buffers preasignados para reducir allocaciones en el while.
+        u = onp.empty(self.n_comp, dtype=float)
+        c0 = onp.empty(self.n_comp, dtype=float)
+        mt_u = onp.empty(self.nspec, dtype=float)
+        c_spec = onp.empty(self.nspec, dtype=float)
+        d = onp.empty(self.n_comp, dtype=float)
+        mass_balance = onp.empty(self.n_comp, dtype=float)
+        j_weighted = onp.empty((self.nspec, self.n_comp), dtype=float)
+        J = onp.empty((self.n_comp, self.n_comp), dtype=float)
+        Jd = onp.empty((self.n_comp, self.n_comp), dtype=float)
+        diagJ = onp.empty(self.n_comp, dtype=float)
+        P = onp.empty(self.n_comp, dtype=float)
+        PJP = onp.empty((self.n_comp, self.n_comp), dtype=float)
+        Pd = onp.empty(self.n_comp, dtype=float)
+        delta_u = onp.empty(self.n_comp, dtype=float)
+        PJ = onp.empty((self.n_comp, self.n_comp), dtype=float)
+        c_trial = onp.empty(self.nspec, dtype=float)
+        d_trial = onp.empty(self.n_comp, dtype=float)
+        u_trial = onp.empty(self.n_comp, dtype=float)
+
+        def eval_state(u_vec: onp.ndarray, c_spec_out: onp.ndarray, d_out: onp.ndarray, ctot_row: onp.ndarray) -> None:
+            mt_u[:] = self.mt @ u_vec
+            onp.exp(mt_u, out=mt_u)
+            onp.multiply(K_num, mt_u, out=c_spec_out)
+            mass_balance[:] = self.modelo @ c_spec_out
+            d_out[:] = ctot_row
+            d_out -= mass_balance
+
+        def fill_jacobian(c_spec_vec: onp.ndarray) -> None:
+            onp.multiply(c_spec_vec[:, None], self.mt, out=j_weighted)
+            J[:] = self.mt.T @ j_weighted
+
         for i in range(self.n_reac):
+            ctot_row = self.C_T[i, :self.n_comp]
             # u = ln(c) inicial
-            c0 = onp.clip(self.C_T[i, :self.n_comp], 1e-18, None)
-            u = onp.log(c0)
+            onp.clip(ctot_row, 1e-18, None, out=c0)
+            onp.log(c0, out=u)
 
             # estado inicial
-            c_spec = self._c_spec_from_u(u, K_num)
-            d = self.C_T[i] - self._mass_balance(c_spec)
+            eval_state(u, c_spec, d, ctot_row)
             prev = float(onp.linalg.norm(d, ord=2))
             lam = float(lam0)
 
             it = 0
             while prev > tol and it < max_iter:
-                J = self._jac_u(c_spec)                         # (n_comp, n_comp)
-                Jd = J + (lam + ridge) * onp.eye(self.n_comp)   # damping
+                fill_jacobian(c_spec)                            # (n_comp, n_comp)
+                Jd[:] = J
+                Jd += (lam + ridge) * eye_n                     # damping
 
                 # Precondicionamiento Jacobi
-                diagJ = onp.clip(onp.diag(Jd), 1e-30, None)
-                P = 1.0 / onp.sqrt(diagJ)
-                PJP = (P[:, None] * Jd) * P[None, :]
-                Pd  = P * d
+                diagJ[:] = Jd.diagonal()
+                onp.clip(diagJ, 1e-30, None, out=diagJ)
+                onp.sqrt(diagJ, out=P)
+                P[:] = 1.0 / P
+                onp.multiply(P[:, None], Jd, out=PJP)
+                PJP *= P[None, :]
+                onp.multiply(P, d, out=Pd)
 
                 # Resolver Δz y llevar a Δu
                 try:
                     delta_z = onp.linalg.solve(PJP, Pd)
                 except onp.linalg.LinAlgError:
                     delta_z = pinv_cs(PJP) @ Pd
-                delta_u = P * delta_z
+                onp.multiply(P, delta_z, out=delta_u)
 
                 # Limitar paso
                 ndu = float(onp.linalg.norm(delta_u))
@@ -231,9 +268,9 @@ class LevenbergMarquardt:
                 alpha = 1.0
                 accepted = False
                 for _ in range(max_backtrack):
-                    u_trial = u + alpha * delta_u
-                    c_trial = self._c_spec_from_u(u_trial, K_num)
-                    d_trial = self.C_T[i] - self._mass_balance(c_trial)
+                    u_trial[:] = u
+                    u_trial += alpha * delta_u
+                    eval_state(u_trial, c_trial, d_trial, ctot_row)
                     cur = float(onp.linalg.norm(d_trial, ord=2))
                     if cur < prev:
                         accepted = True
@@ -241,32 +278,35 @@ class LevenbergMarquardt:
                     alpha *= 0.5
 
                 if accepted:
-                    u = u_trial
-                    c_spec = c_trial
-                    d = d_trial
+                    u[:] = u_trial
+                    c_spec[:] = c_trial
+                    d[:] = d_trial
                     prev = cur
                     lam = max(lam * lam_down, 1e-12)
                     it += 1
                     continue
 
                 # Fallback: Newton amortiguado (mismo precondicionamiento)
-                PJ = (P[:, None] * J) * P[None, :]
+                onp.multiply(P[:, None], J, out=PJ)
+                PJ *= P[None, :]
+                Jd[:] = PJ
+                Jd += ridge * eye_n
                 try:
-                    delta_zN = onp.linalg.solve(PJ + ridge * onp.eye(self.n_comp), Pd)
+                    delta_zN = onp.linalg.solve(Jd, Pd)
                 except onp.linalg.LinAlgError:
-                    delta_zN = pinv_cs(PJ + ridge * onp.eye(self.n_comp)) @ Pd
-                delta_uN = P * delta_zN
+                    delta_zN = pinv_cs(Jd) @ Pd
+                onp.multiply(P, delta_zN, out=delta_u)
 
-                nduN = float(onp.linalg.norm(delta_uN))
+                nduN = float(onp.linalg.norm(delta_u))
                 if nduN > max_step:
-                    delta_uN *= (max_step / max(nduN, 1e-18))
+                    delta_u *= (max_step / max(nduN, 1e-18))
 
                 alpha = 1.0
                 acceptedN = False
                 for _ in range(max_backtrack):
-                    u_trial = u + alpha * delta_uN
-                    c_trial = self._c_spec_from_u(u_trial, K_num)
-                    d_trial = self.C_T[i] - self._mass_balance(c_trial)
+                    u_trial[:] = u
+                    u_trial += alpha * delta_u
+                    eval_state(u_trial, c_trial, d_trial, ctot_row)
                     cur = float(onp.linalg.norm(d_trial, ord=2))
                     if cur < prev:
                         acceptedN = True
@@ -274,17 +314,17 @@ class LevenbergMarquardt:
                     alpha *= 0.5
 
                 if acceptedN:
-                    u = u_trial
-                    c_spec = c_trial
-                    d = d_trial
+                    u[:] = u_trial
+                    c_spec[:] = c_trial
+                    d[:] = d_trial
                     prev = cur
                     lam = min(lam * lam_up, 1e12)
                     it += 1
                 else:
                     # Reinicio seguro para evitar estancamientos
-                    u = onp.log(onp.clip(self.C_T[i, :self.n_comp], 1e-16, None))
-                    c_spec = self._c_spec_from_u(u, K_num)
-                    d = self.C_T[i] - self._mass_balance(c_spec)
+                    onp.clip(ctot_row, 1e-16, None, out=c0)
+                    onp.log(c0, out=u)
+                    eval_state(u, c_spec, d, ctot_row)
                     prev = float(onp.linalg.norm(d, ord=2))
                     lam = lam0 * 10.0
                     it += 1
