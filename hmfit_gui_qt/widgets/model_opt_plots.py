@@ -887,6 +887,12 @@ class ModelOptPlotsWidget(QWidget):
             Y = np.asarray(Y_raw if Y_raw is not None else [], dtype=float)
             if Y.size == 0:
                 raise ValueError("Missing spectra matrix (Y).")
+            weights_raw = ctx.get("weights")
+            weights = None
+            if weights_raw is not None:
+                weights_arr = np.asarray(weights_raw, dtype=float)
+                if weights_arr.size > 0:
+                    weights = weights_arr
             base_metrics = compute_errors_spectro_varpro(
                 k_hat,
                 res,
@@ -896,6 +902,7 @@ class ModelOptPlotsWidget(QWidget):
                 rcond=1e-10,
                 use_projector=True,
                 param_names=param_names,
+                weights=weights,
             )
 
             if method == "bootstrap_linear":
@@ -928,6 +935,7 @@ class ModelOptPlotsWidget(QWidget):
                     lam=lam,
                     rcond=1e-10,
                     use_projector=True,
+                    weights=weights,
                 )
                 samples = boot["samples"]
             elif method == "bootstrap_full_refit_audit":

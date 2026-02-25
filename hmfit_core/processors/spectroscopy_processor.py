@@ -23,7 +23,7 @@ import re
 import logging
 warnings.filterwarnings("ignore")
 from ..utils.errors import compute_errors_spectro_varpro, pinv_cs, percent_error_log10K, sensitivities_wrt_logK
-from ..utils.nnls_utils import solve_A_nnls_pgd
+from ..utils.nnls_utils import solve_A_nnls_pgd, solve_A_nnls_pgd2
 from ..utils.noncoop_utils import noncoop_derived_from_logK1
 
 logger = logging.getLogger(__name__)
@@ -188,6 +188,248 @@ def apply_efa_svd(Y: onp.ndarray, ev_requested: int | None):
     U, s, Vt = onp.linalg.svd(Y_arr, full_matrices=False)
     Y_rec = (U[:, :ev_used] * s[:ev_used]) @ Vt[:ev_used, :]
     return Y_rec, ev_used, max_ev
+
+
+def _normalize_mode(raw, allowed, default):
+    mode = str(raw or default).strip().lower()
+    if mode not in allowed:
+        return default
+    return mode
+
+
+def baseline_correct(
+    Y,
+    wavelengths,
+    mode="off",
+    start=450.0,
+    end=600.0,
+    auto_quantile=0.20,
+    apply_per_spectrum=True,
+):
+    """
+    Baseline correction over spectral axis (columns = wavelengths).
+    Y shape: (m_points, n_lambda)
+    """
+    Y_arr = onp.asarray(Y, dtype=float)
+    wl = onp.asarray(wavelengths, dtype=float).ravel()
+    if Y_arr.ndim != 2:
+        raise ValueError(f"baseline_correct expects 2D Y, got shape={Y_arr.shape}")
+    if wl.size != Y_arr.shape[1]:
+        raise ValueError(f"baseline_correct wavelength size mismatch: {wl.size} != {Y_arr.shape[1]}")
+
+    mode_norm = _normalize_mode(mode, {"off", "range", "auto"}, "off")
+    baseline_vals = onp.zeros(Y_arr.shape[0], dtype=float)
+    meta = {
+        "mode": mode_norm,
+        "apply_per_spectrum": bool(apply_per_spectrum),
+        "n_baseline_channels": 0,
+    }
+    if mode_norm == "off":
+        return Y_arr.copy(), baseline_vals, meta
+
+    if mode_norm == "range":
+        lo, hi = sorted((float(start), float(end)))
+        baseline_idx = (wl >= lo) & (wl <= hi)
+        meta["start"] = lo
+        meta["end"] = hi
+        if not baseline_idx.any():
+            # Guardrail: fallback automático si el rango no existe tras recorte.
+            meta["requested_mode"] = "range"
+            meta["warning"] = (
+                "No channels found in selected baseline range. Falling back to auto baseline."
+            )
+            mode_norm = "auto"
+            meta["mode"] = "auto"
+            q = float(auto_quantile)
+            if not onp.isfinite(q):
+                q = 0.20
+            q = min(max(q, 0.0), 1.0)
+            std_per_lambda = onp.nanstd(Y_arr, axis=0)
+            std_per_lambda = onp.nan_to_num(std_per_lambda, nan=0.0, posinf=0.0, neginf=0.0)
+            thr = float(onp.quantile(std_per_lambda, q))
+            baseline_idx = std_per_lambda <= thr
+            if not baseline_idx.any():
+                baseline_idx[onp.argmin(std_per_lambda)] = True
+            meta["quantile"] = q
+            meta["threshold"] = thr
+    else:
+        q = float(auto_quantile)
+        if not onp.isfinite(q):
+            q = 0.20
+        q = min(max(q, 0.0), 1.0)
+        std_per_lambda = onp.nanstd(Y_arr, axis=0)
+        std_per_lambda = onp.nan_to_num(std_per_lambda, nan=0.0, posinf=0.0, neginf=0.0)
+        thr = float(onp.quantile(std_per_lambda, q))
+        baseline_idx = std_per_lambda <= thr
+        if not baseline_idx.any():
+            baseline_idx[onp.argmin(std_per_lambda)] = True
+        meta["quantile"] = q
+        meta["threshold"] = thr
+
+    n_base = int(onp.count_nonzero(baseline_idx))
+    meta["n_baseline_channels"] = n_base
+    if n_base <= 0:
+        return Y_arr.copy(), baseline_vals, meta
+
+    if bool(apply_per_spectrum):
+        baseline_vals = onp.nanmean(Y_arr[:, baseline_idx], axis=1)
+        baseline_vals = onp.nan_to_num(baseline_vals, nan=0.0, posinf=0.0, neginf=0.0)
+        Y_corr = Y_arr - baseline_vals[:, None]
+    else:
+        b0 = float(onp.nanmean(Y_arr[:, baseline_idx]))
+        if not onp.isfinite(b0):
+            b0 = 0.0
+        baseline_vals = onp.full(Y_arr.shape[0], b0, dtype=float)
+        Y_corr = Y_arr - b0
+
+    return Y_corr, baseline_vals, meta
+
+
+def compute_spectral_weights(Y, mode="none", eps=1e-12, power=1.0, normalize=True):
+    """
+    Build per-wavelength weights from Y shape (m_points, n_lambda).
+    """
+    Y_arr = onp.asarray(Y, dtype=float)
+    if Y_arr.ndim != 2:
+        raise ValueError(f"compute_spectral_weights expects 2D Y, got shape={Y_arr.shape}")
+    n_lambda = int(Y_arr.shape[1])
+    mode_norm = _normalize_mode(mode, {"none", "std", "max"}, "none")
+    try:
+        eps_val = float(eps)
+    except (TypeError, ValueError):
+        eps_val = 1e-12
+    if not onp.isfinite(eps_val):
+        eps_val = 1e-12
+    eps_val = max(eps_val, 1e-16)
+    try:
+        p = float(power)
+    except (TypeError, ValueError):
+        p = 1.0
+    if not onp.isfinite(p):
+        p = 1.0
+
+    if mode_norm == "none":
+        w = onp.ones(n_lambda, dtype=float)
+        return w, {
+            "mode": mode_norm,
+            "eps": eps_val,
+            "power": p,
+            "normalize": bool(normalize),
+            "w_min": 1.0,
+            "w_max": 1.0,
+        }
+
+    if mode_norm == "std":
+        w = onp.nanstd(Y_arr, axis=0)
+    elif mode_norm == "max":
+        w = onp.nanmax(onp.abs(Y_arr), axis=0)
+    else:
+        w = onp.ones(n_lambda, dtype=float)
+
+    w = onp.nan_to_num(onp.abs(w), nan=0.0, posinf=0.0, neginf=0.0)
+    if bool(normalize):
+        w_max = float(onp.max(w)) if w.size else 0.0
+        if w_max > eps_val:
+            w = w / (w_max + eps_val)
+        else:
+            w = onp.ones_like(w)
+            warning = "Degenerate weighting profile (max≈0). Falling back to uniform weights."
+            meta = {
+                "mode": mode_norm,
+                "eps": eps_val,
+                "power": p,
+                "normalize": bool(normalize),
+                "w_min": 1.0,
+                "w_max": 1.0,
+                "warning": warning,
+            }
+            return w, meta
+    if p != 1.0:
+        w = w ** p
+    w = onp.maximum(w, eps_val)
+    if not onp.isfinite(w).all():
+        w = onp.ones(n_lambda, dtype=float)
+        warning = "Invalid weighting values encountered. Falling back to uniform weights."
+    else:
+        warning = None
+
+    meta = {
+        "mode": mode_norm,
+        "eps": eps_val,
+        "power": p,
+        "normalize": bool(normalize),
+        "w_min": float(onp.min(w)) if w.size else 0.0,
+        "w_max": float(onp.max(w)) if w.size else 1.0,
+    }
+    if warning:
+        meta["warning"] = warning
+    return w, meta
+
+
+def _compute_lower_bound(C, YT, delta_mode="off", delta_rel=0.01):
+    mode_norm = _normalize_mode(delta_mode, {"off", "relative"}, "off")
+    if mode_norm == "off":
+        return None
+    rel = float(delta_rel)
+    if not onp.isfinite(rel) or rel <= 0.0:
+        return None
+    try:
+        A0 = onp.linalg.pinv(onp.asarray(C, dtype=float)) @ onp.asarray(YT, dtype=float)
+    except Exception:
+        return None
+    if A0.size == 0:
+        return None
+    amax = onp.nanmax(onp.abs(A0), axis=1)
+    amax = onp.nan_to_num(amax, nan=0.0, posinf=0.0, neginf=0.0)
+    if not onp.isfinite(amax).all() or float(onp.max(amax)) <= 0.0:
+        return None
+    return -rel * amax
+
+
+def _build_smoothness_laplacian(n_lambda: int):
+    """
+    Build L = D2.T @ D2 for second-difference smoothness over wavelength axis.
+    """
+    n = int(max(n_lambda, 0))
+    if n <= 0:
+        return onp.zeros((0, 0), dtype=float)
+    if n < 3:
+        return onp.zeros((n, n), dtype=float)
+    D2 = onp.zeros((n - 2, n), dtype=float)
+    for i in range(n - 2):
+        D2[i, i] = 1.0
+        D2[i, i + 1] = -2.0
+        D2[i, i + 2] = 1.0
+    return D2.T @ D2
+
+
+def _solve_absorptivities(
+    C,
+    YT,
+    eps_solver_mode="soft_penalty",
+    mu=1e-2,
+    delta_mode="off",
+    delta_rel=0.01,
+    alpha_smooth=0.0,
+    smooth_matrix=None,
+    max_iters=300,
+):
+    mode_norm = _normalize_mode(eps_solver_mode, {"soft_penalty", "soft_bound", "nnls_hard"}, "soft_penalty")
+    if mode_norm == "nnls_hard":
+        return solve_A_nnls_pgd2(C, YT, ridge=0.0, max_iters=max_iters), None
+    lb_mode = "relative" if mode_norm == "soft_bound" else delta_mode
+    lower_bound = _compute_lower_bound(C, YT, delta_mode=lb_mode, delta_rel=delta_rel)
+    A = solve_A_nnls_pgd(
+        C,
+        YT,
+        ridge=0.0,
+        mu=float(mu),
+        max_iters=max_iters,
+        lower_bound=lower_bound,
+        alpha_smooth=float(alpha_smooth),
+        smooth_matrix=smooth_matrix,
+    )
+    return A, lower_bound
 
 def generate_figure_base64(x, y, mark, ylabel, xlabel, title):
     """Generate a matplotlib figure and return as base64 encoded PNG."""
@@ -459,6 +701,20 @@ def process_spectroscopy_data(
     show_stability_diagnostics: bool = False,
     multi_start_runs: int = 1,
     multi_start_seeds=None,
+    baseline_mode: str = "off",
+    baseline_start: float = 450.0,
+    baseline_end: float = 600.0,
+    baseline_auto_quantile: float = 0.20,
+    baseline_apply_per_spectrum: bool = True,
+    weighting_mode: str = "none",
+    weighting_eps: float = 1e-12,
+    weighting_power: float = 1.0,
+    weighting_normalize: bool = True,
+    eps_solver_mode: str = "soft_penalty",
+    eps_mu: float = 1e-2,
+    delta_mode: str = "off",
+    delta_rel: float = 0.01,
+    alpha_smooth: float = 0.0,
 ):
     """
     Main processing function.
@@ -474,6 +730,43 @@ def process_spectroscopy_data(
         log_progress(str(msg))
 
     log_progress("Iniciando procesamiento...")
+
+    baseline_mode = _normalize_mode(baseline_mode, {"off", "range", "auto"}, "off")
+    weighting_mode = _normalize_mode(weighting_mode, {"none", "std", "max"}, "none")
+    eps_solver_mode = _normalize_mode(eps_solver_mode, {"soft_penalty", "soft_bound", "nnls_hard"}, "soft_penalty")
+    delta_mode = _normalize_mode(delta_mode, {"off", "relative"}, "off")
+    try:
+        baseline_start = float(baseline_start)
+    except (TypeError, ValueError):
+        baseline_start = 450.0
+    try:
+        baseline_end = float(baseline_end)
+    except (TypeError, ValueError):
+        baseline_end = 600.0
+    try:
+        baseline_auto_quantile = float(baseline_auto_quantile)
+    except (TypeError, ValueError):
+        baseline_auto_quantile = 0.20
+    try:
+        weighting_eps = float(weighting_eps)
+    except (TypeError, ValueError):
+        weighting_eps = 1e-12
+    try:
+        weighting_power = float(weighting_power)
+    except (TypeError, ValueError):
+        weighting_power = 1.0
+    try:
+        eps_mu = float(eps_mu)
+    except (TypeError, ValueError):
+        eps_mu = 1e-2
+    try:
+        delta_rel = float(delta_rel)
+    except (TypeError, ValueError):
+        delta_rel = 0.01
+    try:
+        alpha_smooth = float(alpha_smooth)
+    except (TypeError, ValueError):
+        alpha_smooth = 0.0
     
     # Read Excel data
     spec = pd.read_excel(file_path, spectra_sheet, header=0, index_col=0)
@@ -575,7 +868,78 @@ def process_spectroscopy_data(
                     f"EFA shape mismatch: raw={A_exp_raw.shape}, used={A_exp_used.shape}"
                 )
 
-    Y = np.asarray(A_exp_used.T)
+    Y_used_matrix_raw = onp.asarray(A_exp_used, dtype=float)  # (m_points x n_lambda)
+    Y_used_matrix_corr, baseline_vals, baseline_meta = baseline_correct(
+        Y_used_matrix_raw,
+        nm,
+        mode=baseline_mode,
+        start=baseline_start,
+        end=baseline_end,
+        auto_quantile=baseline_auto_quantile,
+        apply_per_spectrum=baseline_apply_per_spectrum,
+    )
+    if baseline_meta.get("warning"):
+        warnings_list.append(str(baseline_meta["warning"]))
+
+    baseline_mode_used = str(baseline_meta.get("mode", baseline_mode))
+    if baseline_mode_used == "range":
+        log_progress(
+            "Baseline: range %.3g-%.3g nm (%d channels)"
+            % (
+                float(baseline_meta.get("start", baseline_start)),
+                float(baseline_meta.get("end", baseline_end)),
+                int(baseline_meta.get("n_baseline_channels", 0)),
+            )
+        )
+    elif baseline_mode_used == "auto":
+        log_progress(
+            "Baseline: auto (quantile=%.3g, channels=%d)"
+            % (
+                float(baseline_meta.get("quantile", baseline_auto_quantile)),
+                int(baseline_meta.get("n_baseline_channels", 0)),
+            )
+        )
+    else:
+        log_progress("Baseline: off")
+
+    weights_per_lambda, weighting_meta = compute_spectral_weights(
+        Y_used_matrix_corr,
+        mode=weighting_mode,
+        eps=weighting_eps,
+        power=weighting_power,
+        normalize=weighting_normalize,
+    )
+    if weighting_meta.get("warning"):
+        warnings_list.append(str(weighting_meta["warning"]))
+        log_progress(str(weighting_meta["warning"]))
+    log_progress(
+        "Weighting: %s (min=%.3g, max=%.3g, power=%.3g)"
+        % (
+            str(weighting_meta.get("mode", weighting_mode)),
+            float(weighting_meta.get("w_min", 0.0)),
+            float(weighting_meta.get("w_max", 1.0)),
+            float(weighting_meta.get("power", weighting_power)),
+        )
+    )
+
+    Y = np.asarray(Y_used_matrix_corr.T)
+    Y_raw = np.asarray(Y_used_matrix_raw.T)
+    weights_lambda = np.asarray(weights_per_lambda, dtype=float)
+    weights_row = weights_lambda[None, :]
+    n_lambda = int(Y.shape[0])
+    smooth_matrix = None
+    if alpha_smooth > 0.0:
+        smooth_matrix = _build_smoothness_laplacian(n_lambda)
+        if smooth_matrix.size == 0 or n_lambda < 3:
+            warnings_list.append("alpha_smooth requested but fewer than 3 channels are available; smoothing disabled.")
+            smooth_matrix = None
+            alpha_smooth = 0.0
+        else:
+            smax_l = float(onp.linalg.svd(smooth_matrix, compute_uv=False).max())
+            log_progress(
+                "Smoothness: alpha=%.3g, n_lambda=%d, ||L||2=%.3g"
+                % (alpha_smooth, n_lambda, smax_l)
+            )
     
     graphs = {}
     
@@ -701,12 +1065,52 @@ def process_spectroscopy_data(
     else:
         raise ValueError(f"Unknown algorithm: {algorithm}")
     
+    if eps_solver_mode == "soft_bound" and delta_mode == "off":
+        delta_mode = "relative"
+    log(
+        "Epsilon solver: %s (mu=%.3g, delta_mode=%s, delta_rel=%.3g, alpha_smooth=%.3g)"
+        % (eps_solver_mode, eps_mu, delta_mode, delta_rel, alpha_smooth)
+    )
+    try:
+        C_preview = onp.asarray(res.concentraciones(k)[0], dtype=float)
+        lb_preview = _compute_lower_bound(
+            C_preview,
+            onp.asarray(Y.T, dtype=float),
+            delta_mode=("relative" if eps_solver_mode == "soft_bound" else delta_mode),
+            delta_rel=delta_rel,
+        )
+    except Exception:
+        lb_preview = None
+    if lb_preview is not None:
+        lb_arr = onp.asarray(lb_preview, dtype=float).ravel()
+        log_progress(
+            "Soft lower bound preview: min=%.3g, max=%.3g"
+            % (float(onp.min(lb_arr)), float(onp.max(lb_arr)))
+        )
+    else:
+        log_progress("Soft lower bound preview: off")
+    if alpha_smooth > 0:
+        log_progress("Smoothness penalty is active.")
+
     # Objective functions
+    objective_error_state = {"count": 0}
+
     def f_m2(k):
         C = res.concentraciones(k)[0]
-        A = solve_A_nnls_pgd(C, Y.T, ridge=0.0, max_iters=300)
+        A, _ = _solve_absorptivities(
+            C,
+            Y.T,
+            eps_solver_mode=eps_solver_mode,
+            mu=eps_mu,
+            delta_mode=delta_mode,
+            delta_rel=delta_rel,
+            alpha_smooth=alpha_smooth,
+            smooth_matrix=smooth_matrix,
+            max_iters=300,
+        )
         r = C @ A - Y.T
-        rms = np.sqrt(np.mean(np.square(r)))
+        r_w = r * weights_row
+        rms = np.sqrt(np.mean(np.square(r_w)))
         return rms, r
     
     def f_m(k):
@@ -720,9 +1124,20 @@ def process_spectroscopy_data(
             if np.any(np.isnan(C)) or np.any(np.isinf(C)):
                 return 1e50
                 
-            A = solve_A_nnls_pgd(C, Y.T, ridge=0.0, max_iters=300)
+            A, _ = _solve_absorptivities(
+                C,
+                Y.T,
+                eps_solver_mode=eps_solver_mode,
+                mu=eps_mu,
+                delta_mode=delta_mode,
+                delta_rel=delta_rel,
+                alpha_smooth=alpha_smooth,
+                smooth_matrix=smooth_matrix,
+                max_iters=300,
+            )
             r = C @ A - Y.T
-            rms = np.sqrt(np.mean(np.square(r)))
+            r_w = r * weights_row
+            rms = np.sqrt(np.mean(np.square(r_w)))
             
             if np.isnan(rms) or np.isinf(rms):
                 return 1e50
@@ -731,7 +1146,9 @@ def process_spectroscopy_data(
             # log_progress(f"f(x): {float(rms):.6e}") 
             return rms
         except Exception as e:
-            print(f"Error in objective function: {e}")
+            if objective_error_state["count"] < 3:
+                logger.debug("Error in spectroscopy objective: %s", e, exc_info=True)
+            objective_error_state["count"] += 1
             return 1e50
     
     # Best-so-far tracking
@@ -766,6 +1183,7 @@ def process_spectroscopy_data(
                 raise ValueError(msg)
 
     ms_runs = max(int(multi_start_runs), 1)
+    optimizer_result_obj = None
     seed_list = None
     if multi_start_seeds is not None:
         try:
@@ -796,6 +1214,7 @@ def process_spectroscopy_data(
 
         run_failed = False
         try:
+            opt_result_obj = None
             if optimizer == "differential_evolution":
                 r_0 = differential_evolution(
                     f_m,
@@ -813,10 +1232,12 @@ def process_spectroscopy_data(
                 )
                 run_rms = f_m(r_0.x)
                 run_k = r_0.x
+                opt_result_obj = r_0
             elif optimizer == "dual_annealing":
                 r_0 = dual_annealing(f_m, processed_bounds, seed=seed)
                 run_rms = f_m(r_0.x)
                 run_k = r_0.x
+                opt_result_obj = r_0
             elif optimizer == "basinhopping":
                 minimizer_kwargs = {"method": "L-BFGS-B", "bounds": processed_bounds}
                 r_0 = basinhopping(
@@ -824,6 +1245,7 @@ def process_spectroscopy_data(
                 )
                 run_rms = f_m(r_0.x)
                 run_k = r_0.x
+                opt_result_obj = r_0
             elif optimizer == "global_local":
                 global_res = differential_evolution(
                     f_m, processed_bounds, x0=start_k, maxiter=200, popsize=10, tol=0.05, seed=seed
@@ -833,12 +1255,15 @@ def process_spectroscopy_data(
                 )
                 run_rms = f_m(local_res.x)
                 run_k = local_res.x
+                opt_result_obj = local_res
             else:
                 r_0 = optimize.minimize(
                     f_m, start_k, method=optimizer, bounds=processed_bounds, callback=callback_log
                 )
                 run_rms = f_m(r_0.x)
                 run_k = r_0.x
+                opt_result_obj = r_0
+            optimizer_result_obj = opt_result_obj
             if onp.isfinite(local_best["rms"]) and local_best["rms"] < run_rms:
                 run_rms = local_best["rms"]
                 run_k = local_best["k"]
@@ -866,7 +1291,8 @@ def process_spectroscopy_data(
     metrics = compute_errors_spectro_varpro(
         k=k, res=res, Y=Y, modelo=modelo, nas=nas,
         rcond=1e-10, use_projector=True,
-        param_names=k_names
+        param_names=k_names,
+        weights=weights_per_lambda,
     )
     
     SE_log10K = metrics["SE_log10K"]
@@ -881,6 +1307,25 @@ def process_spectroscopy_data(
     
     C, Co = res.concentraciones(k)
     species_labels = [f"sp{i+1}" for i in range(C.shape[1])] if C is not None else []
+    A_solver, lower_bound_final = _solve_absorptivities(
+        C,
+        Y.T,
+        eps_solver_mode=eps_solver_mode,
+        mu=eps_mu,
+        delta_mode=delta_mode,
+        delta_rel=delta_rel,
+        alpha_smooth=alpha_smooth,
+        smooth_matrix=smooth_matrix,
+        max_iters=300,
+    )
+    if lower_bound_final is not None:
+        lb_fin = onp.asarray(lower_bound_final, dtype=float).ravel()
+        log_progress(
+            "Soft lower bound final: min=%.3g, max=%.3g"
+            % (float(onp.min(lb_fin)), float(onp.max(lb_fin)))
+        )
+    else:
+        log_progress("Soft lower bound final: off")
     
     # Decide "main plot" mode based on channels actually used
     channels_used_values = nm.tolist() if hasattr(nm, "tolist") else list(nm)
@@ -896,9 +1341,9 @@ def process_spectroscopy_data(
             H, C, ":o", "[Especies], M", "[H], M", "Perfil de concentraciones"
         )
         
-        y_cal = C @ np.linalg.pinv(C) @ Y.T
+        A_plot = A_solver
+        y_cal = C @ A_plot
         ssq, r0 = f_m2(k)
-        A_plot = solve_A_nnls_pgd(C, Y.T, ridge=0.0, max_iters=300)
         
         eps_mark = "-" if k_used > 1 else "o-"
         graphs['absorptivities'] = generate_figure_base64(
@@ -918,9 +1363,9 @@ def process_spectroscopy_data(
             G, C, ":o", "[Species], M", "[G], M", "Perfil de concentraciones"
         )
         
-        y_cal = C @ np.linalg.pinv(C) @ Y.T
+        A_plot = A_solver
+        y_cal = C @ A_plot
         ssq, r0 = f_m2(k)
-        A_plot = solve_A_nnls_pgd(C, Y.T, ridge=0.0, max_iters=300)
 
         if plot_mode == "isotherms":
             eps_mark = "-" if k_used > 1 else "o-"
@@ -1001,12 +1446,16 @@ def process_spectroscopy_data(
         f"Diferencia en C total (%): {dif_en_ct:.2f}",
         f"Eigenvalues: {EV}",
         f"Optimizer: {optimizer}",
+        f"Baseline: {baseline_mode_used}",
+        f"Weighting: {weighting_mode}",
+        f"Epsilon solver: {eps_solver_mode}",
     ]
     results_text += "\n\nEstadísticas:\n" + "\n".join(extra_stats)
     
     # Export payload to mimic previous save_results (DataFrames per sheet)
     # Preparar payload de exportación (imitando el flujo anterior)
     A_export = None
+    A_solver_export = None
     nm_list = nm.tolist() if hasattr(nm, "tolist") else []
     if A is not None:
         A_arr = np.asarray(A)
@@ -1017,6 +1466,15 @@ def process_spectroscopy_data(
                 A_export = A_arr
         else:
             A_export = A_arr
+    if A_solver is not None:
+        A_solver_arr = np.asarray(A_solver)
+        if nm_list:
+            if A_solver_arr.shape[1] == len(nm_list):
+                A_solver_export = A_solver_arr.T  # filas = nm
+            else:
+                A_solver_export = A_solver_arr
+        else:
+            A_solver_export = A_solver_arr
 
     export_data = {
         "modelo": modelo.tolist() if modelo is not None else [],
@@ -1024,6 +1482,7 @@ def process_spectroscopy_data(
         "Co": np.asarray(Co).tolist() if Co is not None else [],
         "C_T": np.asarray(C_T).tolist() if C_T is not None else [],
         "A": A_export.tolist() if A_export is not None else [],
+        "A_solver": A_solver_export.tolist() if A_solver_export is not None else [],
         "A_index": nm_list,
         "k": np.asarray(k).tolist(),
         "k_ini": np.asarray(initial_k).tolist() if initial_k is not None else [],
@@ -1031,9 +1490,25 @@ def process_spectroscopy_data(
         "SE_log10K": np.asarray(SE_log10K).tolist(),
         "nm": nm_list,
         "Y": np.asarray(Y).tolist() if Y is not None else [],
+        "Y_raw": np.asarray(Y_raw).tolist() if Y_raw is not None else [],
+        "Y_corr": np.asarray(Y).tolist() if Y is not None else [],
         "A_exp_raw": onp.asarray(A_exp_raw).tolist() if A_exp_raw is not None else [],
         "A_exp_used": onp.asarray(A_exp_used).tolist() if A_exp_used is not None else [],
         "yfit": np.asarray(yfit).tolist() if yfit is not None else [],
+        "baseline_vals": onp.asarray(baseline_vals, dtype=float).tolist(),
+        "baseline_meta": baseline_meta,
+        "weights": onp.asarray(weights_per_lambda, dtype=float).tolist(),
+        "weighting_meta": weighting_meta,
+        "eps_solver_mode": eps_solver_mode,
+        "mu": float(eps_mu),
+        "delta_mode": delta_mode,
+        "delta_rel": float(delta_rel),
+        "alpha_smooth": float(alpha_smooth),
+        "lower_bound": (
+            onp.asarray(lower_bound_final, dtype=float).ravel().tolist()
+            if lower_bound_final is not None
+            else None
+        ),
         "stats_table": [
             ["RMS", float(rms)],
             ["Error absoluto medio", float(MAE)],
@@ -1168,9 +1643,9 @@ def process_spectroscopy_data(
         "results_text": results_text,
         "export_data": export_data,
         "optimizer_result": {
-            "success": bool(r_0.success),
-            "message": str(r_0.message) if hasattr(r_0, "message") else "",
-            "nfev": int(r_0.nfev) if hasattr(r_0, "nfev") else 0,
+            "success": bool(getattr(optimizer_result_obj, "success", onp.isfinite(best_result["rms"]))),
+            "message": str(getattr(optimizer_result_obj, "message", "")),
+            "nfev": int(getattr(optimizer_result_obj, "nfev", 0) or 0),
         },
         "channels_total": int(channels_total),
         "channels_used": int(channels_used),

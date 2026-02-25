@@ -72,7 +72,11 @@ def write_results_xlsx(
         "Tot_con_comp": "Total component concentrations (M)",
         "Molar_Absortivities": "Molar absorptivities (a.u. or M^-1 cm^-1)",
         "Y_observed": "Observed spectra, Y_obs (a.u.)",
+        "Y_raw": "Observed spectra before baseline correction",
+        "Y_corrected": "Observed spectra after baseline correction",
         "Y_calculated": "Calculated spectra, Y_fit (a.u.)",
+        "Baseline": "Per-spectrum baseline values",
+        "Weights": "Per-wavelength weights used in residuals",
         "Stats": "Fit statistics / diagnostics",
         "Chemical_Shifts": "Observed chemical shifts (ppm)",
         "Calculated_Chemical_Shifts": "Calculated chemical shifts (ppm)",
@@ -305,6 +309,30 @@ def write_results_xlsx(
                         dfY.to_excel(writer, sheet_name="Y_observed", index=True)
                         format_sheet(writer, "Y_observed", TITLES_MAP["Y_observed"])
 
+                Y_raw = export_data.get("Y_raw")
+                if Y_raw is not None:
+                    dfY_raw = as_dataframe("Y_raw", Y_raw, allow_none=True)
+                    if dfY_raw is not None:
+                        if nm is not None:
+                            dfY_raw.index = nm
+                        dfY_raw.index.name = "nm"
+                        if all(isinstance(c, (int, np.integer)) for c in dfY_raw.columns):
+                            dfY_raw.columns = [f"yraw_{i+1}" for i in range(dfY_raw.shape[1])]
+                        dfY_raw.to_excel(writer, sheet_name="Y_raw", index=True)
+                        format_sheet(writer, "Y_raw", TITLES_MAP["Y_raw"])
+
+                Y_corr = export_data.get("Y_corr")
+                if Y_corr is not None:
+                    dfY_corr = as_dataframe("Y_corrected", Y_corr, allow_none=True)
+                    if dfY_corr is not None:
+                        if nm is not None:
+                            dfY_corr.index = nm
+                        dfY_corr.index.name = "nm"
+                        if all(isinstance(c, (int, np.integer)) for c in dfY_corr.columns):
+                            dfY_corr.columns = [f"ycorr_{i+1}" for i in range(dfY_corr.shape[1])]
+                        dfY_corr.to_excel(writer, sheet_name="Y_corrected", index=True)
+                        format_sheet(writer, "Y_corrected", TITLES_MAP["Y_corrected"])
+
                 yfit = export_data.get("yfit")
                 if yfit is not None:
                     dfPhi = as_dataframe("Y_calculated", yfit, allow_none=True)
@@ -316,6 +344,22 @@ def write_results_xlsx(
                             dfPhi.columns = [f"ycal_{i+1}" for i in range(dfPhi.shape[1])]
                         dfPhi.to_excel(writer, sheet_name="Y_calculated", index=True)
                         format_sheet(writer, "Y_calculated", TITLES_MAP["Y_calculated"])
+
+                baseline_vals = export_data.get("baseline_vals")
+                if baseline_vals is not None:
+                    df_base = pd.DataFrame({"baseline": np.asarray(baseline_vals, dtype=float).ravel()})
+                    df_base.index.name = "point"
+                    df_base.to_excel(writer, sheet_name="Baseline", index=True)
+                    format_sheet(writer, "Baseline", TITLES_MAP["Baseline"])
+
+                weights = export_data.get("weights")
+                if weights is not None:
+                    df_w = pd.DataFrame({"weight": np.asarray(weights, dtype=float).ravel()})
+                    if nm is not None and len(nm) == len(df_w):
+                        df_w.index = nm
+                    df_w.index.name = "nm"
+                    df_w.to_excel(writer, sheet_name="Weights", index=True)
+                    format_sheet(writer, "Weights", TITLES_MAP["Weights"])
 
                 k_vals = export_data.get("k") or []
                 percK = export_data.get("percK") or []

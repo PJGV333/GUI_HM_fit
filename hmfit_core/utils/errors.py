@@ -442,7 +442,17 @@ def pinv_psd_eigh(A, xp=_onp, rcond=1e-10, ridge=0.0):
     w_inv = xp.where(w > thr, 1.0 / w, 0.0)
     return (V * w_inv) @ V.T.conj()
 
-def compute_errors_spectro_varpro(k, res, Y, modelo, nas, rcond=1e-10, use_projector=True, param_names=None):
+def compute_errors_spectro_varpro(
+    k,
+    res,
+    Y,
+    modelo,
+    nas,
+    rcond=1e-10,
+    use_projector=True,
+    param_names=None,
+    weights=None,
+):
     """
     Cálculo robusto (variable projection) para espectroscopía.
     k       : (p,)
@@ -450,6 +460,7 @@ def compute_errors_spectro_varpro(k, res, Y, modelo, nas, rcond=1e-10, use_proje
     Y       : (m × nw)  datos (filas: puntos de titulación; cols: longitudes de onda)
     modelo  : M (nspec×n_comp) o (n_comp×nspec)
     nas     : lista[int] índices NO absorbentes
+    weights : None, vector (nw,) o matriz (m,nw) para ponderar residuo/Jacobiano.
     """
     C, Co = res.concentraciones(k)    # C: (m × n_abs), Co: (m × nspec)
     nspec = Co.shape[1]
@@ -467,13 +478,33 @@ def compute_errors_spectro_varpro(k, res, Y, modelo, nas, rcond=1e-10, use_proje
     # Ajuste lineal y residuo
     A   = _pinv_backend(C, rcond=rcond) @ Y.T     # (n_abs × nw)
     R   = (C @ A - Y.T)                           # (m × nw)
-    r   = R.reshape(-1)
+    m_obs, nw = int(R.shape[0]), int(R.shape[1])
+
+    # Pesos espectrales (por lambda) o por punto.
+    W_onp = _onp.ones((m_obs, nw), dtype=float)
+    if weights is not None:
+        w_in = _onp.asarray(weights, dtype=float)
+        w_in = _onp.nan_to_num(_onp.abs(w_in), nan=0.0, posinf=0.0, neginf=0.0)
+        if w_in.ndim == 1 and w_in.size == nw:
+            W_onp = _onp.broadcast_to(w_in.reshape(1, nw), (m_obs, nw)).copy()
+        elif w_in.shape == (m_obs, nw):
+            W_onp = w_in
+        else:
+            try:
+                W_onp = _onp.broadcast_to(w_in, (m_obs, nw)).copy()
+            except ValueError:
+                W_onp = _onp.ones((m_obs, nw), dtype=float)
+    W = np.asarray(W_onp, dtype=R.dtype)
+    R_w = R * W
+    r = R_w.reshape(-1)
     dof = max(r.size - p, 1)
     s2  = float((r @ r) / dof)
 
     # Jacobiano proyectado
     dC_all = _build_dC_all(Co, Ms, nas, param_idx)          # (m × n_abs × p)
-    J = _jac_varpro(C, A, dC_all, use_projector=use_projector, rcond=rcond)
+    J_raw = _jac_varpro(C, A, dC_all, use_projector=use_projector, rcond=rcond)
+    W_flat = W.reshape(-1)
+    J = J_raw * W_flat[None, :]
 
     # Identifiability
     JJT = J @ J.T
@@ -494,12 +525,14 @@ def compute_errors_spectro_varpro(k, res, Y, modelo, nas, rcond=1e-10, use_proje
     perc_hi    = pm["perc_hi"]          # % asimétrico (arriba)
     perc_lo    = pm["perc_lo"]      # % asimétrico (abajo)
 
-    RMS = float(np.sqrt(np.mean(R * R)))
+    RMS = float(np.sqrt(np.mean(R_w * R_w)))
+    RMS_raw = float(np.sqrt(np.mean(R * R)))
     return {
         "percK": percK, "SE_K": SE_K, "SE_log10K": SE_log10K,
         "Cov_log10K": _as_onp(Cov_log10K), "RMS": RMS, "s2": s2,
         "A": _as_onp(A), "J": _as_onp(J), "yfit": _as_onp((C @ A).T),
         "r": _as_onp(r), "dof": int(dof), "nobs": int(r.size),
+        "RMS_raw": RMS_raw,
         "stability_diag": diag
     }
 
@@ -963,6 +996,7 @@ def bootstrap_one_step_spectro(
     lam=1e-3,
     rcond=1e-10,
     use_projector=True,
+    weights=None,
 ):
     """
     One-step LM bootstrap (spectroscopy): dataset perturbation + recompute J,r at k_hat + 1 LM step.
@@ -973,7 +1007,7 @@ def bootstrap_one_step_spectro(
         raise ValueError("B must be > 0.")
 
     metrics0 = compute_errors_spectro_varpro(
-        k_hat, res, Y, modelo, nas, rcond=rcond, use_projector=use_projector
+        k_hat, res, Y, modelo, nas, rcond=rcond, use_projector=use_projector, weights=weights
     )
     yfit = _onp.asarray(metrics0["yfit"], dtype=float)
     Y_obs = _onp.asarray(Y, dtype=float)
@@ -989,7 +1023,7 @@ def bootstrap_one_step_spectro(
         Y_star = yfit - R * v
 
         metrics_star = compute_errors_spectro_varpro(
-            k_hat, res, Y_star, modelo, nas, rcond=rcond, use_projector=use_projector
+            k_hat, res, Y_star, modelo, nas, rcond=rcond, use_projector=use_projector, weights=weights
         )
         J = _onp.asarray(metrics_star["J"], dtype=float)
         r_star = _onp.asarray(metrics_star["r"], dtype=float).ravel()

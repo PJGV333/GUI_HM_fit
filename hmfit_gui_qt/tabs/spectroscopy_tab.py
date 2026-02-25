@@ -9,6 +9,7 @@ from PySide6.QtCore import QThread, Qt, Slot
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
@@ -236,6 +237,94 @@ class SpectroscopyTab(QWidget):
         efa_row.addWidget(self.spin_efa_eigen)
         efa_row.addStretch(1)
         data_layout.addLayout(efa_row)
+
+        # Baseline controls
+        baseline_row = QHBoxLayout()
+        baseline_row.addWidget(QLabel("Baseline", self._data_group))
+        self.combo_baseline_mode = QComboBox(self._data_group)
+        self.combo_baseline_mode.addItem("Off", "off")
+        self.combo_baseline_mode.addItem("Range", "range")
+        self.combo_baseline_mode.addItem("Auto", "auto")
+        baseline_row.addWidget(self.combo_baseline_mode)
+        baseline_row.addWidget(QLabel("Start", self._data_group))
+        self.edit_baseline_start = QLineEdit(self._data_group)
+        self.edit_baseline_start.setText("450.0")
+        self.edit_baseline_start.setMaximumWidth(90)
+        baseline_row.addWidget(self.edit_baseline_start)
+        baseline_row.addWidget(QLabel("End", self._data_group))
+        self.edit_baseline_end = QLineEdit(self._data_group)
+        self.edit_baseline_end.setText("600.0")
+        self.edit_baseline_end.setMaximumWidth(90)
+        baseline_row.addWidget(self.edit_baseline_end)
+        baseline_row.addWidget(QLabel("q", self._data_group))
+        self.spin_baseline_auto_q = QDoubleSpinBox(self._data_group)
+        self.spin_baseline_auto_q.setDecimals(3)
+        self.spin_baseline_auto_q.setRange(0.0, 1.0)
+        self.spin_baseline_auto_q.setSingleStep(0.05)
+        self.spin_baseline_auto_q.setValue(0.20)
+        baseline_row.addWidget(self.spin_baseline_auto_q)
+        baseline_row.addStretch(1)
+        data_layout.addLayout(baseline_row)
+
+        # Weighting controls
+        weighting_row = QHBoxLayout()
+        weighting_row.addWidget(QLabel("Weighting", self._data_group))
+        self.combo_weighting_mode = QComboBox(self._data_group)
+        self.combo_weighting_mode.addItem("none", "none")
+        self.combo_weighting_mode.addItem("std", "std")
+        self.combo_weighting_mode.addItem("max", "max")
+        weighting_row.addWidget(self.combo_weighting_mode)
+        weighting_row.addWidget(QLabel("Power", self._data_group))
+        self.edit_weighting_power = QLineEdit(self._data_group)
+        self.edit_weighting_power.setText("1.0")
+        self.edit_weighting_power.setMaximumWidth(90)
+        weighting_row.addWidget(self.edit_weighting_power)
+        self.chk_weighting_normalize = QCheckBox("Normalize", self._data_group)
+        self.chk_weighting_normalize.setChecked(True)
+        weighting_row.addWidget(self.chk_weighting_normalize)
+        weighting_row.addStretch(1)
+        data_layout.addLayout(weighting_row)
+
+        # Epsilon solver controls
+        eps_row = QHBoxLayout()
+        eps_row.addWidget(QLabel("ε solver", self._data_group))
+        self.combo_eps_solver_mode = QComboBox(self._data_group)
+        self.combo_eps_solver_mode.addItem("soft_penalty", "soft_penalty")
+        self.combo_eps_solver_mode.addItem("soft_bound", "soft_bound")
+        self.combo_eps_solver_mode.addItem("nnls_hard", "nnls_hard")
+        eps_row.addWidget(self.combo_eps_solver_mode)
+        eps_row.addWidget(QLabel("mu", self._data_group))
+        self.edit_eps_mu = QLineEdit(self._data_group)
+        self.edit_eps_mu.setText("0.01")
+        self.edit_eps_mu.setMaximumWidth(90)
+        eps_row.addWidget(self.edit_eps_mu)
+        eps_row.addWidget(QLabel("delta_rel", self._data_group))
+        self.edit_delta_rel = QLineEdit(self._data_group)
+        self.edit_delta_rel.setText("0.01")
+        self.edit_delta_rel.setMaximumWidth(90)
+        eps_row.addWidget(self.edit_delta_rel)
+        eps_row.addWidget(QLabel("alpha_smooth", self._data_group))
+        self.edit_alpha_smooth = QLineEdit(self._data_group)
+        self.edit_alpha_smooth.setText("0.0")
+        self.edit_alpha_smooth.setMaximumWidth(90)
+        eps_row.addWidget(self.edit_alpha_smooth)
+        eps_row.addStretch(1)
+        data_layout.addLayout(eps_row)
+
+        self.combo_baseline_mode.currentIndexChanged.connect(self._update_preprocess_controls)
+        self.combo_weighting_mode.currentIndexChanged.connect(self._update_preprocess_controls)
+        self.combo_eps_solver_mode.currentIndexChanged.connect(self._update_preprocess_controls)
+        self.combo_baseline_mode.setToolTip("Resta una línea base por espectro (off/range/auto).")
+        self.edit_baseline_start.setToolTip("Baseline range: inicio en nm.")
+        self.edit_baseline_end.setToolTip("Baseline range: fin en nm.")
+        self.spin_baseline_auto_q.setToolTip("Baseline auto: cuantíl de λ con menor variación.")
+        self.combo_weighting_mode.setToolTip("Reduce la influencia de longitudes con señal ~0.")
+        self.edit_weighting_power.setToolTip("Exponente aplicado a pesos espectrales.")
+        self.combo_eps_solver_mode.setToolTip("Soft bound permite ε ligeramente negativa hasta -δ.")
+        self.edit_eps_mu.setToolTip("Penalización suave para ε negativas.")
+        self.edit_delta_rel.setToolTip("δ relativo para límite inferior suave de ε.")
+        self.edit_alpha_smooth.setToolTip("Suaviza ε(λ) penalizando curvatura (2ª derivada).")
+        self._update_preprocess_controls()
 
         left_layout.addWidget(self._data_group)
 
@@ -661,6 +750,27 @@ class SpectroscopyTab(QWidget):
         if self.spin_efa_eigen.value() > n_max:
             self.spin_efa_eigen.setValue(n_max)
 
+    def _parse_float(self, text: str, default: float) -> float:
+        try:
+            return float(str(text).strip())
+        except Exception:
+            return float(default)
+
+    def _update_preprocess_controls(self) -> None:
+        baseline_mode = str(self.combo_baseline_mode.currentData() or "off")
+        self.edit_baseline_start.setEnabled(baseline_mode == "range")
+        self.edit_baseline_end.setEnabled(baseline_mode == "range")
+        self.spin_baseline_auto_q.setEnabled(baseline_mode == "auto")
+
+        weighting_mode = str(self.combo_weighting_mode.currentData() or "none")
+        weighting_active = weighting_mode != "none"
+        self.edit_weighting_power.setEnabled(weighting_active)
+        self.chk_weighting_normalize.setEnabled(weighting_active)
+
+        solver_mode = str(self.combo_eps_solver_mode.currentData() or "soft_penalty")
+        self.edit_eps_mu.setEnabled(solver_mode in {"soft_penalty", "soft_bound"})
+        self.edit_delta_rel.setEnabled(solver_mode == "soft_bound")
+
     # ---- Model / Optimization sync ----
     def _on_model_defined(self, _n_components: int, _n_species: int) -> None:
         # Parameter grid is already updated inside ModelOptPlotsWidget.
@@ -783,6 +893,17 @@ class SpectroscopyTab(QWidget):
         self.btn_channels_none.setEnabled(not running)
         self.chk_efa.setEnabled(not running)
         self.spin_efa_eigen.setEnabled(not running)
+        self.combo_baseline_mode.setEnabled(not running)
+        self.edit_baseline_start.setEnabled(not running)
+        self.edit_baseline_end.setEnabled(not running)
+        self.spin_baseline_auto_q.setEnabled(not running)
+        self.combo_weighting_mode.setEnabled(not running)
+        self.edit_weighting_power.setEnabled(not running)
+        self.chk_weighting_normalize.setEnabled(not running)
+        self.combo_eps_solver_mode.setEnabled(not running)
+        self.edit_eps_mu.setEnabled(not running)
+        self.edit_delta_rel.setEnabled(not running)
+        self.edit_alpha_smooth.setEnabled(not running)
         if self.equation_editor is not None:
             self.equation_editor.setEnabled(not running)
         self.model_opt_plots.setEnabled(not running)
@@ -796,6 +917,7 @@ class SpectroscopyTab(QWidget):
         if not running:
             # Restore EFA enable/disable according to Channels mode.
             self._apply_channels_mode_ui()
+            self._update_preprocess_controls()
         self._update_plot_nav()
 
     def _collect_config(self) -> dict[str, Any]:
@@ -839,6 +961,18 @@ class SpectroscopyTab(QWidget):
         num_channels = len(self._effective_selected_channels())
         efa_enabled = bool(self.chk_efa.isChecked()) and num_channels >= self._MIN_CHANNELS_FOR_EFA
         efa_eigenvalues = int(self.spin_efa_eigen.value())
+        baseline_mode = str(self.combo_baseline_mode.currentData() or "off")
+        baseline_start = self._parse_float(self.edit_baseline_start.text(), 450.0)
+        baseline_end = self._parse_float(self.edit_baseline_end.text(), 600.0)
+        baseline_auto_quantile = float(self.spin_baseline_auto_q.value())
+        weighting_mode = str(self.combo_weighting_mode.currentData() or "none")
+        weighting_power = self._parse_float(self.edit_weighting_power.text(), 1.0)
+        weighting_normalize = bool(self.chk_weighting_normalize.isChecked())
+        eps_solver_mode = str(self.combo_eps_solver_mode.currentData() or "soft_penalty")
+        eps_mu = self._parse_float(self.edit_eps_mu.text(), 1e-2)
+        delta_rel = self._parse_float(self.edit_delta_rel.text(), 0.01)
+        alpha_smooth = self._parse_float(self.edit_alpha_smooth.text(), 0.0)
+        delta_mode = "relative" if eps_solver_mode == "soft_bound" else "off"
 
         state = self.model_opt_plots.collect_state()
         receptor_label = state.receptor_label
@@ -887,6 +1021,20 @@ class SpectroscopyTab(QWidget):
             "channels_resolved": channels_resolved,
             "show_stability_diagnostics": self.chk_show_diag.isChecked(),
             "multi_start_runs": runs,
+            "baseline_mode": baseline_mode,
+            "baseline_start": baseline_start,
+            "baseline_end": baseline_end,
+            "baseline_auto_quantile": baseline_auto_quantile,
+            "baseline_apply_per_spectrum": True,
+            "weighting_mode": weighting_mode,
+            "weighting_eps": 1e-12,
+            "weighting_power": weighting_power,
+            "weighting_normalize": weighting_normalize,
+            "eps_solver_mode": eps_solver_mode,
+            "mu": eps_mu,
+            "delta_mode": delta_mode,
+            "delta_rel": delta_rel,
+            "alpha_smooth": alpha_smooth,
         }
         config["equation_text"] = (
             self.equation_editor.get_text()
@@ -1138,6 +1286,31 @@ class SpectroscopyTab(QWidget):
         self.chk_efa.setChecked(bool(config.get("efa_enabled", False)))
         self._apply_channels_mode_ui()
 
+        # Restore preprocessing / weighting / epsilon solver
+        baseline_mode = str(config.get("baseline_mode") or "off").strip().lower()
+        ix_baseline = self.combo_baseline_mode.findData(baseline_mode)
+        if ix_baseline >= 0:
+            self.combo_baseline_mode.setCurrentIndex(ix_baseline)
+        self.edit_baseline_start.setText(str(config.get("baseline_start", 450.0)))
+        self.edit_baseline_end.setText(str(config.get("baseline_end", 600.0)))
+        self.spin_baseline_auto_q.setValue(self._parse_float(config.get("baseline_auto_quantile", 0.20), 0.20))
+
+        weighting_mode = str(config.get("weighting_mode") or "none").strip().lower()
+        ix_weight = self.combo_weighting_mode.findData(weighting_mode)
+        if ix_weight >= 0:
+            self.combo_weighting_mode.setCurrentIndex(ix_weight)
+        self.edit_weighting_power.setText(str(self._parse_float(config.get("weighting_power", 1.0), 1.0)))
+        self.chk_weighting_normalize.setChecked(bool(config.get("weighting_normalize", True)))
+
+        eps_solver_mode = str(config.get("eps_solver_mode") or "soft_penalty").strip().lower()
+        ix_solver = self.combo_eps_solver_mode.findData(eps_solver_mode)
+        if ix_solver >= 0:
+            self.combo_eps_solver_mode.setCurrentIndex(ix_solver)
+        self.edit_eps_mu.setText(str(self._parse_float(config.get("mu", 1e-2), 1e-2)))
+        self.edit_delta_rel.setText(str(self._parse_float(config.get("delta_rel", 0.01), 0.01)))
+        self.edit_alpha_smooth.setText(str(self._parse_float(config.get("alpha_smooth", 0.0), 0.0)))
+        self._update_preprocess_controls()
+
         # Restore Model/Optimization
         modelo = config.get("modelo") or []
         n_rows = len(modelo) if isinstance(modelo, list) else 0
@@ -1192,7 +1365,19 @@ class SpectroscopyTab(QWidget):
         self.combo_channels_mode.setCurrentIndex(self.combo_channels_mode.findData("all"))
         self.chk_efa.setChecked(True)
         self.spin_efa_eigen.setValue(0)
+        self.combo_baseline_mode.setCurrentIndex(self.combo_baseline_mode.findData("off"))
+        self.edit_baseline_start.setText("450.0")
+        self.edit_baseline_end.setText("600.0")
+        self.spin_baseline_auto_q.setValue(0.20)
+        self.combo_weighting_mode.setCurrentIndex(self.combo_weighting_mode.findData("none"))
+        self.edit_weighting_power.setText("1.0")
+        self.chk_weighting_normalize.setChecked(True)
+        self.combo_eps_solver_mode.setCurrentIndex(self.combo_eps_solver_mode.findData("soft_penalty"))
+        self.edit_eps_mu.setText("0.01")
+        self.edit_delta_rel.setText("0.01")
+        self.edit_alpha_smooth.setText("0.0")
         self._apply_channels_mode_ui()
+        self._update_preprocess_controls()
 
         self._clear_conc_columns()
         self.model_opt_plots.reset()
@@ -1225,6 +1410,7 @@ class SpectroscopyTab(QWidget):
             "k_hat": k_hat,
             "C_T": export_data.get("C_T") or [],
             "Y": export_data.get("Y") or [],
+            "weights": export_data.get("weights") or [],
             "y_fit_hat": export_data.get("yfit") or [],
             "modelo_solver": export_data.get("modelo") or [],
             "non_abs_species": export_data.get("non_abs_species") or [],
@@ -1233,6 +1419,11 @@ class SpectroscopyTab(QWidget):
             "optimizer": (self._last_config or {}).get("optimizer", "powell"),
             "bounds": (self._last_config or {}).get("bounds", []),
             "fixed_mask": (self._last_config or {}).get("fixed_mask", []),
+            "eps_solver_mode": (self._last_config or {}).get("eps_solver_mode", "soft_penalty"),
+            "mu": (self._last_config or {}).get("mu", 1e-2),
+            "delta_mode": (self._last_config or {}).get("delta_mode", "off"),
+            "delta_rel": (self._last_config or {}).get("delta_rel", 0.01),
+            "alpha_smooth": (self._last_config or {}).get("alpha_smooth", 0.0),
             "param_names": [f"K{i+1}" for i in range(len(k_hat))],
             "refit_from_data": self._refit_from_data,
         }
@@ -1254,9 +1445,12 @@ class SpectroscopyTab(QWidget):
             from scipy import optimize
             from scipy.optimize import differential_evolution, dual_annealing, basinhopping
 
-            from hmfit_core.processors.spectroscopy_processor import _build_bounds_list
+            from hmfit_core.processors.spectroscopy_processor import (
+                _build_bounds_list,
+                _build_smoothness_laplacian,
+            )
             from hmfit_core.solvers import NewtonRaphson, LevenbergMarquardt
-            from hmfit_core.utils.nnls_utils import solve_A_nnls_pgd
+            from hmfit_core.utils.nnls_utils import solve_A_nnls_pgd, solve_A_nnls_pgd2
 
             Y_star = np.asarray(data_star, dtype=float)
             c_t_raw = ctx.get("C_T")
@@ -1268,8 +1462,25 @@ class SpectroscopyTab(QWidget):
             algorithm = str(ctx.get("algorithm") or "Newton-Raphson")
             model_settings = str(ctx.get("model_settings") or "Free")
             optimizer = str(ctx.get("optimizer") or "powell")
+            eps_solver_mode = str(ctx.get("eps_solver_mode") or "soft_penalty").strip().lower()
+            eps_mu = self._parse_float(ctx.get("mu", 1e-2), 1e-2)
+            delta_mode = str(ctx.get("delta_mode") or "off").strip().lower()
+            delta_rel = self._parse_float(ctx.get("delta_rel", 0.01), 0.01)
+            alpha_smooth = self._parse_float(ctx.get("alpha_smooth", 0.0), 0.0)
             bounds_raw = ctx.get("bounds")
             bounds_raw = list(bounds_raw) if bounds_raw is not None else []
+            weights_raw = ctx.get("weights")
+            if weights_raw is None:
+                weights = np.ones(Y_star.shape[0], dtype=float)
+            else:
+                weights = np.asarray(weights_raw, dtype=float).ravel()
+                if weights.size != Y_star.shape[0]:
+                    weights = np.ones(Y_star.shape[0], dtype=float)
+            weights = np.nan_to_num(np.abs(weights), nan=1.0, posinf=1.0, neginf=1.0)
+            weights_row = weights.reshape(1, -1)
+            smooth_matrix = None
+            if alpha_smooth > 0.0 and Y_star.shape[0] >= 3:
+                smooth_matrix = _build_smoothness_laplacian(int(Y_star.shape[0]))
 
             if algorithm == "Newton-Raphson":
                 res = NewtonRaphson(C_T, modelo, nas, model_settings)
@@ -1306,9 +1517,34 @@ class SpectroscopyTab(QWidget):
                 try:
                     k_curr_full = pack(theta_free)
                     C = res.concentraciones(k_curr_full)[0]
-                    A = solve_A_nnls_pgd(C, Y_star.T, ridge=0.0, max_iters=300)
+                    if eps_solver_mode == "nnls_hard":
+                        A = solve_A_nnls_pgd2(C, Y_star.T, ridge=0.0, max_iters=300)
+                    else:
+                        lb = None
+                        lb_mode = "relative" if eps_solver_mode == "soft_bound" else delta_mode
+                        if lb_mode == "relative" and delta_rel > 0:
+                            try:
+                                A0 = np.linalg.pinv(np.asarray(C, dtype=float)) @ np.asarray(Y_star.T, dtype=float)
+                                if A0.size:
+                                    amax = np.max(np.abs(A0), axis=1)
+                                    amax = np.nan_to_num(amax, nan=0.0, posinf=0.0, neginf=0.0)
+                                    if np.isfinite(amax).all() and float(np.max(amax)) > 0:
+                                        lb = -float(delta_rel) * amax
+                            except Exception:
+                                lb = None
+                        A = solve_A_nnls_pgd(
+                            C,
+                            Y_star.T,
+                            ridge=0.0,
+                            mu=float(eps_mu),
+                            max_iters=300,
+                            lower_bound=lb,
+                            alpha_smooth=float(alpha_smooth),
+                            smooth_matrix=smooth_matrix,
+                        )
                     r = C @ A - Y_star.T
-                    rms = float(np.sqrt(np.mean(np.square(r))))
+                    r_w = r * weights_row
+                    rms = float(np.sqrt(np.mean(np.square(r_w))))
                     if np.isnan(rms) or np.isinf(rms):
                         return 1e50
                     return rms
