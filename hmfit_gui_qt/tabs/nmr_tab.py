@@ -444,7 +444,8 @@ class NMRTab(QWidget):
                 return [str(x) for x in list(names)]
         if isinstance(components_block, (list, tuple, np.ndarray)):
             return [str(x) for x in list(components_block)]
-        solver_block = solver_inputs.get("solver_inputs") or {}
+        solver_block_raw = solver_inputs.get("solver_inputs")
+        solver_block = solver_block_raw if isinstance(solver_block_raw, dict) else {}
         names = solver_block.get("components")
         if isinstance(names, str):
             return [names]
@@ -536,7 +537,8 @@ class NMRTab(QWidget):
             self.log.append_text(f"[Graph] Could not apply parsed model: {exc}")
 
     def _apply_solver_inputs_to_classic_matrix(self, solver_inputs: dict[str, Any]) -> None:
-        solver_block = solver_inputs.get("solver_inputs") or {}
+        solver_block_raw = solver_inputs.get("solver_inputs")
+        solver_block = solver_block_raw if isinstance(solver_block_raw, dict) else {}
 
         model_raw = solver_block.get("modelo")
         model = np.asarray(model_raw if model_raw is not None else [], dtype=float)
@@ -566,9 +568,18 @@ class NMRTab(QWidget):
 
         component_names = _extract_species_names(solver_inputs.get("components"))
         complex_names = _extract_species_names(solver_inputs.get("complexes"))
+        non_abs_raw = solver_inputs.get("non_abs_species")
+        if non_abs_raw is None:
+            non_abs_iter: list[object] = []
+        elif isinstance(non_abs_raw, np.ndarray):
+            non_abs_iter = non_abs_raw.ravel().tolist()
+        elif isinstance(non_abs_raw, (list, tuple, set)):
+            non_abs_iter = list(non_abs_raw)
+        else:
+            non_abs_iter = [non_abs_raw]
         non_abs_lookup = {
             str(name or "").strip().casefold()
-            for name in (solver_inputs.get("non_abs_species") or [])
+            for name in non_abs_iter
             if str(name or "").strip()
         }
 
@@ -593,8 +604,26 @@ class NMRTab(QWidget):
         self.model_opt_plots.model_table.viewport().update()
 
         k_raw = solver_block.get("k")
-        k_values = np.asarray(k_raw if k_raw is not None else [], dtype=float).ravel().tolist()
+        k_solver = np.asarray(k_raw if k_raw is not None else [], dtype=float).ravel()
+        k_values = k_solver.tolist()
         model_sett = str(solver_block.get("model_sett") or "Free")
+
+        # Si el sistema corresponde a una serie por pasos, mostrar en UI las K
+        # originales del editor y usar Step by step para conservar equivalencia.
+        edge_log_beta_raw = solver_inputs.get("edge_log_beta")
+        if edge_log_beta_raw is None:
+            edge_log_beta = np.asarray([], dtype=float)
+        else:
+            edge_log_beta = np.asarray(edge_log_beta_raw, dtype=float).ravel()
+        if (
+            model_sett == "Free"
+            and edge_log_beta.size > 0
+            and edge_log_beta.size == k_solver.size
+            and np.allclose(np.cumsum(edge_log_beta), k_solver, rtol=1e-8, atol=1e-8)
+        ):
+            k_values = edge_log_beta.tolist()
+            model_sett = "Step by step"
+
         self.model_opt_plots.set_optimization(
             model_settings=model_sett,
             initial_k=k_values,
