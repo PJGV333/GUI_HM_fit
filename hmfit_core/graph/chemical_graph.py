@@ -126,6 +126,16 @@ class ChemicalGraph:
     def __init__(self) -> None:
         self._species_by_name: Dict[str, SpeciesNode] = {}
         self._reactions: List[ReactionEdge] = []
+        self._topology_changed = True
+        self._cached_global_stoich: Dict[str, Dict[str, float]] | None = None
+        self._cached_global_log_beta: Dict[str, float] | None = None
+        self._forming_reactions: Dict[str, ReactionEdge] = {}
+
+    def _invalidate_topology_cache(self) -> None:
+        self._topology_changed = True
+        self._cached_global_stoich = None
+        self._cached_global_log_beta = None
+        self._forming_reactions = {}
 
     @property
     def species(self) -> Tuple[SpeciesNode, ...]:
@@ -142,12 +152,16 @@ class ChemicalGraph:
         species = self._species_by_name.get(name)
         if species is None:
             raise KeyError(f"Unknown species {name!r}.")
-        species.is_solid = bool(is_solid)
+        new_value = bool(is_solid)
+        if species.is_solid != new_value:
+            species.is_solid = new_value
+            self._invalidate_topology_cache()
 
     def add_species(self, node: SpeciesNode) -> None:
         existing = self._species_by_name.get(node.name)
         if existing is None:
             self._species_by_name[node.name] = node
+            self._invalidate_topology_cache()
             return
 
         if existing.charge != node.charge:
@@ -171,6 +185,7 @@ class ChemicalGraph:
             self.add_species(species)
 
         self._reactions.append(edge)
+        self._invalidate_topology_cache()
 
     def get_active_species(self) -> List[SpeciesNode]:
         return [species for species in self._species_by_name.values() if not species.is_solid]
@@ -209,6 +224,53 @@ class ChemicalGraph:
         """
         Flatten stepwise equilibria into global equilibria relative to base components.
         """
+        if (
+            not self._topology_changed
+            and self._cached_global_stoich is not None
+            and self._cached_global_log_beta is not None
+            and self._forming_reactions
+        ):
+            global_log_beta: Dict[str, float] = {}
+            path: set[str] = set()
+
+            def get_beta(species_name: str) -> float:
+                if species_name in global_log_beta:
+                    return global_log_beta[species_name]
+                if species_name in path:
+                    raise ValueError(f"Ciclo detectado en rutas de formación para {species_name!r}.")
+
+                path.add(species_name)
+                try:
+                    reaction = self._forming_reactions.get(species_name)
+                    if reaction is None:
+                        beta = 0.0
+                    else:
+                        total_beta = float(reaction.log_beta)
+                        for reactant, coeff in reaction.reactants.items():
+                            total_beta += float(coeff) * get_beta(reactant.name)
+
+                        product_coeff = None
+                        for product, coeff in reaction.products.items():
+                            if product.name == species_name:
+                                product_coeff = float(coeff)
+                                break
+                        if product_coeff is None or abs(product_coeff) <= _EPS:
+                            raise ValueError(
+                                f"No product coefficient found for species {species_name!r}."
+                            )
+                        beta = total_beta / product_coeff
+
+                    global_log_beta[species_name] = float(beta)
+                    return float(beta)
+                finally:
+                    path.discard(species_name)
+
+            for species_name in self._cached_global_stoich.keys():
+                get_beta(species_name)
+
+            self._cached_global_log_beta = global_log_beta
+            return self._cached_global_stoich, global_log_beta
+
         active_names = {species.name for species in self.get_active_species()}
 
         forming_reactions: Dict[str, ReactionEdge] = {}
@@ -278,6 +340,10 @@ class ChemicalGraph:
         for species in self.get_active_species():
             get_global(species.name)
 
+        self._forming_reactions = forming_reactions
+        self._cached_global_stoich = global_stoich
+        self._cached_global_log_beta = global_log_beta
+        self._topology_changed = False
         return global_stoich, global_log_beta
 
     def to_stoichiometric_matrix(self) -> Tuple[List[SpeciesNode], np.ndarray]:

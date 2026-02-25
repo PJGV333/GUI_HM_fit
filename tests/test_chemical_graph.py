@@ -143,3 +143,21 @@ def test_pathway_resolution_flattening():
     )
     assert np.allclose(model, expected_model)
     assert np.allclose(k_vals, np.array([3.0, 7.0]))
+
+
+def test_pathway_resolution_recomputes_only_logbeta_when_topology_is_unchanged():
+    graph = ChemicalGraph()
+    graph.add_reaction_from_string("H + C <=> HC", log_beta=3.0)
+    graph.add_reaction_from_string("HC + A <=> HCA", log_beta=4.0)
+
+    stoich_1, beta_1 = graph.resolve_global_pathways()
+    assert np.isclose(beta_1["HC"], 3.0)
+    assert np.isclose(beta_1["HCA"], 7.0)
+
+    # Cambio numérico puro (sin tocar topología).
+    graph.reactions[0].log_beta = 5.0
+    stoich_2, beta_2 = graph.resolve_global_pathways()
+
+    assert stoich_1 == stoich_2
+    assert np.isclose(beta_2["HC"], 5.0)
+    assert np.isclose(beta_2["HCA"], 9.0)

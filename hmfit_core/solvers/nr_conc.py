@@ -185,43 +185,64 @@ class NewtonRaphson:
 
         # inicial positivo
         c = onp.maximum(ctot_row[:n_comp].astype(float).copy(), 1e-14)
+        ctot_comp = onp.asarray(ctot_row[:n_comp], dtype=float)
 
-        def especies_from_c(c_vec):
+        # Buffers preasignados para minimizar allocaciones por iteración.
+        c_clip = onp.empty(n_comp, dtype=float)
+        log_c = onp.empty(n_comp, dtype=float)
+        exp_arg = onp.empty(self.nspec, dtype=float)
+        c_spec = onp.empty(self.nspec, dtype=float)
+        residuals = onp.empty(n_comp, dtype=float)
+        jacobian = onp.empty((n_comp, n_comp), dtype=float)
+        term = onp.empty((n_comp, self.nspec), dtype=float)
+        tmp_comp = onp.empty(n_comp, dtype=float)
+        jtj = onp.empty((n_comp, n_comp), dtype=float)
+        g = onp.empty(n_comp, dtype=float)
+        cand = onp.empty(n_comp, dtype=float)
+        d_trial = onp.empty(n_comp, dtype=float)
+        c_spec_trial = onp.empty(self.nspec, dtype=float)
+        eye_n = onp.eye(n_comp, dtype=float)
+
+        def eval_state(
+            c_vec: onp.ndarray,
+            c_spec_out: onp.ndarray,
+            residual_out: onp.ndarray,
+        ) -> None:
             # c_spec = K * exp(M^T log(c))
-            log_c = onp.log(onp.clip(c_vec, 1e-300, onp.inf))
-            return onp.exp(MT @ log_c) * K_num
+            onp.clip(c_vec, 1e-300, onp.inf, out=c_clip)
+            onp.log(c_clip, out=log_c)
+            exp_arg[:] = MT @ log_c
+            onp.exp(exp_arg, out=exp_arg)
+            onp.multiply(exp_arg, K_num, out=c_spec_out)
 
-        def residuo(c_vec):
-            c_spec = especies_from_c(c_vec)
-            return ctot_row - (M @ c_spec), c_spec  # (n_comp,), (nspec,)
+            tmp_comp[:] = M @ c_spec_out
+            residual_out[:] = ctot_comp
+            residual_out -= tmp_comp
 
-        def jacobian(c_vec, c_spec):
-            inv_c = 1.0 / onp.clip(c_vec, 1e-300, onp.inf)
-            term = M * c_spec
-            J = onp.empty((n_comp, n_comp), dtype=float)
-            for h in range(n_comp):
-                col_h = term[h, :] * inv_c[h]
-                J[:, h] = M @ col_h
-            return J
+        def fill_jacobian(c_vec: onp.ndarray, c_spec_vec: onp.ndarray) -> None:
+            onp.clip(c_vec, 1e-300, onp.inf, out=c_clip)
+            onp.multiply(M, c_spec_vec, out=term)
+            jacobian[:] = term @ M.T
+            jacobian[:] = jacobian / c_clip[None, :]
 
         # estado inicial
-        d, c_spec = residuo(c)
-        prev = float(onp.linalg.norm(d, ord=2))
+        eval_state(c, c_spec, residuals)
+        prev = float(onp.linalg.norm(residuals, ord=2))
         if not onp.isfinite(prev):
             _raise_non_convergent()
         it = 0
         ridge = 1e-12
 
         while prev > self.tol and it < self.max_iter:
-            J = jacobian(c, c_spec)
-            if not onp.all(onp.isfinite(J)):
+            fill_jacobian(c, c_spec)
+            if not onp.all(onp.isfinite(jacobian)):
                 _raise_non_convergent()
 
             try:
-                delta = onp.linalg.solve(J, d)
+                delta = onp.linalg.solve(jacobian, residuals)
             except onp.linalg.LinAlgError:
                 try:
-                    delta = pinv_cs(J) @ d
+                    delta = pinv_cs(jacobian) @ residuals
                 except onp.linalg.LinAlgError as exc:
                     _raise_non_convergent(exc)
             if not onp.all(onp.isfinite(delta)):
@@ -234,8 +255,10 @@ class NewtonRaphson:
             alpha = 1.0
             accepted = False
             for _ in range(self.max_backtrack):
-                cand = onp.maximum(c + alpha * delta, 1e-14)
-                d_trial, c_spec_trial = residuo(cand)
+                cand[:] = c
+                cand += alpha * delta
+                onp.maximum(cand, 1e-14, out=cand)
+                eval_state(cand, c_spec_trial, d_trial)
                 cur = float(onp.linalg.norm(d_trial, ord=2))
                 if cur < prev:
                     accepted = True
@@ -243,23 +266,24 @@ class NewtonRaphson:
                 alpha *= 0.5
 
             if accepted:
-                c = cand
-                d = d_trial
-                c_spec = c_spec_trial
+                c[:] = cand
+                residuals[:] = d_trial
+                c_spec[:] = c_spec_trial
                 prev = cur
                 it += 1
                 continue
 
             # Gauss–Newton regularizado
-            JTJ = J.T @ J + ridge * onp.eye(n_comp)
-            g   = J.T @ d
-            if not (onp.all(onp.isfinite(JTJ)) and onp.all(onp.isfinite(g))):
+            jtj[:] = jacobian.T @ jacobian
+            jtj += ridge * eye_n
+            g[:] = jacobian.T @ residuals
+            if not (onp.all(onp.isfinite(jtj)) and onp.all(onp.isfinite(g))):
                 _raise_non_convergent()
             try:
-                delta_gn = onp.linalg.solve(JTJ, g)
+                delta_gn = onp.linalg.solve(jtj, g)
             except onp.linalg.LinAlgError:
                 try:
-                    delta_gn = pinv_cs(JTJ) @ g
+                    delta_gn = pinv_cs(jtj) @ g
                 except onp.linalg.LinAlgError as exc:
                     _raise_non_convergent(exc)
             if not onp.all(onp.isfinite(delta_gn)):
@@ -272,8 +296,10 @@ class NewtonRaphson:
             alpha = 1.0
             accepted = False
             for _ in range(self.max_backtrack):
-                cand = onp.maximum(c + alpha * delta_gn, 1e-14)
-                d_trial, c_spec_trial = residuo(cand)
+                cand[:] = c
+                cand += alpha * delta_gn
+                onp.maximum(cand, 1e-14, out=cand)
+                eval_state(cand, c_spec_trial, d_trial)
                 cur = float(onp.linalg.norm(d_trial, ord=2))
                 if cur < prev:
                     accepted = True
@@ -281,15 +307,16 @@ class NewtonRaphson:
                 alpha *= 0.5
 
             if accepted:
-                c = cand
-                d = d_trial
-                c_spec = c_spec_trial
+                c[:] = cand
+                residuals[:] = d_trial
+                c_spec[:] = c_spec_trial
                 prev = cur
                 it += 1
             else:
-                c = onp.maximum(c + 0.1 * delta_gn, 1e-14)
-                d, c_spec = residuo(c)
-                prev = float(onp.linalg.norm(d, ord=2))
+                c += 0.1 * delta_gn
+                onp.maximum(c, 1e-14, out=c)
+                eval_state(c, c_spec, residuals)
+                prev = float(onp.linalg.norm(residuals, ord=2))
                 if not onp.isfinite(prev):
                     _raise_non_convergent()
                 it += 1

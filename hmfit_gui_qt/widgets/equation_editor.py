@@ -1,8 +1,34 @@
 from __future__ import annotations
 
+from typing import Any
+
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from hmfit_core.utils.graph_gui_parser import parse_multiline_equilibria
+
+
+class _ParserWorkerSignals(QtCore.QObject):
+    parsed_finished = QtCore.Signal(int, object, dict)
+    parsed_error = QtCore.Signal(int, str)
+
+
+class _ParserWorker(QtCore.QRunnable):
+    def __init__(self, seq: int, text: str, graph_ref: object | None = None) -> None:
+        super().__init__()
+        self.seq = int(seq)
+        self.text = str(text or "")
+        self.graph_ref = graph_ref
+        self.signals = _ParserWorkerSignals()
+
+    @QtCore.Slot()
+    def run(self) -> None:
+        try:
+            graph, solver_inputs = parse_multiline_equilibria(self.text)
+            # Fuerza el cálculo de rutas globales en el hilo worker.
+            graph.resolve_global_pathways()
+            self.signals.parsed_finished.emit(self.seq, graph, solver_inputs)
+        except Exception as exc:
+            self.signals.parsed_error.emit(self.seq, str(exc))
 
 
 class EquationEditorWidget(QtWidgets.QWidget):
@@ -10,7 +36,10 @@ class EquationEditorWidget(QtWidgets.QWidget):
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
-        self._last_graph = None
+        self._last_graph: Any = None
+        self._parse_seq = 0
+        self._thread_pool = QtCore.QThreadPool.globalInstance()
+        self._active_workers: dict[int, _ParserWorker] = {}
         self._build_ui()
         self._build_debounce_timer()
 
@@ -46,15 +75,39 @@ class EquationEditorWidget(QtWidgets.QWidget):
     @QtCore.Slot()
     def _validate_and_parse(self) -> None:
         text = self.editor.toPlainText()
-        try:
-            graph, solver_inputs = parse_multiline_equilibria(text)
-            self._last_graph = graph
-            self.lbl_status.setText("Modelo valido.")
-            self.lbl_status.setStyleSheet("color: #26a269;")
-            self.model_parsed.emit(solver_inputs)
-        except Exception as exc:
-            self.lbl_status.setText(str(exc))
-            self.lbl_status.setStyleSheet("color: #c01c28;")
+        self._parse_seq += 1
+        seq = self._parse_seq
+
+        self.lbl_status.setText("Analizando modelo…")
+        self.lbl_status.setStyleSheet("color: #1c71d8;")
+
+        worker = _ParserWorker(seq=seq, text=text, graph_ref=self._last_graph)
+        worker.signals.parsed_finished.connect(
+            self._on_worker_parsed_finished, QtCore.Qt.ConnectionType.QueuedConnection
+        )
+        worker.signals.parsed_error.connect(
+            self._on_worker_parsed_error, QtCore.Qt.ConnectionType.QueuedConnection
+        )
+        self._active_workers[seq] = worker
+        self._thread_pool.start(worker)
+
+    @QtCore.Slot(int, object, dict)
+    def _on_worker_parsed_finished(self, seq: int, graph: object, solver_inputs: dict) -> None:
+        self._active_workers.pop(int(seq), None)
+        if int(seq) != int(self._parse_seq):
+            return
+        self._last_graph = graph
+        self.lbl_status.setText("Modelo valido.")
+        self.lbl_status.setStyleSheet("color: #26a269;")
+        self.model_parsed.emit(dict(solver_inputs))
+
+    @QtCore.Slot(int, str)
+    def _on_worker_parsed_error(self, seq: int, message: str) -> None:
+        self._active_workers.pop(int(seq), None)
+        if int(seq) != int(self._parse_seq):
+            return
+        self.lbl_status.setText(str(message))
+        self.lbl_status.setStyleSheet("color: #c01c28;")
 
     def set_text(self, text: str) -> None:
         self.editor.setPlainText(text)
