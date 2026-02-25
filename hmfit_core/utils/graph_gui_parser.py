@@ -46,15 +46,28 @@ def parse_multiline_equilibria(text_block: str) -> Tuple[ChemicalGraph, dict[str
             continue
 
         try:
-            line_to_parse = line
-            if "@na" in line.lower():
-                parts = re.split(r"@na", line, maxsplit=1, flags=re.IGNORECASE)
-                line_to_parse = parts[0].strip()
+            # Case 1: dedicated non-absorbent line.
+            if line.strip().lower().startswith("@na"):
+                parts = re.split(r"(?i)@na", line, maxsplit=1)
                 non_abs_raw = parts[1] if len(parts) > 1 else ""
                 for token in non_abs_raw.split(","):
                     species = str(token or "").strip()
                     if species:
                         non_abs_set.add(species)
+                continue
+
+            # Case 2: equation line, optionally with inline @NA declaration.
+            parts = re.split(r"(?i)@na", line, maxsplit=1)
+            line_to_parse = parts[0].strip()
+            inline_non_abs: list[str] = []
+            has_inline_na = len(parts) > 1
+            if has_inline_na:
+                non_abs_raw = parts[1]
+                inline_non_abs = [
+                    str(token or "").strip()
+                    for token in non_abs_raw.split(",")
+                    if str(token or "").strip()
+                ]
 
             if ";" not in line_to_parse:
                 raise ValueError("Expected ';' delimiter between equation and constant.")
@@ -63,7 +76,18 @@ def parse_multiline_equilibria(text_block: str) -> Tuple[ChemicalGraph, dict[str
             if not reaction:
                 raise ValueError("Missing reaction equation before ';'.")
             log_beta = _parse_log_beta(const_text)
-            graph.add_reaction_from_string(reaction, log_beta=log_beta)
+            edge = graph.add_reaction_from_string(reaction, log_beta=log_beta)
+
+            # Inline @NA semantics:
+            # - '@na' (without names): mark reaction products as non-absorbent.
+            # - '@na a, b': keep explicit names as provided.
+            if has_inline_na:
+                if inline_non_abs:
+                    for species_name in inline_non_abs:
+                        non_abs_set.add(species_name)
+                else:
+                    for species in edge.products.keys():
+                        non_abs_set.add(species.name)
             valid_count += 1
         except Exception as exc:
             raise ValueError(f"Line {line_no}: {exc}") from exc
@@ -72,5 +96,5 @@ def parse_multiline_equilibria(text_block: str) -> Tuple[ChemicalGraph, dict[str
         raise ValueError("No valid equilibrium lines found.")
 
     solver_inputs = create_solver_inputs_from_graph(graph)
-    solver_inputs["non_abs_species"] = sorted(non_abs_set)
+    solver_inputs["non_abs_species"] = list(non_abs_set)
     return graph, solver_inputs
