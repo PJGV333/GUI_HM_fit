@@ -85,6 +85,8 @@ def _axis_range_text(axis_values: list[float]) -> str:
 
 
 class SpectroscopyTab(QWidget):
+    _MIN_CHANNELS_FOR_EFA = 10
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._worker: FitWorker | None = None
@@ -526,16 +528,6 @@ class SpectroscopyTab(QWidget):
             # Mirror historical behavior: "All" is explicit.
             self.edit_channels_spec.setText("All")
 
-        # EFA requires full spectrum
-        if is_custom:
-            if self.chk_efa.isChecked():
-                self.chk_efa.setChecked(False)
-            self.chk_efa.setEnabled(False)
-            self.chk_efa.setToolTip("EFA requiere espectro completo (Channels=All).")
-        else:
-            self.chk_efa.setEnabled(True)
-            self.chk_efa.setToolTip("")
-
         self._update_channels_usage()
 
     def _on_apply_channels_clicked(self) -> None:
@@ -628,29 +620,42 @@ class SpectroscopyTab(QWidget):
                     continue
         return out
 
+    def _effective_selected_channels(self) -> list[float]:
+        mode = str(self.combo_channels_mode.currentData() or "all")
+        if mode == "all":
+            return list(self._axis_values or [])
+        return self._selected_channels()
+
+    def _update_efa_enabled_state(self) -> None:
+        num_channels = len(self._effective_selected_channels())
+        can_enable = (num_channels >= self._MIN_CHANNELS_FOR_EFA) and (not self._is_running)
+        if not can_enable and self.chk_efa.isChecked():
+            self.chk_efa.setChecked(False)
+        self.chk_efa.setEnabled(can_enable)
+        if can_enable:
+            self.chk_efa.setToolTip("")
+        else:
+            self.chk_efa.setToolTip(
+                f"EFA requiere al menos {self._MIN_CHANNELS_FOR_EFA} canales seleccionados "
+                f"(actual: {num_channels})."
+            )
+
     def _update_channels_usage(self) -> None:
         total = len(self._axis_values)
-        mode = str(self.combo_channels_mode.currentData() or "all")
         if not total:
             self.lbl_channels_usage.setText("")
             self._update_efa_eigen_range()
+            self._update_efa_enabled_state()
             return
         range_text = _axis_range_text(self._axis_values)
-        if mode == "all":
-            used = total
-        else:
-            used = len(self._selected_channels())
+        used = len(self._effective_selected_channels())
         self.lbl_channels_usage.setText(f"Using {used} / {total} ({range_text})")
         self._update_efa_eigen_range()
+        self._update_efa_enabled_state()
 
     def _update_efa_eigen_range(self) -> None:
         n_points = int(self._conc_points_count or 0)
-        total_channels = len(self._axis_values)
-        mode = str(self.combo_channels_mode.currentData() or "all")
-        if mode == "all":
-            used_channels = total_channels
-        else:
-            used_channels = len(self._selected_channels())
+        used_channels = len(self._effective_selected_channels())
         n_max = max(0, min(n_points, used_channels))
         self.spin_efa_eigen.setRange(0, n_max)
         if self.spin_efa_eigen.value() > n_max:
@@ -803,8 +808,8 @@ class SpectroscopyTab(QWidget):
         else:
             channels_raw = "All"
 
-        # EFA must be off for Custom channels (historical behavior)
-        efa_enabled = bool(self.chk_efa.isChecked()) and channels_mode == "all"
+        num_channels = len(self._effective_selected_channels())
+        efa_enabled = bool(self.chk_efa.isChecked()) and num_channels >= self._MIN_CHANNELS_FOR_EFA
         efa_eigenvalues = int(self.spin_efa_eigen.value())
 
         state = self.model_opt_plots.collect_state()
@@ -1102,7 +1107,7 @@ class SpectroscopyTab(QWidget):
 
         # Restore EFA
         self.spin_efa_eigen.setValue(int(config.get("efa_eigenvalues") or 0))
-        self.chk_efa.setChecked(bool(config.get("efa_enabled", False)) and mode == "all")
+        self.chk_efa.setChecked(bool(config.get("efa_enabled", False)))
         self._apply_channels_mode_ui()
 
         # Restore Model/Optimization
