@@ -31,3 +31,4 @@ ENV/
 !tests/**/*.xlsx
 *.png
 !docs/assets/*.png
+nmr_configT4.json

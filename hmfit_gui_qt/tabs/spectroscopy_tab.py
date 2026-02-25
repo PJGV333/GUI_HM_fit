@@ -92,6 +92,7 @@ class SpectroscopyTab(QWidget):
         self._last_result: dict[str, Any] | None = None
         self._last_config: dict[str, Any] | None = None
         self._last_fit_context: dict[str, Any] | None = None
+        self._graph_solver_inputs: dict[str, Any] | None = None
         self._plot_controller: PlotController | None = None
         self._axis_values: list[float] = []
         self._conc_points_count = 0
@@ -237,8 +238,11 @@ class SpectroscopyTab(QWidget):
         left_layout.addWidget(self._data_group)
 
         # Sub-tabs: Model / Optimization / Plots
-        self.model_opt_plots = ModelOptPlotsWidget(left_container)
+        self.model_opt_plots = ModelOptPlotsWidget(left_container, enable_equation_editor=True)
         self.model_opt_plots.model_defined.connect(self._on_model_defined)
+        self.equation_editor = self.model_opt_plots.equation_editor
+        if self.equation_editor is not None:
+            self.equation_editor.model_parsed.connect(self._on_equation_model_parsed)
         left_layout.addWidget(self.model_opt_plots, 1)
 
         # Actions row (historical reference to previous UI buttons)
@@ -657,6 +661,82 @@ class SpectroscopyTab(QWidget):
         # Parameter grid is already updated inside ModelOptPlotsWidget.
         pass
 
+    @Slot(object)
+    def _on_equation_model_parsed(self, solver_inputs_obj: object) -> None:
+        if not isinstance(solver_inputs_obj, dict):
+            return
+        solver_inputs = dict(solver_inputs_obj)
+        self._graph_solver_inputs = solver_inputs
+        try:
+            self._apply_solver_inputs_to_classic_matrix(solver_inputs)
+        except Exception as exc:
+            self.log.append_text(f"[Graph] Could not apply parsed model: {exc}")
+
+    def _apply_solver_inputs_to_classic_matrix(self, solver_inputs: dict[str, Any]) -> None:
+        solver_block = solver_inputs.get("solver_inputs") or {}
+
+        model_raw = solver_block.get("modelo")
+        model = np.asarray(model_raw if model_raw is not None else [], dtype=float)
+        if model.ndim != 2 or model.size == 0:
+            raise ValueError("Parsed model matrix is empty.")
+
+        n_components, nspec_total = model.shape
+        if n_components <= 0 or nspec_total <= 0:
+            raise ValueError("Parsed model has invalid dimensions.")
+
+        n_complex = max(0, int(nspec_total - n_components))
+        self.model_opt_plots.set_model_dimensions(int(n_components), n_complex)
+        self.model_opt_plots.set_modelo(model.T.tolist())
+
+        def _extract_species_names(block: object) -> list[str]:
+            names_raw: object = block
+            if isinstance(block, dict):
+                names_raw = block.get("names")
+            if not isinstance(names_raw, (list, tuple)):
+                return []
+            names: list[str] = []
+            for value in names_raw:
+                text = str(value or "").strip()
+                if text:
+                    names.append(text)
+            return names
+
+        component_names = _extract_species_names(solver_inputs.get("components"))
+        complex_names = _extract_species_names(solver_inputs.get("complexes"))
+        non_abs_lookup = {
+            str(name or "").strip().casefold()
+            for name in (solver_inputs.get("non_abs_species") or [])
+            if str(name or "").strip()
+        }
+
+        nas_raw = solver_block.get("nas")
+        nas_from_solver = np.asarray(nas_raw if nas_raw is not None else [], dtype=int).ravel().tolist()
+        nas_set = {int(x) for x in nas_from_solver if int(x) >= 0}
+
+        for idx, species_name in enumerate(component_names):
+            if idx >= n_components:
+                break
+            if species_name.casefold() in non_abs_lookup:
+                nas_set.add(int(idx))
+        for j, species_name in enumerate(complex_names):
+            row_idx = int(n_components + j)
+            if row_idx >= nspec_total:
+                break
+            if species_name.casefold() in non_abs_lookup:
+                nas_set.add(row_idx)
+
+        self.model_opt_plots.set_non_abs_species(sorted(nas_set))
+        self.model_opt_plots.model_table.viewport().update()
+
+        k_raw = solver_block.get("k")
+        k_values = np.asarray(k_raw if k_raw is not None else [], dtype=float).ravel().tolist()
+        model_sett = str(solver_block.get("model_sett") or "Free")
+        self.model_opt_plots.set_optimization(
+            model_settings=model_sett,
+            initial_k=k_values,
+            fixed_mask=[False] * len(k_values),
+        )
+
     # ---- Run / Cancel / Results ----
     def _set_running(self, running: bool) -> None:
         self._is_running = bool(running)
@@ -670,6 +750,8 @@ class SpectroscopyTab(QWidget):
         self.btn_channels_none.setEnabled(not running)
         self.chk_efa.setEnabled(not running)
         self.spin_efa_eigen.setEnabled(not running)
+        if self.equation_editor is not None:
+            self.equation_editor.setEnabled(not running)
         self.model_opt_plots.setEnabled(not running)
         self.btn_import.setEnabled(not running)
         self.btn_export.setEnabled(not running)
@@ -773,6 +855,13 @@ class SpectroscopyTab(QWidget):
             "show_stability_diagnostics": self.chk_show_diag.isChecked(),
             "multi_start_runs": runs,
         }
+        config["equation_text"] = (
+            self.equation_editor.get_text()
+            if hasattr(self, "equation_editor") and self.equation_editor is not None
+            else ""
+        )
+        if not config["equation_text"]:
+            config["equation_text"] = ""
         if seeds is not None:
             config["multi_start_seeds"] = seeds
         return config
@@ -1040,6 +1129,12 @@ class SpectroscopyTab(QWidget):
             config.get("multi_start_runs", 1),
             config.get("multi_start_seeds"),
         )
+        equation_text = str(config.get("equation_text") or "").strip()
+        if self.equation_editor is not None:
+            if equation_text:
+                self.equation_editor.set_text(equation_text)
+            else:
+                self.equation_editor.clear()
 
         if "show_stability_diagnostics" in config:
             self.chk_show_diag.setChecked(bool(config["show_stability_diagnostics"]))
@@ -1077,6 +1172,7 @@ class SpectroscopyTab(QWidget):
         self._last_result = None
         self._last_config = None
         self._last_fit_context = None
+        self._graph_solver_inputs = None
         self.btn_save.setEnabled(False)
 
     def _update_errors_context_from_result(self, result: dict[str, Any]) -> None:
