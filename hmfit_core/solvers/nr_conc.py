@@ -171,9 +171,17 @@ class NewtonRaphson:
         Resuelve c (componentes) por NR amortiguado para una corrida.
         Retorna (c_final, ||res||, c_spec_final).
         """
+        def _raise_non_convergent(exc: Exception | None = None) -> None:
+            if exc is None:
+                raise ValueError("Non-convergent model")
+            raise ValueError("Non-convergent model") from exc
+
         n_comp = self.n_componentes
         M  = self.modelo
         MT = self.mt
+
+        if not onp.all(onp.isfinite(K_num)):
+            _raise_non_convergent()
 
         # inicial positivo
         c = onp.maximum(ctot_row[:n_comp].astype(float).copy(), 1e-14)
@@ -199,16 +207,25 @@ class NewtonRaphson:
         # estado inicial
         d, c_spec = residuo(c)
         prev = float(onp.linalg.norm(d, ord=2))
+        if not onp.isfinite(prev):
+            _raise_non_convergent()
         it = 0
         ridge = 1e-12
 
         while prev > self.tol and it < self.max_iter:
             J = jacobian(c, c_spec)
+            if not onp.all(onp.isfinite(J)):
+                _raise_non_convergent()
 
             try:
                 delta = onp.linalg.solve(J, d)
             except onp.linalg.LinAlgError:
-                delta = pinv_cs(J) @ d
+                try:
+                    delta = pinv_cs(J) @ d
+                except onp.linalg.LinAlgError as exc:
+                    _raise_non_convergent(exc)
+            if not onp.all(onp.isfinite(delta)):
+                _raise_non_convergent()
 
             ndelta = float(onp.linalg.norm(delta, ord=2))
             if ndelta > self.max_step:
@@ -236,10 +253,17 @@ class NewtonRaphson:
             # Gauss–Newton regularizado
             JTJ = J.T @ J + ridge * onp.eye(n_comp)
             g   = J.T @ d
+            if not (onp.all(onp.isfinite(JTJ)) and onp.all(onp.isfinite(g))):
+                _raise_non_convergent()
             try:
                 delta_gn = onp.linalg.solve(JTJ, g)
             except onp.linalg.LinAlgError:
-                delta_gn = pinv_cs(JTJ) @ g
+                try:
+                    delta_gn = pinv_cs(JTJ) @ g
+                except onp.linalg.LinAlgError as exc:
+                    _raise_non_convergent(exc)
+            if not onp.all(onp.isfinite(delta_gn)):
+                _raise_non_convergent()
 
             ndelta = float(onp.linalg.norm(delta_gn, ord=2))
             if ndelta > self.max_step:
@@ -266,7 +290,12 @@ class NewtonRaphson:
                 c = onp.maximum(c + 0.1 * delta_gn, 1e-14)
                 d, c_spec = residuo(c)
                 prev = float(onp.linalg.norm(d, ord=2))
+                if not onp.isfinite(prev):
+                    _raise_non_convergent()
                 it += 1
+
+        if prev > self.tol or not onp.all(onp.isfinite(c_spec)):
+            _raise_non_convergent()
 
         return c, prev, c_spec
 

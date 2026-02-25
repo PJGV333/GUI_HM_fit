@@ -404,6 +404,113 @@ class NMRTab(QWidget):
                 selected.append(str(w.text()))
         return selected
 
+    def _all_conc_columns(self) -> list[str]:
+        columns: list[str] = []
+        for i in range(self._columns_layout.count()):
+            w = self._columns_layout.itemAt(i).widget()
+            if isinstance(w, QCheckBox):
+                columns.append(str(w.text()))
+        return columns
+
+    @staticmethod
+    def _component_key(label: object) -> str:
+        text = str(label or "").strip()
+        if not text:
+            return ""
+        match = re.search(r"\w+", text, flags=re.UNICODE)
+        if match:
+            return match.group(0).strip().lower()
+        return text.lower()
+
+    def _ui_component_keys(self) -> list[str]:
+        headers = self._selected_conc_columns() or self._all_conc_columns()
+        keys: list[str] = []
+        seen: set[str] = set()
+        for header in headers:
+            key = self._component_key(header)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            keys.append(key)
+        return keys
+
+    def _solver_component_names(self, solver_inputs: dict[str, Any]) -> list[str]:
+        components_block = solver_inputs.get("components")
+        if isinstance(components_block, dict):
+            names = components_block.get("names")
+            if isinstance(names, str):
+                return [names]
+            if isinstance(names, (list, tuple, np.ndarray)):
+                return [str(x) for x in list(names)]
+        if isinstance(components_block, (list, tuple, np.ndarray)):
+            return [str(x) for x in list(components_block)]
+        solver_block = solver_inputs.get("solver_inputs") or {}
+        names = solver_block.get("components")
+        if isinstance(names, str):
+            return [names]
+        if isinstance(names, (list, tuple, np.ndarray)):
+            return [str(x) for x in list(names)]
+        return []
+
+    def _reorder_solver_inputs_to_ui(self, solver_inputs: dict[str, Any]) -> dict[str, Any]:
+        ui_comps = self._ui_component_keys()
+        solver_comps = self._solver_component_names(solver_inputs)
+        if not ui_comps or not solver_comps:
+            return solver_inputs
+
+        solver_keys = [self._component_key(name) for name in solver_comps]
+        used: set[int] = set()
+        indices: list[int] = []
+        for ui_key in ui_comps:
+            for idx, solver_key in enumerate(solver_keys):
+                if idx in used:
+                    continue
+                if solver_key == ui_key:
+                    used.add(idx)
+                    indices.append(idx)
+                    break
+        for idx in range(len(solver_comps)):
+            if idx not in used:
+                indices.append(idx)
+
+        if indices == list(range(len(solver_comps))):
+            return solver_inputs
+
+        reordered = dict(solver_inputs)
+        components_block = solver_inputs.get("components")
+        if isinstance(components_block, dict):
+            components_copy = dict(components_block)
+            for key in ("names", "species", "indices", "total_concentrations"):
+                raw = components_block.get(key)
+                if raw is None:
+                    continue
+                raw_list = list(raw)
+                if len(raw_list) == len(indices):
+                    components_copy[key] = [raw_list[i] for i in indices]
+            reordered["components"] = components_copy
+        elif isinstance(components_block, (list, tuple, np.ndarray)) and len(components_block) == len(indices):
+            reordered["components"] = [components_block[i] for i in indices]
+
+        solver_block = dict(solver_inputs.get("solver_inputs") or {})
+        model_raw = solver_block.get("modelo")
+        if model_raw is not None:
+            model = np.asarray(model_raw, dtype=float)
+            if model.ndim == 2 and model.shape[0] == len(indices):
+                solver_block["modelo"] = model[indices, :].tolist()
+
+        ctot_raw = solver_block.get("ctot")
+        if ctot_raw is not None:
+            ctot = np.asarray(ctot_raw, dtype=float)
+            if ctot.ndim == 2 and ctot.shape[1] == len(indices):
+                solver_block["ctot"] = ctot[:, indices].tolist()
+
+        solver_comp_raw = solver_block.get("components")
+        if isinstance(solver_comp_raw, (list, tuple, np.ndarray)) and len(solver_comp_raw) == len(indices):
+            solver_block["components"] = [solver_comp_raw[i] for i in indices]
+
+        reordered["solver_inputs"] = solver_block
+        return reordered
+
     def _populate_signals(self, columns: list[str]) -> None:
         self.channel_spec_widget.set_channels(columns or [])
 
@@ -416,6 +523,10 @@ class NMRTab(QWidget):
         if not isinstance(solver_inputs_obj, dict):
             return
         solver_inputs = dict(solver_inputs_obj)
+        try:
+            solver_inputs = self._reorder_solver_inputs_to_ui(solver_inputs)
+        except Exception as exc:
+            self.log.append_text(f"[Graph] Component reorder skipped: {exc}")
         self._graph_solver_inputs = solver_inputs
         try:
             self._apply_solver_inputs_to_classic_matrix(solver_inputs)
