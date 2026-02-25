@@ -102,3 +102,34 @@ def test_create_solver_inputs_from_graph_is_order_invariant():
     assert p1["complexes"] == p2["complexes"] == ["HA", "HC", "HCA"]
     assert np.allclose(p1["stoichiometric_matrix"], p2["stoichiometric_matrix"])
     assert np.allclose(p1["edge_log_beta"], p2["edge_log_beta"])
+
+
+def test_pathway_resolution_flattening():
+    graph = ChemicalGraph()
+    graph.add_reaction_from_string("H + C <=> HC", log_beta=3.0)
+    graph.add_reaction_from_string("HC + A <=> HCA", log_beta=4.0)
+
+    global_stoich, global_log_beta = graph.resolve_global_pathways()
+
+    assert np.isclose(global_log_beta["HCA"], 7.0)
+    assert global_stoich["HCA"] == {"A": 1.0, "C": 1.0, "H": 1.0}
+
+    payload = create_solver_inputs_from_graph(graph)
+    components = payload["components"]
+    complexes = payload["complexes"]
+    model = np.asarray(payload["solver_inputs"]["modelo"], dtype=float)
+    k_vals = np.asarray(payload["solver_inputs"]["k"], dtype=float)
+
+    assert components == ["A", "C", "H"]
+    assert complexes == ["HC", "HCA"]
+    assert model.shape == (3, 5)
+
+    expected_model = np.array(
+        [
+            [1.0, 0.0, 0.0, 0.0, 1.0],
+            [0.0, 1.0, 0.0, 1.0, 1.0],
+            [0.0, 0.0, 1.0, 1.0, 1.0],
+        ]
+    )
+    assert np.allclose(model, expected_model)
+    assert np.allclose(k_vals, np.array([3.0, 7.0]))

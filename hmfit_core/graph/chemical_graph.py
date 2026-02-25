@@ -218,6 +218,81 @@ class ChemicalGraph:
         sorted_reactions = sorted(self._reactions, key=self._reaction_sort_key)
         return components, complexes, sorted_reactions
 
+    def resolve_global_pathways(self) -> Tuple[Dict[str, Dict[str, float]], Dict[str, float]]:
+        """
+        Flatten stepwise equilibria into global equilibria relative to base components.
+        """
+        active_names = {species.name for species in self.get_active_species()}
+
+        forming_reactions: Dict[str, ReactionEdge] = {}
+        for reaction in self._reactions:
+            for product in reaction.products.keys():
+                product_name = product.name
+                if product_name not in active_names:
+                    continue
+                prev = forming_reactions.get(product_name)
+                if prev is not None and prev is not reaction:
+                    raise ValueError(f"Múltiples rutas de formación para {product_name!r}.")
+                forming_reactions[product_name] = reaction
+
+        global_stoich: Dict[str, Dict[str, float]] = {}
+        global_log_beta: Dict[str, float] = {}
+        path: set[str] = set()
+
+        def get_global(species_name: str) -> Tuple[Dict[str, float], float]:
+            if species_name in global_stoich:
+                return global_stoich[species_name], global_log_beta[species_name]
+
+            if species_name in path:
+                raise ValueError(f"Ciclo detectado en rutas de formación para {species_name!r}.")
+
+            path.add(species_name)
+            try:
+                reaction = forming_reactions.get(species_name)
+                if reaction is None:
+                    stoich = {species_name: 1.0}
+                    beta = 0.0
+                else:
+                    total_stoich: Dict[str, float] = {}
+                    total_beta = float(reaction.log_beta)
+                    for reactant, coeff in reaction.reactants.items():
+                        reactant_stoich, reactant_beta = get_global(reactant.name)
+                        coeff_f = float(coeff)
+                        total_beta += reactant_beta * coeff_f
+                        for comp_name, comp_coeff in reactant_stoich.items():
+                            total_stoich[comp_name] = (
+                                total_stoich.get(comp_name, 0.0) + (float(comp_coeff) * coeff_f)
+                            )
+
+                    product_coeff = None
+                    for product, coeff in reaction.products.items():
+                        if product.name == species_name:
+                            product_coeff = float(coeff)
+                            break
+                    if product_coeff is None or abs(product_coeff) <= _EPS:
+                        raise ValueError(
+                            f"No product coefficient found for species {species_name!r}."
+                        )
+
+                    inv_coeff = 1.0 / product_coeff
+                    total_beta *= inv_coeff
+                    stoich = {
+                        comp_name: float(comp_coeff) * inv_coeff
+                        for comp_name, comp_coeff in total_stoich.items()
+                    }
+                    beta = float(total_beta)
+
+                global_stoich[species_name] = stoich
+                global_log_beta[species_name] = float(beta)
+                return stoich, float(beta)
+            finally:
+                path.discard(species_name)
+
+        for species in self.get_active_species():
+            get_global(species.name)
+
+        return global_stoich, global_log_beta
+
     def to_stoichiometric_matrix(self) -> Tuple[List[SpeciesNode], np.ndarray]:
         components, complexes, sorted_reactions = self.get_sorted_elements()
         species_list = components + complexes
@@ -519,22 +594,30 @@ def create_solver_inputs_from_graph(graph: ChemicalGraph) -> Dict[str, Any]:
     )
     edge_log_beta = np.asarray([edge.log_beta for edge in sorted_reactions], dtype=float)
 
+    global_stoich, global_log_beta = graph.resolve_global_pathways()
+    component_names = [species.name for species in component_species]
+    complex_names = [species.name for species in complex_species]
     n_components = len(component_species)
     component_idx = np.arange(n_components, dtype=int)
     complex_idx = np.arange(n_components, len(species_list), dtype=int)
+    n_complex = len(complex_species)
 
-    component_names = [species.name for species in component_species]
-    complex_names = [species.name for species in complex_species]
+    model_matrix = np.zeros((n_components, n_components + n_complex), dtype=float)
+    if n_components > 0:
+        model_matrix[:, :n_components] = np.eye(n_components, dtype=float)
 
-    model_matrix = _build_model_matrix(species_list, matrix, component_idx, complex_idx)
-    complex_log_beta = _infer_complex_log_beta(
-        reactions=tuple(sorted_reactions),
-        matrix=matrix,
-        component_names=component_names,
-        complex_names=complex_names,
-        complex_idx=complex_idx,
+    for j, complex_name in enumerate(complex_names):
+        stoich = global_stoich.get(complex_name, {})
+        for i, component_name in enumerate(component_names):
+            model_matrix[i, n_components + j] = float(stoich.get(component_name, 0.0))
+
+    complex_log_beta = np.asarray(
+        [float(global_log_beta.get(complex_name, 0.0)) for complex_name in complex_names],
+        dtype=float,
     )
-    ctot = total_concentrations[component_idx][np.newaxis, :]
+    ctot = np.asarray(
+        [[float(species.initial_concentration) for species in component_species]], dtype=float
+    )
 
     return {
         "species": species_list,
