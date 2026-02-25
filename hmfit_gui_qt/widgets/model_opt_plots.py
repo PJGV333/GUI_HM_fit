@@ -23,9 +23,11 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
+    QRadioButton,
     QHeaderView,
     QSizePolicy,
     QSpinBox,
+    QStackedWidget,
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -33,6 +35,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from hmfit_gui_qt.widgets.equation_editor import EquationEditorWidget
 from hmfit_gui_qt.workers.errors_worker import ErrorsWorker
 
 
@@ -172,20 +175,22 @@ class ModelOptPlotsWidget(QWidget):
     """
     Shared (Spectroscopy + NMR) controls matching the legacy workflow:
     - Sub-tabs: Model / Optimization / Plots
-    - Model grid: stoichiometry matrix + non-absorbent species (row selection)
+    - Model tab: stoichiometry matrix (default) and optional equation editor
     - Optimization: algorithm/model_settings/optimizer + K table (Value/Min/Max/Fixed)
     - Plots: receptor/guest mapping + plot controls (currently UI-only)
     """
 
     model_defined = Signal(int, int)  # n_components, n_species
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, *, enable_equation_editor: bool = False) -> None:
         super().__init__(parent)
         self._in_table_update = False
         self._available_conc_columns: list[str] = []
         self._errors_context: dict[str, Any] | None = None
         self._errors_last_output: dict[str, Any] | None = None
         self._errors_worker: ErrorsWorker | None = None
+        self._enable_equation_editor = bool(enable_equation_editor)
+        self.equation_editor: EquationEditorWidget | None = None
         self._build_ui()
 
     # ---- UI ----
@@ -201,33 +206,74 @@ class ModelOptPlotsWidget(QWidget):
         self.tabs.addTab(model_tab, "Model")
         model_layout = QVBoxLayout(model_tab)
 
-        self.btn_define_model = QPushButton("Define Model Dimensions", model_tab)
+        if self._enable_equation_editor:
+            mode_row = QHBoxLayout()
+            mode_row.addWidget(QLabel("Model definition", model_tab))
+            self.radio_mode_matrix = QRadioButton("Matriz estequiometrica", model_tab)
+            self.radio_mode_equations = QRadioButton("Editor de ecuaciones", model_tab)
+            self.radio_mode_matrix.setChecked(True)
+            self.radio_mode_matrix.toggled.connect(self._sync_model_mode_ui)
+            self.radio_mode_equations.toggled.connect(self._sync_model_mode_ui)
+            mode_row.addWidget(self.radio_mode_matrix)
+            mode_row.addWidget(self.radio_mode_equations)
+            mode_row.addStretch(1)
+            model_layout.addLayout(mode_row)
+        else:
+            self.radio_mode_matrix = None
+            self.radio_mode_equations = None
+
+        self.model_definition_stack = QStackedWidget(model_tab)
+        model_layout.addWidget(self.model_definition_stack, 1)
+
+        matrix_page = QWidget(self.model_definition_stack)
+        matrix_layout = QVBoxLayout(matrix_page)
+        matrix_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.btn_define_model = QPushButton("Define Model Dimensions", matrix_page)
         self.btn_define_model.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.btn_define_model.clicked.connect(self._on_define_model_clicked)
-        model_layout.addWidget(self.btn_define_model)
+        matrix_layout.addWidget(self.btn_define_model)
 
         dims_grid = QGridLayout()
-        self.spin_n_components = QSpinBox(model_tab)
+        self.spin_n_components = QSpinBox(matrix_page)
         self.spin_n_components.setRange(0, 999)
         self.spin_n_components.setValue(0)
-        self.spin_n_species = QSpinBox(model_tab)
+        self.spin_n_species = QSpinBox(matrix_page)
         self.spin_n_species.setRange(0, 999)
         self.spin_n_species.setValue(0)
         dims_grid.addWidget(QLabel("Number of Components"), 0, 0)
         dims_grid.addWidget(self.spin_n_components, 0, 1)
         dims_grid.addWidget(QLabel("Number of Species"), 1, 0)
         dims_grid.addWidget(self.spin_n_species, 1, 1)
-        model_layout.addLayout(dims_grid)
+        matrix_layout.addLayout(dims_grid)
 
-        model_layout.addWidget(QLabel("Select non-absorbent species"), 0)
+        matrix_layout.addWidget(QLabel("Select non-absorbent species"), 0)
 
-        self.model_table = QTableWidget(model_tab)
+        self.model_table = QTableWidget(matrix_page)
         self.model_table.setColumnCount(0)
         self.model_table.setRowCount(0)
         self.model_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.model_table.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
         self.model_table.setAlternatingRowColors(True)
-        model_layout.addWidget(self.model_table, 1)
+        matrix_layout.addWidget(self.model_table, 1)
+        self.model_definition_stack.addWidget(matrix_page)
+
+        if self._enable_equation_editor:
+            equations_page = QWidget(self.model_definition_stack)
+            equations_layout = QVBoxLayout(equations_page)
+            equations_layout.setContentsMargins(0, 0, 0, 0)
+            equations_layout.addWidget(
+                QLabel(
+                    "Define el modelo con ecuaciones. "
+                    "La matriz se actualiza automaticamente al validar.",
+                    equations_page,
+                )
+            )
+            self.equation_editor = EquationEditorWidget(equations_page)
+            equations_layout.addWidget(self.equation_editor, 1)
+            self.model_definition_stack.addWidget(equations_page)
+
+        self._sync_model_mode_ui()
 
         # --- Optimization tab ---
         opt_tab = QWidget(self.tabs)
@@ -1484,6 +1530,26 @@ class ModelOptPlotsWidget(QWidget):
             self.combo_guest.setCurrentIndex(ix)
 
     # ---- Model tab ----
+    def _sync_model_mode_ui(self) -> None:
+        if not self._enable_equation_editor:
+            self.model_definition_stack.setCurrentIndex(0)
+            return
+        show_equations = bool(self.radio_mode_equations and self.radio_mode_equations.isChecked())
+        self.model_definition_stack.setCurrentIndex(1 if show_equations else 0)
+
+    def set_model_definition_mode(self, mode: str) -> None:
+        if not self._enable_equation_editor:
+            self.model_definition_stack.setCurrentIndex(0)
+            return
+
+        mode_norm = str(mode or "").strip().lower()
+        use_equations = mode_norm in {"equations", "equation", "editor", "text", "texto"}
+        if self.radio_mode_equations is not None:
+            self.radio_mode_equations.setChecked(use_equations)
+        if self.radio_mode_matrix is not None:
+            self.radio_mode_matrix.setChecked(not use_equations)
+        self._sync_model_mode_ui()
+
     def _on_define_model_clicked(self) -> None:
         n_components = int(self.spin_n_components.value())
         n_species = int(self.spin_n_species.value())
@@ -1922,6 +1988,9 @@ class ModelOptPlotsWidget(QWidget):
         self.model_table.clear()
         self.model_table.setRowCount(0)
         self.model_table.setColumnCount(0)
+        self.set_model_definition_mode("matrix")
+        if self.equation_editor is not None:
+            self.equation_editor.set_text("")
 
         self.combo_algorithm.setCurrentIndex(0)
         self.combo_model_settings.setCurrentIndex(0)

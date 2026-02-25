@@ -21,7 +21,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSplitter,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -32,7 +31,6 @@ from hmfit_gui_qt.plots.nmr_registry import build_nmr_registry
 from hmfit_gui_qt.plots.nmr_sources import build_nmr_plot_sources
 from hmfit_gui_qt.plots.plot_controller import PlotController
 from hmfit_gui_qt.widgets.channel_spec import ChannelSpecWidget
-from hmfit_gui_qt.widgets.equation_editor import EquationEditorWidget
 from hmfit_gui_qt.widgets.log_console import LogConsole
 from hmfit_gui_qt.widgets.model_opt_plots import ModelOptPlotsState, ModelOptPlotsWidget
 from hmfit_gui_qt.widgets.mpl_canvas import MplCanvas, NavigationToolbar
@@ -165,15 +163,12 @@ class NMRTab(QWidget):
 
         left_layout.addWidget(self._data_group)
 
-        # Hybrid model-definition area: equation editor + classical matrix.
-        self.model_def_tabs = QTabWidget(left_container)
-        self.equation_editor = EquationEditorWidget(self.model_def_tabs)
-        self.equation_editor.model_parsed.connect(self._on_equation_model_parsed)
-        self.model_def_tabs.addTab(self.equation_editor, "Editor de Ecuaciones")
-
-        self.model_opt_plots = ModelOptPlotsWidget(self.model_def_tabs)
-        self.model_def_tabs.addTab(self.model_opt_plots, "Matriz Clásica")
-        left_layout.addWidget(self.model_def_tabs, 1)
+        # Model-definition area inside Model tab: matrix or equations.
+        self.model_opt_plots = ModelOptPlotsWidget(left_container, enable_equation_editor=True)
+        self.equation_editor = self.model_opt_plots.equation_editor
+        if self.equation_editor is not None:
+            self.equation_editor.model_parsed.connect(self._on_equation_model_parsed)
+        left_layout.addWidget(self.model_opt_plots, 1)
 
         # Actions row (historical reference to previous UI buttons)
         actions_group = QGroupBox("", left_container)
@@ -535,7 +530,8 @@ class NMRTab(QWidget):
         self.channel_spec_widget.setEnabled(not running)
         self.btn_signals_all.setEnabled(not running)
         self.btn_signals_none.setEnabled(not running)
-        self.equation_editor.setEnabled(not running)
+        if self.equation_editor is not None:
+            self.equation_editor.setEnabled(not running)
         self.model_opt_plots.setEnabled(not running)
         self.btn_import.setEnabled(not running)
         self.btn_export.setEnabled(not running)
@@ -956,7 +952,8 @@ class NMRTab(QWidget):
         self.combo_shift_sheet.clear()
         self._clear_conc_columns()
         self._populate_signals([])
-        self.equation_editor.set_text("")
+        if self.equation_editor is not None:
+            self.equation_editor.set_text("")
         self.model_opt_plots.reset()
 
         self.canvas_main.clear()

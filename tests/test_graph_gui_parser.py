@@ -25,3 +25,16 @@ def test_parse_multiline_equilibria_reports_line_errors():
     """
     with pytest.raises(ValueError, match="Line 3"):
         parse_multiline_equilibria(text)
+
+
+def test_parse_non_absorbing_tags():
+    text = """
+    H + C <=> HC ; 3.0 @NA C
+    H + A <=> HA ; 4.0 @na A
+    HC + A <=> HCA ; 4.5 @Na HCA, HA
+    """
+
+    _, solver_inputs = parse_multiline_equilibria(text)
+
+    assert "non_abs_species" in solver_inputs
+    assert set(solver_inputs["non_abs_species"]) == {"C", "A", "HA", "HCA"}

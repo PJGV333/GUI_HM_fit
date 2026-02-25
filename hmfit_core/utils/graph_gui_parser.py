@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Tuple
 
 from hmfit_core.graph.chemical_graph import ChemicalGraph, create_solver_inputs_from_graph
@@ -37,6 +38,7 @@ def parse_multiline_equilibria(text_block: str) -> Tuple[ChemicalGraph, dict[str
 
     graph = ChemicalGraph()
     valid_count = 0
+    non_abs_set: set[str] = set()
 
     for line_no, raw_line in enumerate(str(text_block or "").splitlines(), start=1):
         line = raw_line.strip()
@@ -44,9 +46,19 @@ def parse_multiline_equilibria(text_block: str) -> Tuple[ChemicalGraph, dict[str
             continue
 
         try:
-            if ";" not in line:
+            line_to_parse = line
+            if "@na" in line.lower():
+                parts = re.split(r"@na", line, maxsplit=1, flags=re.IGNORECASE)
+                line_to_parse = parts[0].strip()
+                non_abs_raw = parts[1] if len(parts) > 1 else ""
+                for token in non_abs_raw.split(","):
+                    species = str(token or "").strip()
+                    if species:
+                        non_abs_set.add(species)
+
+            if ";" not in line_to_parse:
                 raise ValueError("Expected ';' delimiter between equation and constant.")
-            reaction_text, const_text = line.split(";", 1)
+            reaction_text, const_text = line_to_parse.split(";", 1)
             reaction = reaction_text.strip()
             if not reaction:
                 raise ValueError("Missing reaction equation before ';'.")
@@ -60,4 +72,5 @@ def parse_multiline_equilibria(text_block: str) -> Tuple[ChemicalGraph, dict[str
         raise ValueError("No valid equilibrium lines found.")
 
     solver_inputs = create_solver_inputs_from_graph(graph)
+    solver_inputs["non_abs_species"] = list(non_abs_set)
     return graph, solver_inputs
