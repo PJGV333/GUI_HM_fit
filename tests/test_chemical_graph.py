@@ -43,9 +43,9 @@ def test_add_reaction_from_string_and_stoichiometric_matrix():
     graph.add_reaction_from_string("M + 2 L <=> ML2", log_beta=5.0)
 
     species, matrix = graph.to_stoichiometric_matrix()
-    assert [node.name for node in species] == ["M", "L", "ML2"]
+    assert [node.name for node in species] == ["L", "M", "ML2"]
     assert matrix.shape == (1, 3)
-    assert np.allclose(matrix, np.array([[-1.0, -2.0, 1.0]]))
+    assert np.allclose(matrix, np.array([[-2.0, -1.0, 1.0]]))
 
 
 def test_get_active_species_ignores_solids():
@@ -69,12 +69,36 @@ def test_create_solver_inputs_from_graph_separates_components_and_complexes():
     payload = create_solver_inputs_from_graph(graph)
     solver_inputs = payload["solver_inputs"]
 
-    assert payload["components"]["names"] == ["M", "L"]
-    assert payload["complexes"]["names"] == ["ML2"]
+    assert payload["components"] == ["L", "M"]
+    assert payload["complexes"] == ["ML2"]
     assert np.allclose(payload["edge_log_beta"], np.array([5.0]))
 
     model = solver_inputs["modelo"]
     assert model.shape == (2, 3)
-    assert np.allclose(model, np.array([[1.0, 0.0, 1.0], [0.0, 1.0, 2.0]]))
-    assert np.allclose(solver_inputs["ctot"], np.array([[1.0, 2.0]]))
+    assert np.allclose(model, np.array([[1.0, 0.0, 2.0], [0.0, 1.0, 1.0]]))
+    assert np.allclose(solver_inputs["ctot"], np.array([[2.0, 1.0]]))
     assert np.allclose(solver_inputs["k"], np.array([5.0]))
+
+
+def test_create_solver_inputs_from_graph_is_order_invariant():
+    reactions = [
+        ("H + C <=> HC", 3.0),
+        ("H + A <=> HA", 4.0),
+        ("HC + A <=> HCA", 4.5),
+    ]
+
+    g1 = ChemicalGraph()
+    for reaction, log_beta in reactions:
+        g1.add_reaction_from_string(reaction, log_beta=log_beta)
+
+    g2 = ChemicalGraph()
+    for reaction, log_beta in reversed(reactions):
+        g2.add_reaction_from_string(reaction, log_beta=log_beta)
+
+    p1 = create_solver_inputs_from_graph(g1)
+    p2 = create_solver_inputs_from_graph(g2)
+
+    assert p1["components"] == p2["components"] == ["A", "C", "H"]
+    assert p1["complexes"] == p2["complexes"] == ["HA", "HC", "HCA"]
+    assert np.allclose(p1["stoichiometric_matrix"], p2["stoichiometric_matrix"])
+    assert np.allclose(p1["edge_log_beta"], p2["edge_log_beta"])

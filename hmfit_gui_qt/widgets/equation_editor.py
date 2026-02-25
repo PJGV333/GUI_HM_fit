@@ -57,7 +57,13 @@ class EquationEditorWidget(QtWidgets.QWidget):
             self.lbl_status.setStyleSheet("color: #c01c28;")
 
     def set_text(self, text: str) -> None:
-        self.editor.setPlainText(str(text or ""))
+        self.editor.setPlainText(text)
 
     def text(self) -> str:
         return self.editor.toPlainText()
+
+    def get_text(self) -> str:
+        return self.editor.toPlainText().strip()
+
+    def clear(self) -> None:
+        self.editor.clear()

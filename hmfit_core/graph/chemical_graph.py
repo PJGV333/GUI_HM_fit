@@ -175,15 +175,59 @@ class ChemicalGraph:
     def get_active_species(self) -> List[SpeciesNode]:
         return [species for species in self._species_by_name.values() if not species.is_solid]
 
+    @staticmethod
+    def _reaction_side_sort_key(side: Mapping[SpeciesNode, float]) -> str:
+        parts: List[str] = []
+        for species, coeff in sorted(side.items(), key=lambda item: item[0].name):
+            value = float(coeff)
+            if abs(value - 1.0) <= _EPS:
+                parts.append(species.name)
+            elif float(value).is_integer():
+                parts.append(f"{int(value)} {species.name}")
+            else:
+                parts.append(f"{value:g} {species.name}")
+        return " + ".join(parts)
+
+    @classmethod
+    def _reaction_sort_key(cls, edge: ReactionEdge) -> tuple[str, str]:
+        reaction_text = (
+            f"{cls._reaction_side_sort_key(edge.reactants)} <=> "
+            f"{cls._reaction_side_sort_key(edge.products)}"
+        )
+        return reaction_text, edge.id
+
+    def get_sorted_elements(
+        self,
+    ) -> Tuple[List[SpeciesNode], List[SpeciesNode], List[ReactionEdge]]:
+        active_species = self.get_active_species()
+        produced_names = {
+            species.name
+            for edge in self._reactions
+            for species in edge.products.keys()
+            if not species.is_solid
+        }
+
+        components = sorted(
+            [species for species in active_species if species.name not in produced_names],
+            key=lambda species: species.name,
+        )
+        complexes = sorted(
+            [species for species in active_species if species.name in produced_names],
+            key=lambda species: species.name,
+        )
+        sorted_reactions = sorted(self._reactions, key=self._reaction_sort_key)
+        return components, complexes, sorted_reactions
+
     def to_stoichiometric_matrix(self) -> Tuple[List[SpeciesNode], np.ndarray]:
-        species_list = self.get_active_species()
-        n_reactions = len(self._reactions)
+        components, complexes, sorted_reactions = self.get_sorted_elements()
+        species_list = components + complexes
+        n_reactions = len(sorted_reactions)
         n_species = len(species_list)
         matrix = np.zeros((n_reactions, n_species), dtype=float)
 
         index_by_name = {species.name: idx for idx, species in enumerate(species_list)}
 
-        for row_idx, edge in enumerate(self._reactions):
+        for row_idx, edge in enumerate(sorted_reactions):
             for species, coeff in edge.reactants.items():
                 col_idx = index_by_name.get(species.name)
                 if col_idx is not None:
@@ -401,7 +445,7 @@ def _infer_complex_log_beta_first_hit(
 
 
 def _infer_complex_log_beta(
-    graph: ChemicalGraph,
+    reactions: Tuple[ReactionEdge, ...],
     matrix: np.ndarray,
     component_names: List[str],
     complex_names: List[str],
@@ -416,7 +460,7 @@ def _infer_complex_log_beta(
 
     rows: List[np.ndarray] = []
     rhs: List[float] = []
-    for edge in graph.reactions:
+    for edge in reactions:
         row = np.zeros(n_complex, dtype=float)
         has_unknown = False
 
@@ -451,7 +495,7 @@ def _infer_complex_log_beta(
     solution, _, rank, _ = np.linalg.lstsq(a_mat, b_vec, rcond=None)
     if rank < n_complex:
         return _infer_complex_log_beta_first_hit(
-            graph.reactions,
+            reactions,
             matrix,
             complex_idx,
         )
@@ -459,7 +503,7 @@ def _infer_complex_log_beta(
     residual = np.max(np.abs(a_mat @ solution - b_vec))
     if residual > 1e-6:
         return _infer_complex_log_beta_first_hit(
-            graph.reactions,
+            reactions,
             matrix,
             complex_idx,
         )
@@ -468,23 +512,23 @@ def _infer_complex_log_beta(
 
 
 def create_solver_inputs_from_graph(graph: ChemicalGraph) -> Dict[str, Any]:
+    component_species, complex_species, sorted_reactions = graph.get_sorted_elements()
     species_list, matrix = graph.to_stoichiometric_matrix()
     total_concentrations = np.asarray(
         [species.initial_concentration for species in species_list], dtype=float
     )
-    edge_log_beta = np.asarray([edge.log_beta for edge in graph.reactions], dtype=float)
+    edge_log_beta = np.asarray([edge.log_beta for edge in sorted_reactions], dtype=float)
 
-    component_idx = _infer_component_indices(matrix)
-    complex_idx = _infer_complex_indices(matrix, component_idx)
+    n_components = len(component_species)
+    component_idx = np.arange(n_components, dtype=int)
+    complex_idx = np.arange(n_components, len(species_list), dtype=int)
 
-    component_species = [species_list[idx] for idx in component_idx.tolist()]
-    complex_species = [species_list[idx] for idx in complex_idx.tolist()]
     component_names = [species.name for species in component_species]
     complex_names = [species.name for species in complex_species]
 
     model_matrix = _build_model_matrix(species_list, matrix, component_idx, complex_idx)
     complex_log_beta = _infer_complex_log_beta(
-        graph=graph,
+        reactions=tuple(sorted_reactions),
         matrix=matrix,
         component_names=component_names,
         complex_names=complex_names,
@@ -494,21 +538,25 @@ def create_solver_inputs_from_graph(graph: ChemicalGraph) -> Dict[str, Any]:
 
     return {
         "species": species_list,
+        "reactions": sorted_reactions,
         "stoichiometric_matrix": matrix,
         "total_concentrations": total_concentrations,
         "edge_log_beta": edge_log_beta,
-        "components": {
+        "components": component_names,
+        "complexes": complex_names,
+        "components_meta": {
             "species": component_species,
             "names": component_names,
             "indices": component_idx,
             "total_concentrations": total_concentrations[component_idx],
         },
-        "complexes": {
+        "complexes_meta": {
             "species": complex_species,
             "names": complex_names,
             "indices": complex_idx,
             "log_beta": complex_log_beta,
         },
+        "complex_log_beta": complex_log_beta,
         "solver_inputs": {
             "ctot": ctot,
             "modelo": model_matrix,

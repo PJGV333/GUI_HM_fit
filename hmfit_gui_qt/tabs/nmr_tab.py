@@ -440,9 +440,46 @@ class NMRTab(QWidget):
         self.model_opt_plots.set_model_dimensions(int(n_components), n_complex)
         self.model_opt_plots.set_modelo(model.T.tolist())
 
+        def _extract_species_names(block: object) -> list[str]:
+            names_raw: object = block
+            if isinstance(block, dict):
+                names_raw = block.get("names")
+            if not isinstance(names_raw, (list, tuple)):
+                return []
+            names: list[str] = []
+            for value in names_raw:
+                text = str(value or "").strip()
+                if text:
+                    names.append(text)
+            return names
+
+        component_names = _extract_species_names(solver_inputs.get("components"))
+        complex_names = _extract_species_names(solver_inputs.get("complexes"))
+        non_abs_lookup = {
+            str(name or "").strip().casefold()
+            for name in (solver_inputs.get("non_abs_species") or [])
+            if str(name or "").strip()
+        }
+
         nas_raw = solver_block.get("nas")
-        nas = np.asarray(nas_raw if nas_raw is not None else [], dtype=int).ravel().tolist()
-        self.model_opt_plots.set_non_abs_species([int(x) for x in nas])
+        nas_from_solver = np.asarray(nas_raw if nas_raw is not None else [], dtype=int).ravel().tolist()
+        nas_set = {int(x) for x in nas_from_solver if int(x) >= 0}
+
+        # Apply @NA tags to both base components and complexes.
+        for idx, species_name in enumerate(component_names):
+            if idx >= n_components:
+                break
+            if species_name.casefold() in non_abs_lookup:
+                nas_set.add(int(idx))
+        for j, species_name in enumerate(complex_names):
+            row_idx = int(n_components + j)
+            if row_idx >= nspec_total:
+                break
+            if species_name.casefold() in non_abs_lookup:
+                nas_set.add(row_idx)
+
+        self.model_opt_plots.set_non_abs_species(sorted(nas_set))
+        self.model_opt_plots.model_table.viewport().update()
 
         k_raw = solver_block.get("k")
         k_values = np.asarray(k_raw if k_raw is not None else [], dtype=float).ravel().tolist()
@@ -606,6 +643,13 @@ class NMRTab(QWidget):
             "show_stability_diagnostics": self.chk_show_diag.isChecked(),
             "multi_start_runs": runs,
         }
+        config["equation_text"] = (
+            self.equation_editor.get_text()
+            if hasattr(self, "equation_editor") and self.equation_editor is not None
+            else ""
+        )
+        if not config["equation_text"]:
+            config["equation_text"] = ""
         if seeds is not None:
             config["multi_start_seeds"] = seeds
         return config
@@ -930,6 +974,12 @@ class NMRTab(QWidget):
             config.get("multi_start_runs", 1),
             config.get("multi_start_seeds"),
         )
+        equation_text = str(config.get("equation_text") or "").strip()
+        if self.equation_editor is not None:
+            if equation_text:
+                self.equation_editor.set_text(equation_text)
+            else:
+                self.equation_editor.clear()
 
         if "show_stability_diagnostics" in config:
             self.chk_show_diag.setChecked(bool(config["show_stability_diagnostics"]))

@@ -72,5 +72,5 @@ def parse_multiline_equilibria(text_block: str) -> Tuple[ChemicalGraph, dict[str
         raise ValueError("No valid equilibrium lines found.")
 
     solver_inputs = create_solver_inputs_from_graph(graph)
-    solver_inputs["non_abs_species"] = list(non_abs_set)
+    solver_inputs["non_abs_species"] = sorted(non_abs_set)
     return graph, solver_inputs

@@ -79,4 +79,4 @@ def test_update_phase_states_marks_species_as_solid():
     assert nacl.is_solid
 
     active_species, _ = graph.to_stoichiometric_matrix()
-    assert [node.name for node in active_species] == ["Na", "Cl"]
+    assert [node.name for node in active_species] == ["Cl", "Na"]

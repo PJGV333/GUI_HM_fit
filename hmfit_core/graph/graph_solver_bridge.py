@@ -15,12 +15,19 @@ def calculate_free_species(
 ) -> Dict[str, float]:
     payload = create_solver_inputs_from_graph(graph)
 
-    components = payload["components"]
-    complexes = payload["complexes"]
+    components = payload.get("components", [])
+    complexes = payload.get("complexes", [])
     solver_inputs = payload["solver_inputs"]
 
-    component_names = list(components["names"])
-    complex_names = list(complexes["names"])
+    if isinstance(components, Mapping):
+        component_names = list(components.get("names") or [])
+    else:
+        component_names = [str(name) for name in (components or [])]
+
+    if isinstance(complexes, Mapping):
+        complex_names = list(complexes.get("names") or [])
+    else:
+        complex_names = [str(name) for name in (complexes or [])]
 
     missing = [name for name in component_names if name not in total_concentrations]
     if missing:
@@ -33,7 +40,13 @@ def calculate_free_species(
     )
     model = np.asarray(solver_inputs["modelo"], dtype=float)
     nas = np.asarray(solver_inputs["nas"], dtype=int)
-    k_log = np.asarray(complexes["log_beta"], dtype=float)
+    if isinstance(complexes, Mapping):
+        k_source = complexes.get("log_beta")
+    else:
+        k_source = payload.get("complex_log_beta")
+    if k_source is None:
+        k_source = solver_inputs.get("k")
+    k_log = np.asarray(k_source, dtype=float)
 
     solver = NewtonRaphson(ctot=ctot, modelo=model, nas=nas, model_sett="Free")
     _, c_calculada = solver.concentraciones(k_log)

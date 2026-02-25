@@ -14,8 +14,8 @@ def test_parse_multiline_equilibria_valid_block():
     graph, payload = parse_multiline_equilibria(text)
 
     assert len(graph.reactions) == 3
-    assert payload["components"]["names"] == ["H", "C", "A"]
-    assert set(payload["complexes"]["names"]) == {"HC", "HA", "HCA"}
+    assert payload["components"] == ["A", "C", "H"]
+    assert payload["complexes"] == ["HA", "HC", "HCA"]
 
 
 def test_parse_multiline_equilibria_reports_line_errors():
