@@ -175,48 +175,35 @@ class ChemicalGraph:
     def get_active_species(self) -> List[SpeciesNode]:
         return [species for species in self._species_by_name.values() if not species.is_solid]
 
-    @staticmethod
-    def _reaction_side_sort_key(side: Mapping[SpeciesNode, float]) -> str:
-        parts: List[str] = []
-        for species, coeff in sorted(side.items(), key=lambda item: item[0].name):
-            value = float(coeff)
-            if abs(value - 1.0) <= _EPS:
-                parts.append(species.name)
-            elif float(value).is_integer():
-                parts.append(f"{int(value)} {species.name}")
-            else:
-                parts.append(f"{value:g} {species.name}")
-        return " + ".join(parts)
-
-    @classmethod
-    def _reaction_sort_key(cls, edge: ReactionEdge) -> tuple[str, str]:
-        reaction_text = (
-            f"{cls._reaction_side_sort_key(edge.reactants)} <=> "
-            f"{cls._reaction_side_sort_key(edge.products)}"
-        )
-        return reaction_text, edge.id
-
     def get_sorted_elements(
         self,
     ) -> Tuple[List[SpeciesNode], List[SpeciesNode], List[ReactionEdge]]:
-        active_species = self.get_active_species()
-        produced_names = {
-            species.name
-            for edge in self._reactions
-            for species in edge.products.keys()
-            if not species.is_solid
+        active_species = {
+            species.name: species for species in self._species_by_name.values() if not species.is_solid
         }
 
-        components = sorted(
-            [species for species in active_species if species.name not in produced_names],
-            key=lambda species: species.name,
-        )
-        complexes = sorted(
-            [species for species in active_species if species.name in produced_names],
-            key=lambda species: species.name,
-        )
-        sorted_reactions = sorted(self._reactions, key=self._reaction_sort_key)
-        return components, complexes, sorted_reactions
+        complexes: List[SpeciesNode] = []
+        complex_names: set[str] = set()
+        for reaction in self._reactions:
+            for product in reaction.products.keys():
+                species = active_species.get(product.name)
+                if species is None:
+                    continue
+                if species.name in complex_names:
+                    continue
+                complex_names.add(species.name)
+                complexes.append(species)
+
+        components: List[SpeciesNode] = []
+        for species in self._species_by_name.values():
+            if species.is_solid:
+                continue
+            if species.name in complex_names:
+                continue
+            components.append(species)
+
+        ordered_reactions = list(self._reactions)
+        return components, complexes, ordered_reactions
 
     def resolve_global_pathways(self) -> Tuple[Dict[str, Dict[str, float]], Dict[str, float]]:
         """
@@ -294,15 +281,15 @@ class ChemicalGraph:
         return global_stoich, global_log_beta
 
     def to_stoichiometric_matrix(self) -> Tuple[List[SpeciesNode], np.ndarray]:
-        components, complexes, sorted_reactions = self.get_sorted_elements()
+        components, complexes, ordered_reactions = self.get_sorted_elements()
         species_list = components + complexes
-        n_reactions = len(sorted_reactions)
+        n_reactions = len(ordered_reactions)
         n_species = len(species_list)
         matrix = np.zeros((n_reactions, n_species), dtype=float)
 
         index_by_name = {species.name: idx for idx, species in enumerate(species_list)}
 
-        for row_idx, edge in enumerate(sorted_reactions):
+        for row_idx, edge in enumerate(ordered_reactions):
             for species, coeff in edge.reactants.items():
                 col_idx = index_by_name.get(species.name)
                 if col_idx is not None:
@@ -587,12 +574,12 @@ def _infer_complex_log_beta(
 
 
 def create_solver_inputs_from_graph(graph: ChemicalGraph) -> Dict[str, Any]:
-    component_species, complex_species, sorted_reactions = graph.get_sorted_elements()
+    component_species, complex_species, ordered_reactions = graph.get_sorted_elements()
     species_list, matrix = graph.to_stoichiometric_matrix()
     total_concentrations = np.asarray(
         [species.initial_concentration for species in species_list], dtype=float
     )
-    edge_log_beta = np.asarray([edge.log_beta for edge in sorted_reactions], dtype=float)
+    edge_log_beta = np.asarray([edge.log_beta for edge in ordered_reactions], dtype=float)
 
     global_stoich, global_log_beta = graph.resolve_global_pathways()
     component_names = [species.name for species in component_species]
@@ -621,7 +608,7 @@ def create_solver_inputs_from_graph(graph: ChemicalGraph) -> Dict[str, Any]:
 
     return {
         "species": species_list,
-        "reactions": sorted_reactions,
+        "reactions": ordered_reactions,
         "stoichiometric_matrix": matrix,
         "total_concentrations": total_concentrations,
         "edge_log_beta": edge_log_beta,
