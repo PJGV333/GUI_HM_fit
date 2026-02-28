@@ -4,20 +4,20 @@ from typing import Any
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from hmfit_core.utils.graph_gui_parser import parse_multiline_equilibria
+from hmfit_core.utils.graph_gui_parser import normalize_equilibria_text, parse_multiline_equilibria
 
 
 class _ParserWorkerSignals(QtCore.QObject):
-    parsed_finished = QtCore.Signal(int, object, dict)
+    parsed_finished = QtCore.Signal(int, str, dict)
     parsed_error = QtCore.Signal(int, str)
 
 
 class _ParserWorker(QtCore.QRunnable):
-    def __init__(self, seq: int, text: str, graph_ref: object | None = None) -> None:
+    def __init__(self, seq: int, text: str, normalized_text: str) -> None:
         super().__init__()
         self.seq = int(seq)
         self.text = str(text or "")
-        self.graph_ref = graph_ref
+        self.normalized_text = str(normalized_text or "")
         self.signals = _ParserWorkerSignals()
 
     @QtCore.Slot()
@@ -26,7 +26,7 @@ class _ParserWorker(QtCore.QRunnable):
             graph, solver_inputs = parse_multiline_equilibria(self.text)
             # Fuerza el cálculo de rutas globales en el hilo worker.
             graph.resolve_global_pathways()
-            self.signals.parsed_finished.emit(self.seq, graph, solver_inputs)
+            self.signals.parsed_finished.emit(self.seq, self.normalized_text, solver_inputs)
         except Exception as exc:
             self.signals.parsed_error.emit(self.seq, str(exc))
 
@@ -36,7 +36,8 @@ class EquationEditorWidget(QtWidgets.QWidget):
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
-        self._last_graph: Any = None
+        self._last_normalized_text = ""
+        self._last_solver_inputs: dict[str, Any] | None = None
         self._parse_seq = 0
         self._thread_pool = QtCore.QThreadPool.globalInstance()
         self._active_workers: dict[int, _ParserWorker] = {}
@@ -75,13 +76,19 @@ class EquationEditorWidget(QtWidgets.QWidget):
     @QtCore.Slot()
     def _validate_and_parse(self) -> None:
         text = self.editor.toPlainText()
+        normalized_text = normalize_equilibria_text(text)
+        if normalized_text and normalized_text == self._last_normalized_text and self._last_solver_inputs is not None:
+            self.lbl_status.setText("Modelo valido (cache).")
+            self.lbl_status.setStyleSheet("color: #26a269;")
+            self.model_parsed.emit(dict(self._last_solver_inputs))
+            return
         self._parse_seq += 1
         seq = self._parse_seq
 
         self.lbl_status.setText("Analizando modelo…")
         self.lbl_status.setStyleSheet("color: #1c71d8;")
 
-        worker = _ParserWorker(seq=seq, text=text, graph_ref=self._last_graph)
+        worker = _ParserWorker(seq=seq, text=text, normalized_text=normalized_text)
         worker.signals.parsed_finished.connect(
             self._on_worker_parsed_finished, QtCore.Qt.ConnectionType.QueuedConnection
         )
@@ -91,12 +98,13 @@ class EquationEditorWidget(QtWidgets.QWidget):
         self._active_workers[seq] = worker
         self._thread_pool.start(worker)
 
-    @QtCore.Slot(int, object, dict)
-    def _on_worker_parsed_finished(self, seq: int, graph: object, solver_inputs: dict) -> None:
+    @QtCore.Slot(int, str, dict)
+    def _on_worker_parsed_finished(self, seq: int, normalized_text: str, solver_inputs: dict) -> None:
         self._active_workers.pop(int(seq), None)
         if int(seq) != int(self._parse_seq):
             return
-        self._last_graph = graph
+        self._last_normalized_text = str(normalized_text or "")
+        self._last_solver_inputs = dict(solver_inputs)
         self.lbl_status.setText("Modelo valido.")
         self.lbl_status.setStyleSheet("color: #26a269;")
         self.model_parsed.emit(dict(solver_inputs))
@@ -106,6 +114,8 @@ class EquationEditorWidget(QtWidgets.QWidget):
         self._active_workers.pop(int(seq), None)
         if int(seq) != int(self._parse_seq):
             return
+        self._last_normalized_text = ""
+        self._last_solver_inputs = None
         self.lbl_status.setText(str(message))
         self.lbl_status.setStyleSheet("color: #c01c28;")
 

@@ -2,10 +2,49 @@
 
 from __future__ import annotations
 
+import copy
+import hashlib
 import re
+from collections import OrderedDict
 from typing import Any, Tuple
 
 from hmfit_core.graph.chemical_graph import ChemicalGraph, create_solver_inputs_from_graph
+
+_PARSE_CACHE_MAXSIZE = 64
+_PARSE_CACHE: "OrderedDict[str, tuple[ChemicalGraph, dict[str, Any]]]" = OrderedDict()
+_PARSE_CACHE_STATS = {"hits": 0, "misses": 0}
+
+
+def normalize_equilibria_text(text_block: str) -> str:
+    lines: list[str] = []
+    for raw_line in str(text_block or "").splitlines():
+        line = str(raw_line or "").strip()
+        if not line or line.startswith("#"):
+            continue
+        line = re.sub(r"\s+", " ", line)
+        line = re.sub(r"\s*;\s*", " ; ", line)
+        line = re.sub(r"\s*<=>\s*", " <=> ", line)
+        line = re.sub(r"\s*\+\s*", " + ", line)
+        line = re.sub(r"\s*=\s*", "=", line)
+        line = re.sub(r"\s*(?i:@na)\s*", " @na ", line)
+        line = re.sub(r"\s+", " ", line).strip()
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def clear_parse_cache() -> None:
+    _PARSE_CACHE.clear()
+    _PARSE_CACHE_STATS["hits"] = 0
+    _PARSE_CACHE_STATS["misses"] = 0
+
+
+def get_parse_cache_stats() -> dict[str, int]:
+    return {
+        "hits": int(_PARSE_CACHE_STATS["hits"]),
+        "misses": int(_PARSE_CACHE_STATS["misses"]),
+        "size": int(len(_PARSE_CACHE)),
+        "maxsize": int(_PARSE_CACHE_MAXSIZE),
+    }
 
 
 def _parse_log_beta(raw_value: str) -> float:
@@ -35,6 +74,16 @@ def parse_multiline_equilibria(text_block: str) -> Tuple[ChemicalGraph, dict[str
       `H + G <=> HG ; 4.5`
       `H + G <=> HG ; logB=4.5`
     """
+
+    normalized = normalize_equilibria_text(text_block)
+    cache_key = hashlib.sha1(normalized.encode("utf-8")).hexdigest()
+    cached = _PARSE_CACHE.get(cache_key)
+    if cached is not None:
+        _PARSE_CACHE_STATS["hits"] += 1
+        _PARSE_CACHE.move_to_end(cache_key)
+        graph_cached, solver_cached = cached
+        return copy.deepcopy(graph_cached), copy.deepcopy(solver_cached)
+    _PARSE_CACHE_STATS["misses"] += 1
 
     graph = ChemicalGraph()
     valid_count = 0
@@ -97,4 +146,8 @@ def parse_multiline_equilibria(text_block: str) -> Tuple[ChemicalGraph, dict[str
 
     solver_inputs = create_solver_inputs_from_graph(graph)
     solver_inputs["non_abs_species"] = list(non_abs_set)
+    _PARSE_CACHE[cache_key] = (copy.deepcopy(graph), copy.deepcopy(solver_inputs))
+    _PARSE_CACHE.move_to_end(cache_key)
+    while len(_PARSE_CACHE) > _PARSE_CACHE_MAXSIZE:
+        _PARSE_CACHE.popitem(last=False)
     return graph, solver_inputs

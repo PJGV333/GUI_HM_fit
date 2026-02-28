@@ -65,4 +65,10 @@ def run_spectroscopy(config: Mapping[str, Any] | Any, progress_cb: ProgressCallb
         delta_mode=str(cfg.get("delta_mode") or "off"),
         delta_rel=cfg.get("delta_rel", 0.01),
         alpha_smooth=cfg.get("alpha_smooth", 0.0),
+        render_graphs=bool(cfg.get("render_graphs", True)),
+        render_quality=str(cfg.get("render_quality") or "preview"),
+        skip_optimization=bool(cfg.get("skip_optimization", False)),
+        preset_k=cfg.get("preset_k"),
+        multi_start_parallel=bool(cfg.get("multi_start_parallel", False)),
+        multi_start_max_workers=cfg.get("multi_start_max_workers"),
     )

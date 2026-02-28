@@ -82,4 +82,6 @@ def run_nmr(config: Mapping[str, Any] | Any, progress_cb: ProgressCallback = Non
         show_stability_diagnostics=bool(cfg.get("show_stability_diagnostics", False)),
         multi_start_runs=multi_runs,
         multi_start_seeds=multi_seeds,
+        multi_start_parallel=bool(cfg.get("multi_start_parallel", False)),
+        multi_start_max_workers=cfg.get("multi_start_max_workers"),
     )

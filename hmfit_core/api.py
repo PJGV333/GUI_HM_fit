@@ -73,6 +73,7 @@ def _wrap_progress(progress_cb: ProgressCallback, cancel: CancelCallback) -> Pro
         else:
             print(str(msg).rstrip())
 
+    setattr(_cb, "_hmfit_cancel", cancel)
     return _cb
 
 

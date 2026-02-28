@@ -22,9 +22,11 @@ import io
 import base64
 import sys
 import os
+import time
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional, Any, Tuple
+from concurrent.futures import ProcessPoolExecutor, wait, FIRST_COMPLETED
 from scipy import optimize
 from scipy.optimize import differential_evolution, dual_annealing, basinhopping
 import logging
@@ -47,17 +49,39 @@ from ..utils.noncoop_utils import noncoop_derived_from_logK1  # type: ignore
 # --- Progress callback (optional) ---
 _progress_callback = None
 _loop = None
+_cancel_callback = None
 
 
 def set_progress_callback(callback, loop=None):
     """Register callback to emit progress messages."""
-    global _progress_callback, _loop
+    global _progress_callback, _loop, _cancel_callback
     _progress_callback = callback
     _loop = loop
+    _cancel_callback = getattr(callback, "_hmfit_cancel", None)
+
+
+def _cancel_requested() -> bool:
+    if _cancel_callback is None:
+        return False
+    try:
+        return bool(_cancel_callback())
+    except Exception:
+        return False
+
+
+def _raise_if_cancelled() -> None:
+    if not _cancel_requested():
+        return
+    try:
+        from hmfit_core.api import FitCancelled
+    except Exception:
+        raise RuntimeError("Fit cancelled.")
+    raise FitCancelled("Fit cancelled.")
 
 
 def log_progress(message: str):
     """Send progress message if a callback is registered."""
+    _raise_if_cancelled()
     if _progress_callback:
         if _loop:
             _loop.call_soon_threadsafe(_progress_callback, message)
@@ -192,6 +216,197 @@ def sanitize_for_json(obj):
         return obj
 
 
+def _resolve_ms_workers(ms_runs: int, requested: int | None) -> int:
+    cpu_count = int(os.cpu_count() or 1)
+    max_recommended = max(1, cpu_count - 1)
+    if requested is None:
+        return max(1, min(int(ms_runs), max_recommended))
+    try:
+        req = int(requested)
+    except (TypeError, ValueError):
+        req = max_recommended
+    return max(1, min(int(ms_runs), max_recommended, req))
+
+
+def _build_nmr_solver(algorithm: str, c_t_array, modelo, nas, model_settings):
+    c_t_df = pd.DataFrame(np.asarray(c_t_array, dtype=float))
+    if algorithm == "Newton-Raphson":
+        return NewtonRaphson(c_t_df, modelo, nas, model_settings)
+    if algorithm == "Levenberg-Marquardt":
+        return LevenbergMarquardt(c_t_df, modelo, nas, model_settings)
+    raise ValueError(f"Unknown algorithm: {algorithm}")
+
+
+def _run_nmr_single_start(payload: dict[str, Any]) -> dict[str, Any]:
+    algorithm = str(payload["algorithm"])
+    optimizer = str(payload["optimizer"])
+    c_t_array = np.asarray(payload["c_t_array"], dtype=float)
+    modelo = np.asarray(payload["modelo"], dtype=float)
+    nas = payload["nas"]
+    model_settings = payload["model_settings"]
+    dq = np.asarray(payload["dq"], dtype=float)
+    d_cols = np.asarray(payload["d_cols"], dtype=float)
+    mask = np.asarray(payload["mask"], dtype=bool)
+    stoich_mat = payload.get("stoich_mat")
+    if stoich_mat is not None:
+        stoich_mat = np.asarray(stoich_mat, dtype=float)
+    weights_per_signal = np.asarray(payload["weights_per_signal"], dtype=float)
+    p0_full = np.asarray(payload["p0_full"], dtype=float).ravel()
+    free_idx = np.asarray(payload["free_idx"], dtype=int).ravel()
+    bounds_free = list(payload["bounds_free"])
+    start_free = np.asarray(payload["start_free"], dtype=float).ravel()
+    seed = payload.get("seed")
+    cycle_count = int(payload.get("cycle_count", 1))
+
+    solver = _build_nmr_solver(algorithm, c_t_array, modelo, nas, model_settings)
+    objective_state = {
+        "eval_count": 0,
+        "cache": {},
+        "cache_max": 8192,
+        "best_val": float("inf"),
+        "best_theta": start_free.copy(),
+    }
+    local_best = {"val": float("inf"), "theta": start_free.copy()}
+
+    def _pack(theta_free: np.ndarray) -> np.ndarray:
+        k_full = p0_full.copy()
+        if free_idx.size:
+            k_full[free_idx] = np.asarray(theta_free, dtype=float).ravel()
+        return k_full
+
+    def _obj_key(theta_free) -> bytes:
+        return np.asarray(theta_free, dtype=float).ravel().tobytes()
+
+    def _eval(theta_free):
+        theta = np.asarray(theta_free, dtype=float).ravel()
+        if np.any(np.isnan(theta)) or np.any(np.isinf(theta)):
+            return 1e9
+        key = _obj_key(theta)
+        cached = objective_state["cache"].get(key)
+        if cached is not None:
+            return float(cached)
+
+        objective_state["eval_count"] += 1
+        try:
+            k_curr_full = _pack(theta)
+            C = solver.concentraciones(k_curr_full)[0]
+            dq_cal = project_coeffs_block_onp_frac(
+                dq, C, d_cols, mask, stoichiometry=stoich_mat, rcond=1e-10, ridge=1e-8
+            )
+            diff = dq - dq_cal
+            valid_residuals = mask & np.isfinite(dq_cal)
+            w_mat = weights_per_signal[None, :]
+            residuals_flat = diff[valid_residuals]
+            weights_flat = np.broadcast_to(w_mat, diff.shape)[valid_residuals]
+            w_r2 = (residuals_flat**2) * weights_flat
+            if (residuals_flat.size <= len(theta)) or (not np.isfinite(w_r2).all()):
+                val = 1e9
+            else:
+                val = float(np.sqrt(np.mean(w_r2)))
+                if not np.isfinite(val):
+                    val = 1e9
+        except Exception:
+            val = 1e9
+
+        cache = objective_state["cache"]
+        if len(cache) >= int(objective_state["cache_max"]):
+            cache.clear()
+        cache[key] = float(val)
+        if val < objective_state["best_val"]:
+            objective_state["best_val"] = float(val)
+            objective_state["best_theta"] = theta.copy()
+        return float(val)
+
+    def _callback(theta, *args):
+        del args
+        key = _obj_key(theta)
+        val = objective_state["cache"].get(key)
+        if val is None:
+            return
+        if float(val) < float(local_best["val"]):
+            local_best["val"] = float(val)
+            local_best["theta"] = np.asarray(theta, dtype=float).ravel().copy()
+
+    def _bounds_finite(bounds_list):
+        for lb, ub in bounds_list:
+            if lb is None or ub is None:
+                return False
+            if not np.isfinite(lb) or not np.isfinite(ub):
+                return False
+        return True
+
+    try:
+        if optimizer == "differential_evolution" and cycle_count == 1:
+            opt_res = differential_evolution(
+                _eval,
+                bounds_free,
+                x0=start_free,
+                strategy="best1bin",
+                maxiter=1000,
+                popsize=15,
+                tol=0.01,
+                seed=seed,
+                callback=_callback,
+            )
+        elif optimizer == "dual_annealing":
+            if not _bounds_finite(bounds_free):
+                raise ValueError("Dual annealing requires finite bounds. Set Min/Max for each K.")
+            opt_res = dual_annealing(_eval, bounds_free, seed=seed)
+        elif optimizer == "basinhopping":
+            minimizer_kwargs = {"method": "L-BFGS-B", "bounds": bounds_free}
+            opt_res = basinhopping(_eval, start_free, niter=100, minimizer_kwargs=minimizer_kwargs, seed=seed)
+        elif optimizer == "global_local":
+            if not _bounds_finite(bounds_free):
+                raise ValueError("Global-local optimization requires finite bounds. Set Min/Max for each K.")
+            global_res = differential_evolution(
+                _eval, bounds_free, x0=start_free, maxiter=200, popsize=10, tol=0.05, seed=seed
+            )
+            opt_res = optimize.minimize(
+                _eval, global_res.x, method="L-BFGS-B", bounds=bounds_free, callback=_callback
+            )
+        else:
+            method = optimizer if optimizer != "differential_evolution" else "powell"
+            opt_res = optimize.minimize(_eval, start_free, method=method, bounds=bounds_free, callback=_callback)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": str(exc),
+            "objective_evaluations": int(objective_state["eval_count"]),
+            "nfev": 0,
+            "run_rms": float("inf"),
+            "run_full": p0_full.tolist(),
+            "success": False,
+            "message": str(exc),
+        }
+
+    run_theta = np.asarray(getattr(opt_res, "x", start_free), dtype=float).ravel()
+    run_rms = float(getattr(opt_res, "fun", np.nan))
+    if not np.isfinite(run_rms):
+        cached = objective_state["cache"].get(_obj_key(run_theta))
+        if cached is not None:
+            run_rms = float(cached)
+    if np.isfinite(local_best["val"]) and (not np.isfinite(run_rms) or float(local_best["val"]) < float(run_rms)):
+        run_rms = float(local_best["val"])
+        run_theta = np.asarray(local_best["theta"], dtype=float).ravel().copy()
+    if np.isfinite(objective_state["best_val"]) and (
+        not np.isfinite(run_rms) or float(objective_state["best_val"]) < float(run_rms)
+    ):
+        run_rms = float(objective_state["best_val"])
+        run_theta = np.asarray(objective_state["best_theta"], dtype=float).ravel().copy()
+
+    run_full = _pack(run_theta)
+    return {
+        "ok": True,
+        "error": "",
+        "objective_evaluations": int(objective_state["eval_count"]),
+        "nfev": int(getattr(opt_res, "nfev", 0) or 0),
+        "run_rms": float(run_rms if np.isfinite(run_rms) else float("inf")),
+        "run_full": np.asarray(run_full, dtype=float).ravel().tolist(),
+        "success": bool(getattr(opt_res, "success", np.isfinite(run_rms))),
+        "message": str(getattr(opt_res, "message", "")),
+    }
+
+
 def process_nmr_data(
     file_path: str,
     spectra_sheet: str,
@@ -212,6 +427,8 @@ def process_nmr_data(
     show_stability_diagnostics: bool = False,
     multi_start_runs: int = 1,
     multi_start_seeds: Optional[List[int]] = None,
+    multi_start_parallel: bool = False,
+    multi_start_max_workers: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Main entry point for processing NMR titration data and fitting binding constants.
@@ -262,7 +479,19 @@ def process_nmr_data(
     Dict[str, Any]
         A JSON-serializable dictionary containing fit results, figures, and statistics.
     """
+    t_total_start = time.perf_counter()
+    stage_times = {
+        "parse_s": 0.0,
+        "solver_s": 0.0,
+        "optimization_s": 0.0,
+        "postprocess_s": 0.0,
+        "graphs_s": 0.0,
+        "total_s": 0.0,
+    }
+    objective_eval_count_total = 0
+
     # 1. Load Data
+    t_parse_start = time.perf_counter()
     try:
         chemshift_data = pd.read_excel(file_path, spectra_sheet, header=0)
         conc_data = pd.read_excel(file_path, conc_sheet, header=0)
@@ -396,11 +625,13 @@ def process_nmr_data(
         if _is_fit_cancelled(e):
             raise
         return {"error": f"Error preparing data matrices: {str(e)}"}
+    stage_times["parse_s"] = time.perf_counter() - t_parse_start
     log_progress("Iniciando procesamiento NMR…")
     log_progress(f"Optimizer: {optimizer} | Algorithm: {algorithm}")
     if stoich_mat is not None:
         log_progress("Using Stoichiometry-based signal calculation.")
     # 3. Initialize Algorithm
+    t_solver_start = time.perf_counter()
     try:
         if algorithm == "Newton-Raphson":
             res = NewtonRaphson(C_T_df, modelo, nas, model_settings)
@@ -412,6 +643,7 @@ def process_nmr_data(
         if _is_fit_cancelled(e):
             raise
         return {"error": f"Error initializing algorithm: {str(e)}"}
+    stage_times["solver_s"] = time.perf_counter() - t_solver_start
     # --- IRLS Loop Setup ---
     weights_per_signal = np.ones(dq.shape[1], dtype=float)
     # 4. Define Objective Function
@@ -450,12 +682,14 @@ def process_nmr_data(
                 raise
             return 1e9
     # 5. Optimization (IRLS)
+    t_opt_start = time.perf_counter()
     MAX_IRLS_CYCLES = 5
     cycle_count = 0
     k_opt_full = p0_full.copy()
     old_best_rms = np.inf
     while cycle_count < MAX_IRLS_CYCLES:
         cycle_count += 1
+        _raise_if_cancelled()
         iter_state["best"] = np.inf  # Reset for current weights
         log_progress(f"--- IRLS Cycle {cycle_count}/{MAX_IRLS_CYCLES} ---")
         param_opt_failed = False
@@ -521,10 +755,8 @@ def process_nmr_data(
                         seeds = []
                     if seeds and len(seeds) == ms_runs:
                         seed_list = seeds
+                start_payloads = []
                 for ms_iter in range(ms_runs):
-                    # Reset iteration state for each run
-                    iter_state["best"] = np.inf
-                    iter_state["cnt"] = 0
                     seed = seed_list[ms_iter] if seed_list else None
                     if ms_iter == 0:
                         start_free = k_free0
@@ -539,32 +771,117 @@ def process_nmr_data(
                             else:
                                 perturb = rng.uniform(-1.0, 1.0)
                                 start_free[ii] = k_free0[ii] + perturb
-                    run_failed = False
+                    start_payloads.append((ms_iter, start_free, seed))
+
+                parallel_enabled = bool(multi_start_parallel and ms_runs > 1)
+                if parallel_enabled:
+                    workers = _resolve_ms_workers(ms_runs, multi_start_max_workers)
+                    log_progress(f"[MS] parallel enabled with {workers} workers ({ms_runs} runs).")
+                    common_payload = {
+                        "algorithm": algorithm,
+                        "optimizer": optimizer,
+                        "c_t_array": C_T,
+                        "modelo": modelo,
+                        "nas": nas,
+                        "model_settings": model_settings,
+                        "dq": dq,
+                        "d_cols": D_cols,
+                        "mask": mask,
+                        "stoich_mat": stoich_mat,
+                        "weights_per_signal": weights_per_signal,
+                        "p0_full": p0_full,
+                        "free_idx": free_idx,
+                        "bounds_free": bounds_free,
+                        "cycle_count": cycle_count,
+                    }
                     try:
-                        opt_res = _run_optimizer(start_free, seed)
-                        try:
-                            fval = float(opt_res.fun)
-                            current_full = pack(opt_res.x)
-                        except Exception:
-                            fval = np.inf
-                            current_full = None
-                        if np.isfinite(fval) and fval < best_rms_val:
-                            best_rms_val = fval
-                            best_full_params = current_full
-                    except Exception as run_exc:
-                        if _is_fit_cancelled(run_exc):
+                        with ProcessPoolExecutor(max_workers=workers) as executor:
+                            futures = {}
+                            for ms_iter, start_free, seed in start_payloads:
+                                payload = dict(common_payload)
+                                payload["start_free"] = np.asarray(start_free, dtype=float)
+                                payload["seed"] = seed
+                                fut = executor.submit(_run_nmr_single_start, payload)
+                                futures[fut] = ms_iter
+                            pending = set(futures.keys())
+                            while pending:
+                                _raise_if_cancelled()
+                                done, pending = wait(pending, timeout=0.25, return_when=FIRST_COMPLETED)
+                                if not done:
+                                    continue
+                                for fut in done:
+                                    ms_iter = futures[fut]
+                                    try:
+                                        run_result = fut.result()
+                                    except Exception as run_exc:
+                                        run_result = {
+                                            "ok": False,
+                                            "error": str(run_exc),
+                                            "run_rms": np.inf,
+                                            "run_full": None,
+                                            "objective_evaluations": 0,
+                                        }
+                                    objective_eval_count_total += int(run_result.get("objective_evaluations", 0) or 0)
+                                    if run_result.get("ok", False):
+                                        fval = float(run_result.get("run_rms", np.inf))
+                                        run_full = run_result.get("run_full")
+                                        current_full = (
+                                            np.asarray(run_full, dtype=float).ravel()
+                                            if run_full is not None
+                                            else None
+                                        )
+                                        if np.isfinite(fval) and current_full is not None and fval < best_rms_val:
+                                            best_rms_val = fval
+                                            best_full_params = current_full
+                                    else:
+                                        log_progress(
+                                            f"[DEBUG] optimization run {ms_iter+1}/{ms_runs} failed: "
+                                            f"{run_result.get('error', '')}"
+                                        )
+                                    if ms_runs > 1:
+                                        best_msg = f"{best_rms_val:.6e}" if np.isfinite(best_rms_val) else "inf"
+                                        log_progress(f"[MS] run {ms_iter+1}/{ms_runs} best={best_msg}")
+                    except Exception as parallel_exc:
+                        if _is_fit_cancelled(parallel_exc):
                             raise
-                        run_failed = True
-                        log_progress(f"[DEBUG] optimization run {ms_iter+1}/{ms_runs} failed: {run_exc}")
-                    if ms_runs > 1:
-                        best_msg = f"{best_rms_val:.6e}" if np.isfinite(best_rms_val) else "inf"
-                        log_progress(f"[MS] run {ms_iter+1}/{ms_runs} best={best_msg}")
-                    if run_failed:
-                        continue
+                        log_progress(f"[MS] parallel fallback to sequential: {parallel_exc}")
+                        parallel_enabled = False
+
+                if not parallel_enabled:
+                    for ms_iter, start_free, seed in start_payloads:
+                        # Reset iteration state for each run
+                        iter_state["best"] = np.inf
+                        iter_state["cnt"] = 0
+                        run_failed = False
+                        try:
+                            opt_res = _run_optimizer(start_free, seed)
+                            try:
+                                fval = float(opt_res.fun)
+                                current_full = pack(opt_res.x)
+                            except Exception:
+                                fval = np.inf
+                                current_full = None
+                            if np.isfinite(fval) and fval < best_rms_val:
+                                best_rms_val = fval
+                                best_full_params = current_full
+                        except Exception as run_exc:
+                            if _is_fit_cancelled(run_exc):
+                                raise
+                            run_failed = True
+                            log_progress(f"[DEBUG] optimization run {ms_iter+1}/{ms_runs} failed: {run_exc}")
+                        objective_eval_count_total += int(iter_state.get("cnt", 0))
+                        if ms_runs > 1:
+                            best_msg = f"{best_rms_val:.6e}" if np.isfinite(best_rms_val) else "inf"
+                            log_progress(f"[MS] run {ms_iter+1}/{ms_runs} best={best_msg}")
+                        if run_failed:
+                            continue
                 if best_full_params is not None:
                     k_opt_full = best_full_params
                 else:
+                    iter_state["best"] = np.inf
+                    iter_state["cnt"] = 0
                     opt_res = _run_optimizer(k_free0, seed_list[0] if seed_list else None)
+                    objective_eval_count_total += int(iter_state.get("cnt", 0))
                     k_opt_full = pack(opt_res.x)
                 p0_full = k_opt_full
         except Exception as e:
@@ -602,7 +919,10 @@ def process_nmr_data(
             log_progress("IRLS Converged (Weights stable).")
             break
         old_best_rms = current_best_rms
+    stage_times["optimization_s"] = time.perf_counter() - t_opt_start
+    log_progress(f"Objective evaluations (NMR f_m): {int(objective_eval_count_total)}")
     # 6. Calculate Results & Statistics
+    t_post_start = time.perf_counter()
     try:
         C_opt, Co_opt = res.concentraciones(k_opt_full)
         dq_fit = project_coeffs_block_onp_frac(
@@ -708,6 +1028,7 @@ def process_nmr_data(
         ]
         results_text += "\n\nEstadísticas:\n" + "\n".join(extra_stats)
         graphs = {}
+        t_graph_start = time.perf_counter()
         x_axis_conc = G if G is not None else H
         x_label_conc = f"[{guest_label}] Total (M)" if G is not None else f"[{receptor_label}] Total (M)"
         graphs['concentrations'] = generate_figure_base64(
@@ -720,6 +1041,7 @@ def process_nmr_data(
         graphs['residuals'] = generate_figure_base64(
             x_axis_conc, residuals, "o", "Residuals (ppm)", x_label_conc, "Residuals"
         )
+        stage_times["graphs_s"] = time.perf_counter() - t_graph_start
         export_data = {
             "modelo": modelo.T.tolist() if modelo is not None else [],
             "C": C_opt.tolist() if C_opt is not None else [],
@@ -744,8 +1066,10 @@ def process_nmr_data(
                 ["LOF", float(lof)],
                 ["optimizer", optimizer],
                 ["algorithm", algorithm],
+                ["objective_evaluations", int(objective_eval_count_total)],
             ],
             "non_absorbent_species": non_absorbent_species,
+            "objective_evaluations": int(objective_eval_count_total),
         }
         log_progress("Procesamiento NMR completado.")
         availablePlots = []
@@ -801,6 +1125,14 @@ def process_nmr_data(
                 "signals": signals_data,
             },
         }
+        post_elapsed = time.perf_counter() - t_post_start
+        stage_times["postprocess_s"] = max(0.0, post_elapsed - stage_times["graphs_s"])
+        stage_times["total_s"] = time.perf_counter() - t_total_start
+        export_data["timings"] = dict(stage_times)
+        log_progress(
+            "Timing (s): parse={parse_s:.3f} solver={solver_s:.3f} opt={optimization_s:.3f} "
+            "post={postprocess_s:.3f} graphs={graphs_s:.3f} total={total_s:.3f}".format(**stage_times)
+        )
         constants = []
         for i in range(len(k_opt_full)):
             is_fixed = bool(fixed_mask[i]) if fixed_mask is not None else False
@@ -820,6 +1152,8 @@ def process_nmr_data(
             "availablePlots": availablePlots,
             "plotData": {"nmr": nmr_plot_data},
             "export_data": export_data,
+            "timings": dict(stage_times),
+            "objective_evaluations": int(objective_eval_count_total),
             "constants": constants,
             "derived_noncoop": export_data.get("derived_noncoop"),
             "stability_status": stability_diag.get("status") if 'stability_diag' in locals() else None,

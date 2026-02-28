@@ -5,7 +5,7 @@ import numpy as np
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QThread, Qt, Slot
+from PySide6.QtCore import QThread, QTimer, Qt, Slot
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -101,6 +101,17 @@ class SpectroscopyTab(QWidget):
         self._conc_points_count = 0
         self._file_path: str = ""
         self._is_running = False
+        self._render_graphs_enabled = True
+        self._render_quality = "preview"
+        self._multi_start_parallel = False
+        self._multi_start_max_workers: int | None = None
+        self._log_buffer: list[str] = []
+        self._log_buffered_count = 0
+        self._log_flush_count = 0
+        self._log_flush_timer = QTimer(self)
+        self._log_flush_timer.setSingleShot(True)
+        self._log_flush_timer.setInterval(90)
+        self._log_flush_timer.timeout.connect(self._flush_log_buffer)
 
         self._build_ui()
         if getattr(self.model_opt_plots, "roles_group", None) is not None:
@@ -368,6 +379,11 @@ class SpectroscopyTab(QWidget):
         self.btn_save.clicked.connect(self._on_save_results_clicked)
         self.btn_save.setEnabled(False)
         actions_layout.addWidget(self.btn_save)
+
+        self.btn_render_graphs = QPushButton("Render graphs", actions_group)
+        self.btn_render_graphs.clicked.connect(self._on_render_graphs_clicked)
+        self.btn_render_graphs.setEnabled(False)
+        actions_layout.addWidget(self.btn_render_graphs)
 
         left_layout.addWidget(actions_group)
 
@@ -912,6 +928,11 @@ class SpectroscopyTab(QWidget):
         self.btn_reset.setEnabled(not running)
         self.btn_cancel.setEnabled(running)
         self.btn_save.setEnabled(bool(self._last_result) and bool(self._last_result.get("success", True)) and not running)
+        self.btn_render_graphs.setEnabled(
+            (not running)
+            and bool(self._last_result)
+            and (not self._result_has_rendered_graphs(self._last_result))
+        )
 
         self.btn_process.setText("Processing..." if running else "Process Data")
         if not running:
@@ -1035,6 +1056,14 @@ class SpectroscopyTab(QWidget):
             "delta_mode": delta_mode,
             "delta_rel": delta_rel,
             "alpha_smooth": alpha_smooth,
+            "render_graphs": bool(self._render_graphs_enabled),
+            "render_quality": str(self._render_quality),
+            "skip_optimization": False,
+            "preset_k": None,
+            "multi_start_parallel": bool(self._multi_start_parallel),
+            "multi_start_max_workers": self._multi_start_max_workers,
+            "_progress_throttle_ms": 80,
+            "_progress_batch_size": 20,
         }
         config["equation_text"] = (
             self.equation_editor.get_text()
@@ -1047,6 +1076,53 @@ class SpectroscopyTab(QWidget):
             config["multi_start_seeds"] = seeds
         return config
 
+    @staticmethod
+    def _is_critical_log_message(msg: str) -> bool:
+        text = str(msg or "").strip().lower()
+        if not text:
+            return False
+        tokens = ("error", "cancel", "cancelled", "critical", "failed", "traceback")
+        return any(tok in text for tok in tokens)
+
+    def _flush_log_buffer(self) -> None:
+        if not self._log_buffer:
+            return
+        chunk = "\n".join(self._log_buffer)
+        self._log_buffer.clear()
+        self._log_flush_count += 1
+        self.log.append_text(chunk)
+
+    def _append_log_message(self, msg: str, *, immediate: bool = False) -> None:
+        text = str(msg)
+        if immediate or self._is_critical_log_message(text):
+            self._log_flush_timer.stop()
+            self._flush_log_buffer()
+            self.log.append_text(text)
+            return
+        for line in text.splitlines():
+            line_text = line.rstrip()
+            if line_text:
+                self._log_buffer.append(line_text)
+                self._log_buffered_count += 1
+        if self._log_buffer:
+            if len(self._log_buffer) >= 30:
+                self._log_flush_timer.stop()
+                self._flush_log_buffer()
+            elif not self._log_flush_timer.isActive():
+                self._log_flush_timer.start()
+
+    @staticmethod
+    def _result_has_rendered_graphs(result: dict[str, Any] | None) -> bool:
+        if not isinstance(result, dict):
+            return False
+        graphs = result.get("legacy_graphs") or result.get("graphs") or {}
+        if not isinstance(graphs, dict):
+            return False
+        for key in ("fit", "concentrations", "absorptivities", "eigenvalues", "efa"):
+            if graphs.get(key):
+                return True
+        return False
+
     def _on_process_clicked(self) -> None:
         if self._worker is not None:
             QMessageBox.warning(self, "Busy", "A fit is already running. Cancel it first.")
@@ -1058,7 +1134,11 @@ class SpectroscopyTab(QWidget):
             QMessageBox.warning(self, "Config error", str(exc))
             return
 
-        self.log.append_text("Iniciando optimización…")
+        self._log_flush_timer.stop()
+        self._log_buffer.clear()
+        self._log_buffered_count = 0
+        self._log_flush_count = 0
+        self._append_log_message("Iniciando optimización…", immediate=True)
         self._last_config = config
         self._last_result = None
         self._reset_plot_state()
@@ -1075,20 +1155,55 @@ class SpectroscopyTab(QWidget):
         self._set_running(True)
         self._worker.start()
 
+    def _on_render_graphs_clicked(self) -> None:
+        if self._worker is not None:
+            QMessageBox.warning(self, "Busy", "A fit is already running. Cancel it first.")
+            return
+        if not isinstance(self._last_result, dict) or not isinstance(self._last_config, dict):
+            QMessageBox.warning(self, "No result", "Run a fit first.")
+            return
+        export_data = self._last_result.get("export_data") or {}
+        k_hat = export_data.get("k") or [c.get("log10K") for c in (self._last_result.get("constants") or [])]
+        if not k_hat:
+            QMessageBox.warning(self, "Missing constants", "Could not infer fitted constants for deferred render.")
+            return
+
+        cfg = dict(self._last_config)
+        cfg["render_graphs"] = True
+        cfg["skip_optimization"] = True
+        cfg["preset_k"] = list(k_hat)
+        cfg["multi_start_runs"] = 1
+        cfg["multi_start_seeds"] = None
+        cfg["_progress_throttle_ms"] = 80
+        cfg["_progress_batch_size"] = 20
+
+        self._append_log_message("Generando graficos diferidos...", immediate=True)
+        self._worker = FitWorker(run_spectroscopy_fit, config=cfg, parent=self)
+        self._thread = self._worker.thread()
+        self._thread.finished.connect(self._on_fit_thread_finished, Qt.ConnectionType.QueuedConnection)
+        self._worker.progress.connect(self._on_worker_progress, Qt.ConnectionType.QueuedConnection)
+        self._worker.result.connect(self._on_fit_result, Qt.ConnectionType.QueuedConnection)
+        self._worker.error.connect(self._on_fit_error, Qt.ConnectionType.QueuedConnection)
+        self._worker.finished.connect(self._on_fit_finished, Qt.ConnectionType.QueuedConnection)
+        self._set_running(True)
+        self._worker.start()
+
     def _on_cancel_clicked(self) -> None:
         if self._worker is None:
             return
         self._worker.request_cancel()
-        self.log.append_text("Cancel requested…")
+        self._append_log_message("Cancel requested…", immediate=True)
 
     @Slot(str)
     def _on_worker_progress(self, msg: str) -> None:
         # Runs in the main thread via queued connection (worker emits from its QThread).
-        self.log.append_text(str(msg))
+        self._append_log_message(str(msg), immediate=False)
 
     def _on_fit_result(self, result: object) -> None:
         if not isinstance(result, dict):
             return
+        self._log_flush_timer.stop()
+        self._flush_log_buffer()
         self._last_result = result
         self.btn_save.setEnabled(bool(result.get("success", True)))
 
@@ -1131,26 +1246,44 @@ class SpectroscopyTab(QWidget):
 
         results_text = result.get("results_text") or ""
         if results_text:
-            self.log.append_text("\n" + str(results_text).rstrip() + "\n")
+            self._append_log_message("\n" + str(results_text).rstrip() + "\n", immediate=True)
 
         stats = result.get("statistics") or {}
         rms = stats.get("RMS")
         if rms is not None:
             try:
-                self.log.append_text(f"Finalizado. RMS={float(rms):.6g}")
+                self._append_log_message(f"Finalizado. RMS={float(rms):.6g}", immediate=True)
             except Exception:
-                self.log.append_text("Finalizado.")
+                self._append_log_message("Finalizado.", immediate=True)
         else:
-            self.log.append_text("Finalizado.")
+            self._append_log_message("Finalizado.", immediate=True)
+
+        if self._log_buffered_count > 0:
+            self._append_log_message(
+                f"[UI] Log buffering: buffered={self._log_buffered_count}, flushes={self._log_flush_count}",
+                immediate=True,
+            )
+
+        graphs_ready = self._result_has_rendered_graphs(result)
+        self.btn_render_graphs.setEnabled((not self._is_running) and (not graphs_ready))
+        if not graphs_ready:
+            self._append_log_message(
+                "Graficos diferidos disponibles: usa 'Render graphs' para generarlos sin reoptimizar.",
+                immediate=True,
+            )
 
         self._update_errors_context_from_result(result)
 
     @Slot(str)
     def _on_fit_error(self, message: str) -> None:
-        self.log.append_text(f"ERROR: {message}")
+        self._log_flush_timer.stop()
+        self._flush_log_buffer()
+        self._append_log_message(f"ERROR: {message}", immediate=True)
         QMessageBox.critical(self, "Fit error", str(message))
 
     def _on_fit_finished(self) -> None:
+        self._log_flush_timer.stop()
+        self._flush_log_buffer()
         self._set_running(False)
 
     def _on_fit_thread_finished(self) -> None:
@@ -1335,6 +1468,18 @@ class SpectroscopyTab(QWidget):
             config.get("multi_start_runs", 1),
             config.get("multi_start_seeds"),
         )
+        self._render_graphs_enabled = bool(config.get("render_graphs", True))
+        rq = str(config.get("render_quality") or "preview").strip().lower()
+        if rq not in {"preview", "full", "draft"}:
+            rq = "preview"
+        self._render_quality = rq
+        self._multi_start_parallel = bool(config.get("multi_start_parallel", False))
+        workers_val = config.get("multi_start_max_workers")
+        try:
+            workers_int = int(workers_val) if workers_val is not None else None
+        except (TypeError, ValueError):
+            workers_int = None
+        self._multi_start_max_workers = workers_int if (workers_int is not None and workers_int > 0) else None
         equation_text = str(config.get("equation_text") or "").strip()
         if self.equation_editor is not None:
             if equation_text:
@@ -1391,7 +1536,12 @@ class SpectroscopyTab(QWidget):
         self._last_config = None
         self._last_fit_context = None
         self._graph_solver_inputs = None
+        self._render_graphs_enabled = True
+        self._render_quality = "preview"
+        self._multi_start_parallel = False
+        self._multi_start_max_workers = None
         self.btn_save.setEnabled(False)
+        self.btn_render_graphs.setEnabled(False)
 
     def _update_errors_context_from_result(self, result: dict[str, Any]) -> None:
         if not result.get("success", True):

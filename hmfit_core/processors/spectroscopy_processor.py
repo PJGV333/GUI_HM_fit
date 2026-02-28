@@ -10,6 +10,9 @@ from ..utils.np_backend import xp as np, jit, jacrev, vmap, lax
 import pandas as pd
 import matplotlib
 import sys
+import os
+import time
+from concurrent.futures import ProcessPoolExecutor, wait, FIRST_COMPLETED
 
 # When used from a GUI (historical reference) we don't want to override the interactive backend.
 # For headless/server usage, force a non-interactive backend before importing pyplot.
@@ -31,15 +34,37 @@ logger = logging.getLogger(__name__)
 # === Progress tracking (Historical WebSocket support) ===
 _progress_callback = None
 _loop = None
+_cancel_callback = None
 
 def set_progress_callback(callback, loop=None):
     """Registrar callback para emitir progreso (p.ej. al WebSocket)."""
-    global _progress_callback, _loop
+    global _progress_callback, _loop, _cancel_callback
     _progress_callback = callback
     _loop = loop
+    _cancel_callback = getattr(callback, "_hmfit_cancel", None)
+
+
+def _cancel_requested() -> bool:
+    if _cancel_callback is None:
+        return False
+    try:
+        return bool(_cancel_callback())
+    except Exception:
+        return False
+
+
+def _raise_if_cancelled():
+    if not _cancel_requested():
+        return
+    try:
+        from hmfit_core.api import FitCancelled
+    except Exception:
+        raise RuntimeError("Fit cancelled.")
+    raise FitCancelled("Fit cancelled.")
 
 def log_progress(message: str):
     """Enviar mensaje de progreso si hay callback; si no, imprime a consola."""
+    _raise_if_cancelled()
     if _progress_callback:
         if _loop:
             _loop.call_soon_threadsafe(_progress_callback, message)
@@ -47,6 +72,10 @@ def log_progress(message: str):
             _progress_callback(message)
         return
     print(message)
+
+
+def _is_fit_cancelled(exc: BaseException) -> bool:
+    return exc.__class__.__name__ == "FitCancelled"
 
 # === Shared helper utilities (used by both Spectroscopy and NMR) ===
 _alias_re = re.compile(r"\(([^)]+)\)")
@@ -431,7 +460,17 @@ def _solve_absorptivities(
     )
     return A, lower_bound
 
-def generate_figure_base64(x, y, mark, ylabel, xlabel, title):
+def _resolve_render_profile(render_quality: str):
+    q = str(render_quality or "preview").strip().lower()
+    if q == "full":
+        return (8, 6), 100
+    if q == "draft":
+        return (5.5, 3.5), 72
+    # preview default: lighter rendering while keeping legibility.
+    return (6.5, 4.2), 82
+
+
+def generate_figure_base64(x, y, mark, ylabel, xlabel, title, *, figsize=None, dpi=None):
     """Generate a matplotlib figure and return as base64 encoded PNG."""
     try:
         # Debug shapes
@@ -441,7 +480,11 @@ def generate_figure_base64(x, y, mark, ylabel, xlabel, title):
     except Exception:
         pass
 
-    fig = Figure(figsize=(8, 6), dpi=100)
+    if figsize is None:
+        figsize = (8, 6)
+    if dpi is None:
+        dpi = 100
+    fig = Figure(figsize=figsize, dpi=dpi)
     ax = fig.add_subplot(111)
     
     # Normaliza dimensiones para evitar mismatches (se comporta como en la interfaz anterior)
@@ -479,7 +522,7 @@ def generate_figure_base64(x, y, mark, ylabel, xlabel, title):
     
     return img_base64
 
-def generate_figure2_base64(x, y, y2, mark1, mark2, ylabel, xlabel, alpha, title):
+def generate_figure2_base64(x, y, y2, mark1, mark2, ylabel, xlabel, alpha, title, *, figsize=None, dpi=None):
     """Generate a matplotlib figure with two series and return as base64 encoded PNG."""
     try:
         # Debug shapes
@@ -490,7 +533,11 @@ def generate_figure2_base64(x, y, y2, mark1, mark2, ylabel, xlabel, alpha, title
     except Exception:
         pass
 
-    fig = Figure(figsize=(8, 6), dpi=100)
+    if figsize is None:
+        figsize = (8, 6)
+    if dpi is None:
+        dpi = 100
+    fig = Figure(figsize=figsize, dpi=dpi)
     ax = fig.add_subplot(111)
     
     # Plot first series
@@ -679,6 +726,277 @@ def _sanitize_for_json(obj):
         return obj
     return obj
 
+
+def _resolve_ms_workers(ms_runs: int, requested: int | None) -> int:
+    cpu_count = int(os.cpu_count() or 1)
+    # Leave one CPU free by default to avoid UI starvation.
+    max_recommended = max(1, cpu_count - 1)
+    if requested is None:
+        return max(1, min(int(ms_runs), max_recommended))
+    try:
+        req = int(requested)
+    except (TypeError, ValueError):
+        req = max_recommended
+    return max(1, min(int(ms_runs), max_recommended, req))
+
+
+def _objective_cache_key(k_vec) -> bytes:
+    arr = onp.asarray(k_vec, dtype=float).ravel()
+    return arr.tobytes()
+
+
+def _new_objective_state(start_k) -> dict:
+    return {
+        "eval_count": 0,
+        "cache": {},
+        "cache_max": 8192,
+        "error_count": 0,
+        "best_rms": float("inf"),
+        "best_k": onp.asarray(start_k, dtype=float).ravel().copy(),
+    }
+
+
+def _evaluate_spectro_objective(
+    k_vec,
+    *,
+    solver,
+    y_transposed,
+    weights_row,
+    eps_solver_mode,
+    eps_mu,
+    delta_mode,
+    delta_rel,
+    alpha_smooth,
+    smooth_matrix,
+    objective_state: dict,
+):
+    k_arr = onp.asarray(k_vec, dtype=float).ravel()
+    if onp.any(onp.isnan(k_arr)) or onp.any(onp.isinf(k_arr)):
+        return 1e50
+
+    key = _objective_cache_key(k_arr)
+    cached = objective_state["cache"].get(key)
+    if cached is not None:
+        return float(cached)
+
+    if objective_state["eval_count"] % 16 == 0:
+        _raise_if_cancelled()
+
+    objective_state["eval_count"] += 1
+    try:
+        C = solver.concentraciones(k_arr)[0]
+        if onp.any(onp.isnan(C)) or onp.any(onp.isinf(C)):
+            val = 1e50
+        else:
+            A, _ = _solve_absorptivities(
+                C,
+                y_transposed,
+                eps_solver_mode=eps_solver_mode,
+                mu=eps_mu,
+                delta_mode=delta_mode,
+                delta_rel=delta_rel,
+                alpha_smooth=alpha_smooth,
+                smooth_matrix=smooth_matrix,
+                max_iters=300,
+            )
+            r = C @ A - y_transposed
+            r_w = r * weights_row
+            rms = float(np.sqrt(np.mean(np.square(r_w))))
+            val = rms if onp.isfinite(rms) else 1e50
+    except Exception:
+        objective_state["error_count"] += 1
+        val = 1e50
+
+    cache = objective_state["cache"]
+    if len(cache) >= int(objective_state["cache_max"]):
+        cache.clear()
+    cache[key] = float(val)
+
+    if onp.isfinite(val) and float(val) < float(objective_state["best_rms"]):
+        objective_state["best_rms"] = float(val)
+        objective_state["best_k"] = k_arr.copy()
+    return float(val)
+
+
+def _build_equilibrium_solver(algorithm, c_t_array, modelo, non_abs_species, model_settings):
+    c_t_df = pd.DataFrame(onp.asarray(c_t_array, dtype=float))
+    if algorithm == "Newton-Raphson":
+        from ..solvers import NewtonRaphson
+
+        return NewtonRaphson(c_t_df, modelo, non_abs_species, model_settings)
+    if algorithm == "Levenberg-Marquardt":
+        from ..solvers import LevenbergMarquardt
+
+        return LevenbergMarquardt(c_t_df, modelo, non_abs_species, model_settings)
+    raise ValueError(f"Unknown algorithm: {algorithm}")
+
+
+def _run_spectro_single_start(
+    *,
+    optimizer,
+    algorithm,
+    c_t_array,
+    modelo,
+    non_abs_species,
+    model_settings,
+    start_k,
+    processed_bounds,
+    seed,
+    y_transposed,
+    weights_row,
+    eps_solver_mode,
+    eps_mu,
+    delta_mode,
+    delta_rel,
+    alpha_smooth,
+    smooth_matrix,
+):
+    solver = _build_equilibrium_solver(algorithm, c_t_array, modelo, non_abs_species, model_settings)
+    state = _new_objective_state(start_k)
+    local_best = {"rms": float("inf"), "k": onp.asarray(start_k, dtype=float).ravel().copy()}
+    callback_logs = []
+    opt_result_obj = None
+
+    def f_m(k_vec):
+        return _evaluate_spectro_objective(
+            k_vec,
+            solver=solver,
+            y_transposed=y_transposed,
+            weights_row=weights_row,
+            eps_solver_mode=eps_solver_mode,
+            eps_mu=eps_mu,
+            delta_mode=delta_mode,
+            delta_rel=delta_rel,
+            alpha_smooth=alpha_smooth,
+            smooth_matrix=smooth_matrix,
+            objective_state=state,
+        )
+
+    def callback_log(xk, convergence=None):
+        del convergence
+        key = _objective_cache_key(xk)
+        val = state["cache"].get(key)
+        if val is None:
+            return
+        if float(val) < float(local_best["rms"]):
+            local_best["rms"] = float(val)
+            local_best["k"] = onp.asarray(xk, dtype=float).ravel().copy()
+            callback_logs.append(
+                f"Iter: f(x)={float(val):.6e} | x={[float(xi) for xi in onp.asarray(xk, dtype=float).ravel()]}"
+            )
+
+    def _bounds_finite(bounds_list):
+        for lb, ub in bounds_list:
+            if lb is None or ub is None:
+                return False
+            if not onp.isfinite(lb) or not onp.isfinite(ub):
+                return False
+        return True
+
+    try:
+        if optimizer == "differential_evolution":
+            opt_result_obj = differential_evolution(
+                f_m,
+                processed_bounds,
+                x0=onp.asarray(start_k, dtype=float).ravel(),
+                strategy="best1bin",
+                maxiter=1000,
+                popsize=15,
+                tol=0.01,
+                mutation=(0.5, 1),
+                recombination=0.7,
+                init="latinhypercube",
+                callback=callback_log,
+                seed=seed,
+            )
+        elif optimizer == "dual_annealing":
+            opt_result_obj = dual_annealing(f_m, processed_bounds, seed=seed)
+        elif optimizer == "basinhopping":
+            minimizer_kwargs = {"method": "L-BFGS-B", "bounds": processed_bounds}
+            opt_result_obj = basinhopping(
+                f_m,
+                onp.asarray(start_k, dtype=float).ravel(),
+                niter=100,
+                minimizer_kwargs=minimizer_kwargs,
+                seed=seed,
+            )
+        elif optimizer == "global_local":
+            if not _bounds_finite(processed_bounds):
+                raise ValueError(
+                    "Global-local optimization requires all bounds to be finite. Please set Min/Max for each parameter."
+                )
+            global_res = differential_evolution(
+                f_m,
+                processed_bounds,
+                x0=onp.asarray(start_k, dtype=float).ravel(),
+                maxiter=200,
+                popsize=10,
+                tol=0.05,
+                seed=seed,
+            )
+            opt_result_obj = optimize.minimize(
+                f_m,
+                global_res.x,
+                method="L-BFGS-B",
+                bounds=processed_bounds,
+                callback=callback_log,
+            )
+        else:
+            opt_result_obj = optimize.minimize(
+                f_m,
+                onp.asarray(start_k, dtype=float).ravel(),
+                method=optimizer,
+                bounds=processed_bounds,
+                callback=callback_log,
+            )
+    except Exception as exc:
+        if _is_fit_cancelled(exc):
+            raise
+        return {
+            "ok": False,
+            "error": str(exc),
+            "run_k": onp.asarray(start_k, dtype=float).ravel().tolist(),
+            "run_rms": float("inf"),
+            "objective_evaluations": int(state["eval_count"]),
+            "nfev": 0,
+            "success": False,
+            "message": str(exc),
+            "callback_logs": callback_logs[-5:],
+        }
+
+    run_k = onp.asarray(getattr(opt_result_obj, "x", start_k), dtype=float).ravel()
+    try:
+        run_rms = float(getattr(opt_result_obj, "fun"))
+    except Exception:
+        run_rms = float("nan")
+
+    if not onp.isfinite(run_rms):
+        cached = state["cache"].get(_objective_cache_key(run_k))
+        if cached is not None:
+            run_rms = float(cached)
+    if onp.isfinite(local_best["rms"]) and (not onp.isfinite(run_rms) or float(local_best["rms"]) < float(run_rms)):
+        run_rms = float(local_best["rms"])
+        run_k = onp.asarray(local_best["k"], dtype=float).ravel().copy()
+    if onp.isfinite(state["best_rms"]) and (not onp.isfinite(run_rms) or float(state["best_rms"]) < float(run_rms)):
+        run_rms = float(state["best_rms"])
+        run_k = onp.asarray(state["best_k"], dtype=float).ravel().copy()
+
+    return {
+        "ok": True,
+        "error": "",
+        "run_k": run_k.tolist(),
+        "run_rms": float(run_rms if onp.isfinite(run_rms) else float("inf")),
+        "objective_evaluations": int(state["eval_count"]),
+        "nfev": int(getattr(opt_result_obj, "nfev", 0) or 0),
+        "success": bool(getattr(opt_result_obj, "success", onp.isfinite(run_rms))),
+        "message": str(getattr(opt_result_obj, "message", "")),
+        "callback_logs": callback_logs[-5:],
+    }
+
+
+def _run_spectro_single_start_worker(payload: dict):
+    return _run_spectro_single_start(**payload)
+
 def process_spectroscopy_data(
     file_path,
     spectra_sheet,
@@ -715,12 +1033,27 @@ def process_spectroscopy_data(
     delta_mode: str = "off",
     delta_rel: float = 0.01,
     alpha_smooth: float = 0.0,
+    render_graphs: bool = True,
+    render_quality: str = "preview",
+    skip_optimization: bool = False,
+    preset_k=None,
+    multi_start_parallel: bool = False,
+    multi_start_max_workers: int | None = None,
 ):
     """
     Main processing function.
-    Returns dict with results and base64-encoded graphs.
+    Returns dict with results and optional base64-encoded graphs.
     """
     log_lines = []
+    t_total_start = time.perf_counter()
+    stage_times = {
+        "parse_s": 0.0,
+        "solver_s": 0.0,
+        "optimization_s": 0.0,
+        "postprocess_s": 0.0,
+        "graphs_s": 0.0,
+        "total_s": 0.0,
+    }
 
     def log(msg: str):
         try:
@@ -730,6 +1063,7 @@ def process_spectroscopy_data(
         log_progress(str(msg))
 
     log_progress("Iniciando procesamiento...")
+    t_parse_start = time.perf_counter()
 
     baseline_mode = _normalize_mode(baseline_mode, {"off", "range", "auto"}, "off")
     weighting_mode = _normalize_mode(weighting_mode, {"none", "std", "max"}, "none")
@@ -767,6 +1101,10 @@ def process_spectroscopy_data(
         alpha_smooth = float(alpha_smooth)
     except (TypeError, ValueError):
         alpha_smooth = 0.0
+    render_quality = str(render_quality or "preview").strip().lower()
+    if render_quality not in {"preview", "full", "draft"}:
+        render_quality = "preview"
+    render_figsize, render_dpi = _resolve_render_profile(render_quality)
     
     # Read Excel data
     spec = pd.read_excel(file_path, spectra_sheet, header=0, index_col=0)
@@ -941,7 +1279,14 @@ def process_spectroscopy_data(
                 % (alpha_smooth, n_lambda, smax_l)
             )
     
-    graphs = {}
+    graphs = {
+        "fit": "",
+        "concentrations": "",
+        "absorptivities": "",
+        "eigenvalues": "",
+        "efa": "",
+        "residuals": "",
+    }
     
     # SVD/EFA function
     def SVD_EFA(spec, ev_used):
@@ -984,23 +1329,6 @@ def process_spectroscopy_data(
             s_sub = onp.linalg.svd(spec_arr.T[i:, :], compute_uv=False)
             m = min(EV, s_sub.size)
             backward[i, :m] = s_sub[:m]
-
-        graphs['eigenvalues'] = generate_figure_base64(
-            range(len(s_full)), np.log10(s_full), "o", "log(EV)", "# de autovalores", "Eigenvalues"
-        )
-
-        if G is not None and n_points > 0:
-            graphs['efa'] = generate_figure2_base64(
-                G,
-                np.log10(forward),
-                np.log10(backward),
-                "k-o",
-                "b:o",
-                "log(EV)",
-                "[G], M",
-                1,
-                "EFA",
-            )
 
         if EV <= 0:
             Y = spec_arr
@@ -1054,6 +1382,8 @@ def process_spectroscopy_data(
         min_val = _to_bound(min_raw, -np.inf)
         max_val = _to_bound(max_raw, np.inf)
         processed_bounds.append((min_val, max_val))
+    stage_times["parse_s"] = time.perf_counter() - t_parse_start
+    t_solver_start = time.perf_counter()
     
     # Select algorithm
     if algorithm == "Newton-Raphson":
@@ -1091,10 +1421,9 @@ def process_spectroscopy_data(
         log_progress("Soft lower bound preview: off")
     if alpha_smooth > 0:
         log_progress("Smoothness penalty is active.")
+    stage_times["solver_s"] = time.perf_counter() - t_solver_start
 
-    # Objective functions
-    objective_error_state = {"count": 0}
-
+    # Objective helpers
     def f_m2(k):
         C = res.concentraciones(k)[0]
         A, _ = _solve_absorptivities(
@@ -1112,47 +1441,11 @@ def process_spectroscopy_data(
         r_w = r * weights_row
         rms = np.sqrt(np.mean(np.square(r_w)))
         return rms, r
-    
-    def f_m(k):
-        # Handle potential NaNs/Infs in parameters
-        if np.any(np.isnan(k)) or np.any(np.isinf(k)):
-            return 1e50
 
-        try:
-            C = res.concentraciones(k)[0]
-            # Check for NaNs in concentration matrix
-            if np.any(np.isnan(C)) or np.any(np.isinf(C)):
-                return 1e50
-                
-            A, _ = _solve_absorptivities(
-                C,
-                Y.T,
-                eps_solver_mode=eps_solver_mode,
-                mu=eps_mu,
-                delta_mode=delta_mode,
-                delta_rel=delta_rel,
-                alpha_smooth=alpha_smooth,
-                smooth_matrix=smooth_matrix,
-                max_iters=300,
-            )
-            r = C @ A - Y.T
-            r_w = r * weights_row
-            rms = np.sqrt(np.mean(np.square(r_w)))
-            
-            if np.isnan(rms) or np.isinf(rms):
-                return 1e50
-                
-            # Log progress (throttled or every N iterations if needed, but here we log all for debugging)
-            # log_progress(f"f(x): {float(rms):.6e}") 
-            return rms
-        except Exception as e:
-            if objective_error_state["count"] < 3:
-                logger.debug("Error in spectroscopy objective: %s", e, exc_info=True)
-            objective_error_state["count"] += 1
-            return 1e50
-    
     # Best-so-far tracking
     best_result = {"rms": float("inf"), "k": onp.copy(k)}
+    optimizer_summary = {"success": False, "message": "", "nfev": 0}
+    objective_eval_count = 0
 
     def _random_start(base, bounds_list, rng):
         start = onp.empty_like(onp.asarray(base, dtype=float), dtype=float)
@@ -1183,7 +1476,6 @@ def process_spectroscopy_data(
                 raise ValueError(msg)
 
     ms_runs = max(int(multi_start_runs), 1)
-    optimizer_result_obj = None
     seed_list = None
     if multi_start_seeds is not None:
         try:
@@ -1193,6 +1485,7 @@ def process_spectroscopy_data(
         if seeds and len(seeds) == ms_runs:
             seed_list = seeds
 
+    start_points = []
     for ms_iter in range(ms_runs):
         seed = seed_list[ms_iter] if seed_list else None
         if ms_iter == 0:
@@ -1200,91 +1493,115 @@ def process_spectroscopy_data(
         else:
             rng = onp.random.default_rng(seed)
             start_k = _random_start(k, processed_bounds, rng)
+        start_points.append((start_k, seed))
+    if skip_optimization:
+        preset_arr = onp.asarray(preset_k if preset_k is not None else k, dtype=float).ravel()
+        if preset_arr.size != onp.asarray(k, dtype=float).ravel().size:
+            preset_arr = onp.asarray(k, dtype=float).ravel().copy()
+            warnings_list.append("preset_k size mismatch; using initial_k for deferred render.")
+        best_result["k"] = preset_arr.copy()
+        best_result["rms"] = float("inf")
+        optimizer_summary["success"] = True
+        optimizer_summary["message"] = "Optimization skipped (preset_k)."
+        optimizer_summary["nfev"] = 0
+        start_points = []
+        ms_runs = 0
+        log_progress("Optimization skipped; using preset_k.")
 
-        local_best = {"rms": float("inf"), "k": onp.copy(start_k)}
+    t_opt_start = time.perf_counter()
+    y_transposed = onp.asarray(Y.T, dtype=float)
+    common_payload = {
+        "optimizer": optimizer,
+        "algorithm": algorithm,
+        "c_t_array": onp.asarray(C_T, dtype=float),
+        "modelo": onp.asarray(modelo, dtype=float),
+        "non_abs_species": list(nas),
+        "model_settings": model_settings,
+        "processed_bounds": list(processed_bounds),
+        "y_transposed": y_transposed,
+        "weights_row": onp.asarray(weights_row, dtype=float),
+        "eps_solver_mode": eps_solver_mode,
+        "eps_mu": float(eps_mu),
+        "delta_mode": delta_mode,
+        "delta_rel": float(delta_rel),
+        "alpha_smooth": float(alpha_smooth),
+        "smooth_matrix": onp.asarray(smooth_matrix, dtype=float) if smooth_matrix is not None else None,
+    }
 
-        # Optimization callback
-        def callback_log(xk, convergence=None):
-            # convergence arg is for differential_evolution, minimize passes only xk
-            val = f_m(xk)
-            if val < local_best["rms"]:
-                local_best["rms"] = val
-                local_best["k"] = onp.copy(xk)
-                log(f"Iter: f(x)={val:.6e} | x={[float(xi) for xi in xk]}")
-
-        run_failed = False
-        try:
-            opt_result_obj = None
-            if optimizer == "differential_evolution":
-                r_0 = differential_evolution(
-                    f_m,
-                    processed_bounds,
-                    x0=start_k,
-                    strategy='best1bin',
-                    maxiter=1000,
-                    popsize=15,
-                    tol=0.01,
-                    mutation=(0.5, 1),
-                    recombination=0.7,
-                    init='latinhypercube',
-                    callback=callback_log,
-                    seed=seed,
-                )
-                run_rms = f_m(r_0.x)
-                run_k = r_0.x
-                opt_result_obj = r_0
-            elif optimizer == "dual_annealing":
-                r_0 = dual_annealing(f_m, processed_bounds, seed=seed)
-                run_rms = f_m(r_0.x)
-                run_k = r_0.x
-                opt_result_obj = r_0
-            elif optimizer == "basinhopping":
-                minimizer_kwargs = {"method": "L-BFGS-B", "bounds": processed_bounds}
-                r_0 = basinhopping(
-                    f_m, start_k, niter=100, minimizer_kwargs=minimizer_kwargs, seed=seed
-                )
-                run_rms = f_m(r_0.x)
-                run_k = r_0.x
-                opt_result_obj = r_0
-            elif optimizer == "global_local":
-                global_res = differential_evolution(
-                    f_m, processed_bounds, x0=start_k, maxiter=200, popsize=10, tol=0.05, seed=seed
-                )
-                local_res = optimize.minimize(
-                    f_m, global_res.x, method="L-BFGS-B", bounds=processed_bounds, callback=callback_log
-                )
-                run_rms = f_m(local_res.x)
-                run_k = local_res.x
-                opt_result_obj = local_res
-            else:
-                r_0 = optimize.minimize(
-                    f_m, start_k, method=optimizer, bounds=processed_bounds, callback=callback_log
-                )
-                run_rms = f_m(r_0.x)
-                run_k = r_0.x
-                opt_result_obj = r_0
-            optimizer_result_obj = opt_result_obj
-            if onp.isfinite(local_best["rms"]) and local_best["rms"] < run_rms:
-                run_rms = local_best["rms"]
-                run_k = local_best["k"]
-            if run_rms < best_result["rms"]:
-                best_result["rms"] = run_rms
-                best_result["k"] = onp.copy(run_k)
-        except Exception as run_exc:
-            run_failed = True
-            log_progress(f"[DEBUG] optimization run {ms_iter+1}/{ms_runs} failed: {run_exc}")
-
+    def _consume_run(ms_idx, run_result):
+        nonlocal objective_eval_count
+        objective_eval_count += int(run_result.get("objective_evaluations", 0) or 0)
+        if not run_result.get("ok", False):
+            log_progress(f"[DEBUG] optimization run {ms_idx+1}/{ms_runs} failed: {run_result.get('error', '')}")
+        else:
+            for line in run_result.get("callback_logs", []):
+                log(line)
+            run_rms = float(run_result.get("run_rms", float("inf")))
+            run_k = onp.asarray(run_result.get("run_k", []), dtype=float).ravel()
+            if onp.isfinite(run_rms) and (run_k.size > 0):
+                if run_rms < best_result["rms"]:
+                    best_result["rms"] = run_rms
+                    best_result["k"] = run_k.copy()
+                    optimizer_summary["success"] = bool(run_result.get("success", True))
+                    optimizer_summary["message"] = str(run_result.get("message", ""))
+                    optimizer_summary["nfev"] = int(run_result.get("nfev", 0) or 0)
         if ms_runs > 1:
             best_msg = f"{best_result['rms']:.6e}" if onp.isfinite(best_result["rms"]) else "inf"
-            log_progress(f"[MS] run {ms_iter+1}/{ms_runs} best={best_msg}")
-        if run_failed:
-            continue
+            log_progress(f"[MS] run {ms_idx+1}/{ms_runs} best={best_msg}")
 
-    k = best_result["k"]
+    parallel_enabled = bool(multi_start_parallel and ms_runs > 1)
+    if parallel_enabled:
+        workers = _resolve_ms_workers(ms_runs, multi_start_max_workers)
+        log_progress(f"[MS] parallel enabled with {workers} workers ({ms_runs} runs).")
+        payloads = []
+        for start_k, seed in start_points:
+            payload = dict(common_payload)
+            payload["start_k"] = onp.asarray(start_k, dtype=float).ravel()
+            payload["seed"] = seed
+            payloads.append(payload)
+        try:
+            with ProcessPoolExecutor(max_workers=workers) as executor:
+                futures = {
+                    executor.submit(_run_spectro_single_start_worker, payload): idx
+                    for idx, payload in enumerate(payloads)
+                }
+                pending = set(futures.keys())
+                while pending:
+                    _raise_if_cancelled()
+                    done, pending = wait(pending, timeout=0.25, return_when=FIRST_COMPLETED)
+                    if not done:
+                        continue
+                    for fut in done:
+                        ms_idx = futures[fut]
+                        try:
+                            run_result = fut.result()
+                        except Exception as run_exc:
+                            run_result = {
+                                "ok": False,
+                                "error": str(run_exc),
+                                "objective_evaluations": 0,
+                            }
+                        _consume_run(ms_idx, run_result)
+        except Exception as parallel_exc:
+            if _is_fit_cancelled(parallel_exc):
+                raise
+            log_progress(f"[MS] parallel fallback to sequential: {parallel_exc}")
+            parallel_enabled = False
 
-    k = np.ravel(k)
-    
+    if not parallel_enabled:
+        for ms_idx, (start_k, seed) in enumerate(start_points):
+            payload = dict(common_payload)
+            payload["start_k"] = onp.asarray(start_k, dtype=float).ravel()
+            payload["seed"] = seed
+            run_result = _run_spectro_single_start(**payload)
+            _consume_run(ms_idx, run_result)
+
+    stage_times["optimization_s"] = time.perf_counter() - t_opt_start
+    k = np.ravel(best_result["k"])
+
     log("Optimización completada")
+    log_progress(f"Objective evaluations (f_m): {int(objective_eval_count)}")
+    t_post_start = time.perf_counter()
     
     # Compute errors
     k_names = [f"K{i+1}" for i in range(len(k))]
@@ -1336,53 +1653,156 @@ def process_spectroscopy_data(
         plot_mode = "spectra"
 
     # Generate concentration and spectra plots
-    if n_comp_plot == 1 and H is not None:
-        graphs['concentrations'] = generate_figure_base64(
-            H, C, ":o", "[Especies], M", "[H], M", "Perfil de concentraciones"
-        )
-        
-        A_plot = A_solver
-        y_cal = C @ A_plot
-        ssq, r0 = f_m2(k)
-        
-        eps_mark = "-" if k_used > 1 else "o-"
-        graphs['absorptivities'] = generate_figure_base64(
-            nm, A_plot.T, eps_mark, "Epsilon (u. a.)", "$\\lambda$ (nm)", "Absortividades molares"
-        )
-        if plot_mode == "isotherms":
-            idx = slice(0, min(k_used, 10))
-            graphs['fit'] = generate_figure2_base64(
-                x_titrant, Y.T[:, idx], y_cal[:, idx], "ko", ":", "Y observada (u. a.)", "[X], M", 1, "Ajuste"
+    t_graph_start = time.perf_counter()
+    if render_graphs:
+        if efa_enabled and eigenvalues is not None:
+            eig_idx = range(len(onp.asarray(eigenvalues)))
+            graphs["eigenvalues"] = generate_figure_base64(
+                eig_idx,
+                np.log10(onp.asarray(eigenvalues, dtype=float)),
+                "o",
+                "log(EV)",
+                "# de autovalores",
+                "Eigenvalues",
+                figsize=render_figsize,
+                dpi=render_dpi,
             )
-        else:
-            graphs['fit'] = generate_figure2_base64(
-                nm, Y, y_cal.T, "-k", "k:", "Y observada (u. a.)", "$\\lambda$ (nm)", 0.5, "Ajuste"
+            if G is not None and efa_forward is not None and efa_backward is not None:
+                graphs["efa"] = generate_figure2_base64(
+                    G,
+                    np.log10(onp.asarray(efa_forward, dtype=float)),
+                    np.log10(onp.asarray(efa_backward, dtype=float)),
+                    "k-o",
+                    "b:o",
+                    "log(EV)",
+                    "[G], M",
+                    1,
+                    "EFA",
+                    figsize=render_figsize,
+                    dpi=render_dpi,
+                )
+        if n_comp_plot == 1 and H is not None:
+            graphs["concentrations"] = generate_figure_base64(
+                H,
+                C,
+                ":o",
+                "[Especies], M",
+                "[H], M",
+                "Perfil de concentraciones",
+                figsize=render_figsize,
+                dpi=render_dpi,
             )
-    elif G is not None:
-        graphs['concentrations'] = generate_figure_base64(
-            G, C, ":o", "[Species], M", "[G], M", "Perfil de concentraciones"
-        )
-        
-        A_plot = A_solver
-        y_cal = C @ A_plot
-        ssq, r0 = f_m2(k)
 
-        if plot_mode == "isotherms":
+            A_plot = A_solver
+            y_cal = C @ A_plot
             eps_mark = "-" if k_used > 1 else "o-"
-            graphs['absorptivities'] = generate_figure_base64(
-                nm, A_plot.T, eps_mark, "Epsilon (u. a.)", "$\\lambda$ (nm)", "Absortividades molares"
+            graphs["absorptivities"] = generate_figure_base64(
+                nm,
+                A_plot.T,
+                eps_mark,
+                "Epsilon (u. a.)",
+                "$\\lambda$ (nm)",
+                "Absortividades molares",
+                figsize=render_figsize,
+                dpi=render_dpi,
             )
-            idx = slice(0, min(k_used, 10))
-            graphs['fit'] = generate_figure2_base64(
-                G, Y.T[:, idx], y_cal[:, idx], "ko", ":", "Y observada (u. a.)", "[X], M", 1, "Ajuste"
+            if plot_mode == "isotherms":
+                idx = slice(0, min(k_used, 10))
+                graphs["fit"] = generate_figure2_base64(
+                    x_titrant,
+                    Y.T[:, idx],
+                    y_cal[:, idx],
+                    "ko",
+                    ":",
+                    "Y observada (u. a.)",
+                    "[X], M",
+                    1,
+                    "Ajuste",
+                    figsize=render_figsize,
+                    dpi=render_dpi,
+                )
+            else:
+                graphs["fit"] = generate_figure2_base64(
+                    nm,
+                    Y,
+                    y_cal.T,
+                    "-k",
+                    "k:",
+                    "Y observada (u. a.)",
+                    "$\\lambda$ (nm)",
+                    0.5,
+                    "Ajuste",
+                    figsize=render_figsize,
+                    dpi=render_dpi,
+                )
+        elif G is not None:
+            graphs["concentrations"] = generate_figure_base64(
+                G,
+                C,
+                ":o",
+                "[Species], M",
+                "[G], M",
+                "Perfil de concentraciones",
+                figsize=render_figsize,
+                dpi=render_dpi,
             )
-        else:
-            graphs['absorptivities'] = generate_figure_base64(
-                nm, A_plot.T, "-", "Epsilon (u. a.)", "$\\lambda$ (nm)", "Absortividades molares"
-            )
-            graphs['fit'] = generate_figure2_base64(
-                nm, Y, y_cal.T, "-k", "k:", "Y observada (u. a.)", "$\\lambda$ (nm)", 0.5, "Ajuste"
-            )
+
+            A_plot = A_solver
+            y_cal = C @ A_plot
+
+            if plot_mode == "isotherms":
+                eps_mark = "-" if k_used > 1 else "o-"
+                graphs["absorptivities"] = generate_figure_base64(
+                    nm,
+                    A_plot.T,
+                    eps_mark,
+                    "Epsilon (u. a.)",
+                    "$\\lambda$ (nm)",
+                    "Absortividades molares",
+                    figsize=render_figsize,
+                    dpi=render_dpi,
+                )
+                idx = slice(0, min(k_used, 10))
+                graphs["fit"] = generate_figure2_base64(
+                    G,
+                    Y.T[:, idx],
+                    y_cal[:, idx],
+                    "ko",
+                    ":",
+                    "Y observada (u. a.)",
+                    "[X], M",
+                    1,
+                    "Ajuste",
+                    figsize=render_figsize,
+                    dpi=render_dpi,
+                )
+            else:
+                graphs["absorptivities"] = generate_figure_base64(
+                    nm,
+                    A_plot.T,
+                    "-",
+                    "Epsilon (u. a.)",
+                    "$\\lambda$ (nm)",
+                    "Absortividades molares",
+                    figsize=render_figsize,
+                    dpi=render_dpi,
+                )
+                graphs["fit"] = generate_figure2_base64(
+                    nm,
+                    Y,
+                    y_cal.T,
+                    "-k",
+                    "k:",
+                    "Y observada (u. a.)",
+                    "$\\lambda$ (nm)",
+                    0.5,
+                    "Ajuste",
+                    figsize=render_figsize,
+                    dpi=render_dpi,
+                )
+    else:
+        log_progress("Graph rendering skipped (render_graphs=False).")
+    stage_times["graphs_s"] = time.perf_counter() - t_graph_start
     
     ssq, r0 = f_m2(k)
     residuals_matrix = onp.asarray(r0).T if r0 is not None else []
@@ -1515,8 +1935,12 @@ def process_spectroscopy_data(
             ["Diferencia en C total (%)", float(dif_en_ct)],
             ["covfit", float(covfit)],
             ["optimizer", optimizer],
+            ["objective_evaluations", int(objective_eval_count)],
         ],
         "non_abs_species": non_abs_species,
+        "render_graphs": bool(render_graphs),
+        "render_quality": render_quality,
+        "objective_evaluations": int(objective_eval_count),
     }
     if derived_noncoop is not None:
         export_data["derived_noncoop"] = derived_noncoop
@@ -1610,6 +2034,10 @@ def process_spectroscopy_data(
         "spec_efa_eigenvalues": {"png_base64": graphs.get('eigenvalues', '')},
         "spec_efa_components": {"png_base64": graphs.get('efa', '')},
     }
+    post_elapsed = time.perf_counter() - t_post_start
+    stage_times["postprocess_s"] = max(0.0, post_elapsed - stage_times["graphs_s"])
+    stage_times["total_s"] = time.perf_counter() - t_total_start
+    export_data["timings"] = dict(stage_times)
 
     # Format results
     results = {
@@ -1643,10 +2071,14 @@ def process_spectroscopy_data(
         "results_text": results_text,
         "export_data": export_data,
         "optimizer_result": {
-            "success": bool(getattr(optimizer_result_obj, "success", onp.isfinite(best_result["rms"]))),
-            "message": str(getattr(optimizer_result_obj, "message", "")),
-            "nfev": int(getattr(optimizer_result_obj, "nfev", 0) or 0),
+            "success": bool(optimizer_summary.get("success", onp.isfinite(best_result["rms"]))),
+            "message": str(optimizer_summary.get("message", "")),
+            "nfev": int(optimizer_summary.get("nfev", 0) or 0),
+            "objective_evaluations": int(objective_eval_count),
         },
+        "timings": dict(stage_times),
+        "render_graphs": bool(render_graphs),
+        "render_quality": render_quality,
         "channels_total": int(channels_total),
         "channels_used": int(channels_used),
         "channels_mode": "custom"
@@ -1661,6 +2093,18 @@ def process_spectroscopy_data(
         "diagnostics_full": stability_diag.get("diag_full") if stability_diag else None,
     }
     
+    log_progress(
+        "Timing (s): parse={parse_s:.3f} solver={solver_s:.3f} opt={optimization_s:.3f} "
+        "post={postprocess_s:.3f} graphs={graphs_s:.3f} total={total_s:.3f}".format(**stage_times)
+    )
+    log_progress(
+        "Optimizer summary: nfev=%d objective_evals=%d best_rms=%.6e"
+        % (
+            int(optimizer_summary.get("nfev", 0) or 0),
+            int(objective_eval_count),
+            float(best_result["rms"]),
+        )
+    )
     log_progress("Procesamiento completado exitosamente")
     
     try:

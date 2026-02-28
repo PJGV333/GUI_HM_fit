@@ -782,6 +782,8 @@ class NMRTab(QWidget):
             "k_fixed": state.fixed_mask,
             "show_stability_diagnostics": self.chk_show_diag.isChecked(),
             "multi_start_runs": runs,
+            "multi_start_parallel": False,
+            "multi_start_max_workers": None,
         }
         config["equation_text"] = (
             self.equation_editor.get_text()
