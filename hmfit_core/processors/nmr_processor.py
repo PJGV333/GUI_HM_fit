@@ -65,6 +65,10 @@ def log_progress(message: str):
             _progress_callback(message)
 
 
+def _is_fit_cancelled(exc: BaseException) -> bool:
+    return exc.__class__.__name__ == "FitCancelled"
+
+
 def pinv_cs(A, rcond=1e-12):
     """Compute the Moore-Penrose pseudo-inverse of a matrix, handling complex numbers."""
     A = np.asarray(A)
@@ -378,6 +382,8 @@ def process_nmr_data(
                             f"{nas_idx} -> shape={stoich_mat.shape}"
                         )
             except Exception as e:
+                if _is_fit_cancelled(e):
+                    raise
                 log_progress(f"Warning: Error reading stoichiometry: {e}")
                 stoich_mat = None
         if stoich_mat is None:
@@ -387,6 +393,8 @@ def process_nmr_data(
             sig = [tuple(np.unique(stoich_mat[:, i]).tolist()) for i in range(min(stoich_mat.shape[1], 8))]
             log_progress(f"[DEBUG] stoich_mat unique values per signal (first 8 cols): {sig}")
     except Exception as e:
+        if _is_fit_cancelled(e):
+            raise
         return {"error": f"Error preparing data matrices: {str(e)}"}
     log_progress("Iniciando procesamiento NMR…")
     log_progress(f"Optimizer: {optimizer} | Algorithm: {algorithm}")
@@ -401,6 +409,8 @@ def process_nmr_data(
         else:
             return {"error": f"Unknown algorithm: {algorithm}"}
     except Exception as e:
+        if _is_fit_cancelled(e):
+            raise
         return {"error": f"Error initializing algorithm: {str(e)}"}
     # --- IRLS Loop Setup ---
     weights_per_signal = np.ones(dq.shape[1], dtype=float)
@@ -435,7 +445,9 @@ def process_nmr_data(
                 )
                 iter_state["best"] = min(best, weighted_rms)
             return weighted_rms
-        except Exception:
+        except Exception as exc:
+            if _is_fit_cancelled(exc):
+                raise
             return 1e9
     # 5. Optimization (IRLS)
     MAX_IRLS_CYCLES = 5
@@ -540,6 +552,8 @@ def process_nmr_data(
                             best_rms_val = fval
                             best_full_params = current_full
                     except Exception as run_exc:
+                        if _is_fit_cancelled(run_exc):
+                            raise
                         run_failed = True
                         log_progress(f"[DEBUG] optimization run {ms_iter+1}/{ms_runs} failed: {run_exc}")
                     if ms_runs > 1:
@@ -554,6 +568,8 @@ def process_nmr_data(
                     k_opt_full = pack(opt_res.x)
                 p0_full = k_opt_full
         except Exception as e:
+            if _is_fit_cancelled(e):
+                raise
             log_progress(f"Optimization cycle failed: {e}")
             param_opt_failed = True
             break
@@ -626,6 +642,8 @@ def process_nmr_data(
             rms = err_res["rms"]
             residuals_vec = err_res.get("residuals_vec", residuals_vec)
         except Exception as e:
+            if _is_fit_cancelled(e):
+                raise
             log_progress(f"Error calculando errores: {e}")
             import traceback
             logger.error(traceback.format_exc())
@@ -811,8 +829,9 @@ def process_nmr_data(
             "diagnostics_full": stability_diag.get("diag_full") if 'stability_diag' in locals() else None,
         })
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        if _is_fit_cancelled(e):
+            raise
+        logger.exception("Error calculating NMR results")
         return {"error": f"Error calculating results: {str(e)}"}
 
 def list_sheets_from_bytes(file_bytes: bytes) -> List[str]:
