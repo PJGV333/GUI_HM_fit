@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+from datetime import datetime
 import json
 from typing import Any, Sequence
 
@@ -22,6 +23,9 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSplitter,
+    QTableWidget,
+    QTableWidgetItem,
+    QHeaderView,
     QVBoxLayout,
     QWidget,
 )
@@ -30,9 +34,12 @@ from hmfit.kinetics.data.fit_dataset import KineticsFitDataset
 from hmfit.kinetics.fit.objective import GlobalKineticsObjective
 from hmfit.kinetics.fit.optimizer import fit_global
 from hmfit.kinetics.gui.import_wizard import ImportWizard
+from hmfit.kinetics.gui.reporting import (
+    build_gui_parameter_rows,
+    write_kinetics_results_xlsx,
+)
 from hmfit.kinetics.mechanism_editor.parser import MechanismParseError, parse_mechanism
 from hmfit.kinetics.model.kinetics_model import KineticsModel
-from hmfit_core.exports import write_results_xlsx
 from hmfit_gui_qt.plots.kinetics_registry import build_kinetics_registry
 from hmfit_gui_qt.plots.kinetics_sources import build_kinetics_plot_sources
 from hmfit_gui_qt.plots.plot_controller import PlotController
@@ -58,6 +65,8 @@ class KineticsTab(QWidget):
         self._param_defaults: KineticsParamState | None = None
         self._is_running = False
         self._in_metadata_update = False
+        self._auto_parameter_errors = True
+        self._error_condition_threshold = 1.0e12
 
         self._build_ui()
         self._plot_controller = PlotController(
@@ -81,6 +90,7 @@ class KineticsTab(QWidget):
         )
         self._wire_plot_controls()
         self._reset_plot_state()
+        self._clear_fit_summary()
         self.log.append_text("Listo. Carga datasets para comenzar.")
         self._set_running(False)
 
@@ -176,6 +186,32 @@ class KineticsTab(QWidget):
         diag_layout.setContentsMargins(0, 0, 0, 0)
         diag_layout.addWidget(QLabel("Diagnostics / Log", diag_panel))
 
+        summary_group = QGroupBox("Fit Summary", diag_panel)
+        summary_layout = QVBoxLayout(summary_group)
+        summary_layout.setContentsMargins(6, 6, 6, 6)
+        self.lbl_fit_metrics = QLabel("RMS: -   SSQ: -   nfev: -   stability: -   cond: -", summary_group)
+        self.lbl_fit_metrics.setStyleSheet("font-weight: 600;")
+        summary_layout.addWidget(self.lbl_fit_metrics)
+        self.table_fit_summary = QTableWidget(summary_group)
+        self.table_fit_summary.setColumnCount(6)
+        self.table_fit_summary.setHorizontalHeaderLabels(
+            ["Parameter", "Estimate", "SE", "%err", "CI 2.5", "CI 97.5"]
+        )
+        self.table_fit_summary.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table_fit_summary.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.table_fit_summary.setAlternatingRowColors(True)
+        self.table_fit_summary.verticalHeader().setVisible(False)
+        header = self.table_fit_summary.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        for col in range(1, self.table_fit_summary.columnCount()):
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
+        self.table_fit_summary.setStyleSheet(
+            "QTableWidget { background: #11141d; color: #e8ecf1; border: 1px solid #303648; } "
+            "QHeaderView::section { background: #1f2433; color: #e8ecf1; }"
+        )
+        summary_layout.addWidget(self.table_fit_summary, 1)
+        diag_layout.addWidget(summary_group, 1)
+
         log_controls = QHBoxLayout()
         self.chk_autoscroll = QCheckBox("Autoscroll", diag_panel)
         self.chk_autoscroll.setChecked(True)
@@ -244,6 +280,48 @@ class KineticsTab(QWidget):
     def _navigate_plot(self, delta: int) -> None:
         if self._plot_controller is not None:
             self._plot_controller.navigate(delta)
+
+    def _format_summary_number(self, value: Any) -> str:
+        try:
+            v = float(value)
+        except Exception:
+            return "-"
+        if not np.isfinite(v):
+            return "NaN"
+        return f"{v:.6g}"
+
+    def _clear_fit_summary(self) -> None:
+        self.lbl_fit_metrics.setText("RMS: -   SSQ: -   nfev: -   stability: -   cond: -")
+        self.table_fit_summary.setRowCount(0)
+
+    def _set_fit_summary(self, result: dict[str, Any]) -> None:
+        stats = result.get("statistics") or {}
+        diagnostics = result.get("diagnostics") or {}
+        stability = result.get("stability_indicator") or {}
+
+        metrics_text = (
+            f"RMS: {self._format_summary_number(stats.get('RMS'))}   "
+            f"SSQ: {self._format_summary_number(result.get('ssq'))}   "
+            f"nfev: {self._format_summary_number(result.get('nfev'))}   "
+            f"stability: {stability.get('label', diagnostics.get('stability_status', '-'))}   "
+            f"cond: {self._format_summary_number(result.get('condition_number'))}"
+        )
+        self.lbl_fit_metrics.setText(metrics_text)
+
+        rows = build_gui_parameter_rows(result)
+        self.table_fit_summary.setRowCount(len(rows))
+        columns = ["Parameter", "Estimate", "SE", "%err", "CI 2.5", "CI 97.5"]
+        for i, row in enumerate(rows):
+            for j, col in enumerate(columns):
+                if j == 0:
+                    text = str(row.get(col, ""))
+                    align = int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                else:
+                    text = self._format_summary_number(row.get(col))
+                    align = int(Qt.AlignmentFlag.AlignCenter)
+                item = QTableWidgetItem(text)
+                item.setTextAlignment(align)
+                self.table_fit_summary.setItem(i, j, item)
 
     # ---- Dataset management ----
     def _on_import(self) -> None:
@@ -419,7 +497,7 @@ class KineticsTab(QWidget):
         if self._model is None:
             raise ValueError("Validate a mechanism first.")
 
-        params0, bounds, param_names, log_params = self._read_params_from_table()
+        params0, bounds, param_names, log_params, fixed_mask = self._read_params_from_table()
         method = self.model_opt_plots.combo_algorithm.currentText().strip().lower()
         backend = self.model_opt_plots.combo_backend.currentText().strip().lower()
         nnls = self.model_opt_plots.chk_nnls.isChecked()
@@ -435,18 +513,21 @@ class KineticsTab(QWidget):
             "bounds": bounds,
             "param_names": param_names,
             "log_params": list(log_params),
+            "fixed_mask": list(fixed_mask),
             "method": method,
             "backend": backend,
             "nnls": nnls,
             "multi_start_runs": runs,
             "multi_start_seeds": seeds,
             "show_stability_diagnostics": self.chk_show_diag.isChecked(),
+            "auto_parameter_errors": bool(self._auto_parameter_errors),
+            "error_condition_threshold": float(self._error_condition_threshold),
         }
         return config
 
     def _read_params_from_table(
         self,
-    ) -> tuple[np.ndarray, tuple[np.ndarray, np.ndarray], list[str], set[str]]:
+    ) -> tuple[np.ndarray, tuple[np.ndarray, np.ndarray], list[str], set[str], list[bool]]:
         state = self.model_opt_plots.get_params_state()
         param_names = list(state.param_names)
         if not param_names:
@@ -456,6 +537,7 @@ class KineticsTab(QWidget):
         lower = []
         upper = []
         log_params: set[str] = set()
+        fixed_flags: list[bool] = []
         for name, value, bounds, fixed, log_flag in zip(
             state.param_names,
             state.values,
@@ -489,10 +571,11 @@ class KineticsTab(QWidget):
             values.append(opt_value)
             lower.append(opt_min)
             upper.append(opt_max)
+            fixed_flags.append(bool(fixed))
 
         params0 = np.array(values, dtype=float)
         bounds = (np.array(lower, dtype=float), np.array(upper, dtype=float))
-        return params0, bounds, param_names, log_params
+        return params0, bounds, param_names, log_params, fixed_flags
 
     def _on_cancel_clicked(self) -> None:
         if self._worker is None:
@@ -509,6 +592,7 @@ class KineticsTab(QWidget):
             return
         self._last_result = result
         self.model_opt_plots.btn_save.setEnabled(bool(result.get("success", True)))
+        self._set_fit_summary(result)
 
         fit_results = result.get("fit_results") or []
         datasets = result.get("datasets") or []
@@ -557,6 +641,9 @@ class KineticsTab(QWidget):
         results_text = result.get("results_text") or ""
         if results_text:
             self.log.append_text("\n" + str(results_text).rstrip() + "\n")
+        diagnostics = result.get("diagnostics") or {}
+        for warning in diagnostics.get("warnings") or []:
+            self.log.append_text(f"WARNING: {warning}")
 
         stats = result.get("statistics") or {}
         rms = stats.get("RMS")
@@ -573,6 +660,7 @@ class KineticsTab(QWidget):
 
     @Slot(str)
     def _on_fit_error(self, message: str) -> None:
+        self._clear_fit_summary()
         self.log.append_text(f"ERROR: {message}")
         QMessageBox.critical(self, "Fit error", str(message))
 
@@ -651,6 +739,8 @@ class KineticsTab(QWidget):
             "y0": self.model_opt_plots.get_y0_values(),
             "fixed_conc": self.model_opt_plots.get_fixed_conc_values(),
             "show_stability_diagnostics": self.chk_show_diag.isChecked(),
+            "auto_parameter_errors": bool(self._auto_parameter_errors),
+            "error_condition_threshold": float(self._error_condition_threshold),
         }
         return config
 
@@ -731,6 +821,13 @@ class KineticsTab(QWidget):
         self.model_opt_plots.chk_nnls.setChecked(bool(config.get("nnls", False)))
         if "show_stability_diagnostics" in config:
             self.chk_show_diag.setChecked(bool(config.get("show_stability_diagnostics")))
+        if "auto_parameter_errors" in config:
+            self._auto_parameter_errors = bool(config.get("auto_parameter_errors"))
+        if "error_condition_threshold" in config:
+            try:
+                self._error_condition_threshold = float(config.get("error_condition_threshold"))
+            except Exception:
+                self._error_condition_threshold = 1.0e12
 
         runs = config.get("multi_start_runs")
         seeds = config.get("multi_start_seeds")
@@ -749,6 +846,7 @@ class KineticsTab(QWidget):
         for dataset in self._datasets:
             self._clear_fit_results(dataset)
         self._last_result = None
+        self._clear_fit_summary()
         self._reset_plot_state()
         self.canvas_main.clear()
         self.lbl_stability_light.setText("Stability: -")
@@ -766,19 +864,11 @@ class KineticsTab(QWidget):
         )
         if not path:
             return
-        constants = []
-        params = self._last_result.get("params") or {}
-        for name, value in params.items():
-            constants.append({"Parameter": name, "Value": value})
-        stats = self._last_result.get("statistics") or {}
-        results_text = self._last_result.get("results_text") or ""
         try:
-            write_results_xlsx(
+            write_kinetics_results_xlsx(
                 path,
-                constants=constants,
-                statistics=stats,
-                results_text=results_text,
-                export_data={},
+                result=self._last_result,
+                config=self._last_config,
             )
             self.log.append_text(f"Results saved to {path}")
         except Exception as exc:
@@ -982,6 +1072,103 @@ def _randomize_params(
     return x
 
 
+def _build_parameter_error_summary(
+    *,
+    params: dict[str, float],
+    param_names: Sequence[str],
+    covariance: Any,
+    condition_number: float | None,
+    log_params: set[str],
+    fixed_mask: Sequence[bool] | None,
+    condition_threshold: float = 1.0e12,
+) -> tuple[dict[str, Any], list[str]]:
+    names = list(param_names)
+    n_params = len(names)
+    estimate = np.asarray([float(params.get(name, np.nan)) for name in names], dtype=float)
+    se = np.full(n_params, np.nan, dtype=float)
+    perc_err = np.full(n_params, np.nan, dtype=float)
+    ci_low = np.full(n_params, np.nan, dtype=float)
+    ci_high = np.full(n_params, np.nan, dtype=float)
+    fixed = [
+        bool(fixed_mask[idx]) if fixed_mask is not None and idx < len(fixed_mask) else False
+        for idx in range(n_params)
+    ]
+    scale = ["log10" if name in log_params else "linear" for name in names]
+
+    warnings: list[str] = []
+    cov = None
+    if covariance is None:
+        warnings.append("Parameter error analysis unavailable: covariance matrix is missing.")
+    else:
+        try:
+            cov_candidate = np.asarray(covariance, dtype=float)
+            if cov_candidate.shape != (n_params, n_params):
+                warnings.append(
+                    "Parameter error analysis unavailable: covariance shape mismatch."
+                )
+            else:
+                cov = cov_candidate
+        except Exception:
+            warnings.append("Parameter error analysis unavailable: covariance is invalid.")
+
+    cond_value: float | None = None
+    if condition_number is not None:
+        try:
+            cond_value = float(condition_number)
+        except Exception:
+            cond_value = None
+    unreliable = False
+    if cond_value is None or not np.isfinite(cond_value):
+        unreliable = True
+        warnings.append(
+            "Parameter errors set to NaN due to singular/invalid conditioning."
+        )
+    elif cond_value > float(condition_threshold):
+        unreliable = True
+        warnings.append(
+            "Parameter errors set to NaN due to ill-conditioned system "
+            f"(cond={cond_value:.2e}, threshold={float(condition_threshold):.2e})."
+        )
+
+    if cov is not None and not unreliable:
+        diag = np.diag(cov)
+        valid = np.isfinite(diag) & (diag >= 0.0)
+        if not np.all(valid):
+            warnings.append(
+                "Some parameter variances are invalid; affected uncertainties were exported as NaN."
+            )
+        se[valid] = np.sqrt(diag[valid])
+        perc_err = np.divide(
+            100.0 * se,
+            np.abs(estimate),
+            out=np.full(n_params, np.nan, dtype=float),
+            where=np.abs(estimate) > 0.0,
+        )
+        ci_low = estimate - (1.96 * se)
+        ci_high = estimate + (1.96 * se)
+
+    for idx, is_fixed in enumerate(fixed):
+        if is_fixed:
+            se[idx] = 0.0
+            perc_err[idx] = 0.0
+            ci_low[idx] = estimate[idx]
+            ci_high[idx] = estimate[idx]
+
+    unique_warnings = list(dict.fromkeys(str(msg) for msg in warnings if str(msg).strip()))
+    summary = {
+        "parameter": names,
+        "estimate": estimate.tolist(),
+        "se": se.tolist(),
+        "perc_err": perc_err.tolist(),
+        "ci_low": ci_low.tolist(),
+        "ci_high": ci_high.tolist(),
+        "fixed": fixed,
+        "scale": scale,
+        "ci_level": 0.95,
+    }
+    return summary, unique_warnings
+
+
 def _run_kinetics_fit(
     config: dict[str, Any],
     *,
@@ -997,10 +1184,13 @@ def _run_kinetics_fit(
     bounds = config["bounds"]
     param_names = list(config["param_names"] or [])
     log_params = set(config.get("log_params") or [])
+    fixed_mask = list(config.get("fixed_mask") or [])
     method = str(config.get("method") or "least_squares")
     backend = str(config.get("backend") or "scipy")
     nnls = bool(config.get("nnls", False))
     show_stability_diagnostics = bool(config.get("show_stability_diagnostics", False))
+    auto_parameter_errors = bool(config.get("auto_parameter_errors", True))
+    condition_threshold = float(config.get("error_condition_threshold", 1.0e12))
     runs = int(config.get("multi_start_runs") or 1)
     seeds = config.get("multi_start_seeds")
     seeds_list = list(seeds) if isinstance(seeds, (list, tuple)) else None
@@ -1157,6 +1347,8 @@ def _run_kinetics_fit(
     best_payload = None
     best_ssq = np.inf
     total_runs = max(1, runs)
+    nfev_total = 0
+    njev_total = 0
     run_seeds: list[int | None] = []
     if seeds_list:
         run_seeds = list(seeds_list)
@@ -1172,6 +1364,14 @@ def _run_kinetics_fit(
         if progress_cb is not None:
             progress_cb(f"Run {run_idx + 1}/{total_runs}...")
         payload = _run_once(x0)
+        try:
+            nfev_total += int(payload.get("nfev") or 0)
+        except Exception:
+            pass
+        try:
+            njev_total += int(payload.get("njev") or 0)
+        except Exception:
+            pass
         if payload["ssq"] < best_ssq:
             best_ssq = payload["ssq"]
             best_payload = payload
@@ -1229,6 +1429,62 @@ def _run_kinetics_fit(
     if rms_val is not None:
         stats["RMS"] = rms_val
 
+    if auto_parameter_errors:
+        parameter_errors, parameter_error_warnings = _build_parameter_error_summary(
+            params=params,
+            param_names=param_names,
+            covariance=best_payload.get("covariance"),
+            condition_number=best_payload.get("condition_number"),
+            log_params=log_params,
+            fixed_mask=fixed_mask,
+            condition_threshold=condition_threshold,
+        )
+    else:
+        parameter_errors, parameter_error_warnings = _build_parameter_error_summary(
+            params=params,
+            param_names=param_names,
+            covariance=None,
+            condition_number=None,
+            log_params=log_params,
+            fixed_mask=fixed_mask,
+            condition_threshold=condition_threshold,
+        )
+        parameter_error_warnings = [
+            "Parameter error analysis disabled by config (auto_parameter_errors=False)."
+        ]
+
+    diagnostics_warnings = list(parameter_error_warnings)
+    if stability_diag:
+        status = str(stability_diag.get("status") or "")
+        summary = str(stability_diag.get("diag_summary") or "").strip()
+        if status in {"warn", "critical"} and summary:
+            diagnostics_warnings.append(summary)
+    diagnostics_warnings = list(
+        dict.fromkeys(msg for msg in diagnostics_warnings if str(msg).strip())
+    )
+
+    diagnostics = {
+        "warnings": diagnostics_warnings,
+        "stability_status": stability_diag.get("status") if stability_diag else None,
+        "diag_summary": stability_diag.get("diag_summary") if stability_diag else None,
+        "diag_full": stability_diag.get("diag_full") if stability_diag else None,
+        "condition_number": best_payload.get("condition_number"),
+        "method_requested": method,
+        "method_used": ls_method,
+        "backend": backend,
+        "nnls": nnls,
+        "weighted_fit": any(
+            isinstance(dataset, KineticsFitDataset)
+            and (dataset.weights is not None or dataset.sigma is not None)
+            for dataset in datasets
+        ),
+    }
+    raw_result = best_payload.get("raw_result")
+    if raw_result is not None:
+        diagnostics["optimizer_success"] = bool(getattr(raw_result, "success", True))
+        diagnostics["optimizer_status"] = getattr(raw_result, "status", None)
+        diagnostics["optimizer_message"] = str(getattr(raw_result, "message", "") or "")
+
     results_lines = [
         "Fit complete.",
         f"SSQ: {best_payload['ssq']:.6g}",
@@ -1254,6 +1510,11 @@ def _run_kinetics_fit(
             if full:
                 results_lines.append("")
                 results_lines.append(full)
+    if diagnostics_warnings:
+        results_lines.append("")
+        results_lines.append("Diagnostics warnings:")
+        for warning in diagnostics_warnings:
+            results_lines.append(f"- {warning}")
 
     def refit_fn(data_star, theta0, max_iter=30, tol=1e-8):
         data_list = data_star if isinstance(data_star, (list, tuple)) else [data_star]
@@ -1327,19 +1588,31 @@ def _run_kinetics_fit(
 
     return {
         "success": True,
+        "completed_at": datetime.now().isoformat(timespec="seconds"),
         "availablePlots": [
             {"id": "kinetics_concentrations", "title": "C(t)"},
             {"id": "kinetics_d_fit", "title": "D vs D_hat"},
             {"id": "kinetics_residuals", "title": "Residuals"},
             {"id": "kinetics_a_profiles", "title": "A profiles"},
         ],
+        "model": model,
         "params": params,
         "ssq": best_payload["ssq"],
+        "cost": float(best_payload["ssq"]) / 2.0,
         "nfev": best_payload["nfev"],
         "njev": best_payload["njev"],
+        "nfev_total": nfev_total,
+        "njev_total": njev_total,
+        "multi_start_runs": total_runs,
+        "multi_start_seeds": run_seeds,
+        "optimizer_method": ls_method,
+        "optimizer_requested": method,
+        "optimizer_backend": backend,
         "param_names": param_names,
         "log_params": list(log_params),
         "dynamic_species": list(model.dynamic_species),
+        "errors": best_payload.get("errors"),
+        "parameter_errors": parameter_errors,
         "jac": jac_arr,
         "residuals": residuals,
         "covariance": best_payload.get("covariance"),
@@ -1349,6 +1622,7 @@ def _run_kinetics_fit(
         "fit_results": fit_results,
         "datasets": datasets,
         "stability_indicator": stability_indicator,
+        "diagnostics": diagnostics,
         "statistics": stats,
         "results_text": "\n".join(results_lines),
         "refit_fn": refit_fn,

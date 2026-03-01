@@ -37,7 +37,9 @@ class MplCanvas(FigureCanvasQTAgg):
         self.ax.axis("off")
         if title:
             self.ax.set_title(str(title))
-        self.figure.tight_layout()
+            self.figure.subplots_adjust(left=0.02, right=0.98, bottom=0.02, top=0.92)
+        else:
+            self.figure.subplots_adjust(left=0.02, right=0.98, bottom=0.02, top=0.98)
         self.draw_idle()
 
     def show_message(self, message: str) -> None:

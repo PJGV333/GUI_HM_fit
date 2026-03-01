@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from typing import Any, Callable
+import warnings
+
+import numpy as np
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFileDialog, QListWidgetItem, QMessageBox
@@ -17,6 +20,8 @@ from hmfit_gui_qt.plots.plot_registry import (
 
 
 class PlotController:
+    _HOVER_LEGEND_THRESHOLD = 12
+
     def __init__(
         self,
         *,
@@ -46,6 +51,10 @@ class PlotController:
         self._default_title = str(default_title or "")
         self._is_running = is_running
         self._plot_state = PlotState()
+        self._layout_fallback_count = 0
+        self._hover_cid: int | None = None
+        self._hover_annotation = None
+        self._hover_targets: list[tuple[Any, str]] = []
 
     def wire_controls(self) -> None:
         self._model_opt_plots.combo_preset.currentIndexChanged.connect(self._on_plot_preset_changed)
@@ -61,12 +70,14 @@ class PlotController:
         self._model_opt_plots.btn_export_csv.setToolTip("")
 
     def reset(self) -> None:
+        self._disable_hover_labels()
         self._plot_state = PlotState()
         self._refresh_preset_combo()
         self.update_plot_nav()
         self._sync_plot_controls_for_active_plot()
 
     def build_from_result(self, result: dict[str, Any]) -> None:
+        self._disable_hover_labels()
         self._plot_state = PlotState()
         available = result.get("availablePlots") or []
         if isinstance(available, list) and available:
@@ -115,6 +126,7 @@ class PlotController:
     def render_current_plot(self) -> None:
         plot = self._active_plot()
         if not plot:
+            self._disable_hover_labels()
             self._canvas.clear()
             self.update_plot_nav()
             self._sync_plot_controls_for_active_plot()
@@ -145,9 +157,11 @@ class PlotController:
                 self._draw_plot(build)
         elif data.get("png_base64"):
             self._canvas.show_image_base64(str(data.get("png_base64")), title=plot.title)
+            self._disable_hover_labels()
             if plot.id in self._plot_state.last_builds:
                 del self._plot_state.last_builds[plot.id]
         else:
+            self._disable_hover_labels()
             self._canvas.show_message("No data for this plot")
             if plot.id in self._plot_state.last_builds:
                 del self._plot_state.last_builds[plot.id]
@@ -245,29 +259,212 @@ class PlotController:
         ax = self._canvas.ax
         ax.clear()
         if not build.series:
+            self._disable_hover_labels()
             self._canvas.show_message("No data for this plot")
             return
 
+        drawn_series: list[tuple[Any, str]] = []
         for series in build.series:
             label = series.label if series.show_legend else f"_{series.label}"
             mode = series.mode
             style = dict(series.style or {})
             if mode == "markers":
-                ax.plot(series.x, series.y, linestyle="None", marker="o", label=label, **style)
+                line = ax.plot(series.x, series.y, linestyle="None", marker="o", label=label, **style)[0]
             elif mode == "lines+markers":
                 style.setdefault("marker", "o")
-                ax.plot(series.x, series.y, label=label, **style)
+                line = ax.plot(series.x, series.y, label=label, **style)[0]
             else:
-                ax.plot(series.x, series.y, label=label, **style)
+                line = ax.plot(series.x, series.y, label=label, **style)[0]
+            if series.show_legend:
+                drawn_series.append((line, str(series.label)))
 
         ax.set_title(build.title)
         ax.set_xlabel(build.x_label)
         ax.set_ylabel(build.y_label)
         ax.grid(True, alpha=0.3)
-        if any(s.show_legend for s in build.series):
-            ax.legend(loc="upper right")
-        self._canvas.figure.tight_layout()
+        legend_external = False
+        use_hover_labels = len(drawn_series) >= self._HOVER_LEGEND_THRESHOLD
+        if drawn_series:
+            if use_hover_labels:
+                self._enable_hover_labels(ax, drawn_series)
+                ax.text(
+                    0.01,
+                    0.99,
+                    "Hover markers to identify series",
+                    transform=ax.transAxes,
+                    ha="left",
+                    va="top",
+                    fontsize=8,
+                    color="#6b7280",
+                )
+            else:
+                self._disable_hover_labels()
+                legend_external = self._apply_legend_layout(ax, build)
+        else:
+            self._disable_hover_labels()
+        self._apply_axis_label_layout(ax)
+        self._apply_figure_layout(external_legend=legend_external)
         self._canvas.draw_idle()
+
+    def _apply_legend_layout(self, ax, build: PlotBuildResult) -> bool:
+        n_legend = sum(1 for s in build.series if s.show_legend)
+        if n_legend <= 0:
+            return False
+        if n_legend > 8:
+            ncol = min(4, max(2, int(np.ceil(n_legend / 6.0))))
+            ax.legend(
+                loc="upper center",
+                bbox_to_anchor=(0.5, -0.18),
+                ncol=ncol,
+                fontsize=8,
+                frameon=False,
+            )
+            return True
+        ax.legend(loc="best", fontsize=9)
+        return False
+
+    def _apply_axis_label_layout(self, ax) -> None:
+        x_labels = [str(lbl.get_text() or "").strip() for lbl in ax.get_xticklabels()]
+        non_empty_x = [txt for txt in x_labels if txt]
+        dense_x = len(non_empty_x) >= 8 or any(len(txt) > 10 for txt in non_empty_x)
+        if dense_x:
+            for lbl in ax.get_xticklabels():
+                lbl.set_rotation(30)
+                lbl.set_horizontalalignment("right")
+            ax.tick_params(axis="x", labelsize=9)
+
+        y_labels = [str(lbl.get_text() or "").strip() for lbl in ax.get_yticklabels()]
+        non_empty_y = [txt for txt in y_labels if txt]
+        dense_y = len(non_empty_y) >= 10 or any(len(txt) > 10 for txt in non_empty_y)
+        if dense_y:
+            ax.tick_params(axis="y", labelsize=9)
+
+        ax.margins(x=0.02, y=0.05)
+
+    def _apply_figure_layout(self, *, external_legend: bool) -> None:
+        fig = self._canvas.figure
+        tight_layout_failed = False
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always", category=UserWarning)
+            try:
+                fig.tight_layout(pad=1.2)
+            except Exception:
+                tight_layout_failed = True
+            else:
+                for warning in caught:
+                    message = str(warning.message or "")
+                    if "Tight layout not applied" in message:
+                        tight_layout_failed = True
+                        break
+
+        if not tight_layout_failed:
+            return
+
+        # Fallback when decorations overflow the available canvas area.
+        bottom = 0.24 if external_legend else 0.16
+        fig.subplots_adjust(left=0.12, right=0.98, top=0.92, bottom=bottom)
+        if self._layout_fallback_count < 3:
+            self._layout_fallback_count += 1
+            self._log.append_text(
+                "Plot layout fallback applied (labels/legend were too dense for tight layout)."
+            )
+
+    def _enable_hover_labels(self, ax, targets: list[tuple[Any, str]]) -> None:
+        self._disable_hover_labels()
+        self._hover_targets = list(targets)
+        for artist, _label in self._hover_targets:
+            try:
+                artist.set_pickradius(6)
+            except Exception:
+                pass
+
+        self._hover_annotation = ax.annotate(
+            "",
+            xy=(0, 0),
+            xytext=(8, 8),
+            textcoords="offset points",
+            bbox={"boxstyle": "round,pad=0.25", "fc": "#111827", "ec": "#374151", "alpha": 0.95},
+            color="#f9fafb",
+            fontsize=8,
+        )
+        self._hover_annotation.set_visible(False)
+        self._hover_cid = self._canvas.mpl_connect("motion_notify_event", self._on_hover_motion)
+
+    def _disable_hover_labels(self) -> None:
+        if self._hover_cid is not None:
+            try:
+                self._canvas.mpl_disconnect(self._hover_cid)
+            except Exception:
+                pass
+            self._hover_cid = None
+        self._hover_targets = []
+        if self._hover_annotation is not None:
+            try:
+                self._hover_annotation.remove()
+            except Exception:
+                pass
+            self._hover_annotation = None
+
+    def _on_hover_motion(self, event) -> None:
+        annotation = self._hover_annotation
+        if annotation is None:
+            return
+        ax = self._canvas.ax
+        needs_redraw = False
+        if event.inaxes != ax:
+            if annotation.get_visible():
+                annotation.set_visible(False)
+                needs_redraw = True
+            if needs_redraw:
+                self._canvas.draw_idle()
+            return
+
+        hit_found = False
+        for artist, label in self._hover_targets:
+            contains, info = artist.contains(event)
+            if not contains:
+                continue
+            idx = None
+            if isinstance(info, dict):
+                indices = info.get("ind")
+                if isinstance(indices, (list, tuple, np.ndarray)) and len(indices) > 0:
+                    try:
+                        idx = int(indices[0])
+                    except Exception:
+                        idx = None
+            x_val = event.xdata
+            y_val = event.ydata
+            if idx is not None:
+                try:
+                    x_data = np.asarray(artist.get_xdata(), dtype=float)
+                    y_data = np.asarray(artist.get_ydata(), dtype=float)
+                    if 0 <= idx < x_data.size and idx < y_data.size:
+                        x_val = float(x_data[idx])
+                        y_val = float(y_data[idx])
+                except Exception:
+                    pass
+            if x_val is None or y_val is None:
+                continue
+            prev_xy = tuple(annotation.xy)
+            next_xy = (x_val, y_val)
+            next_text = str(label)
+            if prev_xy != next_xy:
+                annotation.xy = next_xy
+                needs_redraw = True
+            if annotation.get_text() != next_text:
+                annotation.set_text(next_text)
+                needs_redraw = True
+            if not annotation.get_visible():
+                annotation.set_visible(True)
+                needs_redraw = True
+            hit_found = True
+            break
+
+        if not hit_found and annotation.get_visible():
+            annotation.set_visible(False)
+            needs_redraw = True
+        if needs_redraw:
+            self._canvas.draw_idle()
 
     def _get_series_selection_key(self, descriptor: PlotDescriptor) -> str:
         return descriptor.series_selection_key or "dist_y_selected"
