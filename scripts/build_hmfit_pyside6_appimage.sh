@@ -242,14 +242,25 @@ mkdir -p "$APPDIR/usr/bin" \
   "$APPDIR/usr/share/icons/hicolor/scalable/apps"
 
 cp -f "$BIN" "$APPDIR/usr/bin/hmfit_pyside6"
-ln -sf usr/bin/hmfit_pyside6 "$APPDIR/AppRun"
+
+APPIMAGE_TEMPLATE_DIR="$WORK_DIR/packaging/linux/appimage"
+if [[ -f "$APPIMAGE_TEMPLATE_DIR/AppRun" ]]; then
+  cp -f "$APPIMAGE_TEMPLATE_DIR/AppRun" "$APPDIR/AppRun"
+  chmod +x "$APPDIR/AppRun"
+else
+  ln -sf usr/bin/hmfit_pyside6 "$APPDIR/AppRun"
+fi
 
 if [[ -f "$WORK_DIR/hmfit.svg" ]]; then
   cp -f "$WORK_DIR/hmfit.svg" "$APPDIR/usr/share/icons/hicolor/scalable/apps/hmfit.svg"
   cp -f "$WORK_DIR/hmfit.svg" "$APPDIR/hmfit.svg"
 fi
 
-cat > "$APPDIR/usr/share/applications/hmfit_pyside6.desktop" <<'EOF'
+DESKTOP_FILE="$APPDIR/usr/share/applications/hmfit_pyside6.desktop"
+if [[ -f "$APPIMAGE_TEMPLATE_DIR/hmfit.desktop" ]]; then
+  cp -f "$APPIMAGE_TEMPLATE_DIR/hmfit.desktop" "$DESKTOP_FILE"
+else
+cat > "$DESKTOP_FILE" <<'EOF'
 [Desktop Entry]
 Type=Application
 Name=HM Fit (PySide6)
@@ -258,8 +269,9 @@ Icon=hmfit
 Categories=Science;Education;
 Terminal=false
 EOF
+fi
 
-cp -f "$APPDIR/usr/share/applications/hmfit_pyside6.desktop" "$APPDIR/hmfit_pyside6.desktop"
+cp -f "$DESKTOP_FILE" "$APPDIR/hmfit_pyside6.desktop"
 
 APPIMAGETOOL=""
 if [[ -n "$APPIMAGETOOL_PATH" ]]; then

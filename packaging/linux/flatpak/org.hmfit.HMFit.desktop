@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=HM Fit
+Comment=Host-Guest model fitting software
+Exec=hmfit-pyside6-launch
+Icon=org.hmfit.HMFit
+Terminal=false
+Categories=Science;Education;
+StartupNotify=true

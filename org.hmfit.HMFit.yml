@@ -1,0 +1,32 @@
+app-id: org.hmfit.HMFit
+runtime: org.kde.Platform
+runtime-version: "6.7"
+sdk: org.kde.Sdk
+command: hmfit-pyside6-launch
+
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --share=network
+  - --filesystem=home
+  - --talk-name=org.freedesktop.FileManager1
+  - --env=MPLBACKEND=QtAgg
+
+modules:
+  - name: hmfit
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app --no-cache-dir -r requirements_qt.txt
+      - install -Dm755 packaging/linux/flatpak/hmfit-pyside6-launch /app/bin/hmfit-pyside6-launch
+      - install -Dm644 packaging/linux/flatpak/org.hmfit.HMFit.desktop /app/share/applications/org.hmfit.HMFit.desktop
+      - install -Dm644 hmfit.svg /app/share/icons/hicolor/scalable/apps/org.hmfit.HMFit.svg
+      - mkdir -p /app/share/hmfit
+      - cp -a hmfit /app/share/hmfit/
+      - cp -a hmfit_core /app/share/hmfit/
+      - cp -a hmfit_gui_qt /app/share/hmfit/
+      - install -Dm644 hmfit_pyside6_entry.py /app/share/hmfit/hmfit_pyside6_entry.py
+    sources:
+      - type: dir
+        path: .

@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+
+export MPLBACKEND="${MPLBACKEND:-QtAgg}"
+export PYTHONPATH="/app/share/hmfit:${PYTHONPATH:-}"
+
+exec /app/bin/python3 -m hmfit_gui_qt "$@"

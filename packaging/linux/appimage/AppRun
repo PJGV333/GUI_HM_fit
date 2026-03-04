@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+
+SELF="$0"
+while [ -h "$SELF" ]; do
+  SELF="$(readlink "$SELF")"
+done
+
+HERE="$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd)"
+export APPDIR="$HERE"
+export PATH="$APPDIR/usr/bin:$PATH"
+if [ -d "$APPDIR/usr/lib" ]; then
+  export LD_LIBRARY_PATH="$APPDIR/usr/lib:${LD_LIBRARY_PATH:-}"
+fi
+
+exec "$APPDIR/usr/bin/hmfit_pyside6" "$@"
