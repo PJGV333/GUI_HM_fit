@@ -84,6 +84,19 @@ def patch_manifest(original: Path, out_path: Path, src_rel: str, wheels_rel: str
     out_path.write_text("\n".join(patched) + "\n", encoding="utf-8")
 
 
+def sdk_installed(runtime: str) -> bool:
+    try:
+        subprocess.run(
+            ["flatpak", "info", runtime],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=True,
+        )
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Build HM Fit Flatpak bundle without polluting the repo (offline pip).")
     ap.add_argument("--source", default=".", help="Path to HM Fit repo (default: .)")
@@ -104,6 +117,13 @@ def main() -> int:
 
     if not which_ok("flatpak") or not which_ok("flatpak-builder"):
         return die("Need flatpak + flatpak-builder. On Arch: sudo pacman -S flatpak flatpak-builder")
+
+    sdk_runtime = "org.kde.Sdk//6.7"
+    if not sdk_installed(sdk_runtime):
+        return die(
+            f"Missing runtime {sdk_runtime}. Install it with:\n"
+            f"  flatpak install flathub {sdk_runtime}"
+        )
 
     manifest = Path(args.manifest).expanduser().resolve() if args.manifest else (find_manifest(repo) or Path())
     if not manifest.is_file():
@@ -153,10 +173,11 @@ def main() -> int:
         )
         run([
             "flatpak", "run",
+            "--command=sh",
             "--share=network",
             f"--filesystem={src_dir}",
             "org.kde.Sdk//6.7",
-            "sh", "-lc",
+            "-lc",
             f"cd /run/host{src_dir} 2>/dev/null || cd {src_dir}; {sdk_cmd}"
         ], cwd=work_dir)
 
