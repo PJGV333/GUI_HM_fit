@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 # Temporary prerelease version used by updater/build scripts.
-VERSION = "0.9.0-beta"
+VERSION = "0.1.0-beta.1"
 
 # Default GitHub repository for update checks.
 # You can also override these at runtime with:
