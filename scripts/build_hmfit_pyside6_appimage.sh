@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+IFS=$'\n\t'
 
 usage() {
   cat <<'EOF'
@@ -27,6 +28,7 @@ EOF
 }
 
 log() { echo "[build] $*"; }
+warn() { echo "[warn]  $*" >&2; }
 die() { echo "[error] $*" >&2; exit 1; }
 
 require_arg() {
@@ -99,18 +101,12 @@ if [[ -z "$SOURCE" ]]; then
   exit 1
 fi
 
-if ! command -v python3 >/dev/null 2>&1; then
-  die "python3 not found"
-fi
-
+command -v python3 >/dev/null 2>&1 || die "python3 not found"
 ARCH="$(uname -m)"
-if [[ "$ARCH" != "x86_64" ]]; then
-  die "Unsupported architecture: $ARCH (only x86_64 supported)"
-fi
+[[ "$ARCH" == "x86_64" ]] || die "Unsupported architecture: $ARCH (only x86_64 supported)"
 
 BUILD_ROOT="${BUILD_ROOT:-$HOME/BUILD_HMFIT_PYSIDE6}"
 OUT_DIR="${OUT_DIR:-$BUILD_ROOT/output}"
-
 mkdir -p "$BUILD_ROOT" "$OUT_DIR"
 
 BUILD_DIR="$(mktemp -d "$BUILD_ROOT/hmfit_pyside6_XXXXXX")"
@@ -132,10 +128,30 @@ if [[ "$SOURCE" =~ ^(https?://|git@|ssh://) ]] || [[ "$SOURCE" == *.git ]]; then
   is_git_url=1
 fi
 
-if [[ "$is_git_url" -eq 1 ]]; then
-  if ! command -v git >/dev/null 2>&1; then
-    die "git not found"
+copy_source() {
+  local src="$1"
+  if command -v rsync >/dev/null 2>&1; then
+    log "Copying source with rsync"
+    rsync -a \
+      --exclude '.git' \
+      --exclude '.venv' \
+      --exclude '.venv*' \
+      --exclude 'dist' \
+      --exclude 'dist_appimage' \
+      --exclude 'build' \
+      --exclude '__pycache__' \
+      --exclude '.pytest_cache' \
+      --exclude 'node_modules' \
+      --exclude '.idea' \
+      "$src"/ "$WORK_DIR"/
+  else
+    log "rsync not found; copying source with cp -a"
+    cp -a "$src"/. "$WORK_DIR"/
   fi
+}
+
+if [[ "$is_git_url" -eq 1 ]]; then
+  command -v git >/dev/null 2>&1 || die "git not found"
   log "Cloning source: $SOURCE"
   git clone "$SOURCE" "$WORK_DIR"
   if [[ -n "$REF" ]]; then
@@ -143,13 +159,9 @@ if [[ "$is_git_url" -eq 1 ]]; then
     git -C "$WORK_DIR" checkout "$REF"
   fi
 else
-  if [[ ! -d "$SOURCE" ]]; then
-    die "Source path not found: $SOURCE"
-  fi
+  [[ -d "$SOURCE" ]] || die "Source path not found: $SOURCE"
   if [[ -n "$REF" ]]; then
-    if ! command -v git >/dev/null 2>&1; then
-      die "git not found"
-    fi
+    command -v git >/dev/null 2>&1 || die "git not found"
     if git -C "$SOURCE" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
       log "Cloning local git source: $SOURCE"
       git clone "$SOURCE" "$WORK_DIR"
@@ -159,42 +171,29 @@ else
       die "--ref requires a git source"
     fi
   else
-    if command -v rsync >/dev/null 2>&1; then
-      log "Copying source with rsync"
-      rsync -a \
-        --exclude '.git' \
-        --exclude '.venv' \
-        --exclude '.venv*' \
-        --exclude 'dist' \
-        --exclude 'dist_appimage' \
-        --exclude 'build' \
-        --exclude '__pycache__' \
-        --exclude '.pytest_cache' \
-        --exclude 'node_modules' \
-        --exclude '.idea' \
-        "$SOURCE"/ "$WORK_DIR"/
-    else
-      log "rsync not found; copying source with cp -a"
-      cp -a "$SOURCE"/. "$WORK_DIR"/
-    fi
+    copy_source "$SOURCE"
   fi
 fi
 
-if [[ ! -f "$WORK_DIR/requirements_qt.txt" ]]; then
-  die "requirements_qt.txt not found in source"
-fi
-if [[ ! -d "$WORK_DIR/hmfit_gui_qt" ]]; then
-  die "hmfit_gui_qt not found in source"
+# Basic sanity
+[[ -f "$WORK_DIR/requirements_qt.txt" ]] || die "requirements_qt.txt not found in source"
+[[ -d "$WORK_DIR/hmfit_gui_qt" ]] || die "hmfit_gui_qt not found in source"
+
+# If user accidentally has a venv inside hmfit/ (common name collision), drop it from the copied tree.
+if [[ -f "$WORK_DIR/hmfit/pyvenv.cfg" || -d "$WORK_DIR/hmfit/bin" ]]; then
+  warn "Found venv artifacts inside hmfit/ in the source tree copy. Removing them for this build."
+  rm -rf "$WORK_DIR/hmfit/bin" "$WORK_DIR/hmfit/include" "$WORK_DIR/hmfit/lib" \
+         "$WORK_DIR/hmfit/lib64" "$WORK_DIR/hmfit/share" "$WORK_DIR/hmfit/pyvenv.cfg" || true
 fi
 
-log "Creating venv"
-python3 -m venv "$BUILD_DIR/.venv"
-# shellcheck disable=SC1091
-source "$BUILD_DIR/.venv/bin/activate"
+log "Creating venv (inside build dir, not in source)"
+VENV_DIR="$BUILD_DIR/venv"
+python3 -m venv --copies "$VENV_DIR"
+PY="$VENV_DIR/bin/python3"
 
 log "Installing Python dependencies"
-python -m pip install --upgrade pip wheel
-python -m pip install -r "$WORK_DIR/requirements_qt.txt" pyinstaller
+"$PY" -m pip install --upgrade pip wheel setuptools
+"$PY" -m pip install -r "$WORK_DIR/requirements_qt.txt" pyinstaller
 
 # Write entrypoint OUTSIDE the source tree
 ENTRY_DIR="$BUILD_DIR/entry"
@@ -220,7 +219,7 @@ mkdir -p "$PYI_DIST" "$PYI_WORK" "$PYI_SPEC"
 
 log "Building PyInstaller binary (out-of-tree)"
 pushd "$WORK_DIR" >/dev/null
-pyinstaller --noconfirm --clean \
+"$PY" -m PyInstaller --noconfirm --clean \
   --name hmfit_pyside6 \
   --windowed \
   --onefile \
@@ -232,9 +231,7 @@ pyinstaller --noconfirm --clean \
 popd >/dev/null
 
 BIN="$PYI_DIST/hmfit_pyside6"
-if [[ ! -x "$BIN" ]]; then
-  die "PyInstaller output not found: $BIN"
-fi
+[[ -x "$BIN" ]] || die "PyInstaller output not found/executable: $BIN"
 
 APPDIR="$BUILD_DIR/AppDir"
 mkdir -p "$APPDIR/usr/bin" \
@@ -260,7 +257,7 @@ DESKTOP_FILE="$APPDIR/usr/share/applications/hmfit_pyside6.desktop"
 if [[ -f "$APPIMAGE_TEMPLATE_DIR/hmfit.desktop" ]]; then
   cp -f "$APPIMAGE_TEMPLATE_DIR/hmfit.desktop" "$DESKTOP_FILE"
 else
-cat > "$DESKTOP_FILE" <<'EOF'
+  cat > "$DESKTOP_FILE" <<'EOF'
 [Desktop Entry]
 Type=Application
 Name=HM Fit (PySide6)
@@ -270,7 +267,6 @@ Categories=Science;Education;
 Terminal=false
 EOF
 fi
-
 cp -f "$DESKTOP_FILE" "$APPDIR/hmfit_pyside6.desktop"
 
 APPIMAGETOOL=""
@@ -297,9 +293,7 @@ else
   fi
 fi
 
-if [[ ! -x "$APPIMAGETOOL" ]]; then
-  die "appimagetool not found or not executable: $APPIMAGETOOL"
-fi
+[[ -x "$APPIMAGETOOL" ]] || die "appimagetool not found or not executable: $APPIMAGETOOL"
 
 # Output file selection
 if [[ -n "$OUT_FILE" ]]; then
