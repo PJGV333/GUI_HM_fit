@@ -119,9 +119,10 @@ def main() -> int:
         return die("Need flatpak + flatpak-builder. On Arch: sudo pacman -S flatpak flatpak-builder")
 
     sdk_runtime = "org.kde.Sdk//6.7"
+    print(f"[check] Verifying Flatpak SDK is installed: {sdk_runtime}")
     if not sdk_installed(sdk_runtime):
         return die(
-            f"Missing runtime {sdk_runtime}. Install it with:\n"
+            f"Missing Flatpak SDK {sdk_runtime}. Install it with:\n"
             f"  flatpak install flathub {sdk_runtime}"
         )
 
@@ -204,11 +205,6 @@ def main() -> int:
         if args.run:
             args.install = True
 
-        if args.install:
-            run(["flatpak", "remote-add", "--user", "--if-not-exists", "--no-gpg-verify",
-                 "hmfit-local", f"file://{repo_dir}"], cwd=work_dir)
-            run(["flatpak", "install", "--user", "-y", "hmfit-local", appid], cwd=work_dir)
-
         # 5) Bundle for testers
         print("[step] Creating .flatpak bundle for testers")
         run([
@@ -220,6 +216,15 @@ def main() -> int:
         ], cwd=work_dir)
 
         print(f"[ok] Flatpak bundle created: {bundle_path}")
+
+        if args.install:
+            print("[step] Installing bundle in user Flatpak installation")
+            run([
+                "flatpak", "install", "--user", "-y",
+                "--or-update",
+                "--bundle",
+                str(bundle_path),
+            ], cwd=work_dir)
 
         if args.run:
             run(["flatpak", "run", appid], cwd=work_dir)
