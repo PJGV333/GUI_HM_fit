@@ -102,17 +102,29 @@ Install runtimes:
 flatpak install -y flathub org.kde.Platform//6.7 org.kde.Sdk//6.7
 ```
 
-Build (network needed because `pip` installs during build):
+Recommended build and local install:
 ```bash
-flatpak-builder --user --force-clean --share=network build-flatpak org.hmfit.HMFit.yml
+python3 scripts/build_hmfit_flatpak.py --install
 ```
 
-Install locally:
+What the script does:
+- Verifies the SDK is installed first with `flatpak info org.kde.Sdk//6.7`
+- Downloads Python wheels inside `org.kde.Sdk//6.7` using `flatpak run --command=sh ... -lc ...`
+- Builds the Flatpak offline from the patched manifest
+- Creates a `.flatpak` bundle and installs it with `flatpak install --user --or-update --bundle`
+- Does not use a persistent `hmfit-local` remote
+
+If you used an older version of the script that created `hmfit-local`, remove the stale remote once:
 ```bash
-flatpak-builder --user --install --force-clean --share=network build-flatpak org.hmfit.HMFit.yml
+flatpak remote-delete --user hmfit-local
 ```
 
 Run:
 ```bash
 flatpak run org.hmfit.HMFit
+```
+
+Check Python inside the Flatpak sandbox:
+```bash
+flatpak run --command=sh org.hmfit.HMFit -lc 'which python3; python3 -V'
 ```
