@@ -103,6 +103,14 @@ def build_spectroscopy_plot_sources(result: dict[str, Any]) -> dict[str, Any]:
 
     a_matrix = export_data.get("A") or []
     a_nm = export_data.get("A_index") or export_data.get("nm") or nm
+    group_labels = [
+        str(lbl)
+        for lbl in (export_data.get("abs_group_labels_with_members") or [])
+        if str(lbl).strip()
+    ]
+    if not group_labels:
+        group_labels = [str(lbl) for lbl in (export_data.get("abs_group_labels") or []) if str(lbl).strip()]
+    group_options = [{"id": lbl, "label": lbl} for lbl in group_labels]
     if (
         isinstance(a_nm, list)
         and a_nm
@@ -124,7 +132,7 @@ def build_spectroscopy_plot_sources(result: dict[str, Any]) -> dict[str, Any]:
     spec_molar_abs = {
         "nm": a_nm,
         "A": a_matrix,
-        "speciesOptions": dist.get("speciesOptions") or [],
+        "speciesOptions": group_options or dist.get("speciesOptions") or [],
     }
     spec_efa_eig = {
         "eigenvalues": numerics.get("eigenvalues") or [],

@@ -27,7 +27,20 @@ def normalize_equilibria_text(text_block: str) -> str:
         line = re.sub(r"\s*\+\s*", " + ", line)
         line = re.sub(r"\s*=\s*", "=", line)
         line = re.sub(r"\s*(?i:@na)\s*", " @na ", line)
+        line = re.sub(r"\s*(?i:@absgrp)\s*", " @absgrp ", line)
         line = re.sub(r"\s+", " ", line).strip()
+        if line.lower().startswith("@na"):
+            parts = re.split(r"(?i)@na", line, maxsplit=1)
+            species = _split_species_tokens(parts[1] if len(parts) > 1 else "")
+            line = "@na"
+            if species:
+                line += " " + " ".join(species)
+        elif line.lower().startswith("@absgrp"):
+            try:
+                group_id, members = _parse_abs_group_line(line)
+                line = f"@absgrp {group_id}: {' '.join(members)}"
+            except ValueError:
+                pass
         lines.append(line)
     return "\n".join(lines)
 
@@ -64,6 +77,29 @@ def _parse_log_beta(raw_value: str) -> float:
         raise ValueError(f"Invalid equilibrium constant {raw_value!r}.") from exc
 
 
+def _split_species_tokens(raw_value: str) -> list[str]:
+    return [
+        token
+        for token in re.split(r"[\s,]+", str(raw_value or "").strip())
+        if str(token or "").strip()
+    ]
+
+
+def _parse_abs_group_line(line: str) -> tuple[str, list[str]]:
+    match = re.match(r"(?i)^@absgrp\s+([^:\s]+)\s*:\s*(.+)$", str(line or "").strip())
+    if match is None:
+        raise ValueError("Invalid @absgrp syntax. Use '@absgrp <id>: species1 species2 ...'.")
+
+    group_id = str(match.group(1) or "").strip()
+    if not group_id:
+        raise ValueError("Missing absorptivity group id in @absgrp directive.")
+
+    members = _split_species_tokens(match.group(2))
+    if not members:
+        raise ValueError(f"Absorptivity group {group_id!r} must list at least one species.")
+    return group_id, members
+
+
 def parse_multiline_equilibria(text_block: str) -> Tuple[ChemicalGraph, dict[str, Any]]:
     """
     Parse a multiline equilibrium block into a ChemicalGraph and solver payload.
@@ -88,6 +124,10 @@ def parse_multiline_equilibria(text_block: str) -> Tuple[ChemicalGraph, dict[str
     graph = ChemicalGraph()
     valid_count = 0
     non_abs_set: set[str] = set()
+    abs_groups_raw: dict[str, list[str]] = {}
+    abs_group_lines: dict[str, int] = {}
+    species_to_group: dict[str, str] = {}
+    species_group_lines: dict[str, int] = {}
 
     for line_no, raw_line in enumerate(str(text_block or "").splitlines(), start=1):
         line = raw_line.strip()
@@ -95,14 +135,39 @@ def parse_multiline_equilibria(text_block: str) -> Tuple[ChemicalGraph, dict[str
             continue
 
         try:
+            if line.strip().lower().startswith("@absgrp"):
+                group_id, members = _parse_abs_group_line(line)
+                if group_id in abs_groups_raw:
+                    prev_line = abs_group_lines.get(group_id, line_no)
+                    raise ValueError(
+                        f"Absorptivity group {group_id!r} was already defined on line {prev_line}."
+                    )
+                local_seen: set[str] = set()
+                for species_name in members:
+                    if species_name in local_seen:
+                        raise ValueError(
+                            f"Species {species_name!r} is repeated within absorptivity group {group_id!r}."
+                        )
+                    local_seen.add(species_name)
+                    if species_name in species_to_group:
+                        prev_group = species_to_group[species_name]
+                        prev_line = species_group_lines.get(species_name, line_no)
+                        raise ValueError(
+                            f"Species {species_name!r} is already assigned to absorptivity group "
+                            f"{prev_group!r} on line {prev_line}."
+                        )
+                    species_to_group[species_name] = group_id
+                    species_group_lines[species_name] = line_no
+                abs_groups_raw[group_id] = list(members)
+                abs_group_lines[group_id] = line_no
+                continue
+
             # Case 1: dedicated non-absorbent line.
             if line.strip().lower().startswith("@na"):
                 parts = re.split(r"(?i)@na", line, maxsplit=1)
                 non_abs_raw = parts[1] if len(parts) > 1 else ""
-                for token in non_abs_raw.split(","):
-                    species = str(token or "").strip()
-                    if species:
-                        non_abs_set.add(species)
+                for species in _split_species_tokens(non_abs_raw):
+                    non_abs_set.add(species)
                 continue
 
             # Case 2: equation line, optionally with inline @NA declaration.
@@ -114,7 +179,7 @@ def parse_multiline_equilibria(text_block: str) -> Tuple[ChemicalGraph, dict[str
                 non_abs_raw = parts[1]
                 inline_non_abs = [
                     str(token or "").strip()
-                    for token in non_abs_raw.split(",")
+                    for token in _split_species_tokens(non_abs_raw)
                     if str(token or "").strip()
                 ]
 
@@ -145,7 +210,26 @@ def parse_multiline_equilibria(text_block: str) -> Tuple[ChemicalGraph, dict[str
         raise ValueError("No valid equilibrium lines found.")
 
     solver_inputs = create_solver_inputs_from_graph(graph)
+    species_names = list(solver_inputs.get("components") or []) + list(solver_inputs.get("complexes") or [])
+    known_species = set(species_names)
+    validated_abs_groups: dict[str, list[str]] = {}
+    for group_id, members in abs_groups_raw.items():
+        line_no = abs_group_lines.get(group_id, 1)
+        validated_members: list[str] = []
+        for species_name in members:
+            if species_name not in known_species:
+                raise ValueError(
+                    f"Line {line_no}: Unknown species {species_name!r} in absorptivity group {group_id!r}."
+                )
+            if species_name in non_abs_set:
+                raise ValueError(
+                    f"Line {line_no}: Species {species_name!r} is marked as @na and cannot be used in @absgrp."
+                )
+            validated_members.append(species_name)
+        validated_abs_groups[group_id] = validated_members
     solver_inputs["non_abs_species"] = list(non_abs_set)
+    solver_inputs["species_names"] = species_names
+    solver_inputs["abs_groups"] = validated_abs_groups
     _PARSE_CACHE[cache_key] = (copy.deepcopy(graph), copy.deepcopy(solver_inputs))
     _PARSE_CACHE.move_to_end(cache_key)
     while len(_PARSE_CACHE) > _PARSE_CACHE_MAXSIZE:

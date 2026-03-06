@@ -460,6 +460,195 @@ def _solve_absorptivities(
     )
     return A, lower_bound
 
+
+def _normalize_species_names(species_names, nspec):
+    names = []
+    raw = list(species_names) if isinstance(species_names, (list, tuple)) else []
+    for idx in range(int(max(nspec, 0))):
+        if idx < len(raw):
+            label = str(raw[idx] or "").strip()
+            names.append(label or f"sp{idx + 1}")
+        else:
+            names.append(f"sp{idx + 1}")
+    return names
+
+
+def _format_abs_group_label(group_id):
+    gid = str(group_id or "").strip()
+    if not gid:
+        return "absgrp"
+    if gid.lower().startswith("absgrp"):
+        return gid
+    return f"absgrp{gid}"
+
+
+def _coerce_abs_group_map(group_map, n_abs):
+    n_abs = int(max(n_abs, 0))
+    if n_abs == 0:
+        return onp.zeros((0, 0), dtype=float)
+    if group_map is None:
+        return onp.eye(n_abs, dtype=float)
+    arr = onp.asarray(group_map, dtype=float)
+    if arr.ndim != 2:
+        raise ValueError(f"abs_group_map must be 2D, got shape={arr.shape}")
+    if arr.shape[0] != n_abs:
+        raise ValueError(f"abs_group_map row mismatch: expected {n_abs}, got {arr.shape[0]}")
+    if arr.shape[1] <= 0:
+        raise ValueError("abs_group_map must contain at least one absorptivity group.")
+    return arr
+
+
+def _apply_abs_group_map(C_abs, group_map=None):
+    C_arr = onp.asarray(C_abs, dtype=float)
+    G_map = _coerce_abs_group_map(group_map, C_arr.shape[1])
+    return C_arr @ G_map, G_map
+
+
+def _build_absorptivity_grouping(species_names, nas, abs_groups, nspec=None):
+    n_species = int(nspec) if nspec is not None else len(species_names or [])
+    species_all = _normalize_species_names(species_names, n_species)
+    nas_idx = sorted(
+        {
+            int(idx)
+            for idx in (nas or [])
+            if isinstance(idx, (int, onp.integer)) or str(idx).lstrip("-").isdigit()
+        }
+    )
+    nas_idx = [idx for idx in nas_idx if 0 <= idx < n_species]
+    nas_idx_set = set(nas_idx)
+    abs_indices = [idx for idx in range(n_species) if idx not in nas_idx_set]
+    abs_species_names = [species_all[idx] for idx in abs_indices]
+
+    if not abs_species_names:
+        return {
+            "species_names": species_all,
+            "abs_species_names": [],
+            "abs_indices": [],
+            "group_ids": [],
+            "group_labels": [],
+            "group_members": [],
+            "group_labels_with_members": [],
+            "group_map": onp.zeros((0, 0), dtype=float),
+            "active": False,
+        }
+
+    abs_lookup = {name: pos for pos, name in enumerate(abs_species_names)}
+    if not abs_groups:
+        ident = onp.eye(len(abs_species_names), dtype=float)
+        return {
+            "species_names": species_all,
+            "abs_species_names": abs_species_names,
+            "abs_indices": abs_indices,
+            "group_ids": list(abs_species_names),
+            "group_labels": list(abs_species_names),
+            "group_members": [[name] for name in abs_species_names],
+            "group_labels_with_members": list(abs_species_names),
+            "group_map": ident,
+            "active": False,
+        }
+
+    if not isinstance(abs_groups, dict):
+        raise ValueError("abs_groups must be a mapping {group_id: [species, ...]}.")
+
+    groups = []
+    assigned_species: set[str] = set()
+    for raw_group_id, raw_members in abs_groups.items():
+        group_id = str(raw_group_id or "").strip()
+        if not group_id:
+            raise ValueError("abs_groups contains an empty group id.")
+        if not isinstance(raw_members, (list, tuple)):
+            raise ValueError(f"abs_groups[{group_id!r}] must be a list of species names.")
+        members = []
+        for raw_name in raw_members:
+            species_name = str(raw_name or "").strip()
+            if not species_name:
+                continue
+            if species_name not in abs_lookup:
+                if species_name in species_all:
+                    raise ValueError(
+                        f"Species {species_name!r} is marked as non-absorbent and cannot be used in abs_groups."
+                    )
+                raise ValueError(f"Unknown species {species_name!r} in abs_groups[{group_id!r}].")
+            if species_name in assigned_species:
+                raise ValueError(f"Species {species_name!r} is assigned to multiple absorptivity groups.")
+            assigned_species.add(species_name)
+            members.append(species_name)
+        if not members:
+            raise ValueError(f"Absorptivity group {group_id!r} is empty.")
+        groups.append({"id": group_id, "members": members})
+
+    for species_name in abs_species_names:
+        if species_name not in assigned_species:
+            groups.append({"id": f"auto_{species_name}", "members": [species_name]})
+
+    group_map = onp.zeros((len(abs_species_names), len(groups)), dtype=float)
+    group_ids = []
+    group_labels = []
+    group_members = []
+    group_labels_with_members = []
+    for col, group in enumerate(groups):
+        members = list(group["members"])
+        for species_name in members:
+            group_map[abs_lookup[species_name], col] = 1.0
+        group_ids.append(str(group["id"]))
+        label = _format_abs_group_label(group["id"])
+        group_labels.append(label)
+        group_members.append(members)
+        if len(members) == 1 and members[0] == label:
+            group_labels_with_members.append(label)
+        else:
+            group_labels_with_members.append(f"{label} ({','.join(members)})")
+
+    return {
+        "species_names": species_all,
+        "abs_species_names": abs_species_names,
+        "abs_indices": abs_indices,
+        "group_ids": group_ids,
+        "group_labels": group_labels,
+        "group_members": group_members,
+        "group_labels_with_members": group_labels_with_members,
+        "group_map": group_map,
+        "active": len(groups) < len(abs_species_names),
+    }
+
+
+def _solve_spectral_model(
+    C_abs,
+    YT,
+    *,
+    group_map=None,
+    eps_solver_mode="soft_penalty",
+    mu=1e-2,
+    delta_mode="off",
+    delta_rel=0.01,
+    alpha_smooth=0.0,
+    smooth_matrix=None,
+    max_iters=300,
+):
+    C_eff, G_map = _apply_abs_group_map(C_abs, group_map=group_map)
+    E_group, lower_bound = _solve_absorptivities(
+        C_eff,
+        YT,
+        eps_solver_mode=eps_solver_mode,
+        mu=mu,
+        delta_mode=delta_mode,
+        delta_rel=delta_rel,
+        alpha_smooth=alpha_smooth,
+        smooth_matrix=smooth_matrix,
+        max_iters=max_iters,
+    )
+    E_group = onp.asarray(E_group, dtype=float)
+    A_species = G_map @ E_group
+    yfit = C_eff @ E_group
+    return {
+        "C_eff": C_eff,
+        "group_map": G_map,
+        "E_group": E_group,
+        "A_species": A_species,
+        "yfit": yfit,
+        "lower_bound": lower_bound,
+    }
+
 def _resolve_render_profile(render_quality: str):
     q = str(render_quality or "preview").strip().lower()
     if q == "full":
@@ -470,7 +659,18 @@ def _resolve_render_profile(render_quality: str):
     return (6.5, 4.2), 82
 
 
-def generate_figure_base64(x, y, mark, ylabel, xlabel, title, *, figsize=None, dpi=None):
+def generate_figure_base64(
+    x,
+    y,
+    mark,
+    ylabel,
+    xlabel,
+    title,
+    *,
+    figsize=None,
+    dpi=None,
+    series_labels=None,
+):
     """Generate a matplotlib figure and return as base64 encoded PNG."""
     try:
         # Debug shapes
@@ -490,28 +690,31 @@ def generate_figure_base64(x, y, mark, ylabel, xlabel, title, *, figsize=None, d
     # Normaliza dimensiones para evitar mismatches (se comporta como en la interfaz anterior)
     x_arr = np.asarray(x).reshape(-1)
     y_arr = np.asarray(y)
+    labels = list(series_labels) if isinstance(series_labels, (list, tuple)) else []
 
     if y_arr.ndim == 1:
-        ax.plot(x_arr, y_arr, mark)
+        ax.plot(x_arr, y_arr, mark, label=(labels[0] if labels else None))
     elif y_arr.ndim == 2:
         if y_arr.shape[0] == x_arr.shape[0]:
             for i in range(y_arr.shape[1]):
-                ax.plot(x_arr, y_arr[:, i], mark)
+                ax.plot(x_arr, y_arr[:, i], mark, label=(labels[i] if i < len(labels) else None))
         elif y_arr.shape[1] == x_arr.shape[0]:
             for i in range(y_arr.shape[0]):
-                ax.plot(x_arr, y_arr[i, :], mark)
+                ax.plot(x_arr, y_arr[i, :], mark, label=(labels[i] if i < len(labels) else None))
         elif y_arr.size == x_arr.shape[0]:
-            ax.plot(x_arr, y_arr.reshape(-1), mark)
+            ax.plot(x_arr, y_arr.reshape(-1), mark, label=(labels[0] if labels else None))
         else:
             m = min(x_arr.shape[0], y_arr.shape[0])
-            ax.plot(x_arr[:m], y_arr[:m, 0], mark)
+            ax.plot(x_arr[:m], y_arr[:m, 0], mark, label=(labels[0] if labels else None))
     else:
-        ax.plot(x_arr, y_arr.reshape(-1), mark)
+        ax.plot(x_arr, y_arr.reshape(-1), mark, label=(labels[0] if labels else None))
     
     ax.set_ylabel(ylabel)
     ax.set_xlabel(xlabel)
     ax.set_title(title)
     ax.grid(True, alpha=0.3)
+    if labels:
+        ax.legend(loc="best", fontsize=8)
     fig.tight_layout()
     
     # Save to base64
@@ -768,6 +971,7 @@ def _evaluate_spectro_objective(
     delta_rel,
     alpha_smooth,
     smooth_matrix,
+    abs_group_map=None,
     objective_state: dict,
 ):
     k_arr = onp.asarray(k_vec, dtype=float).ravel()
@@ -788,9 +992,10 @@ def _evaluate_spectro_objective(
         if onp.any(onp.isnan(C)) or onp.any(onp.isinf(C)):
             val = 1e50
         else:
-            A, _ = _solve_absorptivities(
+            fit = _solve_spectral_model(
                 C,
                 y_transposed,
+                group_map=abs_group_map,
                 eps_solver_mode=eps_solver_mode,
                 mu=eps_mu,
                 delta_mode=delta_mode,
@@ -799,7 +1004,7 @@ def _evaluate_spectro_objective(
                 smooth_matrix=smooth_matrix,
                 max_iters=300,
             )
-            r = C @ A - y_transposed
+            r = fit["yfit"] - y_transposed
             r_w = r * weights_row
             rms = float(np.sqrt(np.mean(np.square(r_w))))
             val = rms if onp.isfinite(rms) else 1e50
@@ -850,6 +1055,7 @@ def _run_spectro_single_start(
     delta_rel,
     alpha_smooth,
     smooth_matrix,
+    abs_group_map=None,
 ):
     solver = _build_equilibrium_solver(algorithm, c_t_array, modelo, non_abs_species, model_settings)
     state = _new_objective_state(start_k)
@@ -869,6 +1075,7 @@ def _run_spectro_single_start(
             delta_rel=delta_rel,
             alpha_smooth=alpha_smooth,
             smooth_matrix=smooth_matrix,
+            abs_group_map=abs_group_map,
             objective_state=state,
         )
 
@@ -1008,6 +1215,8 @@ def process_spectroscopy_data(
     efa_eigenvalues,
     modelo,
     non_abs_species,
+    species_names,
+    abs_groups,
     algorithm,
     model_settings,
     optimizer,
@@ -1394,6 +1603,29 @@ def process_spectroscopy_data(
         res = LevenbergMarquardt(C_T_df, modelo, nas, model_settings)
     else:
         raise ValueError(f"Unknown algorithm: {algorithm}")
+
+    species_all = _normalize_species_names(species_names, int(getattr(res, "nspec", 0) or 0))
+    abs_grouping = _build_absorptivity_grouping(
+        species_all,
+        nas,
+        abs_groups,
+        nspec=int(getattr(res, "nspec", 0) or 0),
+    )
+    abs_group_map = abs_grouping["group_map"]
+    abs_species_labels = list(abs_grouping["abs_species_names"])
+    group_labels = list(abs_grouping["group_labels"])
+    group_members = [list(members) for members in abs_grouping["group_members"]]
+    group_summary = "; ".join(
+        f"{label}: {','.join(members)}"
+        for label, members in zip(group_labels, group_members)
+    )
+    grouped_abs_active = bool(abs_grouping["active"])
+    if group_labels:
+        log_progress(f"Absorptivity groups: {len(group_labels)} ({group_summary})")
+    else:
+        log_progress("Absorptivity groups: 0")
+    if grouped_abs_active:
+        log_progress("Grouped absorptivities active.")
     
     if eps_solver_mode == "soft_bound" and delta_mode == "off":
         delta_mode = "relative"
@@ -1403,12 +1635,19 @@ def process_spectroscopy_data(
     )
     try:
         C_preview = onp.asarray(res.concentraciones(k)[0], dtype=float)
-        lb_preview = _compute_lower_bound(
+        preview_fit = _solve_spectral_model(
             C_preview,
             onp.asarray(Y.T, dtype=float),
-            delta_mode=("relative" if eps_solver_mode == "soft_bound" else delta_mode),
+            group_map=abs_group_map,
+            eps_solver_mode=eps_solver_mode,
+            mu=eps_mu,
+            delta_mode=delta_mode,
             delta_rel=delta_rel,
+            alpha_smooth=alpha_smooth,
+            smooth_matrix=smooth_matrix,
+            max_iters=300,
         )
+        lb_preview = preview_fit.get("lower_bound")
     except Exception:
         lb_preview = None
     if lb_preview is not None:
@@ -1426,9 +1665,10 @@ def process_spectroscopy_data(
     # Objective helpers
     def f_m2(k):
         C = res.concentraciones(k)[0]
-        A, _ = _solve_absorptivities(
+        fit = _solve_spectral_model(
             C,
             Y.T,
+            group_map=abs_group_map,
             eps_solver_mode=eps_solver_mode,
             mu=eps_mu,
             delta_mode=delta_mode,
@@ -1437,7 +1677,7 @@ def process_spectroscopy_data(
             smooth_matrix=smooth_matrix,
             max_iters=300,
         )
-        r = C @ A - Y.T
+        r = fit["yfit"] - onp.asarray(Y.T, dtype=float)
         r_w = r * weights_row
         rms = np.sqrt(np.mean(np.square(r_w)))
         return rms, r
@@ -1526,6 +1766,7 @@ def process_spectroscopy_data(
         "delta_rel": float(delta_rel),
         "alpha_smooth": float(alpha_smooth),
         "smooth_matrix": onp.asarray(smooth_matrix, dtype=float) if smooth_matrix is not None else None,
+        "abs_group_map": onp.asarray(abs_group_map, dtype=float) if abs_group_map is not None else None,
     }
 
     def _consume_run(ms_idx, run_result):
@@ -1610,6 +1851,7 @@ def process_spectroscopy_data(
         rcond=1e-10, use_projector=True,
         param_names=k_names,
         weights=weights_per_lambda,
+        group_map=abs_group_map,
     )
     
     SE_log10K = metrics["SE_log10K"]
@@ -1618,15 +1860,17 @@ def process_spectroscopy_data(
     rms = metrics["RMS"]
     covfit = metrics["s2"]
     A = metrics["A"]
+    A_species = metrics.get("A_species")
     yfit = metrics["yfit"]
     stability_diag = metrics.get("stability_diag", {})
 
     
     C, Co = res.concentraciones(k)
-    species_labels = [f"sp{i+1}" for i in range(C.shape[1])] if C is not None else []
-    A_solver, lower_bound_final = _solve_absorptivities(
+    species_labels = abs_species_labels if C is not None else []
+    final_fit = _solve_spectral_model(
         C,
         Y.T,
+        group_map=abs_group_map,
         eps_solver_mode=eps_solver_mode,
         mu=eps_mu,
         delta_mode=delta_mode,
@@ -1635,6 +1879,10 @@ def process_spectroscopy_data(
         smooth_matrix=smooth_matrix,
         max_iters=300,
     )
+    A_solver = final_fit["E_group"]
+    A_species_solver = final_fit["A_species"]
+    y_cal = final_fit["yfit"]
+    lower_bound_final = final_fit["lower_bound"]
     if lower_bound_final is not None:
         lb_fin = onp.asarray(lower_bound_final, dtype=float).ravel()
         log_progress(
@@ -1694,7 +1942,6 @@ def process_spectroscopy_data(
             )
 
             A_plot = A_solver
-            y_cal = C @ A_plot
             eps_mark = "-" if k_used > 1 else "o-"
             graphs["absorptivities"] = generate_figure_base64(
                 nm,
@@ -1705,6 +1952,7 @@ def process_spectroscopy_data(
                 "Absortividades molares",
                 figsize=render_figsize,
                 dpi=render_dpi,
+                series_labels=abs_grouping["group_labels_with_members"],
             )
             if plot_mode == "isotherms":
                 idx = slice(0, min(k_used, 10))
@@ -1748,7 +1996,6 @@ def process_spectroscopy_data(
             )
 
             A_plot = A_solver
-            y_cal = C @ A_plot
 
             if plot_mode == "isotherms":
                 eps_mark = "-" if k_used > 1 else "o-"
@@ -1761,6 +2008,7 @@ def process_spectroscopy_data(
                     "Absortividades molares",
                     figsize=render_figsize,
                     dpi=render_dpi,
+                    series_labels=abs_grouping["group_labels_with_members"],
                 )
                 idx = slice(0, min(k_used, 10))
                 graphs["fit"] = generate_figure2_base64(
@@ -1786,6 +2034,7 @@ def process_spectroscopy_data(
                     "Absortividades molares",
                     figsize=render_figsize,
                     dpi=render_dpi,
+                    series_labels=abs_grouping["group_labels_with_members"],
                 )
                 graphs["fit"] = generate_figure2_base64(
                     nm,
@@ -1869,32 +2118,38 @@ def process_spectroscopy_data(
         f"Baseline: {baseline_mode_used}",
         f"Weighting: {weighting_mode}",
         f"Epsilon solver: {eps_solver_mode}",
+        f"Absorptivity groups: {len(group_labels)}",
     ]
+    if group_summary:
+        extra_stats.append(f"Abs groups map: {group_summary}")
     results_text += "\n\nEstadísticas:\n" + "\n".join(extra_stats)
     
     # Export payload to mimic previous save_results (DataFrames per sheet)
     # Preparar payload de exportación (imitando el flujo anterior)
     A_export = None
     A_solver_export = None
+    A_species_export = None
+    A_species_solver_export = None
     nm_list = nm.tolist() if hasattr(nm, "tolist") else []
+
+    def _orient_abs_matrix(matrix):
+        if matrix is None:
+            return None
+        arr = np.asarray(matrix)
+        if nm_list:
+            if arr.shape[1] == len(nm_list):
+                return arr.T
+            return arr
+        return arr
+
     if A is not None:
-        A_arr = np.asarray(A)
-        if nm_list:
-            if A_arr.shape[1] == len(nm_list):
-                A_export = A_arr.T  # filas = nm
-            else:
-                A_export = A_arr
-        else:
-            A_export = A_arr
+        A_export = _orient_abs_matrix(A)
     if A_solver is not None:
-        A_solver_arr = np.asarray(A_solver)
-        if nm_list:
-            if A_solver_arr.shape[1] == len(nm_list):
-                A_solver_export = A_solver_arr.T  # filas = nm
-            else:
-                A_solver_export = A_solver_arr
-        else:
-            A_solver_export = A_solver_arr
+        A_solver_export = _orient_abs_matrix(A_solver)
+    if A_species is not None:
+        A_species_export = _orient_abs_matrix(A_species)
+    if A_species_solver is not None:
+        A_species_solver_export = _orient_abs_matrix(A_species_solver)
 
     export_data = {
         "modelo": modelo.tolist() if modelo is not None else [],
@@ -1903,6 +2158,10 @@ def process_spectroscopy_data(
         "C_T": np.asarray(C_T).tolist() if C_T is not None else [],
         "A": A_export.tolist() if A_export is not None else [],
         "A_solver": A_solver_export.tolist() if A_solver_export is not None else [],
+        "A_species": A_species_export.tolist() if A_species_export is not None else [],
+        "A_species_solver": (
+            A_species_solver_export.tolist() if A_species_solver_export is not None else []
+        ),
         "A_index": nm_list,
         "k": np.asarray(k).tolist(),
         "k_ini": np.asarray(initial_k).tolist() if initial_k is not None else [],
@@ -1941,6 +2200,15 @@ def process_spectroscopy_data(
         "render_graphs": bool(render_graphs),
         "render_quality": render_quality,
         "objective_evaluations": int(objective_eval_count),
+        "species_names": species_all,
+        "abs_species_labels": abs_species_labels,
+        "abs_group_map": onp.asarray(abs_group_map, dtype=float).tolist(),
+        "abs_group_ids": list(abs_grouping["group_ids"]),
+        "abs_group_labels": list(group_labels),
+        "abs_group_members": [list(members) for members in group_members],
+        "abs_group_labels_with_members": list(abs_grouping["group_labels_with_members"]),
+        "abs_group_count": int(len(group_labels)),
+        "grouped_absorptivities_active": grouped_abs_active,
     }
     if derived_noncoop is not None:
         export_data["derived_noncoop"] = derived_noncoop
@@ -2030,7 +2298,13 @@ def process_spectroscopy_data(
             "C_by_species": C_by_species,
             "x_default": axis_vectors.get("titrant_total", []),
         },
-        "spec_molar_absorptivities": {"png_base64": graphs.get('absorptivities', '')},
+        "spec_molar_absorptivities": {
+            "png_base64": graphs.get('absorptivities', ''),
+            "speciesOptions": [
+                {"id": lbl, "label": lbl}
+                for lbl in abs_grouping["group_labels_with_members"]
+            ],
+        },
         "spec_efa_eigenvalues": {"png_base64": graphs.get('eigenvalues', '')},
         "spec_efa_components": {"png_base64": graphs.get('efa', '')},
     }

@@ -71,6 +71,8 @@ def write_results_xlsx(
         "All_species": "All species concentrations (M)",
         "Tot_con_comp": "Total component concentrations (M)",
         "Molar_Absortivities": "Molar absorptivities (a.u. or M^-1 cm^-1)",
+        "Molar_Absortivities_Species": "Species-level molar absorptivities reconstructed from shared groups",
+        "Absorptivity_Groups": "Shared absorptivity groups",
         "Y_observed": "Observed spectra, Y_obs (a.u.)",
         "Y_raw": "Observed spectra before baseline correction",
         "Y_corrected": "Observed spectra after baseline correction",
@@ -286,16 +288,53 @@ def write_results_xlsx(
 
                 A = export_data.get("A")
                 nm = export_data.get("A_index") or export_data.get("nm")
+                abs_group_labels = [str(lbl) for lbl in (export_data.get("abs_group_labels") or []) if str(lbl).strip()]
+                abs_species_labels = [str(lbl) for lbl in (export_data.get("abs_species_labels") or []) if str(lbl).strip()]
                 if A is not None:
                     dfA = as_dataframe("Molar_Absortivities", A, allow_none=True)
                     if dfA is not None:
                         if nm is not None:
                             dfA.index = nm
                         dfA.index.name = "nm"
-                        if all(isinstance(c, (int, np.integer)) for c in dfA.columns):
+                        if abs_group_labels and len(abs_group_labels) == dfA.shape[1]:
+                            dfA.columns = abs_group_labels
+                        elif all(isinstance(c, (int, np.integer)) for c in dfA.columns):
                             dfA.columns = [f"A_{i+1}" for i in range(dfA.shape[1])]
                         dfA.to_excel(writer, sheet_name="Molar_Absortivities", index=True)
                         format_sheet(writer, "Molar_Absortivities", TITLES_MAP["Molar_Absortivities"])
+
+                A_species = export_data.get("A_species")
+                if A_species is not None:
+                    dfA_species = as_dataframe("Molar_Absortivities_Species", A_species, allow_none=True)
+                    if dfA_species is not None and not dfA_species.empty:
+                        if nm is not None:
+                            dfA_species.index = nm
+                        dfA_species.index.name = "nm"
+                        if abs_species_labels and len(abs_species_labels) == dfA_species.shape[1]:
+                            dfA_species.columns = abs_species_labels
+                        elif all(isinstance(c, (int, np.integer)) for c in dfA_species.columns):
+                            dfA_species.columns = [f"sp_{i+1}" for i in range(dfA_species.shape[1])]
+                        dfA_species.to_excel(writer, sheet_name="Molar_Absortivities_Species", index=True)
+                        format_sheet(
+                            writer,
+                            "Molar_Absortivities_Species",
+                            TITLES_MAP["Molar_Absortivities_Species"],
+                        )
+
+                group_members = export_data.get("abs_group_members") or []
+                if abs_group_labels and group_members:
+                    rows = []
+                    for idx, label in enumerate(abs_group_labels):
+                        members = group_members[idx] if idx < len(group_members) else []
+                        rows.append(
+                            {
+                                "group": label,
+                                "members": ", ".join(str(m) for m in members if str(m).strip()),
+                            }
+                        )
+                    df_groups = pd.DataFrame(rows)
+                    df_groups.to_excel(writer, sheet_name="Absorptivity_Groups", index=False)
+                    format_sheet(writer, "Absorptivity_Groups", TITLES_MAP["Absorptivity_Groups"])
 
                 Y = export_data.get("Y")
                 if Y is not None:

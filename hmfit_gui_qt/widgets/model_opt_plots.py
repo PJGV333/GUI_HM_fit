@@ -845,6 +845,12 @@ class ModelOptPlotsWidget(QWidget):
         modelo = np.asarray(modelo_raw if modelo_raw is not None else [], dtype=float)
         nas_raw = ctx.get("non_abs_species")
         nas = list(nas_raw) if nas_raw is not None else []
+        group_map_raw = ctx.get("abs_group_map")
+        group_map = None
+        if group_map_raw is not None:
+            group_map_arr = np.asarray(group_map_raw, dtype=float)
+            if group_map_arr.size > 0:
+                group_map = group_map_arr
         algorithm = str(ctx.get("algorithm") or "Newton-Raphson")
         model_settings = str(ctx.get("model_settings") or "Free")
         param_names_raw = ctx.get("param_names")
@@ -903,6 +909,7 @@ class ModelOptPlotsWidget(QWidget):
                 use_projector=True,
                 param_names=param_names,
                 weights=weights,
+                group_map=group_map,
             )
 
             if method == "bootstrap_linear":
@@ -936,6 +943,7 @@ class ModelOptPlotsWidget(QWidget):
                     rcond=1e-10,
                     use_projector=True,
                     weights=weights,
+                    group_map=group_map,
                 )
                 samples = boot["samples"]
             elif method == "bootstrap_full_refit_audit":

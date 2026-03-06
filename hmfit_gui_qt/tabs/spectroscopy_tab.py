@@ -1072,6 +1072,12 @@ class SpectroscopyTab(QWidget):
         )
         if not config["equation_text"]:
             config["equation_text"] = ""
+        graph_payload = self._graph_solver_inputs if isinstance(self._graph_solver_inputs, dict) else {}
+        if graph_payload:
+            component_names = list(graph_payload.get("components") or [])
+            complex_names = list(graph_payload.get("complexes") or [])
+            config["species_names"] = component_names + complex_names
+            config["abs_groups"] = graph_payload.get("abs_groups") or {}
         if seeds is not None:
             config["multi_start_seeds"] = seeds
         return config
@@ -1564,6 +1570,7 @@ class SpectroscopyTab(QWidget):
             "y_fit_hat": export_data.get("yfit") or [],
             "modelo_solver": export_data.get("modelo") or [],
             "non_abs_species": export_data.get("non_abs_species") or [],
+            "abs_group_map": export_data.get("abs_group_map") or [],
             "algorithm": (self._last_config or {}).get("algorithm", "Newton-Raphson"),
             "model_settings": (self._last_config or {}).get("model_settings", "Free"),
             "optimizer": (self._last_config or {}).get("optimizer", "powell"),
@@ -1598,9 +1605,9 @@ class SpectroscopyTab(QWidget):
             from hmfit_core.processors.spectroscopy_processor import (
                 _build_bounds_list,
                 _build_smoothness_laplacian,
+                _solve_spectral_model,
             )
             from hmfit_core.solvers import NewtonRaphson, LevenbergMarquardt
-            from hmfit_core.utils.nnls_utils import solve_A_nnls_pgd, solve_A_nnls_pgd2
 
             Y_star = np.asarray(data_star, dtype=float)
             c_t_raw = ctx.get("C_T")
@@ -1609,6 +1616,12 @@ class SpectroscopyTab(QWidget):
             modelo = np.asarray(modelo_raw if modelo_raw is not None else [], dtype=float)
             nas_raw = ctx.get("non_abs_species")
             nas = list(nas_raw) if nas_raw is not None else []
+            group_map_raw = ctx.get("abs_group_map")
+            group_map = None
+            if group_map_raw is not None:
+                group_map_arr = np.asarray(group_map_raw, dtype=float)
+                if group_map_arr.size > 0:
+                    group_map = group_map_arr
             algorithm = str(ctx.get("algorithm") or "Newton-Raphson")
             model_settings = str(ctx.get("model_settings") or "Free")
             optimizer = str(ctx.get("optimizer") or "powell")
@@ -1667,32 +1680,19 @@ class SpectroscopyTab(QWidget):
                 try:
                     k_curr_full = pack(theta_free)
                     C = res.concentraciones(k_curr_full)[0]
-                    if eps_solver_mode == "nnls_hard":
-                        A = solve_A_nnls_pgd2(C, Y_star.T, ridge=0.0, max_iters=300)
-                    else:
-                        lb = None
-                        lb_mode = "relative" if eps_solver_mode == "soft_bound" else delta_mode
-                        if lb_mode == "relative" and delta_rel > 0:
-                            try:
-                                A0 = np.linalg.pinv(np.asarray(C, dtype=float)) @ np.asarray(Y_star.T, dtype=float)
-                                if A0.size:
-                                    amax = np.max(np.abs(A0), axis=1)
-                                    amax = np.nan_to_num(amax, nan=0.0, posinf=0.0, neginf=0.0)
-                                    if np.isfinite(amax).all() and float(np.max(amax)) > 0:
-                                        lb = -float(delta_rel) * amax
-                            except Exception:
-                                lb = None
-                        A = solve_A_nnls_pgd(
-                            C,
-                            Y_star.T,
-                            ridge=0.0,
-                            mu=float(eps_mu),
-                            max_iters=300,
-                            lower_bound=lb,
-                            alpha_smooth=float(alpha_smooth),
-                            smooth_matrix=smooth_matrix,
-                        )
-                    r = C @ A - Y_star.T
+                    fit = _solve_spectral_model(
+                        C,
+                        Y_star.T,
+                        group_map=group_map,
+                        eps_solver_mode=eps_solver_mode,
+                        mu=float(eps_mu),
+                        delta_mode=delta_mode,
+                        delta_rel=float(delta_rel),
+                        alpha_smooth=float(alpha_smooth),
+                        smooth_matrix=smooth_matrix,
+                        max_iters=300,
+                    )
+                    r = fit["yfit"] - np.asarray(Y_star.T, dtype=float)
                     r_w = r * weights_row
                     rms = float(np.sqrt(np.mean(np.square(r_w))))
                     if np.isnan(rms) or np.isinf(rms):

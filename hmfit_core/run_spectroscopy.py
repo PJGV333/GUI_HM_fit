@@ -40,6 +40,8 @@ def run_spectroscopy(config: Mapping[str, Any] | Any, progress_cb: ProgressCallb
         efa_eigenvalues=int(cfg.get("efa_eigenvalues", 0) or 0),
         modelo=cfg.get("modelo") or [],
         non_abs_species=list(cfg.get("non_abs_species") or []),
+        species_names=list(cfg.get("species_names") or []),
+        abs_groups=cfg.get("abs_groups") or {},
         algorithm=str(cfg.get("algorithm") or "Newton-Raphson"),
         model_settings=str(cfg.get("model_settings") or "Free"),
         optimizer=str(cfg.get("optimizer") or "powell"),

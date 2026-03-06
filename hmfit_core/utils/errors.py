@@ -422,6 +422,22 @@ def _build_dC_all(Co, Ms, nas, param_idx):
         rows.append(dC_dlog[abs_idx, :])   # (n_abs × p)
     return _stack_rows(rows)               # (m × n_abs × p)
 
+
+def _coerce_spectro_group_map(group_map, n_abs):
+    n_abs = int(max(n_abs, 0))
+    if n_abs == 0:
+        return _onp.zeros((0, 0), dtype=float)
+    if group_map is None:
+        return _onp.eye(n_abs, dtype=float)
+    arr = _onp.asarray(group_map, dtype=float)
+    if arr.ndim != 2:
+        raise ValueError(f"group_map must be 2D, got shape={arr.shape}")
+    if arr.shape[0] != n_abs:
+        raise ValueError(f"group_map row mismatch: expected {n_abs}, got {arr.shape[0]}")
+    if arr.shape[1] <= 0:
+        raise ValueError("group_map must contain at least one group.")
+    return arr
+
 def _percent_errors_from_cov(k, Cov_log10K):
     SE_log10K = _onp.sqrt(_onp.clip(_onp.diag(_as_onp(Cov_log10K)), 0.0, _onp.inf))
     # use local percent_error_log10K
@@ -452,6 +468,7 @@ def compute_errors_spectro_varpro(
     use_projector=True,
     param_names=None,
     weights=None,
+    group_map=None,
 ):
     """
     Cálculo robusto (variable projection) para espectroscopía.
@@ -475,9 +492,14 @@ def compute_errors_spectro_varpro(
         else:
             raise ValueError(f"p={p} > nspec={nspec}")
 
+    G_map_onp = _coerce_spectro_group_map(group_map, C.shape[1])
+    G_map = np.asarray(G_map_onp, dtype=float)
+    C_eff = np.asarray(_as_onp(C) @ G_map_onp, dtype=float)
+
     # Ajuste lineal y residuo
-    A   = _pinv_backend(C, rcond=rcond) @ Y.T     # (n_abs × nw)
-    R   = (C @ A - Y.T)                           # (m × nw)
+    A_group = _pinv_backend(C_eff, rcond=rcond) @ Y.T      # (n_group × nw)
+    A_species = G_map @ A_group                            # (n_abs × nw)
+    R   = (C_eff @ A_group - Y.T)                          # (m × nw)
     m_obs, nw = int(R.shape[0]), int(R.shape[1])
 
     # Pesos espectrales (por lambda) o por punto.
@@ -502,7 +524,8 @@ def compute_errors_spectro_varpro(
 
     # Jacobiano proyectado
     dC_all = _build_dC_all(Co, Ms, nas, param_idx)          # (m × n_abs × p)
-    J_raw = _jac_varpro(C, A, dC_all, use_projector=use_projector, rcond=rcond)
+    dC_eff = np.transpose(np.tensordot(dC_all, G_map, axes=(1, 0)), (0, 2, 1))
+    J_raw = _jac_varpro(C_eff, A_group, dC_eff, use_projector=use_projector, rcond=rcond)
     W_flat = W.reshape(-1)
     J = J_raw * W_flat[None, :]
 
@@ -530,7 +553,10 @@ def compute_errors_spectro_varpro(
     return {
         "percK": percK, "SE_K": SE_K, "SE_log10K": SE_log10K,
         "Cov_log10K": _as_onp(Cov_log10K), "RMS": RMS, "s2": s2,
-        "A": _as_onp(A), "J": _as_onp(J), "yfit": _as_onp((C @ A).T),
+        "A": _as_onp(A_group),
+        "A_species": _as_onp(A_species),
+        "group_map": _as_onp(G_map),
+        "J": _as_onp(J), "yfit": _as_onp((C_eff @ A_group).T),
         "r": _as_onp(r), "dof": int(dof), "nobs": int(r.size),
         "RMS_raw": RMS_raw,
         "stability_diag": diag
@@ -997,6 +1023,7 @@ def bootstrap_one_step_spectro(
     rcond=1e-10,
     use_projector=True,
     weights=None,
+    group_map=None,
 ):
     """
     One-step LM bootstrap (spectroscopy): dataset perturbation + recompute J,r at k_hat + 1 LM step.
@@ -1007,7 +1034,15 @@ def bootstrap_one_step_spectro(
         raise ValueError("B must be > 0.")
 
     metrics0 = compute_errors_spectro_varpro(
-        k_hat, res, Y, modelo, nas, rcond=rcond, use_projector=use_projector, weights=weights
+        k_hat,
+        res,
+        Y,
+        modelo,
+        nas,
+        rcond=rcond,
+        use_projector=use_projector,
+        weights=weights,
+        group_map=group_map,
     )
     yfit = _onp.asarray(metrics0["yfit"], dtype=float)
     Y_obs = _onp.asarray(Y, dtype=float)
@@ -1023,7 +1058,15 @@ def bootstrap_one_step_spectro(
         Y_star = yfit - R * v
 
         metrics_star = compute_errors_spectro_varpro(
-            k_hat, res, Y_star, modelo, nas, rcond=rcond, use_projector=use_projector, weights=weights
+            k_hat,
+            res,
+            Y_star,
+            modelo,
+            nas,
+            rcond=rcond,
+            use_projector=use_projector,
+            weights=weights,
+            group_map=group_map,
         )
         J = _onp.asarray(metrics_star["J"], dtype=float)
         r_star = _onp.asarray(metrics_star["r"], dtype=float).ravel()
