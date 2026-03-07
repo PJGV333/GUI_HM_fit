@@ -469,6 +469,7 @@ def compute_errors_spectro_varpro(
     param_names=None,
     weights=None,
     group_map=None,
+    param_transform=None,
 ):
     """
     Cálculo robusto (variable projection) para espectroscopía.
@@ -483,14 +484,33 @@ def compute_errors_spectro_varpro(
     nspec = Co.shape[1]
     Ms, n_comp = _normalize_modelo(modelo, nspec)
 
-    # Mapear parámetros a columnas de especies (por defecto, complejos):
     p = len(k)
-    param_idx = list(range(n_comp, nspec))
-    if len(param_idx) != p:
-        if p <= nspec:
-            param_idx = list(range(nspec - p, nspec))
-        else:
-            raise ValueError(f"p={p} > nspec={nspec}")
+    param_transform_onp = None
+    base_param_idx = list(range(n_comp, nspec))
+    if param_transform is not None:
+        param_transform_onp = _onp.asarray(param_transform, dtype=float)
+        if param_transform_onp.ndim != 2:
+            raise ValueError(
+                f"param_transform must be 2D, got shape={param_transform_onp.shape}"
+            )
+        if param_transform_onp.shape[0] != len(base_param_idx):
+            raise ValueError(
+                "param_transform row mismatch: "
+                f"expected {len(base_param_idx)}, got {param_transform_onp.shape[0]}"
+            )
+        if param_transform_onp.shape[1] != p:
+            raise ValueError(
+                "param_transform column mismatch: "
+                f"expected {p}, got {param_transform_onp.shape[1]}"
+            )
+        param_idx = base_param_idx
+    else:
+        param_idx = base_param_idx
+        if len(param_idx) != p:
+            if p <= nspec:
+                param_idx = list(range(nspec - p, nspec))
+            else:
+                raise ValueError(f"p={p} > nspec={nspec}")
 
     G_map_onp = _coerce_spectro_group_map(group_map, C.shape[1])
     G_map = np.asarray(G_map_onp, dtype=float)
@@ -523,7 +543,9 @@ def compute_errors_spectro_varpro(
     s2  = float((r @ r) / dof)
 
     # Jacobiano proyectado
-    dC_all = _build_dC_all(Co, Ms, nas, param_idx)          # (m × n_abs × p)
+    dC_all = _build_dC_all(Co, Ms, nas, param_idx)
+    if param_transform_onp is not None:
+        dC_all = np.tensordot(dC_all, np.asarray(param_transform_onp, dtype=float), axes=(2, 0))
     dC_eff = np.transpose(np.tensordot(dC_all, G_map, axes=(1, 0)), (0, 2, 1))
     J_raw = _jac_varpro(C_eff, A_group, dC_eff, use_projector=use_projector, rcond=rcond)
     W_flat = W.reshape(-1)
@@ -1024,6 +1046,7 @@ def bootstrap_one_step_spectro(
     use_projector=True,
     weights=None,
     group_map=None,
+    param_transform=None,
 ):
     """
     One-step LM bootstrap (spectroscopy): dataset perturbation + recompute J,r at k_hat + 1 LM step.
@@ -1043,6 +1066,7 @@ def bootstrap_one_step_spectro(
         use_projector=use_projector,
         weights=weights,
         group_map=group_map,
+        param_transform=param_transform,
     )
     yfit = _onp.asarray(metrics0["yfit"], dtype=float)
     Y_obs = _onp.asarray(Y, dtype=float)
@@ -1067,6 +1091,7 @@ def bootstrap_one_step_spectro(
             use_projector=use_projector,
             weights=weights,
             group_map=group_map,
+            param_transform=param_transform,
         )
         J = _onp.asarray(metrics_star["J"], dtype=float)
         r_star = _onp.asarray(metrics_star["r"], dtype=float).ravel()

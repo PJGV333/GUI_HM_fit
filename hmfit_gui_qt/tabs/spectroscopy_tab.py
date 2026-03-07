@@ -874,21 +874,25 @@ class SpectroscopyTab(QWidget):
         k_values = k_solver.tolist()
         model_sett = str(solver_block.get("model_sett") or "Free")
 
-        # Si el parser vino de una serie por pasos (K1, K2, ...), reflejar en UI
-        # exactamente las constantes escritas por el usuario y activar Step by step.
         edge_log_beta_raw = solver_inputs.get("edge_log_beta")
         if edge_log_beta_raw is None:
             edge_log_beta = np.asarray([], dtype=float)
         else:
             edge_log_beta = np.asarray(edge_log_beta_raw, dtype=float).ravel()
-        if (
-            model_sett == "Free"
-            and edge_log_beta.size > 0
-            and edge_log_beta.size == k_solver.size
-            and np.allclose(np.cumsum(edge_log_beta), k_solver, rtol=1e-8, atol=1e-8)
-        ):
+        edge_map_raw = solver_inputs.get("complex_edge_map")
+        edge_map = np.asarray(edge_map_raw if edge_map_raw is not None else [], dtype=float)
+        use_edge_params = (
+            edge_log_beta.size > 0
+            and edge_map.ndim == 2
+            and edge_map.shape[0] == k_solver.size
+            and edge_map.shape[1] == edge_log_beta.size
+        )
+        if use_edge_params:
             k_values = edge_log_beta.tolist()
-            model_sett = "Step by step"
+            model_sett = "Free"
+            self.model_opt_plots.set_param_row_count_override(int(edge_log_beta.size))
+        else:
+            self.model_opt_plots.set_param_row_count_override(None)
 
         self.model_opt_plots.set_optimization(
             model_settings=model_sett,
@@ -1072,12 +1076,33 @@ class SpectroscopyTab(QWidget):
         )
         if not config["equation_text"]:
             config["equation_text"] = ""
+        use_equation_mode = bool(
+            self.model_opt_plots.radio_mode_equations is not None
+            and self.model_opt_plots.radio_mode_equations.isChecked()
+        )
         graph_payload = self._graph_solver_inputs if isinstance(self._graph_solver_inputs, dict) else {}
-        if graph_payload:
+        if graph_payload and use_equation_mode:
             component_names = list(graph_payload.get("components") or [])
             complex_names = list(graph_payload.get("complexes") or [])
             config["species_names"] = component_names + complex_names
             config["abs_groups"] = graph_payload.get("abs_groups") or {}
+            param_transform = graph_payload.get("complex_edge_map")
+            edge_param_names = list(graph_payload.get("edge_param_names") or [])
+            edge_log_beta = np.asarray(graph_payload.get("edge_log_beta") or [], dtype=float).ravel()
+            transform_arr = np.asarray(param_transform if param_transform is not None else [], dtype=float)
+            if (
+                edge_log_beta.size > 0
+                and transform_arr.ndim == 2
+                and transform_arr.shape[1] == edge_log_beta.size
+            ):
+                config["solver_param_transform"] = transform_arr.tolist()
+                config["solver_model_settings"] = "Free"
+                config["param_names"] = (
+                    edge_param_names
+                    if len(edge_param_names) == edge_log_beta.size
+                    else [f"K{i+1}" for i in range(edge_log_beta.size)]
+                )
+                config["model_settings"] = "Free"
         if seeds is not None:
             config["multi_start_seeds"] = seeds
         return config
@@ -1573,6 +1598,11 @@ class SpectroscopyTab(QWidget):
             "abs_group_map": export_data.get("abs_group_map") or [],
             "algorithm": (self._last_config or {}).get("algorithm", "Newton-Raphson"),
             "model_settings": (self._last_config or {}).get("model_settings", "Free"),
+            "solver_model_settings": (
+                export_data.get("solver_model_settings")
+                or (self._last_config or {}).get("solver_model_settings", "Free")
+            ),
+            "solver_param_transform": export_data.get("solver_param_transform"),
             "optimizer": (self._last_config or {}).get("optimizer", "powell"),
             "bounds": (self._last_config or {}).get("bounds", []),
             "fixed_mask": (self._last_config or {}).get("fixed_mask", []),
@@ -1581,7 +1611,7 @@ class SpectroscopyTab(QWidget):
             "delta_mode": (self._last_config or {}).get("delta_mode", "off"),
             "delta_rel": (self._last_config or {}).get("delta_rel", 0.01),
             "alpha_smooth": (self._last_config or {}).get("alpha_smooth", 0.0),
-            "param_names": [f"K{i+1}" for i in range(len(k_hat))],
+            "param_names": export_data.get("param_names") or [f"K{i+1}" for i in range(len(k_hat))],
             "refit_from_data": self._refit_from_data,
         }
         self._last_fit_context = dict(context)
@@ -1608,6 +1638,10 @@ class SpectroscopyTab(QWidget):
                 _solve_spectral_model,
             )
             from hmfit_core.solvers import NewtonRaphson, LevenbergMarquardt
+            from hmfit_core.utils.solver_param_transform import (
+                SolverParamTransformWrapper,
+                coerce_param_transform,
+            )
 
             Y_star = np.asarray(data_star, dtype=float)
             c_t_raw = ctx.get("C_T")
@@ -1624,6 +1658,11 @@ class SpectroscopyTab(QWidget):
                     group_map = group_map_arr
             algorithm = str(ctx.get("algorithm") or "Newton-Raphson")
             model_settings = str(ctx.get("model_settings") or "Free")
+            solver_model_settings = str(ctx.get("solver_model_settings") or model_settings)
+            solver_param_transform = coerce_param_transform(
+                ctx.get("solver_param_transform"),
+                expected_rows=max(abs(int(modelo.shape[1] - modelo.shape[0])), 0) if modelo.ndim == 2 else None,
+            )
             optimizer = str(ctx.get("optimizer") or "powell")
             eps_solver_mode = str(ctx.get("eps_solver_mode") or "soft_penalty").strip().lower()
             eps_mu = self._parse_float(ctx.get("mu", 1e-2), 1e-2)
@@ -1646,11 +1685,16 @@ class SpectroscopyTab(QWidget):
                 smooth_matrix = _build_smoothness_laplacian(int(Y_star.shape[0]))
 
             if algorithm == "Newton-Raphson":
-                res = NewtonRaphson(C_T, modelo, nas, model_settings)
+                base_solver = NewtonRaphson(C_T, modelo, nas, solver_model_settings)
             elif algorithm == "Levenberg-Marquardt":
-                res = LevenbergMarquardt(C_T, modelo, nas, model_settings)
+                base_solver = LevenbergMarquardt(C_T, modelo, nas, solver_model_settings)
             else:
                 return np.asarray(theta0, dtype=float), False, {"error": f"Unknown algorithm: {algorithm}"}
+            res = (
+                SolverParamTransformWrapper(base_solver, solver_param_transform)
+                if solver_param_transform is not None
+                else base_solver
+            )
 
             theta0 = np.asarray(theta0, dtype=float).ravel()
             p0_full = theta0.copy()

@@ -671,6 +671,11 @@ def create_solver_inputs_from_graph(graph: ChemicalGraph) -> Dict[str, Any]:
     ctot = np.asarray(
         [[float(species.initial_concentration) for species in component_species]], dtype=float
     )
+    complex_edge_map = _build_complex_edge_map(
+        graph,
+        complex_names=complex_names,
+        ordered_reactions=ordered_reactions,
+    )
 
     return {
         "species": species_list,
@@ -691,8 +696,11 @@ def create_solver_inputs_from_graph(graph: ChemicalGraph) -> Dict[str, Any]:
             "names": complex_names,
             "indices": complex_idx,
             "log_beta": complex_log_beta,
+            "edge_param_map": complex_edge_map,
         },
         "complex_log_beta": complex_log_beta,
+        "complex_edge_map": complex_edge_map,
+        "edge_param_names": [f"K{i+1}" for i in range(len(ordered_reactions))],
         "solver_inputs": {
             "ctot": ctot,
             "modelo": model_matrix,
@@ -701,3 +709,72 @@ def create_solver_inputs_from_graph(graph: ChemicalGraph) -> Dict[str, Any]:
             "model_sett": "Free",
         },
     }
+
+
+def _build_complex_edge_map(
+    graph: ChemicalGraph,
+    *,
+    complex_names: List[str],
+    ordered_reactions: List[ReactionEdge],
+) -> np.ndarray:
+    n_edges = len(ordered_reactions)
+    if not complex_names:
+        return np.zeros((0, n_edges), dtype=float)
+    if n_edges <= 0:
+        return np.zeros((len(complex_names), 0), dtype=float)
+
+    reaction_index = {id(reaction): idx for idx, reaction in enumerate(ordered_reactions)}
+    active_names = {species.name for species in graph.get_active_species()}
+
+    forming_reactions: Dict[str, ReactionEdge] = {}
+    for reaction in graph.reactions:
+        for product in reaction.products.keys():
+            product_name = product.name
+            if product_name not in active_names:
+                continue
+            prev = forming_reactions.get(product_name)
+            if prev is not None and prev is not reaction:
+                raise ValueError(f"Múltiples rutas de formación para {product_name!r}.")
+            forming_reactions[product_name] = reaction
+
+    coeff_cache: Dict[str, np.ndarray] = {}
+    path: set[str] = set()
+
+    def get_coeffs(species_name: str) -> np.ndarray:
+        cached = coeff_cache.get(species_name)
+        if cached is not None:
+            return cached
+        if species_name in path:
+            raise ValueError(f"Ciclo detectado en rutas de formación para {species_name!r}.")
+
+        path.add(species_name)
+        try:
+            reaction = forming_reactions.get(species_name)
+            if reaction is None:
+                coeffs = np.zeros(n_edges, dtype=float)
+            else:
+                rxn_idx = reaction_index.get(id(reaction))
+                if rxn_idx is None:
+                    raise ValueError(f"Reaction for species {species_name!r} is not ordered.")
+                coeffs = np.zeros(n_edges, dtype=float)
+                coeffs[rxn_idx] = 1.0
+                for reactant, coeff in reaction.reactants.items():
+                    coeffs = coeffs + (float(coeff) * get_coeffs(reactant.name))
+
+                product_coeff = None
+                for product, coeff in reaction.products.items():
+                    if product.name == species_name:
+                        product_coeff = float(coeff)
+                        break
+                if product_coeff is None or abs(product_coeff) <= _EPS:
+                    raise ValueError(
+                        f"No product coefficient found for species {species_name!r}."
+                    )
+                coeffs = coeffs / product_coeff
+
+            coeff_cache[species_name] = coeffs
+            return coeffs
+        finally:
+            path.discard(species_name)
+
+    return np.vstack([get_coeffs(species_name) for species_name in complex_names]).astype(float, copy=False)

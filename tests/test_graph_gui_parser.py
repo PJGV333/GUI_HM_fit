@@ -119,3 +119,34 @@ def test_normalize_equilibria_text_stabilizes_hash_input():
     norm = normalize_equilibria_text(raw)
     assert "H + G <=> HG ; logB=4.5" in norm
     assert "@na HG" in norm
+
+
+def test_parser_exposes_reaction_to_complex_mapping_for_equation_constants():
+    text = """
+    rh2cl + f <=> rh2f + cl ; 10
+    rh2f + f <=> rh2f2 ; 5
+    rh2f2 + f <=> rh1f + fhf ; 5
+    @na f, fhf, cl
+    """
+
+    _, payload = parse_multiline_equilibria(text)
+
+    edge_log_beta = np.asarray(payload["edge_log_beta"], dtype=float)
+    complex_edge_map = np.asarray(payload["complex_edge_map"], dtype=float)
+    solver_k = np.asarray(payload["solver_inputs"]["k"], dtype=float)
+
+    assert edge_log_beta.tolist() == [10.0, 5.0, 5.0]
+    assert complex_edge_map.shape == (5, 3)
+    assert np.allclose(complex_edge_map @ edge_log_beta, solver_k)
+    assert np.allclose(
+        complex_edge_map,
+        np.array(
+            [
+                [1.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+            ]
+        ),
+    )

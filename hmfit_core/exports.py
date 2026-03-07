@@ -164,14 +164,20 @@ def write_results_xlsx(
 
             k_vals = export_data.get("k") or []
             percK = export_data.get("percK") or []
-            k_names = [f"K{i+1}" for i in range(len(k_vals))]
+            k_names = list(export_data.get("param_names") or [])
+            if len(k_names) != len(k_vals):
+                k_names = [f"K{i+1}" for i in range(len(k_vals))]
             df_k = pd.DataFrame(
                 {"Constants": list(k_vals), "Error (%)": list(percK)[: len(k_vals)]},
                 index=k_names,
             )
 
             k_ini_vals = export_data.get("k_ini") or []
-            k_ini_names = [f"K{i+1}" for i in range(len(k_ini_vals))]
+            k_ini_names = (
+                k_names[: len(k_ini_vals)]
+                if len(k_names) >= len(k_ini_vals)
+                else [f"K{i+1}" for i in range(len(k_ini_vals))]
+            )
             df_k_ini = pd.DataFrame({"Constants": list(k_ini_vals)}, index=k_ini_names)
 
             stats_table = export_data.get("stats_table")
@@ -403,7 +409,9 @@ def write_results_xlsx(
                 k_vals = export_data.get("k") or []
                 percK = export_data.get("percK") or []
                 if k_vals:
-                    names = [f"K{i+1}" for i in range(len(k_vals))]
+                    names = list(export_data.get("param_names") or [])
+                    if len(names) != len(k_vals):
+                        names = [f"K{i+1}" for i in range(len(k_vals))]
                     df_k_spec = pd.DataFrame(
                         {"log10K": k_vals, "percK(%)": percK[: len(k_vals)]},
                         index=names,
@@ -413,7 +421,11 @@ def write_results_xlsx(
 
                 k_ini = export_data.get("k_ini") or []
                 if k_ini:
-                    names_ini = [f"k{i+1}" for i in range(len(k_ini))]
+                    names_ini = (
+                        names[: len(k_ini)]
+                        if 'names' in locals() and len(names) >= len(k_ini)
+                        else [f"k{i+1}" for i in range(len(k_ini))]
+                    )
                     df_k_ini_spec = pd.DataFrame({"init_guess": k_ini}, index=names_ini)
                     df_k_ini_spec.to_excel(writer, sheet_name="Init_guess_K")
                     format_sheet(writer, "Init_guess_K", TITLES_MAP["Init_guess_K"])

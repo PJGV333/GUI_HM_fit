@@ -28,6 +28,11 @@ warnings.filterwarnings("ignore")
 from ..utils.errors import compute_errors_spectro_varpro, pinv_cs, percent_error_log10K, sensitivities_wrt_logK
 from ..utils.nnls_utils import solve_A_nnls_pgd, solve_A_nnls_pgd2
 from ..utils.noncoop_utils import noncoop_derived_from_logK1
+from ..utils.solver_param_transform import (
+    SolverParamTransformWrapper,
+    coerce_param_transform,
+    expand_solver_params,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +129,7 @@ def _build_bounds_list(bounds):
 
 
 # === Result formatting (Historical reference to previous UI output) ===
-def format_results_table(k, SE_log10K, percK, rms, covfit, lof=None, fixed_mask=None):
+def format_results_table(k, SE_log10K, percK, rms, covfit, lof=None, fixed_mask=None, param_names=None):
     """
     Build an ASCII table with aligned columns for constants and diagnostics.
     Build an ASCII table with aligned columns for constants and diagnostics.
@@ -148,6 +153,11 @@ def format_results_table(k, SE_log10K, percK, rms, covfit, lof=None, fixed_mask=
     rows = []
     for i in range(len(k)):
         is_fixed = bool(fixed_mask[i]) if fixed_mask is not None and i < len(fixed_mask) else False
+        param_label = (
+            str(param_names[i])
+            if param_names is not None and i < len(param_names) and str(param_names[i]).strip()
+            else f"K{i+1}"
+        )
         if is_fixed:
             se_str = "const"
             perc_str = ""
@@ -156,7 +166,7 @@ def format_results_table(k, SE_log10K, percK, rms, covfit, lof=None, fixed_mask=
             perc_str = f"{percK[i]:.2f} %"
 
         rows.append([
-            f"K{i+1}",
+            param_label,
             f"{k[i]:.2e} ± {se_str}",
             perc_str,
             f"{rms:.2e}" if i == 0 else "",
@@ -1023,17 +1033,43 @@ def _evaluate_spectro_objective(
     return float(val)
 
 
-def _build_equilibrium_solver(algorithm, c_t_array, modelo, non_abs_species, model_settings):
+def _infer_n_complex_from_model(modelo) -> int:
+    arr = onp.asarray(modelo, dtype=float)
+    if arr.ndim != 2:
+        raise ValueError(f"Invalid model matrix shape: {arr.shape}")
+    return max(int(abs(arr.shape[1] - arr.shape[0])), 0)
+
+
+def _build_equilibrium_solver(
+    algorithm,
+    c_t_array,
+    modelo,
+    non_abs_species,
+    model_settings,
+    *,
+    solver_param_transform=None,
+    solver_model_settings=None,
+):
     c_t_df = pd.DataFrame(onp.asarray(c_t_array, dtype=float))
+    effective_model_settings = str(solver_model_settings or model_settings or "Free")
     if algorithm == "Newton-Raphson":
         from ..solvers import NewtonRaphson
 
-        return NewtonRaphson(c_t_df, modelo, non_abs_species, model_settings)
-    if algorithm == "Levenberg-Marquardt":
+        solver = NewtonRaphson(c_t_df, modelo, non_abs_species, effective_model_settings)
+    elif algorithm == "Levenberg-Marquardt":
         from ..solvers import LevenbergMarquardt
 
-        return LevenbergMarquardt(c_t_df, modelo, non_abs_species, model_settings)
-    raise ValueError(f"Unknown algorithm: {algorithm}")
+        solver = LevenbergMarquardt(c_t_df, modelo, non_abs_species, effective_model_settings)
+    else:
+        raise ValueError(f"Unknown algorithm: {algorithm}")
+
+    transform = coerce_param_transform(
+        solver_param_transform,
+        expected_rows=_infer_n_complex_from_model(modelo),
+    )
+    if transform is None:
+        return solver
+    return SolverParamTransformWrapper(solver=solver, transform=transform)
 
 
 def _run_spectro_single_start(
@@ -1044,6 +1080,8 @@ def _run_spectro_single_start(
     modelo,
     non_abs_species,
     model_settings,
+    solver_param_transform,
+    solver_model_settings,
     start_k,
     processed_bounds,
     seed,
@@ -1057,7 +1095,15 @@ def _run_spectro_single_start(
     smooth_matrix,
     abs_group_map=None,
 ):
-    solver = _build_equilibrium_solver(algorithm, c_t_array, modelo, non_abs_species, model_settings)
+    solver = _build_equilibrium_solver(
+        algorithm,
+        c_t_array,
+        modelo,
+        non_abs_species,
+        model_settings,
+        solver_param_transform=solver_param_transform,
+        solver_model_settings=solver_model_settings,
+    )
     state = _new_objective_state(start_k)
     local_best = {"rms": float("inf"), "k": onp.asarray(start_k, dtype=float).ravel().copy()}
     callback_logs = []
@@ -1217,6 +1263,9 @@ def process_spectroscopy_data(
     non_abs_species,
     species_names,
     abs_groups,
+    solver_param_transform,
+    solver_model_settings,
+    param_names,
     algorithm,
     model_settings,
     optimizer,
@@ -1568,6 +1617,25 @@ def process_spectroscopy_data(
         return vals
 
     k = np.asarray(_safe_float_list(initial_k), dtype=float)
+    solver_param_transform_arr = coerce_param_transform(
+        solver_param_transform,
+        expected_rows=_infer_n_complex_from_model(modelo),
+    )
+    solver_model_settings = str(solver_model_settings or model_settings or "Free")
+    if solver_param_transform_arr is not None and k.size:
+        if int(k.size) != int(solver_param_transform_arr.shape[1]):
+            raise ValueError(
+                "Equation-parameter mapping mismatch: "
+                f"expected {solver_param_transform_arr.shape[1]} constants, got {k.size}."
+            )
+    param_names = list(param_names or [])
+    if len(param_names) != int(k.size):
+        param_names = [f"K{i+1}" for i in range(int(k.size))]
+    if solver_param_transform_arr is not None:
+        log_progress(
+            "Equation parameter mapping active: %d reaction constants -> %d solver betas."
+            % (int(solver_param_transform_arr.shape[1]), int(solver_param_transform_arr.shape[0]))
+        )
 
     def _to_bound(val, default):
         try:
@@ -1595,14 +1663,15 @@ def process_spectroscopy_data(
     t_solver_start = time.perf_counter()
     
     # Select algorithm
-    if algorithm == "Newton-Raphson":
-        from ..solvers import NewtonRaphson
-        res = NewtonRaphson(C_T_df, modelo, nas, model_settings)
-    elif algorithm == "Levenberg-Marquardt":
-        from ..solvers import LevenbergMarquardt
-        res = LevenbergMarquardt(C_T_df, modelo, nas, model_settings)
-    else:
-        raise ValueError(f"Unknown algorithm: {algorithm}")
+    res = _build_equilibrium_solver(
+        algorithm,
+        C_T_df,
+        modelo,
+        nas,
+        model_settings,
+        solver_param_transform=solver_param_transform_arr,
+        solver_model_settings=solver_model_settings,
+    )
 
     species_all = _normalize_species_names(species_names, int(getattr(res, "nspec", 0) or 0))
     abs_grouping = _build_absorptivity_grouping(
@@ -1757,6 +1826,10 @@ def process_spectroscopy_data(
         "modelo": onp.asarray(modelo, dtype=float),
         "non_abs_species": list(nas),
         "model_settings": model_settings,
+        "solver_param_transform": (
+            None if solver_param_transform_arr is None else onp.asarray(solver_param_transform_arr, dtype=float)
+        ),
+        "solver_model_settings": solver_model_settings,
         "processed_bounds": list(processed_bounds),
         "y_transposed": y_transposed,
         "weights_row": onp.asarray(weights_row, dtype=float),
@@ -1839,19 +1912,21 @@ def process_spectroscopy_data(
 
     stage_times["optimization_s"] = time.perf_counter() - t_opt_start
     k = np.ravel(best_result["k"])
+    k_solver = expand_solver_params(k, solver_param_transform_arr)
 
     log("Optimización completada")
     log_progress(f"Objective evaluations (f_m): {int(objective_eval_count)}")
     t_post_start = time.perf_counter()
     
     # Compute errors
-    k_names = [f"K{i+1}" for i in range(len(k))]
+    k_names = list(param_names) if param_names else [f"K{i+1}" for i in range(len(k))]
     metrics = compute_errors_spectro_varpro(
         k=k, res=res, Y=Y, modelo=modelo, nas=nas,
         rcond=1e-10, use_projector=True,
         param_names=k_names,
         weights=weights_per_lambda,
         group_map=abs_group_map,
+        param_transform=solver_param_transform_arr,
     )
     
     SE_log10K = metrics["SE_log10K"]
@@ -2071,7 +2146,7 @@ def process_spectroscopy_data(
         dif_en_ct = 0.0
 
     # Tabla formateada para resultados (alineada como en la interfaz anterior)
-    results_text = format_results_table(k, SE_log10K, percK, rms, covfit, lof=lof)
+    results_text = format_results_table(k, SE_log10K, percK, rms, covfit, lof=lof, param_names=k_names)
 
     # Stability Diagnostics
     if stability_diag:
@@ -2164,9 +2239,22 @@ def process_spectroscopy_data(
         ),
         "A_index": nm_list,
         "k": np.asarray(k).tolist(),
+        "k_solver": np.asarray(k_solver).tolist(),
         "k_ini": np.asarray(initial_k).tolist() if initial_k is not None else [],
+        "k_ini_solver": (
+            expand_solver_params(initial_k if initial_k is not None else [], solver_param_transform_arr).tolist()
+            if initial_k is not None
+            else []
+        ),
         "percK": np.asarray(percK).tolist(),
         "SE_log10K": np.asarray(SE_log10K).tolist(),
+        "param_names": list(k_names),
+        "solver_param_transform": (
+            None
+            if solver_param_transform_arr is None
+            else onp.asarray(solver_param_transform_arr, dtype=float).tolist()
+        ),
+        "solver_model_settings": str(solver_model_settings),
         "nm": nm_list,
         "Y": np.asarray(Y).tolist() if Y is not None else [],
         "Y_raw": np.asarray(Y_raw).tolist() if Y_raw is not None else [],
@@ -2318,7 +2406,7 @@ def process_spectroscopy_data(
         "success": True,
         "constants": [
             {
-                "name": f"K{i+1}",
+                "name": str(k_names[i]),
                 "log10K": float(k[i]),
                 "SE_log10K": float(SE_log10K[i]),
                 "K": float(10**k[i]),

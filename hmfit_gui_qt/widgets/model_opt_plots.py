@@ -185,6 +185,7 @@ class ModelOptPlotsWidget(QWidget):
     def __init__(self, parent: QWidget | None = None, *, enable_equation_editor: bool = False) -> None:
         super().__init__(parent)
         self._in_table_update = False
+        self._param_row_count_override: int | None = None
         self._available_conc_columns: list[str] = []
         self._errors_context: dict[str, Any] | None = None
         self._errors_last_output: dict[str, Any] | None = None
@@ -640,15 +641,43 @@ class ModelOptPlotsWidget(QWidget):
         except ValueError as exc:
             raise ValueError("Seed must be an integer.") from exc
 
-    def _build_solver(self, algorithm: str, C_T, modelo, nas, model_settings: str):
+    def _build_solver(
+        self,
+        algorithm: str,
+        C_T,
+        modelo,
+        nas,
+        model_settings: str,
+        *,
+        solver_param_transform=None,
+        solver_model_settings: str | None = None,
+    ):
         from hmfit_core.solvers import NewtonRaphson, LevenbergMarquardt
+        from hmfit_core.utils.solver_param_transform import (
+            SolverParamTransformWrapper,
+            coerce_param_transform,
+        )
 
         algo = str(algorithm or "Newton-Raphson")
+        effective_model_settings = str(solver_model_settings or model_settings or "Free")
         if algo == "Newton-Raphson":
-            return NewtonRaphson(C_T, modelo, nas, model_settings)
-        if algo == "Levenberg-Marquardt":
-            return LevenbergMarquardt(C_T, modelo, nas, model_settings)
-        raise ValueError(f"Unknown algorithm: {algo}")
+            solver = NewtonRaphson(C_T, modelo, nas, effective_model_settings)
+        elif algo == "Levenberg-Marquardt":
+            solver = LevenbergMarquardt(C_T, modelo, nas, effective_model_settings)
+        else:
+            raise ValueError(f"Unknown algorithm: {algo}")
+
+        expected_rows = None
+        try:
+            model_arr = np.asarray(modelo, dtype=float)
+            if model_arr.ndim == 2:
+                expected_rows = max(abs(int(model_arr.shape[1] - model_arr.shape[0])), 0)
+        except Exception:
+            expected_rows = None
+        transform = coerce_param_transform(solver_param_transform, expected_rows=expected_rows)
+        if transform is None:
+            return solver
+        return SolverParamTransformWrapper(solver=solver, transform=transform)
 
     def _collect_errors_options(self) -> dict[str, Any]:
         method = str(self.combo_error_method.currentData() or "analytic")
@@ -853,6 +882,8 @@ class ModelOptPlotsWidget(QWidget):
                 group_map = group_map_arr
         algorithm = str(ctx.get("algorithm") or "Newton-Raphson")
         model_settings = str(ctx.get("model_settings") or "Free")
+        solver_model_settings = str(ctx.get("solver_model_settings") or model_settings)
+        solver_param_transform = ctx.get("solver_param_transform")
         param_names_raw = ctx.get("param_names")
         param_names = (
             list(param_names_raw)
@@ -875,7 +906,15 @@ class ModelOptPlotsWidget(QWidget):
             except Exception:
                 stoichiometry = None
 
-        res = self._build_solver(algorithm, C_T, modelo, nas, model_settings)
+        res = self._build_solver(
+            algorithm,
+            C_T,
+            modelo,
+            nas,
+            model_settings,
+            solver_param_transform=solver_param_transform,
+            solver_model_settings=solver_model_settings,
+        )
 
         base_metrics = None
         samples = None
@@ -910,6 +949,7 @@ class ModelOptPlotsWidget(QWidget):
                 param_names=param_names,
                 weights=weights,
                 group_map=group_map,
+                param_transform=solver_param_transform,
             )
 
             if method == "bootstrap_linear":
@@ -944,6 +984,7 @@ class ModelOptPlotsWidget(QWidget):
                     use_projector=True,
                     weights=weights,
                     group_map=group_map,
+                    param_transform=solver_param_transform,
                 )
                 samples = boot["samples"]
             elif method == "bootstrap_full_refit_audit":
@@ -1552,6 +1593,7 @@ class ModelOptPlotsWidget(QWidget):
             return
         show_equations = bool(self.radio_mode_equations and self.radio_mode_equations.isChecked())
         self.model_definition_stack.setCurrentIndex(1 if show_equations else 0)
+        self._sync_param_row_count_from_model()
 
     def set_model_definition_mode(self, mode: str) -> None:
         if not self._enable_equation_editor:
@@ -1649,12 +1691,22 @@ class ModelOptPlotsWidget(QWidget):
 
     # ---- Optimization tab ----
     def _n_constants(self) -> int:
+        if self._param_row_count_override is not None:
+            use_override = True
+            if self._enable_equation_editor and self.radio_mode_equations is not None:
+                use_override = bool(self.radio_mode_equations.isChecked())
+            if use_override:
+                return max(0, int(self._param_row_count_override))
         n_species = int(self.spin_n_species.value())
         if n_species <= 0:
             return 0
         if self.combo_model_settings.currentText() == "Non-cooperative":
             return 1
         return n_species
+
+    def set_param_row_count_override(self, n: int | None) -> None:
+        self._param_row_count_override = None if n is None else max(0, int(n))
+        self._sync_param_row_count_from_model()
 
     def _sync_param_row_count_from_model(self) -> None:
         self._set_param_row_count(self._n_constants())
@@ -1848,13 +1900,17 @@ class ModelOptPlotsWidget(QWidget):
         self._in_table_update = True
         try:
             for row in range(n):
+                value_text = ""
                 if row < len(initial_k):
-                    it = self.params_table.item(row, 1)
-                    if it is None:
-                        it = QTableWidgetItem("")
-                        self.params_table.setItem(row, 1, it)
-                    it.setText(str(_coerce_float(initial_k[row], default=1.0)))
+                    value_text = str(_coerce_float(initial_k[row], default=1.0))
+                it = self.params_table.item(row, 1)
+                if it is None:
+                    it = QTableWidgetItem("")
+                    self.params_table.setItem(row, 1, it)
+                it.setText(value_text)
 
+                b_min = None
+                b_max = None
                 if row < len(bounds):
                     b = bounds[row]
                     if isinstance(b, dict):
@@ -1864,17 +1920,17 @@ class ModelOptPlotsWidget(QWidget):
                         b_min = b[0] if len(b) >= 1 else None  # type: ignore[index]
                         b_max = b[1] if len(b) >= 2 else None  # type: ignore[index]
 
-                    for col, val in ((2, b_min), (3, b_max)):
-                        it = self.params_table.item(row, col)
-                        if it is None:
-                            it = QTableWidgetItem("")
-                            self.params_table.setItem(row, col, it)
-                        it.setText("" if val is None else str(val))
+                for col, val in ((2, b_min), (3, b_max)):
+                    it = self.params_table.item(row, col)
+                    if it is None:
+                        it = QTableWidgetItem("")
+                        self.params_table.setItem(row, col, it)
+                    it.setText("" if val is None else str(val))
 
-                if row < len(fixed_mask):
-                    it = self.params_table.item(row, 4)
-                    if it is not None:
-                        it.setCheckState(Qt.CheckState.Checked if fixed_mask[row] else Qt.CheckState.Unchecked)
+                it = self.params_table.item(row, 4)
+                if it is not None:
+                    checked = row < len(fixed_mask) and bool(fixed_mask[row])
+                    it.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
         finally:
             self._in_table_update = False
 
@@ -1999,6 +2055,7 @@ class ModelOptPlotsWidget(QWidget):
                 combo.setCurrentIndex(ix)
 
     def reset(self) -> None:
+        self._param_row_count_override = None
         self.spin_n_components.setValue(0)
         self.spin_n_species.setValue(0)
         self.model_table.clear()
