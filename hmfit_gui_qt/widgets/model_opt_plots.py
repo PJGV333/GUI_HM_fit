@@ -1708,6 +1708,70 @@ class ModelOptPlotsWidget(QWidget):
         self._param_row_count_override = None if n is None else max(0, int(n))
         self._sync_param_row_count_from_model()
 
+    @staticmethod
+    def _normalized_parameter_payload(
+        n_params: int,
+        *,
+        initial_k: list[float] | None = None,
+        bounds: list[list[float | None] | tuple[float | None, float | None] | dict[str, Any]] | None = None,
+        fixed_mask: list[bool] | None = None,
+    ) -> tuple[list[float], list[tuple[float | None, float | None]], list[bool]]:
+        n_params = max(0, int(n_params))
+        values_in = list(initial_k or [])
+        bounds_in = list(bounds or [])
+        fixed_in = list(fixed_mask or [])
+
+        values_out = [1.0] * n_params
+        bounds_out: list[tuple[float | None, float | None]] = [(None, None)] * n_params
+        fixed_out = [False] * n_params
+
+        for row in range(min(n_params, len(values_in))):
+            values_out[row] = _coerce_float(values_in[row], default=1.0)
+
+        for row in range(min(n_params, len(bounds_in))):
+            b = bounds_in[row]
+            if isinstance(b, dict):
+                b_min = _coerce_float_or_none(b.get("min"))
+                b_max = _coerce_float_or_none(b.get("max"))
+            else:
+                b_min = _coerce_float_or_none(b[0] if len(b) >= 1 else None)  # type: ignore[index]
+                b_max = _coerce_float_or_none(b[1] if len(b) >= 2 else None)  # type: ignore[index]
+            bounds_out[row] = (b_min, b_max)
+
+        for row in range(min(n_params, len(fixed_in))):
+            fixed_out[row] = bool(fixed_in[row])
+
+        return values_out, bounds_out, fixed_out
+
+    def hard_reset_optimization_parameters(
+        self,
+        n_params: int,
+        *,
+        model_settings: str | None = None,
+        initial_k: list[float] | None = None,
+        bounds: list[list[float | None] | tuple[float | None, float | None] | dict[str, Any]] | None = None,
+        fixed_mask: list[bool] | None = None,
+    ) -> None:
+        values_out, bounds_out, fixed_out = self._normalized_parameter_payload(
+            n_params,
+            initial_k=initial_k,
+            bounds=bounds,
+            fixed_mask=fixed_mask,
+        )
+        self._in_table_update = True
+        try:
+            self.params_table.clearContents()
+            self.params_table.setRowCount(0)
+        finally:
+            self._in_table_update = False
+        self._set_param_row_count(int(n_params))
+        self.set_optimization(
+            model_settings=model_settings,
+            initial_k=values_out,
+            bounds=bounds_out,
+            fixed_mask=fixed_out,
+        )
+
     def _sync_param_row_count_from_model(self) -> None:
         self._set_param_row_count(self._n_constants())
 

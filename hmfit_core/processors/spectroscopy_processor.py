@@ -984,7 +984,8 @@ def _evaluate_spectro_objective(
     abs_group_map=None,
     objective_state: dict,
 ):
-    k_arr = onp.asarray(k_vec, dtype=float).ravel()
+    expected_nk = getattr(solver, "n_constants", None)
+    k_arr = _normalize_param_length(k_vec, expected_nk)
     if onp.any(onp.isnan(k_arr)) or onp.any(onp.isinf(k_arr)):
         return 1e50
 
@@ -1040,6 +1041,39 @@ def _infer_n_complex_from_model(modelo) -> int:
     return max(int(abs(arr.shape[1] - arr.shape[0])), 0)
 
 
+def _expected_param_count(modelo, model_settings, solver_param_transform=None) -> int:
+    transform = coerce_param_transform(
+        solver_param_transform,
+        expected_rows=_infer_n_complex_from_model(modelo),
+    )
+    if transform is not None:
+        return int(transform.shape[1])
+    if str(model_settings or "").strip() in ("Non-cooperative", "Statistical"):
+        return 1
+    return int(_infer_n_complex_from_model(modelo))
+
+
+def _normalize_param_length(k_vec, expected_nk: int | None, *, default_value: float = 1.0) -> onp.ndarray:
+    arr = onp.asarray(k_vec, dtype=float).ravel()
+    if expected_nk is None:
+        return arr
+    n_k = max(int(expected_nk), 0)
+    if arr.size == n_k:
+        return arr
+    logger.warning(
+        "Parameter length mismatch: resetting to nK (expected %d, got %d)",
+        n_k,
+        int(arr.size),
+    )
+    if n_k == 0:
+        return onp.zeros((0,), dtype=float)
+    out = onp.full(n_k, float(default_value), dtype=float)
+    n_copy = min(int(arr.size), n_k)
+    if n_copy > 0:
+        out[:n_copy] = arr[:n_copy]
+    return out
+
+
 def _build_equilibrium_solver(
     algorithm,
     c_t_array,
@@ -1052,6 +1086,7 @@ def _build_equilibrium_solver(
 ):
     c_t_df = pd.DataFrame(onp.asarray(c_t_array, dtype=float))
     effective_model_settings = str(solver_model_settings or model_settings or "Free")
+    expected_nk = _expected_param_count(modelo, effective_model_settings, solver_param_transform)
     if algorithm == "Newton-Raphson":
         from ..solvers import NewtonRaphson
 
@@ -1068,8 +1103,11 @@ def _build_equilibrium_solver(
         expected_rows=_infer_n_complex_from_model(modelo),
     )
     if transform is None:
+        setattr(solver, "n_constants", int(expected_nk))
         return solver
-    return SolverParamTransformWrapper(solver=solver, transform=transform)
+    wrapped = SolverParamTransformWrapper(solver=solver, transform=transform)
+    setattr(wrapped, "n_constants", int(expected_nk))
+    return wrapped
 
 
 def _run_spectro_single_start(
@@ -1616,18 +1654,13 @@ def process_spectroscopy_data(
                 continue
         return vals
 
-    k = np.asarray(_safe_float_list(initial_k), dtype=float)
+    solver_model_settings = str(solver_model_settings or model_settings or "Free")
+    expected_nk = _expected_param_count(modelo, solver_model_settings, solver_param_transform)
+    k = np.asarray(_normalize_param_length(_safe_float_list(initial_k), expected_nk), dtype=float)
     solver_param_transform_arr = coerce_param_transform(
         solver_param_transform,
         expected_rows=_infer_n_complex_from_model(modelo),
     )
-    solver_model_settings = str(solver_model_settings or model_settings or "Free")
-    if solver_param_transform_arr is not None and k.size:
-        if int(k.size) != int(solver_param_transform_arr.shape[1]):
-            raise ValueError(
-                "Equation-parameter mapping mismatch: "
-                f"expected {solver_param_transform_arr.shape[1]} constants, got {k.size}."
-            )
     param_names = list(param_names or [])
     if len(param_names) != int(k.size):
         param_names = [f"K{i+1}" for i in range(int(k.size))]
@@ -1703,7 +1736,8 @@ def process_spectroscopy_data(
         % (eps_solver_mode, eps_mu, delta_mode, delta_rel, alpha_smooth)
     )
     try:
-        C_preview = onp.asarray(res.concentraciones(k)[0], dtype=float)
+        k_preview = _normalize_param_length(k, getattr(res, "n_constants", None))
+        C_preview = onp.asarray(res.concentraciones(k_preview)[0], dtype=float)
         preview_fit = _solve_spectral_model(
             C_preview,
             onp.asarray(Y.T, dtype=float),
@@ -1733,7 +1767,8 @@ def process_spectroscopy_data(
 
     # Objective helpers
     def f_m2(k):
-        C = res.concentraciones(k)[0]
+        k_curr = _normalize_param_length(k, getattr(res, "n_constants", None))
+        C = res.concentraciones(k_curr)[0]
         fit = _solve_spectral_model(
             C,
             Y.T,
@@ -1940,7 +1975,8 @@ def process_spectroscopy_data(
     stability_diag = metrics.get("stability_diag", {})
 
     
-    C, Co = res.concentraciones(k)
+    k_final = _normalize_param_length(k, getattr(res, "n_constants", None))
+    C, Co = res.concentraciones(k_final)
     species_labels = abs_species_labels if C is not None else []
     final_fit = _solve_spectral_model(
         C,

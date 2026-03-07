@@ -792,6 +792,14 @@ class SpectroscopyTab(QWidget):
         # Parameter grid is already updated inside ModelOptPlotsWidget.
         pass
 
+    def _invalidate_cached_fit_state(self) -> None:
+        self._last_result = None
+        self._last_config = None
+        self._last_fit_context = None
+        self.model_opt_plots.set_errors_context(None)
+        self.btn_save.setEnabled(False)
+        self.btn_render_graphs.setEnabled(False)
+
     @Slot(object)
     def _on_equation_model_parsed(self, solver_inputs_obj: object) -> None:
         if not isinstance(solver_inputs_obj, dict):
@@ -816,7 +824,13 @@ class SpectroscopyTab(QWidget):
         if n_components <= 0 or nspec_total <= 0:
             raise ValueError("Parsed model has invalid dimensions.")
 
+        self._invalidate_cached_fit_state()
+
         n_complex = max(0, int(nspec_total - n_components))
+        self.model_opt_plots.model_table.clearSelection()
+        self.model_opt_plots.model_table.clear()
+        self.model_opt_plots.model_table.setRowCount(0)
+        self.model_opt_plots.model_table.setColumnCount(0)
         self.model_opt_plots.set_model_dimensions(int(n_components), n_complex)
         self.model_opt_plots.set_modelo(model.T.tolist())
 
@@ -890,13 +904,17 @@ class SpectroscopyTab(QWidget):
         if use_edge_params:
             k_values = edge_log_beta.tolist()
             model_sett = "Free"
-            self.model_opt_plots.set_param_row_count_override(int(edge_log_beta.size))
+            n_k = int(edge_log_beta.size)
+            self.model_opt_plots.set_param_row_count_override(n_k)
         else:
+            n_k = int(k_solver.size)
             self.model_opt_plots.set_param_row_count_override(None)
 
-        self.model_opt_plots.set_optimization(
+        self.model_opt_plots.hard_reset_optimization_parameters(
+            n_k,
             model_settings=model_sett,
             initial_k=k_values,
+            bounds=None,
             fixed_mask=[False] * len(k_values),
         )
 
