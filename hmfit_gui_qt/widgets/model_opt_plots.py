@@ -1773,9 +1773,13 @@ class ModelOptPlotsWidget(QWidget):
         )
 
     def _sync_param_row_count_from_model(self) -> None:
+        if not hasattr(self, "params_table"):
+            return
         self._set_param_row_count(self._n_constants())
 
     def _on_model_settings_changed(self) -> None:
+        if not hasattr(self, "params_table"):
+            return
         first = self._read_param_row(0) if self.params_table.rowCount() > 0 else None
         self._set_param_row_count(self._n_constants())
         if first is not None and self.params_table.rowCount() > 0:
