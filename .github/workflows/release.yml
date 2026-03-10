@@ -197,6 +197,8 @@ jobs:
       - build-windows
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           path: release_artifacts
@@ -204,6 +206,7 @@ jobs:
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.meta.outputs.tag }}
           RELEASE_NAME: ${{ needs.meta.outputs.release_name }}
           PRERELEASE: ${{ needs.meta.outputs.prerelease }}
@@ -216,8 +219,8 @@ jobs:
             exit 1
           fi
 
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "${files[@]}" --clobber
+          if gh release view "$TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${files[@]}" --repo "$GH_REPO" --clobber
             exit 0
           fi
 
@@ -227,6 +230,7 @@ jobs:
           fi
 
           gh release create "$TAG" "${files[@]}" \
+            --repo "$GH_REPO" \
             --target "$GITHUB_SHA_FOR_RELEASE" \
             --title "$RELEASE_NAME" \
             $prerelease_flag \
