@@ -28,6 +28,7 @@ def test_is_newer_version_orders_stable_after_same_beta() -> None:
     assert is_newer_version("1.2.3", "1.2.3-beta.1")
     assert is_newer_version("1.2.4-beta.1", "1.2.3")
     assert not is_newer_version("1.2.3-beta.1", "1.2.3")
+    assert is_newer_version("1.2.4-beta.1", "1.2.3‑beta.1")
 
 
 def test_select_release_for_stable_skips_prereleases() -> None:

@@ -44,6 +44,7 @@ def channel_display_name(channel: str) -> str:
 
 def _normalize_tag(version: str) -> str:
     clean = str(version or "").strip()
+    clean = re.sub(r"[\u2010\u2011\u2012\u2013\u2014\u2212]", "-", clean)
     clean = clean.split("+", 1)[0]
     clean = clean.lstrip("vV")
     return clean

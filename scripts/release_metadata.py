@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +35,7 @@ def main() -> int:
     args = ap.parse_args()
 
     version = str(args.version or VERSION).strip()
+    version = re.sub(r"[\u2010\u2011\u2012\u2013\u2014\u2212]", "-", version)
     if not version:
         raise SystemExit("Version cannot be empty.")
 

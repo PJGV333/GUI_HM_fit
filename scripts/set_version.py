@@ -17,6 +17,7 @@ def main() -> int:
     args = ap.parse_args()
 
     version = str(args.version or "").strip()
+    version = re.sub(r"[\u2010\u2011\u2012\u2013\u2014\u2212]", "-", version)
     if not version:
         raise SystemExit("Version cannot be empty.")
 

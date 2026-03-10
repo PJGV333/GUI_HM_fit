@@ -210,6 +210,7 @@ def main() -> int:
             "flatpak-builder",
             "--user",
             "--force-clean",
+            "--disable-rofiles-fuse",
             f"--repo={repo_dir}",
             f"--default-branch={branch}",
             str(build_dir),
