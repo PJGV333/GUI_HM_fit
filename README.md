@@ -20,6 +20,22 @@ python -m pip install -r requirements_qt.txt
 python -m hmfit_gui_qt
 ```
 
+## Releases and updates
+
+HM Fit now ships GitHub-based release artifacts for:
+
+- Linux `AppImage`
+- Linux `.flatpak`
+- Windows portable `.exe`
+- Windows installer `setup.exe`
+
+The GUI updater supports two user-selectable channels:
+
+- `stable`
+- `beta`
+
+See [`build_all.md`](build_all.md) for the GitHub Actions release flow and local packaging commands.
+
 ## Requirements
 
 - Python 3.9+

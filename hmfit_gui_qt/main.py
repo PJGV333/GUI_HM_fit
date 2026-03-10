@@ -14,10 +14,15 @@ def main() -> int:
     except Exception:
         pass
 
+    from PySide6.QtCore import QCoreApplication
     from PySide6.QtWidgets import QApplication
 
     from hmfit_gui_qt.main_window import MainWindow
+    from hmfit_gui_qt.version import APP_DOMAIN, APP_NAME, APP_ORGANIZATION
 
+    QCoreApplication.setOrganizationName(APP_ORGANIZATION)
+    QCoreApplication.setOrganizationDomain(APP_DOMAIN)
+    QCoreApplication.setApplicationName(APP_NAME)
     app = QApplication(sys.argv)
     win = MainWindow()
     win.show()

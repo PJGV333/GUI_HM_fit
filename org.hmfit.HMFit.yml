@@ -12,6 +12,7 @@ finish-args:
   - --share=network
   - --filesystem=home
   - --talk-name=org.freedesktop.FileManager1
+  - --talk-name=org.freedesktop.Flatpak
   - --env=MPLBACKEND=QtAgg
 
 modules:

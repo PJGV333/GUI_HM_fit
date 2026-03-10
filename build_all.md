@@ -1,130 +1,99 @@
-# HM Fit prerelease build guide
+# HM Fit release and updater guide
 
-## 0) Prerequisites
+## GitHub release flow
 
-### Common
+The main release pipeline now lives in [`.github/workflows/release.yml`](.github/workflows/release.yml).
+
+It builds these artifacts in GitHub Actions and publishes them to GitHub Releases:
+
+- `AppImage` for Linux
+- `.flatpak` bundle for Linux
+- Windows portable `.exe`
+- Windows installer `setup.exe`
+
+The workflow runs on:
+
+- `push` to tags like `v0.1.0` or `v0.1.0-beta.1`
+- manual `workflow_dispatch`
+
+Release channel is inferred from `hmfit_gui_qt/version.py`:
+
+- versions without prerelease suffix are `stable`
+- versions like `-beta.1`, `-rc1`, `-alpha.1` are `beta`
+
+If the workflow is triggered by a tag, the tag must match `v<VERSION>`.
+
+## In-app updater behavior
+
+The updater now uses `PJGV333/GUI_HM_fit` by default. No environment variables are required for normal use.
+
+The user can choose the update channel inside `Ayuda > Canal de actualizaciones...`:
+
+- `Estable`: only final releases
+- `Beta`: includes prereleases
+
+Update behavior depends on the installed format:
+
+- Windows installed build: downloads the installer and launches it
+- Windows portable build: downloads the new portable `.exe` and can replace the current executable
+- AppImage: downloads the new AppImage, replaces the current file and relaunches HM Fit
+- Flatpak: downloads the `.flatpak` bundle from GitHub Releases and runs `flatpak install --or-update --bundle` on the host
+
+## Local builds
+
+### Common prerequisites
+
 ```bash
 python -m pip install --upgrade pip
 python -m pip install -r requirements_qt.txt pyinstaller
 ```
 
-### Windows only
-- Inno Setup 6 (`iscc.exe` in PATH)
+### Windows
 
-### Linux only
-- `appimagetool` (or `linuxdeployqt`)
-- `flatpak` + `flatpak-builder`
+- Inno Setup 6 (`iscc.exe` available in `PATH`)
 
-## 1) Auto-updater configuration (GUI)
-
-Before running HM Fit in tester machines, set the repository used by the updater:
-
-```bash
-# Linux/macOS
-export HMFIT_GITHUB_OWNER="<USUARIO>"
-export HMFIT_GITHUB_REPO="<REPO>"
-```
+Portable + installer:
 
 ```powershell
-# Windows PowerShell
-$env:HMFIT_GITHUB_OWNER = "<USUARIO>"
-$env:HMFIT_GITHUB_REPO  = "<REPO>"
+./build_windows.ps1 -Target All -PortableOneFile
 ```
 
-Current prerelease version constant is `0.9.0-beta` in `hmfit_gui_qt/version.py`.
+Outputs:
 
-## 2) Windows portable (.exe)
+- `dist\hmfit_pyside6_portable.exe`
+- `dist\installer\hmfit_setup.exe`
 
-### Option A: Using existing spec (onefile)
-```bash
-pyinstaller --noconfirm --clean hmfit_pyside6.spec
-```
+### Linux AppImage
 
-Expected output:
-- `dist/hmfit_pyside6.exe` (single-file executable)
-
-### Option B: onedir (recommended for setup creation)
-```bash
-pyinstaller --noconfirm --clean --windowed --onedir --name hmfit_pyside6 hmfit_pyside6_entry.py
-```
-
-Expected output:
-- `dist/hmfit_pyside6/` (folder with `hmfit_pyside6.exe` and runtime files)
-
-## 3) Windows installer setup (Inno Setup)
-
-Use the generated onedir folder (`dist/hmfit_pyside6/`):
-
-```powershell
-iscc /DMyAppVersion=0.9.0-beta /DMyDistDir=dist\hmfit_pyside6 packaging\windows\hmfit_setup.iss
-```
-
-Expected output:
-- `dist/installer/hmfit_setup.exe`
-
-## 4) Linux AppImage
-
-### Option A: Existing script (updated to use standard AppRun + desktop)
 ```bash
 chmod +x scripts/build_hmfit_pyside6_appimage.sh packaging/linux/appimage/AppRun
 ./scripts/build_hmfit_pyside6_appimage.sh --source . --out ./dist_appimage
 ```
 
-Expected output:
-- `dist_appimage/hmfit_pyside6-x86_64.AppImage`
+### Linux Flatpak
 
-### Option B: Manual with appimagetool
-```bash
-pyinstaller --noconfirm --clean --windowed --onefile --name hmfit_pyside6 hmfit_pyside6_entry.py
+Install the SDK/runtime once:
 
-rm -rf AppDir
-mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/scalable/apps
-cp dist/hmfit_pyside6 AppDir/usr/bin/hmfit_pyside6
-cp packaging/linux/appimage/AppRun AppDir/AppRun
-chmod +x AppDir/AppRun
-cp packaging/linux/appimage/hmfit.desktop AppDir/usr/share/applications/hmfit.desktop
-cp packaging/linux/appimage/hmfit.desktop AppDir/hmfit.desktop
-cp hmfit.svg AppDir/usr/share/icons/hicolor/scalable/apps/hmfit.svg
-cp hmfit.svg AppDir/hmfit.svg
-
-ARCH=x86_64 appimagetool AppDir HMFit-x86_64.AppImage
-```
-
-### Option C: linuxdeployqt
-```bash
-linuxdeployqt AppDir/usr/share/applications/hmfit.desktop -appimage -unsupported-allow-new-glibc
-```
-
-## 5) Linux Flatpak
-
-Install runtimes:
 ```bash
 flatpak install -y flathub org.kde.Platform//6.7 org.kde.Sdk//6.7
 ```
 
-Recommended build and local install:
+Build a bundle for the selected channel branch:
+
 ```bash
-python3 scripts/build_hmfit_flatpak.py --install
+python3 scripts/build_hmfit_flatpak.py --source . --branch stable --dest ./dist/org.hmfit.HMFit.flatpak
 ```
 
-What the script does:
-- Verifies the SDK is installed first with `flatpak info org.kde.Sdk//6.7`
-- Downloads Python wheels inside `org.kde.Sdk//6.7` using `flatpak run --command=sh ... -lc ...`
-- Builds the Flatpak offline from the patched manifest
-- Creates a `.flatpak` bundle and installs it with `flatpak install --user --or-update --bundle`
-- Does not use a persistent `hmfit-local` remote
+or:
 
-If you used an older version of the script that created `hmfit-local`, remove the stale remote once:
 ```bash
-flatpak remote-delete --user hmfit-local
+python3 scripts/build_hmfit_flatpak.py --source . --branch beta --dest ./dist/org.hmfit.HMFit-beta.flatpak
 ```
 
-Run:
-```bash
-flatpak run org.hmfit.HMFit
-```
+The Flatpak build script:
 
-Check Python inside the Flatpak sandbox:
-```bash
-flatpak run --command=sh org.hmfit.HMFit -lc 'which python3; python3 -V'
-```
+- verifies the KDE SDK is installed
+- downloads wheels inside the Flatpak SDK sandbox
+- builds the Flatpak offline
+- exports the requested branch
+- creates a `.flatpak` bundle ready to install with `flatpak install --or-update --bundle`

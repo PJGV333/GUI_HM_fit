@@ -104,6 +104,10 @@ def main() -> int:
     ap.add_argument("--appid", default="", help="Flatpak app-id (auto from manifest if empty)")
     ap.add_argument("--dest", default=str((Path.home() / "HMFit_builds").resolve()),
                     help="Destination dir OR full path ending with .flatpak (default: ~/HMFit_builds)")
+    ap.add_argument("--branch", default="stable",
+                    help="Flatpak branch to export/build-bundle (default: stable)")
+    ap.add_argument("--repo-dir", default="",
+                    help="Optional OSTree repo dir to populate instead of a temporary repo")
     ap.add_argument("--work-root", default=str((Path.home() / "BUILD_HMFIT_FLATPAK").resolve()),
                     help="Workspace root (default: ~/BUILD_HMFIT_FLATPAK)")
     ap.add_argument("--install", action="store_true", help="Install to --user after build")
@@ -143,20 +147,24 @@ def main() -> int:
         dest.mkdir(parents=True, exist_ok=True)
         bundle_path = dest / f"{appid}.flatpak"
 
+    branch = str(args.branch or "stable").strip() or "stable"
+
     work_root = Path(args.work_root).expanduser().resolve()
     work_root.mkdir(parents=True, exist_ok=True)
 
     work_dir = Path(tempfile.mkdtemp(prefix="hmfit_flatpak_", dir=str(work_root))).resolve()
     src_dir = work_dir / "src"
     build_dir = work_dir / "build"
-    repo_dir = work_dir / "repo"
+    repo_dir = Path(args.repo_dir).expanduser().resolve() if args.repo_dir else (work_dir / "repo")
     wheels_dir = src_dir / "packaging" / "linux" / "flatpak" / "wheels"
 
     try:
         print(f"[info] repo:      {repo}")
         print(f"[info] manifest:  {manifest}")
         print(f"[info] appid:     {appid}")
+        print(f"[info] branch:    {branch}")
         print(f"[info] work_dir:  {work_dir}")
+        print(f"[info] repo_dir:   {repo_dir}")
         print(f"[info] bundle ->  {bundle_path}")
 
         # 1) Copy repo into workspace (clean)
@@ -198,6 +206,7 @@ def main() -> int:
             "--user",
             "--force-clean",
             f"--repo={repo_dir}",
+            f"--default-branch={branch}",
             str(build_dir),
             str(patched_manifest),
         ], cwd=work_dir)
@@ -209,10 +218,11 @@ def main() -> int:
         print("[step] Creating .flatpak bundle for testers")
         run([
             "flatpak", "build-bundle",
+            "--runtime-repo=https://flathub.org/repo/flathub.flatpakrepo",
             str(repo_dir),
             str(bundle_path),
             appid,
-            "--runtime-repo=https://flathub.org/repo/flathub.flatpakrepo",
+            branch,
         ], cwd=work_dir)
 
         print(f"[ok] Flatpak bundle created: {bundle_path}")
