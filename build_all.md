@@ -16,6 +16,11 @@ The workflow runs on:
 - `push` to tags like `v0.1.0` or `v0.1.0-beta.1`
 - manual `workflow_dispatch`
 
+When launched manually from GitHub Actions, the form exposes:
+
+- `channel`: `stable` or `beta`
+- `version`: optional version override for the build and release metadata
+
 Release channel is inferred from `hmfit_gui_qt/version.py`:
 
 - versions without prerelease suffix are `stable`

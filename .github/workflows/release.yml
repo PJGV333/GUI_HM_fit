@@ -5,6 +5,19 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      channel:
+        description: "Canal de release"
+        required: true
+        default: "beta"
+        type: choice
+        options:
+          - stable
+          - beta
+      version:
+        description: "Version a publicar, por ejemplo 0.1.0 o 0.1.0-beta.2"
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -28,12 +41,21 @@ jobs:
 
       - id: meta
         shell: bash
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          INPUT_CHANNEL: ${{ github.event.inputs.channel }}
         run: |
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            python scripts/release_metadata.py --tag "${GITHUB_REF_NAME}" --github-output "$GITHUB_OUTPUT"
-          else
-            python scripts/release_metadata.py --github-output "$GITHUB_OUTPUT"
+          args=()
+          if [[ -n "${INPUT_VERSION}" ]]; then
+            args+=(--version "${INPUT_VERSION}")
           fi
+          if [[ -n "${INPUT_CHANNEL}" ]]; then
+            args+=(--channel "${INPUT_CHANNEL}")
+          fi
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            args+=(--tag "${GITHUB_REF_NAME}")
+          fi
+          python scripts/release_metadata.py "${args[@]}" --github-output "$GITHUB_OUTPUT"
 
       - name: Validate tag matches version
         if: startsWith(github.ref, 'refs/tags/')
@@ -54,6 +76,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Apply selected version
+        shell: bash
+        run: python scripts/set_version.py --version "${{ needs.meta.outputs.version }}"
 
       - name: Install Linux build dependencies
         shell: bash
@@ -108,6 +134,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Apply selected version
+        shell: powershell
+        run: |
+          python scripts/set_version.py --version "${{ needs.meta.outputs.version }}"
 
       - name: Install Windows build dependencies
         shell: powershell
