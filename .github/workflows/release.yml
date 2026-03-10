@@ -70,8 +70,8 @@ jobs:
             libgl1 \
             libxkbcommon-x11-0 \
             patchelf
-          flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-          flatpak install -y flathub org.kde.Platform//6.7 org.kde.Sdk//6.7
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.kde.Platform//6.7 org.kde.Sdk//6.7
           python -m pip install --upgrade pip
           python -m pip install -r requirements_qt.txt pyinstaller
 
@@ -119,7 +119,8 @@ jobs:
       - name: Build portable exe and installer
         shell: powershell
         run: |
-          ./build_windows.ps1 -Target All -PortableOneFile
+          $pythonExe = (Get-Command python).Source
+          ./build_windows.ps1 -Target All -PortableOneFile -PythonExe $pythonExe
           New-Item -ItemType Directory -Force -Path dist\release | Out-Null
           Copy-Item dist\hmfit_pyside6_portable.exe "dist\release\${{ needs.meta.outputs.asset_prefix }}-windows-x64-portable.exe"
           Copy-Item dist\installer\hmfit_setup.exe "dist\release\${{ needs.meta.outputs.asset_prefix }}-windows-x64-setup.exe"

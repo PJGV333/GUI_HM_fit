@@ -85,16 +85,21 @@ def patch_manifest(original: Path, out_path: Path, src_rel: str, wheels_rel: str
 
 
 def sdk_installed(runtime: str) -> bool:
-    try:
-        subprocess.run(
-            ["flatpak", "info", runtime],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=True,
-        )
-        return True
-    except subprocess.CalledProcessError:
-        return False
+    for cmd in (
+        ["flatpak", "info", "--user", runtime],
+        ["flatpak", "info", runtime],
+    ):
+        try:
+            subprocess.run(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=True,
+            )
+            return True
+        except subprocess.CalledProcessError:
+            continue
+    return False
 
 
 def main() -> int:
@@ -127,7 +132,7 @@ def main() -> int:
     if not sdk_installed(sdk_runtime):
         return die(
             f"Missing Flatpak SDK {sdk_runtime}. Install it with:\n"
-            f"  flatpak install flathub {sdk_runtime}"
+            f"  flatpak install --user flathub {sdk_runtime}"
         )
 
     manifest = Path(args.manifest).expanduser().resolve() if args.manifest else (find_manifest(repo) or Path())

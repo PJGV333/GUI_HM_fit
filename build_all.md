@@ -75,7 +75,7 @@ chmod +x scripts/build_hmfit_pyside6_appimage.sh packaging/linux/appimage/AppRun
 Install the SDK/runtime once:
 
 ```bash
-flatpak install -y flathub org.kde.Platform//6.7 org.kde.Sdk//6.7
+flatpak install --user -y flathub org.kde.Platform//6.7 org.kde.Sdk//6.7
 ```
 
 Build a bundle for the selected channel branch:

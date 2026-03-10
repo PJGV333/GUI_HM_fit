@@ -45,14 +45,14 @@ function Resolve-PythonExe {
         return $venvPython
     }
 
-    $pyLauncher = Get-Command py -ErrorAction SilentlyContinue
-    if ($pyLauncher) {
-        return $pyLauncher.Source
-    }
-
     $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
     if ($pythonCmd) {
         return $pythonCmd.Source
+    }
+
+    $pyLauncher = Get-Command py -ErrorAction SilentlyContinue
+    if ($pyLauncher) {
+        return $pyLauncher.Source
     }
 
     throw 'No Python executable found. Activate the venv or pass -PythonExe.'
