@@ -16,7 +16,7 @@ on:
           - beta
       version:
         description: "Version a publicar, por ejemplo 0.1.0 o 0.1.0-beta.2"
-        required: false
+        required: true
         type: string
 
 permissions:
@@ -45,6 +45,7 @@ jobs:
           INPUT_VERSION: ${{ github.event.inputs.version }}
           INPUT_CHANNEL: ${{ github.event.inputs.channel }}
         run: |
+          set -euo pipefail
           args=()
           if [[ -n "${INPUT_VERSION}" ]]; then
             args+=(--version "${INPUT_VERSION}")
@@ -55,7 +56,33 @@ jobs:
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             args+=(--tag "${GITHUB_REF_NAME}")
           fi
-          python scripts/release_metadata.py "${args[@]}" --github-output "$GITHUB_OUTPUT"
+          if ! error_output=$(python scripts/release_metadata.py "${args[@]}" --github-output "$GITHUB_OUTPUT" 2>&1); then
+            echo "$error_output"
+            echo "::error title=Invalid release request::$error_output"
+            {
+              echo "## Invalid release request"
+              echo
+              echo "Channel: ${INPUT_CHANNEL:-<auto>}"
+              echo "Version: ${INPUT_VERSION:-<repo VERSION>}"
+              echo
+              echo '```'
+              echo "$error_output"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: Show resolved metadata
+        shell: bash
+        run: |
+          {
+            echo "## Release request"
+            echo
+            echo "- Version: ${{ steps.meta.outputs.version }}"
+            echo "- Channel: ${{ steps.meta.outputs.channel }}"
+            echo "- Tag: ${{ steps.meta.outputs.tag }}"
+            echo "- Prerelease: ${{ steps.meta.outputs.prerelease }}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Validate tag matches version
         if: startsWith(github.ref, 'refs/tags/')

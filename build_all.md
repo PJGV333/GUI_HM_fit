@@ -19,7 +19,7 @@ The workflow runs on:
 When launched manually from GitHub Actions, the form exposes:
 
 - `channel`: `stable` or `beta`
-- `version`: optional version override for the build and release metadata
+- `version`: required version override for the build and release metadata
 
 Release channel is inferred from `hmfit_gui_qt/version.py`:
 
