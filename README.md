@@ -1,7 +1,7 @@
 # HM fit (PySide6 Version)
 
 **Authors**  
-Pedro Jancarlo Gomez Vega\*, José Octavio Juárez Sánchez, Ramón Moreno Corral, Felipe Medrano Valenzuela, David Octavio Corona Martínez y Karen L. Ochoa Lara\*
+Pedro Jancarlo Gomez Vega\*, José Octavio Juárez Sánchez, Felipe Medrano Valenzuela, David Octavio Corona Martínez y Karen L. Ochoa Lara\*
 
 **Affiliation**  
 Grupo de Química Supramolecular, Universidad de Sonora
