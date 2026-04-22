@@ -1,6 +1,14 @@
 # HM fit (PySide6 Version)
 
-A GUI application for Host-Guest binding model fitting using spectroscopy and NMR data.
+**Authors**  
+Pedro Jancarlo Gomez Vega\*, José Octavio Juárez Sánchez, Ramón Moreno Corral, Felipe Medrano Valenzuela, David Octavio Corona Martínez y Karen L. Ochoa Lara\*
+
+**Affiliation**  
+Grupo de Química Supramolecular, Universidad de Sonora
+
+\* Corresponding authors
+
+HM fit is a software platform with a graphical user interface for the quantitative analysis and fitting of host-guest binding models from spectroscopic and nuclear magnetic resonance (NMR) data. It supports the study of complexation equilibria by integrating model-based fitting workflows with an accessible PySide6 interface for scientific data analysis.
 
 ## Architecture
 
@@ -22,7 +30,7 @@ python -m hmfit_gui_qt
 
 ## Releases and updates
 
-HM Fit now ships GitHub-based release artifacts for:
+HM fit now ships GitHub-based release artifacts for:
 
 - Linux `AppImage`
 - Linux `.flatpak`
