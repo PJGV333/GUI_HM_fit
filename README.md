@@ -1,4 +1,4 @@
-# HM fit (PySide6 Version)
+# HM fit 
 
 Pedro Jancarlo Gomez Vega*, José Octavio Juárez Sánchez, Ramón Moreno Corral, Felipe Medrano Valenzuela, David Octavio Corona Martínez, and Karen L. Ochoa Lara*
 
