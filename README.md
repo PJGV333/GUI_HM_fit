@@ -1,6 +1,6 @@
 # HM fit 
 
-Pedro Jancarlo Gomez Vega*, José Octavio Juárez Sánchez, Ramón Moreno Corral, Felipe Medrano Valenzuela, David Octavio Corona Martínez, and Karen L. Ochoa Lara*
+Pedro Jancarlo Gomez Vega*, José Octavio Juárez Sánchez, Felipe Medrano Valenzuela, David Octavio Corona Martínez, and Karen L. Ochoa Lara*
 
 Grupo de Química Supramolecular, Universidad de Sonora
 
