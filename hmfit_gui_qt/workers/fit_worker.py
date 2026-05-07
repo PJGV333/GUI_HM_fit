@@ -3,17 +3,16 @@ from __future__ import annotations
 import time
 from typing import Any, Callable
 
-from PySide6.QtCore import QObject, QThread, Signal, Slot
+from PySide6.QtCore import QObject, QThread, Signal
 
 
-class FitWorker(QObject):
+class FitWorker(QThread):
     progress = Signal(str)
     result = Signal(object)
     error = Signal(str)
-    finished = Signal()
 
     def __init__(self, run_fn: Callable[..., Any], *, config: dict[str, Any], parent: QObject | None = None) -> None:
-        super().__init__(None)
+        super().__init__(parent)
         self._run_fn = run_fn
         self._config = dict(config)
         self._cancel_requested = False
@@ -29,22 +28,13 @@ class FitWorker(QObject):
         self._progress_batch_size = max(1, batch_size)
         self._progress_buffer: list[str] = []
         self._last_progress_emit = 0.0
-        self._thread = QThread(parent)
-        self.moveToThread(self._thread)
-
-        self._thread.started.connect(self.run)
-        self.finished.connect(self._thread.quit)
-        self.finished.connect(self.deleteLater)
-        self._thread.finished.connect(self._thread.deleteLater)
-
-    def start(self) -> None:
-        self._thread.start()
 
     def request_cancel(self) -> None:
         self._cancel_requested = True
+        self.requestInterruption()
 
     def _is_cancelled(self) -> bool:
-        return bool(self._cancel_requested)
+        return bool(self._cancel_requested or self.isInterruptionRequested())
 
     @staticmethod
     def _is_critical_message(msg: str) -> bool:
@@ -78,7 +68,6 @@ class FitWorker(QObject):
             return
         self._flush_progress(force=False)
 
-    @Slot()
     def run(self) -> None:
         try:
             from hmfit_core.api import FitCancelled
@@ -104,4 +93,6 @@ class FitWorker(QObject):
                 self.error.emit(str(exc))
         finally:
             self._flush_progress(force=True)
-            self.finished.emit()
+
+    def thread(self) -> QThread:
+        return self

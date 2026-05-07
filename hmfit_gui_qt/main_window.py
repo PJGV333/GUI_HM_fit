@@ -6,8 +6,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QSettings, QTimer, QUrl
-from PySide6.QtGui import QAction, QDesktopServices
+from PySide6.QtCore import QSettings, QThread, QTimer, Qt, QUrl, Slot
+from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices
 from PySide6.QtWidgets import QApplication, QInputDialog, QMainWindow, QMessageBox, QTabWidget
 
 from hmfit_gui_qt.tabs.kinetics_tab import KineticsTab
@@ -46,8 +46,12 @@ class MainWindow(QMainWindow):
         )
 
         self._update_check_worker: ReleaseCheckWorker | None = None
+        self._update_check_thread: QThread | None = None
+        self._update_check_silent = True
         self._download_worker: AssetDownloadWorker | None = None
+        self._download_thread: QThread | None = None
         self._flatpak_worker: FlatpakUpdateWorker | None = None
+        self._flatpak_thread: QThread | None = None
         self._pending_release: dict[str, Any] | None = None
         self._channel_status_action: QAction | None = None
         self._distribution_status_action: QAction | None = None
@@ -188,23 +192,111 @@ class MainWindow(QMainWindow):
             parent=self,
         )
         self._update_check_worker = worker
-        worker.update_available.connect(self._on_update_available)
-        worker.up_to_date.connect(lambda msg, silent=silent: self._on_update_up_to_date(msg, silent=silent))
-        worker.unsupported_platform.connect(lambda msg, silent=silent: self._on_update_error(msg, silent=silent))
-        worker.error.connect(lambda msg, silent=silent: self._on_update_error(msg, silent=silent))
-        worker.finished.connect(self._on_update_check_finished)
+        self._update_check_thread = worker.thread()
+        self._update_check_silent = bool(silent)
+        worker.update_available.connect(self._on_update_available, Qt.ConnectionType.QueuedConnection)
+        worker.up_to_date.connect(self._on_update_up_to_date_signal, Qt.ConnectionType.QueuedConnection)
+        worker.unsupported_platform.connect(self._on_update_error_signal, Qt.ConnectionType.QueuedConnection)
+        worker.error.connect(self._on_update_error_signal, Qt.ConnectionType.QueuedConnection)
+        self._update_check_thread.finished.connect(
+            self._on_update_check_finished,
+            Qt.ConnectionType.QueuedConnection,
+        )
         worker.start()
 
+    @Slot()
     def _on_update_check_finished(self) -> None:
         self._update_check_worker = None
+        self._update_check_thread = None
 
-    def _on_update_up_to_date(self, message: str, *, silent: bool) -> None:
-        if silent:
+    def _worker_thread_is_running(self, worker: object | None) -> bool:
+        if worker is None:
+            return False
+        if isinstance(worker, QThread):
+            return bool(worker.isRunning())
+        try:
+            thread = worker.thread()
+        except RuntimeError:
+            return False
+        except AttributeError:
+            return False
+        return bool(thread is not None and thread.isRunning())
+
+    def _request_worker_cancel(self, worker: object | None) -> None:
+        if worker is None:
+            return
+        request_cancel = getattr(worker, "request_cancel", None)
+        if callable(request_cancel):
+            try:
+                request_cancel()
+            except RuntimeError:
+                pass
+            return
+        if isinstance(worker, QThread):
+            worker.requestInterruption()
+
+    def _wait_for_worker_thread(self, worker: object | None, timeout_ms: int) -> bool:
+        if worker is None:
+            return True
+        if isinstance(worker, QThread):
+            thread = worker
+        else:
+            try:
+                thread = worker.thread()
+            except RuntimeError:
+                return True
+            except AttributeError:
+                return True
+        if thread is None or not thread.isRunning():
+            return True
+        return bool(thread.wait(timeout_ms))
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        active_workers = [
+            ("verificación de actualización", self._update_check_worker),
+            ("descarga de actualización", self._download_worker),
+            ("instalación Flatpak", self._flatpak_worker),
+        ]
+        known_workers = {id(worker) for _label, worker in active_workers if worker is not None}
+        for thread in self.findChildren(QThread):
+            if id(thread) in known_workers:
+                continue
+            active_workers.append(("cálculo en segundo plano", thread))
+        running = [(label, worker) for label, worker in active_workers if self._worker_thread_is_running(worker)]
+        if not running:
+            super().closeEvent(event)
+            return
+
+        for _label, worker in running:
+            self._request_worker_cancel(worker)
+
+        still_running = [
+            label for label, worker in running if not self._wait_for_worker_thread(worker, 1500)
+        ]
+        if still_running:
+            QMessageBox.information(
+                self,
+                "Operación en curso",
+                (
+                    "HM Fit está cerrando una operación en segundo plano: "
+                    + ", ".join(still_running)
+                    + ".\n\nIntenta cerrar de nuevo en unos segundos."
+                ),
+            )
+            event.ignore()
+            return
+
+        super().closeEvent(event)
+
+    @Slot(str)
+    def _on_update_up_to_date_signal(self, message: str) -> None:
+        if self._update_check_silent:
             return
         QMessageBox.information(self, "Actualización", message)
 
-    def _on_update_error(self, message: str, *, silent: bool) -> None:
-        if silent:
+    @Slot(str)
+    def _on_update_error_signal(self, message: str) -> None:
+        if self._update_check_silent:
             return
         QMessageBox.warning(self, "Actualización", message)
 
@@ -220,6 +312,7 @@ class MainWindow(QMainWindow):
             return "¿Deseas descargar y reemplazar la AppImage actual ahora?"
         return "¿Deseas descargar la actualización ahora?"
 
+    @Slot(object)
     def _on_update_available(self, release_payload: dict[str, Any]) -> None:
         self._pending_release = dict(release_payload)
 
@@ -270,10 +363,11 @@ class MainWindow(QMainWindow):
 
         worker = AssetDownloadWorker(download_url=download_url, file_name=asset_name, parent=self)
         self._download_worker = worker
-        worker.progress.connect(self._on_download_progress)
-        worker.completed.connect(self._on_download_completed)
-        worker.error.connect(self._on_download_error)
-        worker.finished.connect(self._on_download_finished)
+        self._download_thread = worker.thread()
+        worker.progress.connect(self._on_download_progress, Qt.ConnectionType.QueuedConnection)
+        worker.completed.connect(self._on_download_completed, Qt.ConnectionType.QueuedConnection)
+        worker.error.connect(self._on_download_error, Qt.ConnectionType.QueuedConnection)
+        self._download_thread.finished.connect(self._on_download_finished, Qt.ConnectionType.QueuedConnection)
         self.statusBar().showMessage("Descargando actualización...")
         worker.start()
 
@@ -284,16 +378,20 @@ class MainWindow(QMainWindow):
 
         worker = FlatpakUpdateWorker(bundle_path=str(bundle_path), app_id=FLATPAK_APP_ID, parent=self)
         self._flatpak_worker = worker
-        worker.completed.connect(self._on_flatpak_update_completed)
-        worker.error.connect(self._on_flatpak_update_error)
-        worker.finished.connect(self._on_flatpak_update_finished)
+        self._flatpak_thread = worker.thread()
+        worker.completed.connect(self._on_flatpak_update_completed, Qt.ConnectionType.QueuedConnection)
+        worker.error.connect(self._on_flatpak_update_error, Qt.ConnectionType.QueuedConnection)
+        self._flatpak_thread.finished.connect(self._on_flatpak_update_finished, Qt.ConnectionType.QueuedConnection)
         self.statusBar().showMessage("Instalando actualización Flatpak...")
         worker.start()
 
+    @Slot()
     def _on_flatpak_update_finished(self) -> None:
         self._flatpak_worker = None
+        self._flatpak_thread = None
         self.statusBar().clearMessage()
 
+    @Slot(object)
     def _on_flatpak_update_completed(self, payload: dict[str, Any]) -> None:
         self._runtime_context = detect_runtime_context()
         self._refresh_update_status_actions()
@@ -313,14 +411,18 @@ class MainWindow(QMainWindow):
             if app is not None:
                 app.quit()
 
+    @Slot(str)
     def _on_flatpak_update_error(self, message: str) -> None:
         self.statusBar().clearMessage()
         QMessageBox.warning(self, "Flatpak", f"No se pudo actualizar la instalación Flatpak:\n{message}")
 
+    @Slot()
     def _on_download_finished(self) -> None:
         self._download_worker = None
+        self._download_thread = None
         self.statusBar().clearMessage()
 
+    @Slot(int, int)
     def _on_download_progress(self, downloaded: int, total: int) -> None:
         if total > 0:
             percent = (downloaded / total) * 100.0
@@ -329,10 +431,12 @@ class MainWindow(QMainWindow):
             mb = downloaded / (1024 * 1024)
             self.statusBar().showMessage(f"Descargando actualización... {mb:.2f} MB")
 
+    @Slot(str)
     def _on_download_error(self, message: str) -> None:
         self.statusBar().clearMessage()
         QMessageBox.warning(self, "Actualización", f"No se pudo descargar la actualización:\n{message}")
 
+    @Slot(str)
     def _on_download_completed(self, file_path: str) -> None:
         path = Path(file_path)
 

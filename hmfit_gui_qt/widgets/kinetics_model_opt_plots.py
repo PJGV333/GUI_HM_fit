@@ -819,12 +819,12 @@ class KineticsModelOptPlotsWidget(QWidget):
         self._set_errors_busy(True, payload.get("options") or {})
         self._errors_worker = ErrorsWorker(self._compute_errors_payload, payload=payload, parent=self)
         worker_thread = self._errors_worker.thread()
-        worker_thread.finished.connect(self._on_error_thread_finished)
-        self._errors_worker.progress.connect(self._on_error_progress)
-        self._errors_worker.result.connect(self._on_error_worker_result)
-        self._errors_worker.error.connect(self._on_error_worker_error)
-        self._errors_worker.cancelled.connect(self._on_error_worker_cancelled)
-        self._errors_worker.finished.connect(self._on_error_worker_finished)
+        worker_thread.finished.connect(self._on_error_thread_finished, Qt.ConnectionType.QueuedConnection)
+        self._errors_worker.progress.connect(self._on_error_progress, Qt.ConnectionType.QueuedConnection)
+        self._errors_worker.result.connect(self._on_error_worker_result, Qt.ConnectionType.QueuedConnection)
+        self._errors_worker.error.connect(self._on_error_worker_error, Qt.ConnectionType.QueuedConnection)
+        self._errors_worker.cancelled.connect(self._on_error_worker_cancelled, Qt.ConnectionType.QueuedConnection)
+        self._errors_worker.finished.connect(self._on_error_worker_finished, Qt.ConnectionType.QueuedConnection)
         self._errors_worker.start()
 
     def _compute_errors_payload(

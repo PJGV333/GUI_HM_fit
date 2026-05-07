@@ -85,22 +85,21 @@ def _format_process_error(command: list[str], proc: subprocess.CompletedProcess[
     return "\n\n".join(parts)
 
 
-class _ThreadedWorker(QObject):
-    finished = Signal()
-
+class _ThreadedWorker(QThread):
     def __init__(self, parent: QObject | None = None) -> None:
-        super().__init__(None)
-        self._thread = QThread(parent)
-        self.moveToThread(self._thread)
-        self._thread.started.connect(self.run)
-        self.finished.connect(self._thread.quit)
-        self.finished.connect(self.deleteLater)
-        self._thread.finished.connect(self._thread.deleteLater)
+        super().__init__(parent)
+        self._cancel_requested = False
 
-    def start(self) -> None:
-        self._thread.start()
+    def request_cancel(self) -> None:
+        self._cancel_requested = True
+        self.requestInterruption()
 
-    @Slot()
+    def _is_cancelled(self) -> bool:
+        return bool(self._cancel_requested or self.isInterruptionRequested())
+
+    def thread(self) -> QThread:
+        return self
+
     def run(self) -> None:
         raise NotImplementedError
 
@@ -135,6 +134,8 @@ class ReleaseCheckWorker(_ThreadedWorker):
         try:
             if not self._owner or not self._repo:
                 raise RuntimeError("Missing GitHub owner/repository configuration.")
+            if self._is_cancelled():
+                return
 
             if self._current_platform is None:
                 self.unsupported_platform.emit("Auto-update is only supported on Windows and Linux.")
@@ -142,6 +143,8 @@ class ReleaseCheckWorker(_ThreadedWorker):
 
             api_url = GITHUB_RELEASES_API.format(owner=self._owner, repo=self._repo)
             releases = _http_json(api_url)
+            if self._is_cancelled():
+                return
             if not isinstance(releases, list):
                 raise RuntimeError("Unexpected GitHub API payload while listing releases.")
 
@@ -193,8 +196,6 @@ class ReleaseCheckWorker(_ThreadedWorker):
             self.error.emit(f"Network error while checking updates: {exc.reason}")
         except Exception as exc:
             self.error.emit(str(exc))
-        finally:
-            self.finished.emit()
 
 
 class AssetDownloadWorker(_ThreadedWorker):
@@ -237,6 +238,8 @@ class AssetDownloadWorker(_ThreadedWorker):
                 downloaded = 0
                 with open(output_path, "wb") as out_file:
                     while True:
+                        if self._is_cancelled():
+                            return
                         chunk = response.read(CHUNK_SIZE)
                         if not chunk:
                             break
@@ -254,8 +257,6 @@ class AssetDownloadWorker(_ThreadedWorker):
             self.error.emit(f"Network error while downloading update: {exc.reason}")
         except Exception as exc:
             self.error.emit(str(exc))
-        finally:
-            self.finished.emit()
 
 
 class FlatpakUpdateWorker(_ThreadedWorker):
@@ -317,5 +318,3 @@ class FlatpakUpdateWorker(_ThreadedWorker):
             )
         except Exception as exc:
             self.error.emit(str(exc))
-        finally:
-            self.finished.emit()
