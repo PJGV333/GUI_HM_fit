@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from hmfit_core.acid_base import (
     NMRAcidBaseDataset,
@@ -170,3 +171,112 @@ def test_kw_config_changes_potentiometric_simulated_ph():
     assert abs(float(pH_default_kw) - float(pH_high_kw)) > 1.0
     assert abs(float(pH_default_kw) - 7.0) < 1.0e-3
     assert abs(float(pH_high_kw) - 5.0) < 1.0e-3
+
+
+def test_explicit_acid_base_model_config_builds_diprotic_system():
+    system = _build_system(
+        {
+            "kw": 1.0e-14,
+            "acid_base_model": {
+                "model_type": "polyprotic",
+                "components": [
+                    {
+                        "name": "L",
+                        "analytical_concentration": 1.0e-3,
+                        "base_charge": -2,
+                        "pka": [4.5, 8.9],
+                        "use_log_beta": False,
+                        "role": "analyte",
+                    }
+                ],
+                "species": [
+                    {"name": "L", "component": "L", "h_count": 0, "charge": -2, "log_beta": 0.0},
+                    {"name": "HL", "component": "L", "h_count": 1, "charge": -1, "log_beta": 4.5},
+                    {"name": "H2L", "component": "L", "h_count": 2, "charge": 0, "log_beta": 13.4},
+                ],
+            },
+        }
+    )
+    comp = system.components[0]
+    assert comp.name == "L"
+    assert comp.species[0].charge == -2
+    assert comp.species[1].charge == -1
+    assert comp.species[2].charge == 0
+    assert [sp.log_beta for sp in comp.species[1:]] == pytest.approx([4.5, 13.4])
+
+
+def test_diprotic_species_fractions_sum_to_one():
+    pH = np.linspace(0.0, 14.0, 71)
+    fractions = distribution_fractions_from_pH(pH, [4.5, 13.4])
+    assert fractions.shape == (71, 3)
+    assert np.allclose(fractions.sum(axis=1), 1.0, atol=1e-12, rtol=0.0)
+
+
+def test_imposed_ph_spectroscopy_fit_ignores_kw(tmp_path):
+    pH = np.linspace(2.0, 8.0, 31)
+    fractions = distribution_fractions_from_pH(pH, [5.0])
+    signal = fractions @ np.asarray([0.1, 1.2])
+    path = tmp_path / "spectro.csv"
+    pd.DataFrame({"pH": pH, "signal": signal}).to_csv(path, index=False)
+    base_cfg = {
+        "file_path": str(path),
+        "data_type": "spectroscopy",
+        "pka_initial": "4.4",
+        "analyte_concentration": 1.0e-3,
+        "base_charge": -1,
+    }
+    result_default_kw = run_acid_base({**base_cfg, "kw": 1.0e-14}, progress_cb=lambda _msg: None)
+    result_high_kw = run_acid_base({**base_cfg, "kw": 1.0e-10}, progress_cb=lambda _msg: None)
+    assert result_default_kw["success"] is True
+    assert result_high_kw["success"] is True
+    assert float(result_default_kw["constants"][0]["value"]) == pytest.approx(
+        float(result_high_kw["constants"][0]["value"]),
+        abs=1e-8,
+    )
+
+
+def test_gui_config_generates_diprotic_species_and_pkw(tmp_path, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    qt_widgets = pytest.importorskip("PySide6.QtWidgets")
+    from hmfit_gui_qt.tabs.acid_base_tab import AcidBaseTab
+
+    app = qt_widgets.QApplication.instance() or qt_widgets.QApplication([])
+    _ = app
+    path = tmp_path / "pot.csv"
+    pd.DataFrame({"volume_mL": [0.0, 0.1], "pH": [6.5, 6.6]}).to_csv(path, index=False)
+
+    tab = AcidBaseTab()
+    tab._set_file_path(str(path))
+    tab._updating_tables = True
+    tab.components_table.item(0, 0).setText("L")
+    tab.components_table.item(0, 1).setText("0.001")
+    tab.components_table.item(0, 2).setText("-2")
+    tab.components_table.item(0, 3).setText("2")
+    tab.components_table.item(0, 4).setText("4.5, 8.9")
+    tab._updating_tables = False
+    tab._refresh_species_table()
+    tab._refresh_parameter_table()
+    tab._set_parameter_value("pKw", "13.78")
+
+    cfg = tab._collect_config()
+    species = cfg["acid_base_model"]["species"]
+    assert [row["name"] for row in species[:3]] == ["L", "HL", "H2L"]
+    assert [row["charge"] for row in species[:3]] == [-2, -1, 0]
+    assert [row["log_beta"] for row in species[:3]] == pytest.approx([0.0, 4.5, 13.4])
+    assert cfg["kw"] == pytest.approx(10.0**-13.78)
+
+
+def test_gui_config_default_pkw_is_14(tmp_path, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    qt_widgets = pytest.importorskip("PySide6.QtWidgets")
+    from hmfit_gui_qt.tabs.acid_base_tab import AcidBaseTab
+
+    app = qt_widgets.QApplication.instance() or qt_widgets.QApplication([])
+    _ = app
+    path = tmp_path / "pot.csv"
+    pd.DataFrame({"volume_mL": [0.0], "pH": [7.0]}).to_csv(path, index=False)
+    tab = AcidBaseTab()
+    tab._set_file_path(str(path))
+    cfg = tab._collect_config()
+    assert cfg["pkw"] == pytest.approx(14.0)
+    assert cfg["kw"] == pytest.approx(1.0e-14)

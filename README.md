@@ -2,7 +2,7 @@
 
 Modular software for quantitative chemical equilibrium, spectroscopic, NMR, potentiometric, and kinetic analysis.
 
-Pedro Jancarlo Gomez Vega*, Alondra Karolina Montaño Preciado, José Octavio Juárez Sánchez, Felipe Medrano Valenzuela, David Octavio Corona Martínez y Karen L. Ochoa Lara*
+Pedro Jancarlo Gomez Vega*, José Octavio Juárez Sánchez, Ramón Moreno Corral, Felipe Medrano Valenzuela, David Octavio Corona Martínez y Karen L. Ochoa Lara*
 
 Grupo de Química Supramolecular, Universidad de Sonora
 
@@ -64,11 +64,14 @@ Capabilities include:
 
 - fitting pKa values or cumulative protonation constants (`log_beta`),
 - conversion between pKa and `log_beta`,
+- model definition through component and generated species tables,
+- monoprotic, polyprotic, multiple-component, and custom-species input structures,
+- generation of cumulative `log_beta` values from comma- or semicolon-separated stepwise pKa values,
 - species-distribution diagrams vs pH,
 - potentiometric fitting of pH vs titrant volume,
 - fitting of electrode potential (`E_mV`) vs titrant volume with an ideal electrode model,
 - dilution correction during titration,
-- pH calculation by electroneutrality with water autoionization (`Kw`),
+- pH calculation by electroneutrality with water autoionization (`Kw`) and user-selected `pKw`,
 - fitting of spectroscopic signal vs pH,
 - fitting of spectral matrices organized as pH x wavelength,
 - fitting of proton NMR chemical shifts in the fast-exchange regime,
@@ -82,7 +85,9 @@ Current limitations of this initial module:
 - proton NMR limited to fast exchange,
 - no automatic correction for atmospheric CO2.
 
-See [docs/ACID_BASE_POTENTIOMETRY.md](docs/ACID_BASE_POTENTIOMETRY.md) for the acid-base convention, accepted data layouts, and current limitations.
+The GUI follows the same layout style as the Spectroscopy and NMR workflows: **DATA / INPUT** at the top, then **Model**, **Optimization**, **Plots**, and **Errors** tabs. The `pKw` parameter is entered in **Optimization**; it affects potentiometric electroneutrality calculations, while spectroscopy and NMR acid-base datasets use measured pH directly.
+
+See [docs/ACID_BASE_POTENTIOMETRY.md](docs/ACID_BASE_POTENTIOMETRY.md) for the acid-base convention, model definition examples, accepted data layouts, and current limitations.
 
 ### Kinetics
 
@@ -107,7 +112,7 @@ Capabilities include:
 2. Choose the appropriate module.
 3. Import experimental data.
 4. Select sheets, columns, channels, or signals.
-5. Define the chemical or kinetic model.
+5. Define the chemical or kinetic model, including component charges and pKa/log_beta values where applicable.
 6. Provide initial parameter estimates and bounds when needed.
 7. Run the fit.
 8. Inspect fitted parameters, plots, species distributions, and residuals.

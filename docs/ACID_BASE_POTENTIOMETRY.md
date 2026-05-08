@@ -8,7 +8,8 @@ special case of those constants.
 ## Accepted data
 
 The PySide6 tab imports CSV/TXT files and Excel workbooks (`.xlsx`).
-For Excel files, select the worksheet in the **Data** tab before fitting.
+For Excel files, select the worksheet in the **DATA / INPUT** section before
+fitting.
 
 Potentiometry can use direct pH:
 
@@ -72,6 +73,65 @@ pKa_n = log_beta_n - log_beta_(n-1)
 Therefore `pKa = [4.0, 7.0]` corresponds to
 `log_beta = [4.0, 11.0]`.
 
+## GUI model definition
+
+The Acid-base / Potentiometry tab follows the same workflow style as the
+Spectroscopy and NMR tabs:
+
+1. Use **DATA / INPUT** to choose the dataset type and import a CSV, TXT, or
+   XLSX file.
+2. Use **Model** to define the acid-base system.
+3. Use **Optimization** to review fitted/local parameters, including `pKw`.
+4. Use **Plots** to select which plot pages should be rendered in the right
+   panel.
+5. Use **Errors** to inspect the parameter table and covariance/correlation
+   matrices when available.
+
+The **Model** tab contains a **Components** table. Each component defines a
+base form such as `L`, its total concentration, base charge, number of
+protonation steps, and initial pKa or `log_beta` values. The pKa field accepts
+comma-separated or semicolon-separated values, for example `4.5, 8.9` or
+`4.5; 8.9`.
+
+For a ligand `L` with base charge `z` and `n` protonation steps, HM Fit
+generates:
+
+```text
+L, HL, H2L, ..., HnL
+```
+
+with charges:
+
+```text
+z, z + 1, z + 2, ..., z + n
+```
+
+and cumulative constants:
+
+```text
+log_beta_n = pKa_1 + pKa_2 + ... + pKa_n
+```
+
+Examples:
+
+- Monoprotic `HL/L-`: base charge `-1`, steps `1`, pKa `5.20`.
+- Diprotic `H2L/L2-`: base charge `-2`, steps `2`, pKa `4.50, 8.90`.
+- Triprotic `H3L/L3-`: base charge `-3`, steps `3`, pKa `2.10, 6.70, 10.20`.
+
+The generated **Species** table shows species name, parent component,
+`h_count`, charge, cumulative `log_beta`, and stepwise pKa. It is automatically
+generated from the component table for simple, polyprotic, and multiple
+component models. In **Custom species table** mode, the species table can be
+edited directly.
+
+The current GUI model types are:
+
+- Simple monoprotic acid/base.
+- Polyprotic ligand.
+- Multiple acid-base components.
+- Custom species table.
+- Coupled acid-base / host-guest model, shown as a future/experimental option.
+
 ## Species diagrams
 
 For a component with species `L, HL, H2L, ...`, fractions at imposed pH are:
@@ -102,6 +162,24 @@ E = E0 + S pH
 
 `E0` and `S` can be fixed or fitted for EMF data.
 
+For potentiometric data, HM Fit uses the volume column as the independent
+variable, applies dilution and strong ion contributions, and solves pH by
+electroneutrality with water autoionization. The **Optimization** tab includes
+`pKw`, with default `14.0000`, and internally uses:
+
+```text
+Kw = 10^(-pKw)
+```
+
+`pKw` affects potentiometric electroneutrality calculations. For spectroscopy
+and NMR acid-base datasets, measured pH is imposed directly, so `pKw` is
+accepted in the configuration but does not affect species fractions in v1.
+
+The **Potentiometric titration model** group contains the initial volume,
+titrant concentration, titrant type, optional manual strong ion charge,
+volume-offset/blank correction, pH bounds, and a small custom titrant table for
+future non-strong-acid/base titrants.
+
 ## Spectroscopy fitting
 
 At each pH, the observed signal is a linear combination of species fractions:
@@ -114,6 +192,9 @@ For matrices, each wavelength is solved as an independent linear observable.
 The species signals are solved by linear least squares for each trial pKa
 (variable projection).
 
+Spectroscopy uses measured pH as an imposed independent variable and does not
+solve electroneutrality in v1.
+
 ## Proton NMR fitting
 
 The initial NMR implementation assumes fast exchange:
@@ -124,6 +205,13 @@ delta_obs(pH) = sum_i alpha_i(pH) delta_i
 
 Multiple proton labels are fitted simultaneously with shared pKa values and
 local limiting shifts.
+
+NMR uses measured pH as an imposed independent variable and assumes fast
+exchange in v1:
+
+```text
+delta_obs = sum_i alpha_i delta_i
+```
 
 ## Global multimodal fits
 

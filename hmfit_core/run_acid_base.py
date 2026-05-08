@@ -12,16 +12,21 @@ import pandas as pd
 from matplotlib.figure import Figure
 
 from hmfit_core.acid_base import (
+    AcidBaseComponent,
     AcidBaseFitResult,
+    AcidBaseSpecies,
+    AcidBaseSystem,
     NMRAcidBaseDataset,
     SpectroscopicAcidBaseDataset,
     clone_system_with_pka,
     fit_nmr_acid_base,
     fit_spectroscopy_acid_base,
     make_simple_acid_base_system,
+    pka_to_log_beta,
     predict_nmr_acid_base,
     predict_spectroscopy_acid_base,
     simulate_species_vs_pH,
+    system_pka_values,
 )
 from hmfit_core.potentiometry import (
     PotentiometryExperiment,
@@ -99,6 +104,10 @@ def _pkw_from_kw(kw: float) -> float:
 
 
 def _build_system(cfg: Mapping[str, Any]):
+    model_def = cfg.get("acid_base_model")
+    if isinstance(model_def, Mapping) and model_def.get("components"):
+        return _build_system_from_model(model_def, cfg)
+
     pka = _parse_float_list(cfg.get("pka_initial") or cfg.get("initial_pka"), default=[5.0])
     concentration = float(cfg.get("analyte_concentration", cfg.get("concentration", 1.0e-3)) or 1.0e-3)
     base_charge = int(cfg.get("base_charge", -1) or -1)
@@ -110,6 +119,104 @@ def _build_system(cfg: Mapping[str, Any]):
         temperature=float(cfg.get("temperature", 298.15) or 298.15),
         kw=_kw_from_config(cfg),
     )
+
+
+def _build_system_from_model(model_def: Mapping[str, Any], cfg: Mapping[str, Any]) -> AcidBaseSystem:
+    components_cfg = list(model_def.get("components") or [])
+    species_cfg = [
+        dict(item)
+        for item in list(model_def.get("species") or [])
+        if bool(dict(item).get("include", True))
+    ]
+    species_by_component: dict[str, list[dict[str, Any]]] = {}
+    for sp in species_cfg:
+        component_name = str(sp.get("component") or "").strip()
+        if component_name:
+            species_by_component.setdefault(component_name, []).append(sp)
+
+    components: list[AcidBaseComponent] = []
+    for comp_cfg_raw in components_cfg:
+        comp_cfg = dict(comp_cfg_raw)
+        name = str(comp_cfg.get("name") or "").strip()
+        if not name:
+            raise ValueError("Each acid-base component needs a name.")
+        concentration = float(comp_cfg.get("analytical_concentration", 0.0) or 0.0)
+        base_charge = int(comp_cfg.get("base_charge", 0) or 0)
+        explicit_species = species_by_component.get(name, [])
+        species: list[AcidBaseSpecies] = []
+        if explicit_species:
+            for sp in sorted(explicit_species, key=lambda item: int(item.get("h_count", 0) or 0)):
+                h_count = int(sp.get("h_count", 0) or 0)
+                log_beta = None if h_count == 0 else float(sp.get("log_beta", 0.0) or 0.0)
+                charge_raw = sp.get("charge")
+                charge = (
+                    base_charge + h_count
+                    if charge_raw in (None, "")
+                    else int(float(charge_raw))
+                )
+                species.append(
+                    AcidBaseSpecies(
+                        name=str(sp.get("name") or name),
+                        charge=charge,
+                        h_count=h_count,
+                        log_beta=log_beta,
+                        fixed=bool(sp.get("fixed", False)),
+                    )
+                )
+        else:
+            use_log_beta = bool(comp_cfg.get("use_log_beta", False))
+            if use_log_beta:
+                log_beta = [float(v) for v in (comp_cfg.get("log_beta") or [])]
+            else:
+                pka = [float(v) for v in (comp_cfg.get("pka") or [])]
+                log_beta = pka_to_log_beta(pka)
+            species.append(
+                AcidBaseSpecies(name=name, charge=base_charge, h_count=0, log_beta=None, fixed=True)
+            )
+            for h_count, value in enumerate(log_beta, start=1):
+                prefix = "H" if h_count == 1 else f"H{h_count}"
+                species.append(
+                    AcidBaseSpecies(
+                        name=f"{prefix}{name}",
+                        charge=base_charge + h_count,
+                        h_count=h_count,
+                        log_beta=float(value),
+                        fixed=False,
+                    )
+                )
+        if not any(sp.h_count == 0 for sp in species):
+            species.insert(
+                0,
+                AcidBaseSpecies(name=name, charge=base_charge, h_count=0, log_beta=None, fixed=True),
+            )
+        components.append(
+            AcidBaseComponent(
+                name=name,
+                analytical_concentration=concentration,
+                species=species,
+            )
+        )
+
+    return AcidBaseSystem(
+        components=components,
+        temperature=float(cfg.get("temperature", 298.15) or 298.15),
+        ionic_strength=(
+            None
+            if cfg.get("ionic_strength") in (None, "")
+            else float(cfg.get("ionic_strength"))
+        ),
+        kw=_kw_from_config(cfg),
+    )
+
+
+def _initial_pka_from_config(cfg: Mapping[str, Any], system: AcidBaseSystem) -> list[float]:
+    raw = cfg.get("pka_initial") or cfg.get("initial_pka")
+    if raw not in (None, ""):
+        return _parse_float_list(raw, default=system_pka_values(system))
+    try:
+        return system_pka_values(system)
+    except Exception:
+        return [5.0]
 
 
 def _figure_to_base64(fig: Figure) -> str:
@@ -276,7 +383,7 @@ def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[
         measured_emf = pd.to_numeric(df[emf_col], errors="coerce").to_numpy(dtype=float)
 
     system = _build_system(cfg)
-    initial_pka = _parse_float_list(cfg.get("pka_initial") or cfg.get("initial_pka"), default=[5.0])
+    initial_pka = _initial_pka_from_config(cfg, system)
     experiment = PotentiometryExperiment(
         initial_volume=float(cfg.get("initial_volume", 10.0) or 10.0),
         titrant_volumes=volumes,
@@ -294,6 +401,20 @@ def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[
         "sigma_E": float(cfg.get("sigma_E", cfg.get("sigma_emf", 1.0)) or 1.0),
         "fit_signal": str(cfg.get("fit_signal") or "auto"),
     }
+    if cfg.get("volume_offset") not in (None, ""):
+        fit_options["volume_offset"] = float(cfg.get("volume_offset"))
+    if cfg.get("pH_bounds") not in (None, ""):
+        bounds = list(cfg.get("pH_bounds") or [])
+        if len(bounds) >= 2:
+            fit_options["pH_bounds"] = (float(bounds[0]), float(bounds[1]))
+    if cfg.get("initial_strong_charge") not in (None, ""):
+        fit_options["initial_strong_charge"] = float(cfg.get("initial_strong_charge"))
+    if cfg.get("titrant_strong_charge") not in (None, ""):
+        fit_options["titrant_strong_charge"] = float(cfg.get("titrant_strong_charge"))
+    if isinstance(cfg.get("initial_concentrations"), Mapping):
+        fit_options["initial_concentrations"] = dict(cfg.get("initial_concentrations") or {})
+    if isinstance(cfg.get("titrant_concentrations"), Mapping):
+        fit_options["titrant_concentrations"] = dict(cfg.get("titrant_concentrations") or {})
     if bool(cfg.get("fit_electrode", False)) and measured_emf is not None:
         fit_options["parameter_names"] = ["pKa1", "electrode_e0", "electrode_slope"]
         fit_options["initial_params"] = [
@@ -359,7 +480,7 @@ def _run_spectroscopy(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[s
         wavelengths = None
     dataset = SpectroscopicAcidBaseDataset(pH=pH, signal=signal, wavelengths=wavelengths)
     system = _build_system(cfg)
-    initial_pka = _parse_float_list(cfg.get("pka_initial") or cfg.get("initial_pka"), default=[5.0])
+    initial_pka = _initial_pka_from_config(cfg, system)
     log("Fitting spectroscopic acid-base data...")
     result = fit_spectroscopy_acid_base(
         dataset,
@@ -406,7 +527,7 @@ def _run_nmr(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[str, Any]:
     shifts = df[shift_cols].apply(pd.to_numeric, errors="coerce").to_numpy(dtype=float)
     dataset = NMRAcidBaseDataset(pH=pH, shifts=shifts, nuclei_labels=[str(c) for c in shift_cols])
     system = _build_system(cfg)
-    initial_pka = _parse_float_list(cfg.get("pka_initial") or cfg.get("initial_pka"), default=[5.0])
+    initial_pka = _initial_pka_from_config(cfg, system)
     log("Fitting fast-exchange 1H NMR acid-base data...")
     result = fit_nmr_acid_base(dataset, system, initial_pka=initial_pka)
     fitted_system = clone_system_with_pka(system, result.fitted_pka)
