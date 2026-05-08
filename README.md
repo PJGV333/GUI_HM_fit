@@ -2,7 +2,7 @@
 
 Modular software for quantitative chemical equilibrium, spectroscopic, NMR, potentiometric, and kinetic analysis.
 
-Pedro Jancarlo Gomez Vega*, José Octavio Juárez Sánchez, Ramón Moreno Corral, Felipe Medrano Valenzuela, David Octavio Corona Martínez y Karen L. Ochoa Lara*
+Pedro Jancarlo Gomez Vega*, Alondra Karolina Montaño Preciado, José Octavio Juárez Sánchez, Ramón Moreno Corral, Felipe Medrano Valenzuela, David Octavio Corona Martínez y Karen L. Ochoa Lara*
 
 Grupo de Química Supramolecular, Universidad de Sonora
 
