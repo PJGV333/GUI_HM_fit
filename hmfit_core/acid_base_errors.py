@@ -10,8 +10,6 @@ import pandas as pd
 from scipy.optimize import least_squares
 
 from hmfit_core.acid_base import (
-    AcidBaseComponent,
-    AcidBaseSpecies,
     AcidBaseSystem,
     NMRAcidBaseDataset,
     SpectroscopicAcidBaseDataset,
@@ -20,6 +18,7 @@ from hmfit_core.acid_base import (
     nmr_acid_base_residuals,
     spectroscopy_acid_base_residuals,
 )
+from hmfit_core.acid_base_model_utils import acid_base_system_from_model
 from hmfit_core.potentiometry import PotentiometryExperiment, potentiometry_residuals
 from hmfit_core.utils.errors import (
     bootstrap_full_refit,
@@ -867,77 +866,8 @@ def _serialize_bounds(bounds: Any) -> tuple[np.ndarray, np.ndarray]:
 
 
 def _system_from_serializable_model(model_meta: Mapping[str, Any]) -> AcidBaseSystem:
-    model_def = dict(model_meta.get("acid_base_model") or {})
-    components_cfg = list(model_def.get("components") or [])
-    species_cfg = [
-        dict(item)
-        for item in list(model_def.get("species") or [])
-        if bool(dict(item).get("include", True))
-    ]
-    species_by_component: dict[str, list[dict[str, Any]]] = {}
-    for sp in species_cfg:
-        component_name = str(sp.get("component") or "").strip()
-        if component_name:
-            species_by_component.setdefault(component_name, []).append(sp)
-
-    components: list[AcidBaseComponent] = []
-    for comp_cfg_raw in components_cfg:
-        comp_cfg = dict(comp_cfg_raw)
-        name = str(comp_cfg.get("name") or "").strip()
-        if not name:
-            raise ValueError("Each acid-base component needs a name.")
-        concentration = float(comp_cfg.get("analytical_concentration", 0.0) or 0.0)
-        base_charge = int(comp_cfg.get("base_charge", 0) or 0)
-        explicit_species = species_by_component.get(name, [])
-        species: list[AcidBaseSpecies] = []
-        if explicit_species:
-            for sp in sorted(explicit_species, key=lambda item: int(item.get("h_count", 0) or 0)):
-                h_count = int(sp.get("h_count", 0) or 0)
-                log_beta = None if h_count == 0 else float(sp.get("log_beta", 0.0) or 0.0)
-                charge_raw = sp.get("charge")
-                charge = base_charge + h_count if charge_raw in (None, "") else int(float(charge_raw))
-                species.append(
-                    AcidBaseSpecies(
-                        name=str(sp.get("name") or name),
-                        charge=charge,
-                        h_count=h_count,
-                        log_beta=log_beta,
-                        fixed=bool(sp.get("fixed", False)),
-                    )
-                )
-        else:
-            use_log_beta = bool(comp_cfg.get("use_log_beta", False))
-            if use_log_beta:
-                log_beta_values = [float(v) for v in (comp_cfg.get("log_beta") or [])]
-            else:
-                pka_values = [float(v) for v in (comp_cfg.get("pka") or [])]
-                log_beta_values = pka_to_log_beta(pka_values)
-            species.append(
-                AcidBaseSpecies(name=name, charge=base_charge, h_count=0, log_beta=None, fixed=True)
-            )
-            for h_count, value in enumerate(log_beta_values, start=1):
-                prefix = "H" if h_count == 1 else f"H{h_count}"
-                species.append(
-                    AcidBaseSpecies(
-                        name=f"{prefix}{name}",
-                        charge=base_charge + h_count,
-                        h_count=h_count,
-                        log_beta=float(value),
-                        fixed=False,
-                    )
-                )
-        if not any(sp.h_count == 0 for sp in species):
-            species.insert(0, AcidBaseSpecies(name=name, charge=base_charge, h_count=0, log_beta=None, fixed=True))
-        components.append(
-            AcidBaseComponent(
-                name=name,
-                analytical_concentration=concentration,
-                species=species,
-            )
-        )
-
-    return AcidBaseSystem(
-        components=components,
+    return acid_base_system_from_model(
+        dict(model_meta.get("acid_base_model") or {}),
         temperature=float(model_meta.get("temperature", 298.15) or 298.15),
         ionic_strength=(
             None

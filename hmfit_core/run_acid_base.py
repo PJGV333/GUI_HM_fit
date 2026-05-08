@@ -30,6 +30,11 @@ from hmfit_core.acid_base import (
     system_pka_values,
 )
 from hmfit_core.acid_base_errors import compute_errors_acid_base_from_context
+from hmfit_core.acid_base_model_utils import (
+    acid_base_model_from_simple_config,
+    acid_base_system_from_model,
+    serializable_model_definition_from_system,
+)
 from hmfit_core.potentiometry import (
     PotentiometryExperiment,
     electrode_emf_from_pH,
@@ -125,83 +130,8 @@ def _build_system(cfg: Mapping[str, Any]):
 
 
 def _build_system_from_model(model_def: Mapping[str, Any], cfg: Mapping[str, Any]) -> AcidBaseSystem:
-    components_cfg = list(model_def.get("components") or [])
-    species_cfg = [
-        dict(item)
-        for item in list(model_def.get("species") or [])
-        if bool(dict(item).get("include", True))
-    ]
-    species_by_component: dict[str, list[dict[str, Any]]] = {}
-    for sp in species_cfg:
-        component_name = str(sp.get("component") or "").strip()
-        if component_name:
-            species_by_component.setdefault(component_name, []).append(sp)
-
-    components: list[AcidBaseComponent] = []
-    for comp_cfg_raw in components_cfg:
-        comp_cfg = dict(comp_cfg_raw)
-        name = str(comp_cfg.get("name") or "").strip()
-        if not name:
-            raise ValueError("Each acid-base component needs a name.")
-        concentration = float(comp_cfg.get("analytical_concentration", 0.0) or 0.0)
-        base_charge = int(comp_cfg.get("base_charge", 0) or 0)
-        explicit_species = species_by_component.get(name, [])
-        species: list[AcidBaseSpecies] = []
-        if explicit_species:
-            for sp in sorted(explicit_species, key=lambda item: int(item.get("h_count", 0) or 0)):
-                h_count = int(sp.get("h_count", 0) or 0)
-                log_beta = None if h_count == 0 else float(sp.get("log_beta", 0.0) or 0.0)
-                charge_raw = sp.get("charge")
-                charge = (
-                    base_charge + h_count
-                    if charge_raw in (None, "")
-                    else int(float(charge_raw))
-                )
-                species.append(
-                    AcidBaseSpecies(
-                        name=str(sp.get("name") or name),
-                        charge=charge,
-                        h_count=h_count,
-                        log_beta=log_beta,
-                        fixed=bool(sp.get("fixed", False)),
-                    )
-                )
-        else:
-            use_log_beta = bool(comp_cfg.get("use_log_beta", False))
-            if use_log_beta:
-                log_beta = [float(v) for v in (comp_cfg.get("log_beta") or [])]
-            else:
-                pka = [float(v) for v in (comp_cfg.get("pka") or [])]
-                log_beta = pka_to_log_beta(pka)
-            species.append(
-                AcidBaseSpecies(name=name, charge=base_charge, h_count=0, log_beta=None, fixed=True)
-            )
-            for h_count, value in enumerate(log_beta, start=1):
-                prefix = "H" if h_count == 1 else f"H{h_count}"
-                species.append(
-                    AcidBaseSpecies(
-                        name=f"{prefix}{name}",
-                        charge=base_charge + h_count,
-                        h_count=h_count,
-                        log_beta=float(value),
-                        fixed=False,
-                    )
-                )
-        if not any(sp.h_count == 0 for sp in species):
-            species.insert(
-                0,
-                AcidBaseSpecies(name=name, charge=base_charge, h_count=0, log_beta=None, fixed=True),
-            )
-        components.append(
-            AcidBaseComponent(
-                name=name,
-                analytical_concentration=concentration,
-                species=species,
-            )
-        )
-
-    return AcidBaseSystem(
-        components=components,
+    return acid_base_system_from_model(
+        model_def,
         temperature=float(cfg.get("temperature", 298.15) or 298.15),
         ionic_strength=(
             None
@@ -322,45 +252,18 @@ def _to_serializable(value: Any) -> Any:
 def _serializable_model_definition(cfg: Mapping[str, Any], system: AcidBaseSystem) -> dict[str, Any]:
     model_def = cfg.get("acid_base_model")
     if isinstance(model_def, Mapping) and model_def.get("components"):
-        return _to_serializable(dict(model_def))
-
-    components = []
-    species_rows = []
-    for idx, comp in enumerate(system.components):
-        log_beta = component_log_beta(comp)
-        pka = log_beta_to_pka(log_beta) if log_beta else []
-        species = sorted(list(comp.species or []), key=lambda sp: int(sp.h_count))
-        base_charge = int(species[0].charge) if species else 0
-        components.append(
-            {
-                "name": str(comp.name),
-                "analytical_concentration": float(comp.analytical_concentration),
-                "base_charge": base_charge,
-                "n_steps": len(log_beta),
-                "pka": [float(v) for v in pka],
-                "log_beta": [float(v) for v in log_beta],
-                "use_log_beta": False,
-                "role": "analyte" if idx == 0 else "spectator",
-                "fixed_concentration": False,
-            }
+        return _to_serializable(serializable_model_definition_from_system(model_def, system=system))
+    return _to_serializable(
+        serializable_model_definition_from_system(
+            acid_base_model_from_simple_config(
+                component_name=str(cfg.get("component_name") or "L"),
+                pka=_parse_float_list(cfg.get("pka_initial") or cfg.get("initial_pka"), default=[5.0]),
+                analytical_concentration=float(cfg.get("analyte_concentration", cfg.get("concentration", 1.0e-3)) or 1.0e-3),
+                base_charge=int(cfg.get("base_charge", -1) or -1),
+            ),
+            system=system,
         )
-        for sp in species:
-            species_rows.append(
-                {
-                    "name": str(sp.name),
-                    "component": str(comp.name),
-                    "h_count": int(sp.h_count),
-                    "charge": int(sp.charge),
-                    "log_beta": 0.0 if sp.log_beta is None else float(sp.log_beta),
-                    "fixed": bool(sp.fixed),
-                    "include": True,
-                }
-            )
-    return {
-        "model_type": "serialized_system",
-        "components": components,
-        "species": species_rows,
-    }
+    )
 
 
 def _serializable_bounds(bounds: Any, n_params: int) -> list[list[float | None]]:

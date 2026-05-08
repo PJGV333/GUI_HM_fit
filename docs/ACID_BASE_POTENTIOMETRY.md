@@ -1,17 +1,27 @@
-# Acid-base and potentiometric analysis
+# Acid-base and Potentiometry
 
-HM Fit includes an initial acid-base / potentiometry workflow built on the same
-core conventions used by the existing equilibrium modules: chemical constants
-are cumulative log10 formation/protonation constants, and pKa values are a
-special case of those constants.
+The Acid-base / Potentiometry module now follows the same model-definition
+philosophy as the Spectroscopy and NMR modules:
+
+1. Import data in **DATA / INPUT**.
+2. Define the chemical model in **Model**.
+3. Review parameter guesses and local settings in **Optimization**.
+4. Select output plots in **Plots**.
+5. Compute uncertainty diagnostics in **Errors**.
+
+The model can be defined in two ways:
+
+- **Matriz estequiometrica**
+- **Editor de ecuaciones**
+
+Both modes populate the same canonical internal representation,
+`cfg["acid_base_model"]`, which is then consumed by `run_acid_base`.
 
 ## Accepted data
 
-The PySide6 tab imports CSV/TXT files and Excel workbooks (`.xlsx`).
-For Excel files, select the worksheet in the **DATA / INPUT** section before
-fitting.
+The tab accepts `CSV`, `TXT`, and `XLSX`.
 
-Potentiometry can use direct pH:
+Potentiometry:
 
 ```csv
 volume_mL,pH
@@ -20,7 +30,7 @@ volume_mL,pH
 0.200,3.301
 ```
 
-or electrode potential in mV:
+or EMF:
 
 ```csv
 volume_mL,E_mV
@@ -29,7 +39,7 @@ volume_mL,E_mV
 0.200,242.1
 ```
 
-Spectroscopy at one wavelength:
+Spectroscopy:
 
 ```csv
 pH,signal
@@ -38,15 +48,7 @@ pH,signal
 3.00,0.174
 ```
 
-Spectral matrices use one pH column followed by wavelength columns:
-
-```csv
-pH,300,301,302,303,304
-2.00,0.11,0.12,0.13,0.15,0.16
-2.50,0.12,0.13,0.15,0.17,0.18
-```
-
-Fast-exchange proton NMR:
+NMR:
 
 ```csv
 pH,H1,H2,H3
@@ -55,195 +57,268 @@ pH,H1,H2,H3
 3.00,8.01,7.38,6.90
 ```
 
-## pKa and log_beta convention
+## Matrix workflow
+
+In **Matriz estequiometrica** you define:
+
+- Number of components
+- Number of species
+- Component metadata
+- Species metadata
+- Stoichiometric matrix
+
+### Components table
+
+The components table includes:
+
+- `Component name`
+- `Role`
+- `Analytical concentration`
+- `Charge`
+- `Is proton`
+- `Is titrant`
+- `Is background/spectator`
+- `Fixed concentration`
+
+The proton component `H` is special.
+
+- In spectroscopy and NMR, pH is imposed by the dataset, so `H` is conceptual.
+- In potentiometry, `H` participates through electroneutrality and `Kw`, not as a normal conserved analytical component.
+
+### Species table
+
+The species table includes:
+
+- `Species name`
+- `Charge`
+- `h_count`
+- `Include`
+- `Observable`
+- `Fixed`
+- `Non-observable / non-absorbing`
+- `Parent component or group`
+
+### Monoprotic example
+
+Components:
+
+- `L`
+- `H`
+
+Species:
+
+- `L`
+- `HL`
+
+Stoichiometric matrix:
+
+```text
+        L   HL
+L       1   1
+H       0   1
+```
+
+Typical metadata:
+
+- `L`: charge `-1`, `h_count = 0`, `log_beta = 0`
+- `HL`: charge `0`, `h_count = 1`, `log_beta = pKa1`
+
+### Diprotic example
+
+Components:
+
+- `L`
+- `H`
+
+Species:
+
+- `L`
+- `HL`
+- `H2L`
+
+Stoichiometric matrix:
+
+```text
+        L   HL   H2L
+L       1   1    1
+H       0   1    2
+```
+
+Typical metadata:
+
+- `L`: charge `-2`, `h_count = 0`, `log_beta = 0`
+- `HL`: charge `-1`, `h_count = 1`, `log_beta = pKa1`
+- `H2L`: charge `0`, `h_count = 2`, `log_beta = pKa1 + pKa2`
+
+## Equation editor workflow
+
+The equation editor accepts acid-base equations and converts them into the same
+component/species/matrix model.
+
+### Example 1
+
+```text
+L + H <=> HL ; pKa=5.20
+```
+
+### Example 2
+
+```text
+L + H <=> HL ; pKa=4.50
+HL + H <=> H2L ; pKa=8.90
+```
+
+### Example 3
+
+```text
+L + H <=> HL ; logB=4.50
+L + 2H <=> H2L ; logB=13.40
+```
+
+The parser recognizes:
+
+- `H`, `H+`, `h`, `proton`
+- `pKa`, `pka`
+- `logB`, `log_beta`, `logbeta`
+- Integer stoichiometric coefficients
+- Explicit charges such as `L(-2)` or `H(1)`
+
+If absolute charges are omitted, the parser uses a consistent relative ladder
+that can be corrected in the species table before fitting potentiometric data.
+
+## pKa and log_beta
 
 For cumulative protonation:
 
 ```text
 L + nH+ <=> H_nL
-beta_n = [H_nL] / ([L] [H+]^n)
+beta_n = [H_nL] / ([L][H+]^n)
 ```
 
-HM Fit assumes `log_beta_0 = 0`. Stepwise pKa values are:
+HM Fit uses:
 
 ```text
-pKa_n = log_beta_n - log_beta_(n-1)
+log_beta_0 = 0
 ```
 
-Therefore `pKa = [4.0, 7.0]` corresponds to
-`log_beta = [4.0, 11.0]`.
-
-## GUI model definition
-
-The Acid-base / Potentiometry tab follows the same workflow style as the
-Spectroscopy and NMR tabs:
-
-1. Use **DATA / INPUT** to choose the dataset type and import a CSV, TXT, or
-   XLSX file.
-2. Use **Model** to define the acid-base system.
-3. Use **Optimization** to review fitted/local parameters, including `pKw`.
-4. Use **Plots** to select which plot pages should be rendered in the right
-   panel.
-5. Use **Errors** to inspect the parameter table and covariance/correlation
-   matrices when available.
-
-The **Model** tab contains a **Components** table. Each component defines a
-base form such as `L`, its total concentration, base charge, number of
-protonation steps, and initial pKa or `log_beta` values. The pKa field accepts
-comma-separated or semicolon-separated values, for example `4.5, 8.9` or
-`4.5; 8.9`.
-
-For a ligand `L` with base charge `z` and `n` protonation steps, HM Fit
-generates:
+and the relation:
 
 ```text
-L, HL, H2L, ..., HnL
+log_beta_1 = pKa1
+log_beta_2 = pKa1 + pKa2
+log_beta_3 = pKa1 + pKa2 + pKa3
 ```
 
-with charges:
+Conversely:
 
 ```text
-z, z + 1, z + 2, ..., z + n
+pKa1 = log_beta1
+pKa2 = log_beta2 - log_beta1
+pKa3 = log_beta3 - log_beta2
 ```
 
-and cumulative constants:
+The GUI shows both conventions so the user can verify the ladder.
 
-```text
-log_beta_n = pKa_1 + pKa_2 + ... + pKa_n
-```
+## Templates
 
-Examples:
+The **Load template** control provides presets:
 
-- Monoprotic `HL/L-`: base charge `-1`, steps `1`, pKa `5.20`.
-- Diprotic `H2L/L2-`: base charge `-2`, steps `2`, pKa `4.50, 8.90`.
-- Triprotic `H3L/L3-`: base charge `-3`, steps `3`, pKa `2.10, 6.70, 10.20`.
+- `Simple monoprotic acid/base`
+- `Diprotic ligand`
+- `Triprotic ligand`
+- `Multiple acid-base components`
+- `Custom acid-base system`
+- `Coupled acid-base / host-guest model (future)`
 
-The generated **Species** table shows species name, parent component,
-`h_count`, charge, cumulative `log_beta`, and stepwise pKa. It is automatically
-generated from the component table for simple, polyprotic, and multiple
-component models. In **Custom species table** mode, the species table can be
-edited directly.
+The presets are convenience tools only. They no longer define the fitting
+engine; the fitting engine is always the canonical matrix/equation model.
 
-The current GUI model types are:
+## Optimization tab
 
-- Simple monoprotic acid/base.
-- Polyprotic ligand.
-- Multiple acid-base components.
-- Custom species table.
-- Coupled acid-base / host-guest model, shown as a future/experimental option.
+The **Optimization** tab is generated from the model definition.
 
-## Species diagrams
+For a diprotic system in `pKa` mode it creates:
 
-For a component with species `L, HL, H2L, ...`, fractions at imposed pH are:
+- `pKa1`
+- `pKa2`
 
-```text
-alpha_i = beta_i [H+]^i / sum_j(beta_j [H+]^j)
-```
+For `log_beta` mode it creates:
 
-Rows in the distribution table sum to 1 for each component. The GUI plots
-fraction vs pH and, for potentiometry, fraction vs titrant volume.
+- `log_beta1`
+- `log_beta2`
 
-## Potentiometric fitting
+Each parameter row includes:
 
-The v1 potentiometry model simulates pH by solving electroneutrality at each
-titration point. Dilution is included:
+- `Initial value`
+- `Min`
+- `Max`
+- `Fixed`
+- `Linked species`
+- `Description`
 
-```text
-C_i,total = (C_i,0 V0 + C_i,titrant Vadd) / (V0 + Vadd)
-```
+Potentiometry also keeps local settings such as:
 
-The default monoprotonic acid model uses `L-` and neutral `HL`, titrated with a
-strong base that contributes a spectator cation. A strong acid titrant
-contributes a spectator anion. The ideal electrode model is:
+- `electrode_e0`
+- `electrode_slope`
+- `analyte concentration`
+- `titrant concentration`
+- `volume offset`
+- `pKw`
 
-```text
-E = E0 + S pH
-```
+## Why H is special
 
-`E0` and `S` can be fixed or fitted for EMF data.
+The proton row exists in the model editor because it is chemically meaningful
+for the stoichiometric matrix and for `h_count`.
 
-For potentiometric data, HM Fit uses the volume column as the independent
-variable, applies dilution and strong ion contributions, and solves pH by
-electroneutrality with water autoionization. The **Optimization** tab includes
-`pKw`, with default `14.0000`, and internally uses:
+Internally:
+
+- Spectroscopy/NMR use the measured pH directly.
+- Potentiometry solves pH from electroneutrality, dilution, strong-ion
+  contribution, species charges, and water autoionization.
+
+That is why `H` appears in the editor but is not treated as a normal conserved
+analytical component in the standard potentiometric workflow.
+
+## pKw and when it matters
+
+`pKw` is entered in **Optimization** under **Water autoionization**.
 
 ```text
 Kw = 10^(-pKw)
 ```
 
-`pKw` affects potentiometric electroneutrality calculations. For spectroscopy
-and NMR acid-base datasets, measured pH is imposed directly, so `pKw` is
-accepted in the configuration but does not affect species fractions in v1.
+- In potentiometry, `pKw` affects electroneutrality and therefore calculated pH.
+- In spectroscopy and NMR v1, pH is imposed by the dataset, so `pKw` does not
+  alter species fractions.
 
-The **Potentiometric titration model** group contains the initial volume,
-titrant concentration, titrant type, optional manual strong ion charge,
-volume-offset/blank correction, pH bounds, and a small custom titrant table for
-future non-strong-acid/base titrants.
-
-## Spectroscopy fitting
-
-At each pH, the observed signal is a linear combination of species fractions:
+Default:
 
 ```text
-S_obs(pH) = sum_i alpha_i(pH) S_i
+pKw = 14.0000
 ```
 
-For matrices, each wavelength is solved as an independent linear observable.
-The species signals are solved by linear least squares for each trial pKa
-(variable projection).
+## Validation
 
-Spectroscopy uses measured pH as an imposed independent variable and does not
-solve electroneutrality in v1.
+Before fitting, the module validates the acid-base model and warns about common
+issues such as:
 
-## Proton NMR fitting
+- Missing species names
+- Missing charges
+- Missing `h_count`
+- Non-consecutive protonation ladders
+- pKa values far outside the experimental pH range
+- Two pKa values too close relative to the pH sampling
 
-The initial NMR implementation assumes fast exchange:
+Potentiometry requires valid charge information for all included species.
 
-```text
-delta_obs(pH) = sum_i alpha_i(pH) delta_i
-```
+## Backward compatibility
 
-Multiple proton labels are fitted simultaneously with shared pKa values and
-local limiting shifts.
+Legacy simple configurations still work:
 
-NMR uses measured pH as an imposed independent variable and assumes fast
-exchange in v1:
+- `component_name`
+- `pka_initial`
+- `analyte_concentration`
+- `base_charge`
 
-```text
-delta_obs = sum_i alpha_i delta_i
-```
-
-## Global multimodal fits
-
-The core module exposes residual combiners for potentiometry, spectroscopy, and
-NMR datasets. Chemical parameters such as pKa/log_beta can be shared, while
-instrumental parameters such as electrode constants, optical species signals,
-and limiting NMR shifts remain local to each technique.
-
-## Export
-
-Excel export includes pKa, log_beta, fitted/local parameters, experimental vs
-calculated data, residuals, species distributions, and covariance/correlation
-matrices when available. CSV export from the GUI writes the main
-experimental-vs-calculated table.
-
-## Current limitations
-
-This v1 implementation assumes ideal solutions or constant ionic strength.
-Activities are approximated by concentrations. Activity corrections should be
-added as a later extension.
-
-Other explicit limitations:
-
-- Fixed or ignored ionic strength.
-- Ideal electrode with optional fitted slope.
-- Linear spectroscopy in species fractions.
-- Proton NMR fast-exchange regime only.
-- No automatic atmospheric CO2 correction.
-- No advanced competitive salt binding unless the general HM Fit equilibrium
-  solver is used through a future acid-base graph wrapper.
-
-Planned extensions include Debye-Huckel, Davies, SIT, variable ionic strength,
-Gran calibration, alkalinity analysis, complex polyprotic systems,
-host-guest/protonation coupling, and tighter coupling to the existing UV-Vis,
-fluorescence, and NMR observation models.
+If `cfg["acid_base_model"]` is missing, `run_acid_base` still builds a simple
+monoprotic or polyprotic system from those old fields.

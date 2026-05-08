@@ -14,6 +14,11 @@ from hmfit_core.acid_base import (
     make_simple_acid_base_system,
     pka_to_log_beta,
 )
+from hmfit_core.acid_base_model_utils import (
+    acid_base_model_from_equations,
+    build_acid_base_template,
+    canonicalize_acid_base_model,
+)
 from hmfit_core.potentiometry import (
     PotentiometryExperiment,
     fit_potentiometry,
@@ -205,6 +210,47 @@ def test_explicit_acid_base_model_config_builds_diprotic_system():
     assert [sp.log_beta for sp in comp.species[1:]] == pytest.approx([4.5, 13.4])
 
 
+def test_matrix_generated_monoprotic_model_template():
+    model = build_acid_base_template("simple_monoprotic")
+    assert model["component_names"] == ["L", "H"]
+    assert model["species_names"] == ["L", "HL"]
+    assert model["pka"] == pytest.approx([5.20])
+    assert model["log_beta"] == pytest.approx([5.20])
+
+
+def test_matrix_generated_diprotic_model_template():
+    model = build_acid_base_template("diprotic_ligand")
+    assert model["component_names"] == ["L", "H"]
+    assert model["species_names"] == ["L", "HL", "H2L"]
+    assert model["pka"] == pytest.approx([4.50, 8.90])
+    assert model["log_beta"] == pytest.approx([4.50, 13.40])
+
+
+def test_equation_parser_monoprotic_model():
+    model = acid_base_model_from_equations("L + H <=> HL ; pKa=5.20")
+    assert model["species_names"] == ["L", "HL"]
+    assert [row["h_count"] for row in model["species"]] == [0, 1]
+    assert model["log_beta"] == pytest.approx([5.20])
+
+
+def test_equation_parser_diprotic_stepwise_model():
+    model = acid_base_model_from_equations(
+        "L + H <=> HL ; pKa=4.50\n"
+        "HL + H <=> H2L ; pKa=8.90"
+    )
+    assert model["pka"] == pytest.approx([4.50, 8.90])
+    assert model["log_beta"] == pytest.approx([4.50, 13.40])
+
+
+def test_equation_parser_diprotic_cumulative_model():
+    model = acid_base_model_from_equations(
+        "L + H <=> HL ; logB=4.50\n"
+        "L + 2H <=> H2L ; logB=13.40"
+    )
+    assert model["log_beta"] == pytest.approx([4.50, 13.40])
+    assert model["pka"] == pytest.approx([4.50, 8.90])
+
+
 def test_diprotic_species_fractions_sum_to_one():
     pH = np.linspace(0.0, 14.0, 71)
     fractions = distribution_fractions_from_pH(pH, [4.5, 13.4])
@@ -247,14 +293,7 @@ def test_gui_config_generates_diprotic_species_and_pkw(tmp_path, monkeypatch):
 
     tab = AcidBaseTab()
     tab._set_file_path(str(path))
-    tab._updating_tables = True
-    tab.components_table.item(0, 0).setText("L")
-    tab.components_table.item(0, 1).setText("0.001")
-    tab.components_table.item(0, 2).setText("-2")
-    tab.components_table.item(0, 3).setText("2")
-    tab.components_table.item(0, 4).setText("4.5, 8.9")
-    tab._updating_tables = False
-    tab._refresh_species_table()
+    tab._load_template("diprotic_ligand")
     tab._refresh_parameter_table()
     tab._set_parameter_value("pKw", "13.78")
 
@@ -280,3 +319,40 @@ def test_gui_config_default_pkw_is_14(tmp_path, monkeypatch):
     cfg = tab._collect_config()
     assert cfg["pkw"] == pytest.approx(14.0)
     assert cfg["kw"] == pytest.approx(1.0e-14)
+
+
+def test_gui_equation_editor_generates_canonical_model(tmp_path, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    qt_widgets = pytest.importorskip("PySide6.QtWidgets")
+    from hmfit_gui_qt.tabs.acid_base_tab import AcidBaseTab
+
+    app = qt_widgets.QApplication.instance() or qt_widgets.QApplication([])
+    _ = app
+    path = tmp_path / "spec.csv"
+    pd.DataFrame({"pH": [4.0, 5.0, 6.0], "signal": [0.2, 0.5, 0.8]}).to_csv(path, index=False)
+
+    tab = AcidBaseTab()
+    tab._set_file_path(str(path))
+    tab.radio_model_equations.setChecked(True)
+    tab.equation_editor.setPlainText("L + H <=> HL ; pKa=5.20")
+    tab._apply_equations_model()
+
+    cfg = tab._collect_config()
+    model = canonicalize_acid_base_model(cfg["acid_base_model"])
+    assert model["definition_mode"] == "equations"
+    assert model["species_names"] == ["L", "HL"]
+    assert model["pka"] == pytest.approx([5.20])
+
+
+def test_old_simple_config_still_builds_system():
+    system = _build_system(
+        {
+            "component_name": "Lig",
+            "pka_initial": "4.5, 8.9",
+            "analyte_concentration": 1.0e-3,
+            "base_charge": -2,
+            "kw": 1.0e-14,
+        }
+    )
+    assert system.components[0].name == "Lig"
+    assert [sp.charge for sp in system.components[0].species] == [-2, -1, 0]

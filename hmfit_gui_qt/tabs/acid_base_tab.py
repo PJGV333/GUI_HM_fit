@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -24,8 +25,10 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QRadioButton,
     QScrollArea,
     QSpinBox,
+    QStackedWidget,
     QSplitter,
     QTabWidget,
     QTableWidget,
@@ -37,6 +40,15 @@ from PySide6.QtWidgets import (
 from hmfit_core.api import run_acid_base_fit
 from hmfit_core.acid_base import log_beta_to_pka, pka_to_log_beta
 from hmfit_core.acid_base_errors import compute_errors_acid_base_from_context
+from hmfit_core.acid_base_model_utils import (
+    acid_base_constant_blocks,
+    acid_base_model_from_equations,
+    canonicalize_acid_base_model,
+    normalize_constant_mode,
+    parameter_rows_from_model,
+    proton_component_name,
+    validate_acid_base_model,
+)
 from hmfit_core.exports import write_results_xlsx
 from hmfit_gui_qt.widgets.error_analysis_widget import ErrorAnalysisWidget
 from hmfit_gui_qt.widgets.log_console import LogConsole
@@ -51,16 +63,16 @@ def _optional_float(text: str) -> float | None:
     return float(value)
 
 
-def _parse_float_list(raw: Any) -> list[float]:
+def _parse_float_list(raw: Any, *, default: list[float] | None = None) -> list[float]:
     if raw is None:
-        return []
+        return list(default or [])
     if isinstance(raw, np.ndarray):
         return [float(v) for v in raw.reshape(-1)]
     if isinstance(raw, (list, tuple)):
         return [float(v) for v in raw]
     text = str(raw).replace(";", ",").strip()
     if not text:
-        return []
+        return list(default or [])
     return [float(part.strip()) for part in text.split(",") if part.strip()]
 
 
@@ -78,26 +90,35 @@ def _set_table_text(table: QTableWidget, row: int, col: int, value: Any) -> None
 
 class AcidBaseTab(QWidget):
     COMPONENT_COLUMNS = [
-        "Component",
-        "Total concentration",
-        "Base charge",
-        "Number of protonation steps",
-        "pKa initial values",
-        "Use pKa or log_beta",
-        "Fixed concentration",
         "Role",
+        "Component name",
+        "Analytical concentration",
+        "Charge",
+        "Is proton",
+        "Is titrant",
+        "Is background/spectator",
+        "Fixed concentration",
     ]
     SPECIES_COLUMNS = [
         "Species name",
-        "Parent component",
-        "h_count",
         "Charge",
-        "log_beta",
-        "Stepwise pKa",
+        "h_count",
         "Include",
+        "Observable",
         "Fixed",
+        "Non-observable / non-absorbing",
+        "Parent component or group",
     ]
-    PARAM_COLUMNS = ["Parameter", "Initial value", "Min", "Max", "Fixed", "Description"]
+    PARAM_COLUMNS = [
+        "Parameter",
+        "Type",
+        "Initial value",
+        "Min",
+        "Max",
+        "Fixed",
+        "Linked species",
+        "Description",
+    ]
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -113,10 +134,8 @@ class AcidBaseTab(QWidget):
         self.errors_panel: ErrorAnalysisWidget | None = None
 
         self._build_ui()
-        self._add_default_component()
-        self._refresh_species_table()
+        self._load_template("simple_monoprotic")
         self._refresh_parameter_table()
-        self._on_model_type_changed()
         self._on_titrant_type_changed()
         self._set_running(False)
         self.canvas_main.show_message("Import a CSV or Excel file to begin")
@@ -186,12 +205,14 @@ class AcidBaseTab(QWidget):
         tab = QWidget(self.model_opt_tabs)
         layout = QVBoxLayout(tab)
 
-        model_form = QFormLayout()
+        template_row = QHBoxLayout()
+        template_row.addWidget(QLabel("Load template", tab))
         self.combo_model_type = QComboBox(tab)
         self.combo_model_type.addItem("Simple monoprotic acid/base", "simple_monoprotic")
-        self.combo_model_type.addItem("Polyprotic ligand", "polyprotic")
+        self.combo_model_type.addItem("Diprotic ligand", "diprotic_ligand")
+        self.combo_model_type.addItem("Triprotic ligand", "triprotic_ligand")
         self.combo_model_type.addItem("Multiple acid-base components", "multiple_components")
-        self.combo_model_type.addItem("Custom species table", "custom_species")
+        self.combo_model_type.addItem("Custom acid-base system", "custom_acid_base_system")
         self.combo_model_type.addItem(
             "Coupled acid-base / host-guest model (future)",
             "coupled_future",
@@ -200,11 +221,56 @@ class AcidBaseTab(QWidget):
         future_item = self.combo_model_type.model().item(future_idx)
         if future_item is not None:
             future_item.setEnabled(False)
-        self.combo_model_type.currentIndexChanged.connect(self._on_model_type_changed)
-        model_form.addRow("Model type", self.combo_model_type)
-        layout.addLayout(model_form)
+        template_row.addWidget(self.combo_model_type, 1)
+        self.btn_load_template = QPushButton("Load template", tab)
+        self.btn_load_template.clicked.connect(self._on_load_template_clicked)
+        template_row.addWidget(self.btn_load_template)
+        layout.addLayout(template_row)
 
-        comp_group = QGroupBox("Components", tab)
+        mode_row = QHBoxLayout()
+        mode_row.addWidget(QLabel("Model definition", tab))
+        self.radio_model_matrix = QRadioButton("Matriz estequiometrica", tab)
+        self.radio_model_equations = QRadioButton("Editor de ecuaciones", tab)
+        self.radio_model_matrix.setChecked(True)
+        self.radio_model_matrix.toggled.connect(self._sync_model_mode_ui)
+        self.radio_model_equations.toggled.connect(self._sync_model_mode_ui)
+        mode_row.addWidget(self.radio_model_matrix)
+        mode_row.addWidget(self.radio_model_equations)
+        mode_row.addStretch(1)
+        layout.addLayout(mode_row)
+
+        constants_group = QGroupBox("Constant convention", tab)
+        constants_form = QFormLayout(constants_group)
+        self.combo_constant_mode = QComboBox(constants_group)
+        self.combo_constant_mode.addItem("pKa", "pKa")
+        self.combo_constant_mode.addItem("log_beta", "log_beta")
+        self.combo_constant_mode.currentIndexChanged.connect(self._refresh_parameter_table)
+        constants_form.addRow("Primary input mode", self.combo_constant_mode)
+        layout.addWidget(constants_group)
+
+        self.model_definition_stack = QStackedWidget(tab)
+        layout.addWidget(self.model_definition_stack, 1)
+
+        matrix_page = QWidget(self.model_definition_stack)
+        matrix_layout = QVBoxLayout(matrix_page)
+        dims_group = QGroupBox("Model dimensions", matrix_page)
+        dims_layout = QGridLayout(dims_group)
+        self.spin_n_components_model = QSpinBox(dims_group)
+        self.spin_n_components_model.setRange(1, 20)
+        self.spin_n_components_model.setValue(2)
+        self.spin_n_species_model = QSpinBox(dims_group)
+        self.spin_n_species_model.setRange(1, 100)
+        self.spin_n_species_model.setValue(2)
+        self.btn_define_model_dimensions = QPushButton("Define Model Dimensions", dims_group)
+        self.btn_define_model_dimensions.clicked.connect(self._define_model_dimensions)
+        dims_layout.addWidget(QLabel("Number of components"), 0, 0)
+        dims_layout.addWidget(self.spin_n_components_model, 0, 1)
+        dims_layout.addWidget(QLabel("Number of species"), 1, 0)
+        dims_layout.addWidget(self.spin_n_species_model, 1, 1)
+        dims_layout.addWidget(self.btn_define_model_dimensions, 0, 2, 2, 1)
+        matrix_layout.addWidget(dims_group)
+
+        comp_group = QGroupBox("Components", matrix_page)
         comp_layout = QVBoxLayout(comp_group)
         self.components_table = QTableWidget(0, len(self.COMPONENT_COLUMNS), comp_group)
         self.components_table.setHorizontalHeaderLabels(self.COMPONENT_COLUMNS)
@@ -215,37 +281,82 @@ class AcidBaseTab(QWidget):
         comp_layout.addWidget(self.components_table)
         comp_buttons = QHBoxLayout()
         self.btn_add_component = QPushButton("Add component", comp_group)
-        self.btn_add_component.clicked.connect(self._add_default_component)
+        self.btn_add_component.clicked.connect(lambda: self._insert_component_row())
         comp_buttons.addWidget(self.btn_add_component)
         self.btn_remove_component = QPushButton("Remove selected", comp_group)
         self.btn_remove_component.clicked.connect(self._remove_selected_component)
         comp_buttons.addWidget(self.btn_remove_component)
-        self.btn_generate_species = QPushButton("Generate species", comp_group)
-        self.btn_generate_species.clicked.connect(self._refresh_species_table)
-        comp_buttons.addWidget(self.btn_generate_species)
+        self.btn_sync_names = QPushButton("Sync headers", comp_group)
+        self.btn_sync_names.clicked.connect(self._sync_matrix_headers)
+        comp_buttons.addWidget(self.btn_sync_names)
         comp_buttons.addStretch(1)
         comp_layout.addLayout(comp_buttons)
-        layout.addWidget(comp_group)
+        matrix_layout.addWidget(comp_group)
 
-        species_group = QGroupBox("Species", tab)
+        species_group = QGroupBox("Species", matrix_page)
         species_layout = QVBoxLayout(species_group)
         self.species_table = QTableWidget(0, len(self.SPECIES_COLUMNS), species_group)
         self.species_table.setHorizontalHeaderLabels(self.SPECIES_COLUMNS)
         self.species_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.species_table.horizontalHeader().setStretchLastSection(True)
-        self.species_table.setMinimumHeight(180)
+        self.species_table.setMinimumHeight(190)
         self.species_table.itemChanged.connect(self._on_species_table_changed)
         species_layout.addWidget(self.species_table)
         species_buttons = QHBoxLayout()
         self.btn_add_species = QPushButton("Add species", species_group)
-        self.btn_add_species.clicked.connect(self._add_empty_species_row)
+        self.btn_add_species.clicked.connect(lambda: self._insert_species_row())
         species_buttons.addWidget(self.btn_add_species)
         self.btn_remove_species = QPushButton("Remove selected", species_group)
         self.btn_remove_species.clicked.connect(self._remove_selected_species)
         species_buttons.addWidget(self.btn_remove_species)
+        self.btn_generate_species = QPushButton("Generate simple species", species_group)
+        self.btn_generate_species.clicked.connect(self._generate_species_from_matrix)
+        species_buttons.addWidget(self.btn_generate_species)
         species_buttons.addStretch(1)
         species_layout.addLayout(species_buttons)
-        layout.addWidget(species_group)
+        matrix_layout.addWidget(species_group)
+
+        stoich_group = QGroupBox("Stoichiometric matrix", matrix_page)
+        stoich_layout = QVBoxLayout(stoich_group)
+        self.stoich_table = QTableWidget(0, 0, stoich_group)
+        self.stoich_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.stoich_table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        self.stoich_table.itemChanged.connect(self._on_stoich_table_changed)
+        stoich_layout.addWidget(self.stoich_table)
+        matrix_layout.addWidget(stoich_group)
+
+        self.model_definition_stack.addWidget(matrix_page)
+
+        equations_page = QWidget(self.model_definition_stack)
+        equations_layout = QVBoxLayout(equations_page)
+        equations_layout.addWidget(
+            QLabel(
+                "Examples:\n"
+                "# Monoprotic\n"
+                "L + H <=> HL ; pKa=5.20\n\n"
+                "# Diprotic, stepwise\n"
+                "L + H <=> HL ; pKa=4.50\n"
+                "HL + H <=> H2L ; pKa=8.90\n\n"
+                "# Diprotic, cumulative\n"
+                "L + H <=> HL ; logB=4.50\n"
+                "L + 2H <=> H2L ; logB=13.40",
+                equations_page,
+            )
+        )
+        self.equation_editor = QPlainTextEdit(equations_page)
+        self.equation_editor.setPlaceholderText(
+            "L + H <=> HL ; pKa=5.20\n"
+            "HL + H <=> H2L ; pKa=8.90"
+        )
+        equations_layout.addWidget(self.equation_editor, 1)
+        eq_buttons = QHBoxLayout()
+        self.btn_apply_equations = QPushButton("Apply equations", equations_page)
+        self.btn_apply_equations.clicked.connect(self._apply_equations_model)
+        eq_buttons.addWidget(self.btn_apply_equations)
+        eq_buttons.addStretch(1)
+        equations_layout.addLayout(eq_buttons)
+        self.model_definition_stack.addWidget(equations_page)
+        self._sync_model_mode_ui()
 
         self.titration_group = QGroupBox("Potentiometric titration model", tab)
         titration_layout = QVBoxLayout(self.titration_group)
@@ -259,6 +370,7 @@ class AcidBaseTab(QWidget):
         self.spin_titrant_conc.setRange(0.0, 1.0e6)
         self.spin_titrant_conc.setValue(1.0e-3)
         self.spin_titrant_conc.setSingleStep(1.0e-4)
+        self.spin_titrant_conc.valueChanged.connect(self._refresh_parameter_table)
         self.combo_titrant_type = QComboBox(self.titration_group)
         self.combo_titrant_type.addItem("strong base", "base")
         self.combo_titrant_type.addItem("strong acid", "acid")
@@ -279,6 +391,7 @@ class AcidBaseTab(QWidget):
         self.spin_volume_offset.setDecimals(6)
         self.spin_volume_offset.setRange(-1.0e9, 1.0e9)
         self.spin_volume_offset.setValue(0.0)
+        self.spin_volume_offset.valueChanged.connect(self._refresh_parameter_table)
         self.spin_ph_min = QDoubleSpinBox(self.titration_group)
         self.spin_ph_min.setDecimals(3)
         self.spin_ph_min.setRange(-10.0, 30.0)
@@ -365,10 +478,13 @@ class AcidBaseTab(QWidget):
         electrode_layout = QFormLayout(electrode_group)
         self.edit_e0 = QLineEdit("", electrode_group)
         self.edit_e0.setPlaceholderText("fixed E0, mV")
+        self.edit_e0.textChanged.connect(self._refresh_parameter_table)
         self.edit_slope = QLineEdit("-59.16", electrode_group)
         self.edit_slope.setPlaceholderText("fixed slope, mV/pH")
+        self.edit_slope.textChanged.connect(self._refresh_parameter_table)
         self.chk_fit_electrode = QCheckBox("Fit E0 and slope for EMF data", electrode_group)
         self.chk_baseline = QCheckBox("Include linear baseline in spectroscopy", electrode_group)
+        self.chk_baseline.toggled.connect(self._refresh_parameter_table)
         electrode_layout.addRow("Electrode E0", self.edit_e0)
         electrode_layout.addRow("Electrode slope", self.edit_slope)
         electrode_layout.addRow("", self.chk_fit_electrode)
@@ -518,51 +634,135 @@ class AcidBaseTab(QWidget):
         chk.setChecked(bool(checked))
         return chk
 
-    def _add_default_component(self) -> None:
-        was_updating = self._updating_tables
-        self._updating_tables = True
-        try:
-            row = self.components_table.rowCount()
-            self.components_table.insertRow(row)
-            name = "L" if row == 0 else f"L{row + 1}"
-            defaults = [name, "0.001", "-1", "1", "5.0"]
-            for col, value in enumerate(defaults):
-                _set_table_text(self.components_table, row, col, value)
-            use_combo = self._make_combo(["pKa", "log_beta"], "pKa")
-            use_combo.currentIndexChanged.connect(self._on_component_table_changed)
-            self.components_table.setCellWidget(row, 5, use_combo)
-            fixed = self._make_checkbox(False)
-            fixed.stateChanged.connect(self._on_component_table_changed)
-            self.components_table.setCellWidget(row, 6, fixed)
-            role = self._make_combo(["analyte", "titrant", "background", "spectator", "imposed pH dataset"], "analyte")
-            role.currentIndexChanged.connect(self._on_component_table_changed)
-            self.components_table.setCellWidget(row, 7, role)
-        finally:
-            self._updating_tables = was_updating
-        self._refresh_species_table()
+    def _sync_model_mode_ui(self) -> None:
+        if not hasattr(self, "model_definition_stack"):
+            return
+        self.model_definition_stack.setCurrentIndex(0 if self.radio_model_matrix.isChecked() else 1)
+
+    def _on_load_template_clicked(self) -> None:
+        template_id = str(self.combo_model_type.currentData() or "simple_monoprotic")
+        if template_id == "coupled_future":
+            QMessageBox.information(
+                self,
+                "Template unavailable",
+                "The coupled acid-base / host-guest template is reserved for a future extension.",
+            )
+            return
+        self._load_template(template_id)
+
+    def _load_template(self, template_id: str) -> None:
+        from hmfit_core.acid_base_model_utils import build_acid_base_template
+
+        model = build_acid_base_template(template_id)
+        self._populate_model_from_definition(model, update_template=True)
+
+    def _define_model_dimensions(self) -> None:
+        n_components = int(self.spin_n_components_model.value())
+        n_species = int(self.spin_n_species_model.value())
+        model = {
+            "definition_mode": "matrix",
+            "constant_mode": str(self.combo_constant_mode.currentData() or "pKa"),
+            "components": [],
+            "species": [],
+            "stoichiometric_matrix": [[0 for _ in range(n_species)] for _ in range(n_components)],
+            "equations_text": str(self.equation_editor.toPlainText() if hasattr(self, "equation_editor") else ""),
+        }
+        for idx in range(n_components):
+            is_proton = idx == (n_components - 1)
+            name = proton_component_name() if is_proton else ("L" if idx == 0 else f"L{idx + 1}")
+            model["components"].append(
+                {
+                    "name": name,
+                    "role": "proton" if is_proton else "analyte",
+                    "analytical_concentration": None if is_proton else 1.0e-3,
+                    "charge": 1 if is_proton else -1,
+                    "is_proton": is_proton,
+                    "is_titrant": False,
+                    "is_background": False,
+                    "fixed_concentration": bool(is_proton),
+                    "implicit": bool(is_proton),
+                }
+            )
+        for idx in range(n_species):
+            model["species"].append(
+                {
+                    "name": "L" if idx == 0 else f"S{idx + 1}",
+                    "charge": 0,
+                    "h_count": 0,
+                    "include": True,
+                    "observable": True,
+                    "fixed": idx == 0,
+                    "non_observable": False,
+                    "parent_component": "L",
+                    "log_beta": 0.0,
+                }
+            )
+        self._populate_model_from_definition(model)
+
+    def _insert_component_row(self, row_data: dict[str, Any] | None = None) -> None:
+        row_data = dict(row_data or {})
+        row = self.components_table.rowCount()
+        self.components_table.insertRow(row)
+        role = self._make_combo(
+            ["analyte", "proton", "titrant", "background", "spectator", "imposed pH"],
+            str(row_data.get("role") or ("proton" if bool(row_data.get("is_proton")) else "analyte")),
+        )
+        role.currentIndexChanged.connect(self._on_component_table_changed)
+        self.components_table.setCellWidget(row, 0, role)
+        _set_table_text(self.components_table, row, 1, row_data.get("name", f"L{row + 1}"))
+        _set_table_text(self.components_table, row, 2, "" if row_data.get("analytical_concentration") in (None, "") else row_data.get("analytical_concentration"))
+        _set_table_text(self.components_table, row, 3, row_data.get("charge", 0))
+        is_proton = self._make_checkbox(bool(row_data.get("is_proton", False)))
+        is_proton.stateChanged.connect(self._on_component_table_changed)
+        self.components_table.setCellWidget(row, 4, is_proton)
+        is_titrant = self._make_checkbox(bool(row_data.get("is_titrant", False)))
+        is_titrant.stateChanged.connect(self._on_component_table_changed)
+        self.components_table.setCellWidget(row, 5, is_titrant)
+        is_background = self._make_checkbox(bool(row_data.get("is_background", False)))
+        is_background.stateChanged.connect(self._on_component_table_changed)
+        self.components_table.setCellWidget(row, 6, is_background)
+        fixed = self._make_checkbox(bool(row_data.get("fixed_concentration", False)))
+        fixed.stateChanged.connect(self._on_component_table_changed)
+        self.components_table.setCellWidget(row, 7, fixed)
 
     def _remove_selected_component(self) -> None:
         rows = sorted({idx.row() for idx in self.components_table.selectedIndexes()}, reverse=True)
         for row in rows:
             self.components_table.removeRow(row)
-        if not rows:
-            return
-        self._refresh_species_table()
+        if rows:
+            self.spin_n_components_model.setValue(max(1, self.components_table.rowCount()))
+            self._sync_matrix_headers()
+            self._refresh_parameter_table()
 
-    def _add_empty_species_row(self) -> None:
+    def _insert_species_row(self, row_data: dict[str, Any] | None = None) -> None:
+        row_data = dict(row_data or {})
         row = self.species_table.rowCount()
         self.species_table.insertRow(row)
-        for col in range(6):
-            _set_table_text(self.species_table, row, col, "")
-        include = self._make_checkbox(True)
-        self.species_table.setCellWidget(row, 6, include)
-        fixed = self._make_checkbox(False)
-        self.species_table.setCellWidget(row, 7, fixed)
+        _set_table_text(self.species_table, row, 0, row_data.get("name", f"S{row + 1}"))
+        _set_table_text(self.species_table, row, 1, row_data.get("charge", 0))
+        _set_table_text(self.species_table, row, 2, row_data.get("h_count", 0))
+        include = self._make_checkbox(bool(row_data.get("include", True)))
+        include.stateChanged.connect(self._on_species_table_changed)
+        self.species_table.setCellWidget(row, 3, include)
+        observable = self._make_checkbox(bool(row_data.get("observable", True)))
+        observable.stateChanged.connect(self._on_species_table_changed)
+        self.species_table.setCellWidget(row, 4, observable)
+        fixed = self._make_checkbox(bool(row_data.get("fixed", False)))
+        fixed.stateChanged.connect(self._on_species_table_changed)
+        self.species_table.setCellWidget(row, 5, fixed)
+        non_observable = self._make_checkbox(bool(row_data.get("non_observable", False)))
+        non_observable.stateChanged.connect(self._on_species_table_changed)
+        self.species_table.setCellWidget(row, 6, non_observable)
+        _set_table_text(self.species_table, row, 7, row_data.get("parent_component", "L"))
 
     def _remove_selected_species(self) -> None:
         rows = sorted({idx.row() for idx in self.species_table.selectedIndexes()}, reverse=True)
         for row in rows:
             self.species_table.removeRow(row)
+        if rows:
+            self.spin_n_species_model.setValue(max(1, self.species_table.rowCount()))
+            self._sync_matrix_headers()
+            self._refresh_parameter_table()
 
     def _add_custom_titrant_row(self) -> None:
         row = self.custom_titrant_table.rowCount()
@@ -580,14 +780,6 @@ class AcidBaseTab(QWidget):
         self.titration_group.setVisible(is_pot)
         self._refresh_parameter_table()
 
-    def _on_model_type_changed(self) -> None:
-        custom = str(self.combo_model_type.currentData() or "") == "custom_species"
-        self.btn_add_species.setEnabled(custom)
-        self.btn_remove_species.setEnabled(custom)
-        if not custom:
-            self._refresh_species_table()
-        self._refresh_parameter_table()
-
     def _on_titrant_type_changed(self) -> None:
         custom = str(self.combo_titrant_type.currentData() or "") == "custom"
         self.custom_titrant_table.setEnabled(custom)
@@ -597,218 +789,395 @@ class AcidBaseTab(QWidget):
     def _on_component_table_changed(self) -> None:
         if self._updating_tables:
             return
-        try:
-            if str(self.combo_model_type.currentData() or "") != "custom_species":
-                self._refresh_species_table()
-            self._refresh_parameter_table()
-        except Exception:
-            # Component rows can be temporarily inconsistent while the user edits
-            # step counts and comma-separated pKa/log_beta values.
-            pass
+        self._sync_matrix_headers()
+        self._refresh_parameter_table()
 
     def _on_species_table_changed(self) -> None:
         if self._updating_tables:
             return
-        try:
-            self._refresh_parameter_table()
-        except Exception:
-            pass
+        self._sync_matrix_headers()
+        self._refresh_parameter_table()
+
+    def _on_stoich_table_changed(self) -> None:
+        if self._updating_tables:
+            return
+        self._refresh_parameter_table()
+
+    def _sync_matrix_headers(self) -> None:
+        if not hasattr(self, "stoich_table"):
+            return
+        component_names = [str(row.get("name") or f"C{idx + 1}") for idx, row in enumerate(self._component_rows())]
+        species_names = [str(row.get("name") or f"S{idx + 1}") for idx, row in enumerate(self._species_rows())]
+        self.stoich_table.blockSignals(True)
+        self.stoich_table.setRowCount(len(component_names))
+        self.stoich_table.setColumnCount(len(species_names))
+        self.stoich_table.setVerticalHeaderLabels(component_names)
+        self.stoich_table.setHorizontalHeaderLabels(species_names)
+        for row in range(self.stoich_table.rowCount()):
+            for col in range(self.stoich_table.columnCount()):
+                if self.stoich_table.item(row, col) is None:
+                    _set_table_text(self.stoich_table, row, col, "0")
+        self.stoich_table.blockSignals(False)
 
     def _component_rows(self) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
         for row in range(self.components_table.rowCount()):
-            name = _table_text(self.components_table, row, 0, f"L{row + 1}")
-            concentration = float(_table_text(self.components_table, row, 1, "0.0"))
-            base_charge = int(float(_table_text(self.components_table, row, 2, "0")))
-            n_steps = int(float(_table_text(self.components_table, row, 3, "0")))
-            values = _parse_float_list(_table_text(self.components_table, row, 4, ""))
-            use_widget = self.components_table.cellWidget(row, 5)
-            use_log_beta = bool(isinstance(use_widget, QComboBox) and use_widget.currentText() == "log_beta")
-            fixed_widget = self.components_table.cellWidget(row, 6)
-            fixed = bool(isinstance(fixed_widget, QCheckBox) and fixed_widget.isChecked())
-            role_widget = self.components_table.cellWidget(row, 7)
+            role_widget = self.components_table.cellWidget(row, 0)
             role = role_widget.currentText() if isinstance(role_widget, QComboBox) else "analyte"
-            if n_steps < 0:
-                raise ValueError(f"Component {name!r} has negative protonation steps.")
-            if n_steps and len(values) != n_steps:
-                raise ValueError(
-                    f"Component {name!r} expects {n_steps} pKa/log_beta values; got {len(values)}."
-                )
+            is_proton_widget = self.components_table.cellWidget(row, 4)
+            is_titrant_widget = self.components_table.cellWidget(row, 5)
+            is_background_widget = self.components_table.cellWidget(row, 6)
+            fixed_widget = self.components_table.cellWidget(row, 7)
+            name = _table_text(self.components_table, row, 1, f"L{row + 1}")
+            is_proton = bool(isinstance(is_proton_widget, QCheckBox) and is_proton_widget.isChecked())
+            if str(name).strip().lower() == proton_component_name().lower():
+                is_proton = True
             rows.append(
                 {
                     "name": name,
-                    "analytical_concentration": concentration,
-                    "base_charge": base_charge,
-                    "n_steps": n_steps,
-                    "values": values,
-                    "pka": [] if use_log_beta else values,
-                    "log_beta": values if use_log_beta else pka_to_log_beta(values),
-                    "use_log_beta": use_log_beta,
-                    "fixed_concentration": fixed,
-                    "role": str(role),
+                    "role": "proton" if is_proton else str(role),
+                    "analytical_concentration": _optional_float(_table_text(self.components_table, row, 2, "")),
+                    "charge": int(float(_table_text(self.components_table, row, 3, "1" if is_proton else "0"))),
+                    "is_proton": is_proton,
+                    "is_titrant": bool(isinstance(is_titrant_widget, QCheckBox) and is_titrant_widget.isChecked()),
+                    "is_background": bool(isinstance(is_background_widget, QCheckBox) and is_background_widget.isChecked()),
+                    "fixed_concentration": bool(isinstance(fixed_widget, QCheckBox) and fixed_widget.isChecked()),
+                    "implicit": bool(is_proton),
                 }
             )
         return rows
 
-    def _generated_species_rows(self, components: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        species: list[dict[str, Any]] = []
-        for comp in components:
-            name = str(comp["name"])
-            base_charge = int(comp["base_charge"])
-            log_beta = [float(v) for v in comp.get("log_beta", [])]
-            pka = log_beta_to_pka(log_beta) if log_beta else []
-            species.append(
+    def _species_rows(self) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for row in range(self.species_table.rowCount()):
+            include_widget = self.species_table.cellWidget(row, 3)
+            observable_widget = self.species_table.cellWidget(row, 4)
+            fixed_widget = self.species_table.cellWidget(row, 5)
+            non_observable_widget = self.species_table.cellWidget(row, 6)
+            rows.append(
                 {
-                    "name": name,
-                    "component": name,
-                    "h_count": 0,
-                    "charge": base_charge,
-                    "log_beta": 0.0,
-                    "stepwise_pka": "",
-                    "include": True,
-                    "fixed": True,
+                    "name": _table_text(self.species_table, row, 0, ""),
+                    "charge": _optional_float(_table_text(self.species_table, row, 1, "")),
+                    "h_count": int(float(_table_text(self.species_table, row, 2, "0"))),
+                    "include": True if not isinstance(include_widget, QCheckBox) else include_widget.isChecked(),
+                    "observable": True if not isinstance(observable_widget, QCheckBox) else observable_widget.isChecked(),
+                    "fixed": False if not isinstance(fixed_widget, QCheckBox) else fixed_widget.isChecked(),
+                    "non_observable": False if not isinstance(non_observable_widget, QCheckBox) else non_observable_widget.isChecked(),
+                    "parent_component": _table_text(self.species_table, row, 7, ""),
                 }
             )
-            for h_count, lb in enumerate(log_beta, start=1):
-                prefix = "H" if h_count == 1 else f"H{h_count}"
-                species.append(
-                    {
-                        "name": f"{prefix}{name}",
-                        "component": name,
-                        "h_count": h_count,
-                        "charge": base_charge + h_count,
-                        "log_beta": float(lb),
-                        "stepwise_pka": float(pka[h_count - 1]) if h_count - 1 < len(pka) else "",
-                        "include": True,
-                        "fixed": False,
-                    }
-                )
-        return species
+        return rows
 
-    def _refresh_species_table(self) -> None:
-        if self._updating_tables:
-            return
+    def _stoich_matrix_rows(self) -> list[list[int]]:
+        matrix: list[list[int]] = []
+        for row in range(self.stoich_table.rowCount()):
+            values: list[int] = []
+            for col in range(self.stoich_table.columnCount()):
+                values.append(int(float(_table_text(self.stoich_table, row, col, "0"))))
+            matrix.append(values)
+        return matrix
+
+    def _generate_species_from_matrix(self) -> None:
+        components = self._component_rows()
+        matrix = self._stoich_matrix_rows()
+        proton_row = next((idx for idx, comp in enumerate(components) if bool(comp.get("is_proton"))), None)
+        non_proton_names = [str(comp.get("name") or "") for comp in components if not bool(comp.get("is_proton"))]
+        species_rows: list[dict[str, Any]] = []
+        for col in range(self.stoich_table.columnCount()):
+            parent = ""
+            for row_idx, comp in enumerate(components):
+                if bool(comp.get("is_proton")):
+                    continue
+                coef = matrix[row_idx][col] if row_idx < len(matrix) and col < len(matrix[row_idx]) else 0
+                if coef > 0:
+                    parent = str(comp.get("name") or "")
+                    break
+            if not parent and non_proton_names:
+                parent = non_proton_names[0]
+            h_count = 0 if proton_row is None else int(matrix[proton_row][col] if col < len(matrix[proton_row]) else 0)
+            existing_name = _table_text(self.species_table, col, 0, "") if col < self.species_table.rowCount() else ""
+            name = existing_name or (parent if h_count == 0 else (f"H{parent}" if h_count == 1 else f"H{h_count}{parent}"))
+            base_charge = next((int(comp.get("charge") or 0) for comp in components if str(comp.get("name") or "") == parent), 0)
+            species_rows.append(
+                {
+                    "name": name,
+                    "charge": base_charge + h_count,
+                    "h_count": h_count,
+                    "include": True,
+                    "observable": True,
+                    "fixed": h_count == 0,
+                    "non_observable": False,
+                    "parent_component": parent,
+                }
+            )
+        was_updating = self._updating_tables
         self._updating_tables = True
         try:
-            components = self._component_rows()
-            species = self._generated_species_rows(components)
             self.species_table.setRowCount(0)
-            for row_data in species:
-                row = self.species_table.rowCount()
-                self.species_table.insertRow(row)
-                values = [
-                    row_data["name"],
-                    row_data["component"],
-                    row_data["h_count"],
-                    row_data["charge"],
-                    f"{float(row_data['log_beta']):.10g}",
-                    row_data["stepwise_pka"],
-                ]
-                for col, value in enumerate(values):
-                    _set_table_text(self.species_table, row, col, value)
-                include = self._make_checkbox(bool(row_data.get("include", True)))
-                self.species_table.setCellWidget(row, 6, include)
-                fixed = self._make_checkbox(bool(row_data.get("fixed", False)))
-                self.species_table.setCellWidget(row, 7, fixed)
-        except Exception:
-            # Leave current table in place while the user is editing partial input.
-            pass
+            for row_data in species_rows:
+                self._insert_species_row(row_data)
         finally:
-            self._updating_tables = False
+            self._updating_tables = was_updating
+        self._sync_matrix_headers()
+        self._refresh_parameter_table()
+
+    def _apply_equations_model(self) -> None:
+        try:
+            concentration = _optional_float(self._parameter_value("analyte concentration", default="0.001"))
+            model = acid_base_model_from_equations(
+                self.equation_editor.toPlainText(),
+                analytical_concentration=float(concentration or 1.0e-3),
+            )
+        except Exception as exc:
+            QMessageBox.warning(self, "Equation editor", str(exc))
+            return
+        self._populate_model_from_definition(model, update_equations_text=False)
+        self.log.append_text("Acid-base equations parsed into matrix/species tables.")
+
+    def _populate_model_from_definition(
+        self,
+        model_def: dict[str, Any],
+        *,
+        update_template: bool = False,
+        update_equations_text: bool = True,
+    ) -> None:
+        model = canonicalize_acid_base_model(model_def)
+        was_updating = self._updating_tables
+        self._updating_tables = True
+        try:
+            if update_template:
+                idx = self.combo_model_type.findData(str(model.get("template_id") or "custom_acid_base_system"))
+                if idx >= 0:
+                    self.combo_model_type.setCurrentIndex(idx)
+            mode_idx = self.combo_constant_mode.findData(str(model.get("constant_mode") or "pKa"))
+            if mode_idx >= 0:
+                self.combo_constant_mode.setCurrentIndex(mode_idx)
+            if update_equations_text and hasattr(self, "equation_editor"):
+                self.equation_editor.setPlainText(str(model.get("equations_text") or ""))
+            definition_mode = str(model.get("definition_mode") or "matrix")
+            self.radio_model_matrix.setChecked(definition_mode != "equations")
+            self.radio_model_equations.setChecked(definition_mode == "equations")
+            self.components_table.setRowCount(0)
+            for comp in list(model.get("components") or []):
+                self._insert_component_row(comp)
+            self.species_table.setRowCount(0)
+            for sp in list(model.get("species") or []):
+                self._insert_species_row(sp)
+            self.spin_n_components_model.setValue(max(1, self.components_table.rowCount()))
+            self.spin_n_species_model.setValue(max(1, self.species_table.rowCount()))
+            self._sync_matrix_headers()
+            matrix = list(model.get("stoichiometric_matrix") or [])
+            for row in range(self.stoich_table.rowCount()):
+                values = list(matrix[row] or []) if row < len(matrix) else []
+                for col in range(self.stoich_table.columnCount()):
+                    _set_table_text(self.stoich_table, row, col, values[col] if col < len(values) else 0)
+        finally:
+            self._updating_tables = was_updating
+        self._sync_model_mode_ui()
+        self._refresh_parameter_table()
+
+    def _current_model_from_ui(self) -> dict[str, Any]:
+        equations_text = str(self.equation_editor.toPlainText() or "")
+        parsed_equations_model: dict[str, Any] | None = None
+        if self.radio_model_equations.isChecked():
+            parsed_equations_model = acid_base_model_from_equations(
+                equations_text,
+                analytical_concentration=float(_optional_float(self._parameter_value("analyte concentration", default="0.001")) or 1.0e-3),
+            )
+        model = {
+            "template_id": str(self.combo_model_type.currentData() or "custom_acid_base_system"),
+            "definition_mode": "equations" if self.radio_model_equations.isChecked() else "matrix",
+            "constant_mode": normalize_constant_mode(self.combo_constant_mode.currentData()),
+            "equations_text": equations_text,
+            "components": self._component_rows(),
+            "species": self._species_rows(),
+            "stoichiometric_matrix": self._stoich_matrix_rows(),
+        }
+        if parsed_equations_model is not None and (not model["components"] or not model["species"]):
+            model = parsed_equations_model
+        return canonicalize_acid_base_model(model)
+
+    def _apply_parameter_table_to_model(self, model: dict[str, Any]) -> dict[str, Any]:
+        updated = canonicalize_acid_base_model(model)
+        constant_mode = normalize_constant_mode(updated.get("constant_mode"))
+        blocks = acid_base_constant_blocks(updated)
+        component_count = len(blocks)
+        for block in blocks:
+            prefix = "" if component_count <= 1 else f"{block['component_name']}_"
+            values: list[float] = []
+            parameter_prefix = "pKa" if constant_mode == "pKa" else "log_beta"
+            for idx, _species in enumerate([sp for sp in block["species"] if int(sp.get("h_count") or 0) > 0], start=1):
+                raw = self._parameter_value(f"{prefix}{parameter_prefix}{idx}", default=None)
+                if raw in (None, ""):
+                    continue
+                values.append(float(raw))
+            if values:
+                log_beta_values = pka_to_log_beta(values) if constant_mode == "pKa" else values
+                log_by_h = {idx: float(value) for idx, value in enumerate(log_beta_values, start=1)}
+                for sp in updated["species"]:
+                    if str(sp.get("parent_component") or "") != block["component_name"]:
+                        continue
+                    h_count = int(sp.get("h_count") or 0)
+                    if h_count == 0:
+                        sp["log_beta"] = 0.0
+                    elif h_count in log_by_h:
+                        sp["log_beta"] = float(log_by_h[h_count])
+        blocks_after = acid_base_constant_blocks(updated)
+        if blocks_after:
+            updated["log_beta"] = [float(v) for v in blocks_after[0]["log_beta"]]
+            updated["pka"] = [float(v) for v in blocks_after[0]["pka"]]
+        return updated
 
     def _refresh_parameter_table(self) -> None:
         if self._updating_tables:
             return
+        previous_values: dict[str, str] = {}
+        previous_fixed: dict[str, bool] = {}
+        for row in range(self.parameters_table.rowCount()):
+            name = _table_text(self.parameters_table, row, 0, "")
+            if not name:
+                continue
+            previous_values[name] = _table_text(self.parameters_table, row, 2, "")
+            fixed_widget = self.parameters_table.cellWidget(row, 5)
+            previous_fixed[name] = bool(isinstance(fixed_widget, QCheckBox) and fixed_widget.isChecked())
+
+        try:
+            model = self._current_model_from_ui()
+            constant_rows = parameter_rows_from_model(model)
+        except Exception:
+            return
+
+        blocks = acid_base_constant_blocks(model)
+        first_block = blocks[0] if blocks else {"component_name": "L"}
+        rows = list(constant_rows)
+        rows.extend(
+            [
+                {
+                    "parameter": "analyte concentration",
+                    "type": "local",
+                    "initial_value": next(
+                        (
+                            comp.get("analytical_concentration")
+                            for comp in list(model.get("components") or [])
+                            if str(comp.get("name") or "") == str(first_block.get("component_name") or "")
+                        ),
+                        1.0e-3,
+                    ),
+                    "min": 0.0,
+                    "max": "",
+                    "fixed": True,
+                    "linked_species": str(first_block.get("component_name") or ""),
+                    "description": "Analytical concentration for the primary analyte.",
+                },
+                {
+                    "parameter": "titrant concentration",
+                    "type": "local",
+                    "initial_value": float(self.spin_titrant_conc.value()) if hasattr(self, "spin_titrant_conc") else 1.0e-3,
+                    "min": 0.0,
+                    "max": "",
+                    "fixed": True,
+                    "linked_species": "",
+                    "description": "Nominal titrant concentration.",
+                },
+                {
+                    "parameter": "volume offset",
+                    "type": "local",
+                    "initial_value": float(self.spin_volume_offset.value()) if hasattr(self, "spin_volume_offset") else 0.0,
+                    "min": "",
+                    "max": "",
+                    "fixed": True,
+                    "linked_species": "",
+                    "description": "Blank correction / effective volume offset.",
+                },
+                {
+                    "parameter": "electrode_e0",
+                    "type": "local",
+                    "initial_value": _optional_float(self.edit_e0.text()) if hasattr(self, "edit_e0") else "",
+                    "min": "",
+                    "max": "",
+                    "fixed": True,
+                    "linked_species": "",
+                    "description": "Electrode intercept, mV.",
+                },
+                {
+                    "parameter": "electrode_slope",
+                    "type": "local",
+                    "initial_value": self.edit_slope.text() if hasattr(self, "edit_slope") else "-59.16",
+                    "min": -120.0,
+                    "max": 120.0,
+                    "fixed": True,
+                    "linked_species": "",
+                    "description": "Electrode slope, mV/pH.",
+                },
+                {
+                    "parameter": "pKw",
+                    "type": "local",
+                    "initial_value": f"{float(self.spin_pkw.value()):.4f}" if hasattr(self, "spin_pkw") else "14.0000",
+                    "min": 0.0,
+                    "max": 30.0,
+                    "fixed": True,
+                    "linked_species": "",
+                    "description": "Kw = 10^(-pKw); affects potentiometric electroneutrality only.",
+                },
+                {
+                    "parameter": "baseline",
+                    "type": "local",
+                    "initial_value": 1 if bool(self.chk_baseline.isChecked()) else 0,
+                    "min": "",
+                    "max": "",
+                    "fixed": True,
+                    "linked_species": "",
+                    "description": "Optional spectroscopy baseline flag.",
+                },
+            ]
+        )
+
+        pkw_tooltip = (
+            "Kw = 10^(-pKw). This value affects potentiometric electroneutrality "
+            "calculations only; imposed-pH spectroscopy and NMR fits do not use "
+            "Kw to calculate fractions in v1."
+        )
+        was_updating = self._updating_tables
         self._updating_tables = True
         try:
-            components = self._component_rows()
-            rows: list[tuple[str, str, str, str, bool, str]] = []
-            for comp in components:
-                values = comp["log_beta"] if comp["use_log_beta"] else comp["pka"]
-                prefix = "log_beta" if comp["use_log_beta"] else "pKa"
-                for idx, value in enumerate(values, start=1):
-                    rows.append(
-                        (
-                            f"{prefix}{idx}",
-                            f"{float(value):.8g}",
-                            "-5" if prefix == "pKa" else "-50",
-                            "25" if prefix == "pKa" else "50",
-                            False,
-                            f"{prefix} for component {comp['name']}",
-                        )
-                    )
-            first = components[0] if components else {}
-            rows.extend(
-                [
-                    (
-                        "analyte concentration",
-                        f"{float(first.get('analytical_concentration', 0.0)):.8g}",
-                        "0",
-                        "",
-                        True,
-                        "Analytical concentration for the primary analyte.",
-                    ),
-                    (
-                        "titrant concentration",
-                        f"{float(self.spin_titrant_conc.value()):.8g}" if hasattr(self, "spin_titrant_conc") else "0.001",
-                        "0",
-                        "",
-                        True,
-                        "Nominal titrant concentration.",
-                    ),
-                    (
-                        "volume offset",
-                        f"{float(self.spin_volume_offset.value()):.8g}" if hasattr(self, "spin_volume_offset") else "0",
-                        "",
-                        "",
-                        True,
-                        "Blank correction / effective volume offset.",
-                    ),
-                    ("electrode E0", _optional_float(self.edit_e0.text()) if hasattr(self, "edit_e0") else "", "", "", True, "Electrode intercept, mV."),
-                    ("electrode slope", self.edit_slope.text() if hasattr(self, "edit_slope") else "-59.16", "-120", "120", True, "Electrode slope, mV/pH."),
-                    ("pKw", "14.0000", "0", "30", True, "Kw = 10^(-pKw); affects potentiometric electroneutrality only."),
-                    ("baseline", "0", "", "", True, "Optional spectroscopy baseline parameter."),
-                ]
-            )
-            old_pkw = self._parameter_value("pKw", default=None)
             self.parameters_table.setRowCount(0)
             for row_data in rows:
                 row = self.parameters_table.rowCount()
                 self.parameters_table.insertRow(row)
-                parameter, initial, min_val, max_val, fixed, description = row_data
-                if parameter == "pKw" and old_pkw not in (None, ""):
-                    initial = str(old_pkw)
-                pkw_tooltip = (
-                    "Kw = 10^(-pKw). This value affects potentiometric electroneutrality "
-                    "calculations only; imposed-pH spectroscopy and NMR fits do not use "
-                    "Kw to calculate fractions in v1."
-                )
-                for col, value in enumerate([parameter, initial, min_val, max_val]):
+                name = str(row_data["parameter"])
+                initial = previous_values.get(name, row_data.get("initial_value", ""))
+                if initial is None:
+                    initial = ""
+                for col, value in enumerate(
+                    [
+                        name,
+                        row_data.get("type", ""),
+                        initial,
+                        row_data.get("min", ""),
+                        row_data.get("max", ""),
+                    ]
+                ):
                     _set_table_text(self.parameters_table, row, col, value)
-                    if parameter == "pKw":
+                    if name == "pKw":
                         item = self.parameters_table.item(row, col)
                         if item is not None:
                             item.setToolTip(pkw_tooltip)
-                chk = self._make_checkbox(fixed)
-                if parameter == "pKw":
-                    chk.setToolTip(pkw_tooltip)
-                self.parameters_table.setCellWidget(row, 4, chk)
-                _set_table_text(self.parameters_table, row, 5, description)
-                if parameter == "pKw":
-                    item = self.parameters_table.item(row, 5)
-                    if item is not None:
-                        item.setToolTip(pkw_tooltip)
-                    if hasattr(self, "spin_pkw"):
-                        try:
-                            pkw_for_spin = float(initial)
-                        except (TypeError, ValueError):
-                            pkw_for_spin = 14.0
-                        pkw_for_spin = min(30.0, max(0.0, pkw_for_spin))
-                        self.spin_pkw.blockSignals(True)
-                        self.spin_pkw.setValue(pkw_for_spin)
-                        self.spin_pkw.blockSignals(False)
+                fixed = self._make_checkbox(previous_fixed.get(name, bool(row_data.get("fixed", False))))
+                if name == "pKw":
+                    fixed.setToolTip(pkw_tooltip)
+                self.parameters_table.setCellWidget(row, 5, fixed)
+                _set_table_text(self.parameters_table, row, 6, row_data.get("linked_species", ""))
+                _set_table_text(self.parameters_table, row, 7, row_data.get("description", ""))
+                if name == "pKw":
+                    try:
+                        pkw_value = float(initial)
+                    except Exception:
+                        pkw_value = 14.0
+                    self.spin_pkw.blockSignals(True)
+                    self.spin_pkw.setValue(min(30.0, max(0.0, pkw_value)))
+                    self.spin_pkw.blockSignals(False)
         finally:
-            self._updating_tables = False
+            self._updating_tables = was_updating
 
     def _on_pkw_spin_changed(self, value: float) -> None:
         if self._updating_tables:
@@ -818,61 +1187,112 @@ class AcidBaseTab(QWidget):
     def _parameter_value(self, name: str, default: Any = "") -> Any:
         for row in range(self.parameters_table.rowCount()):
             if _table_text(self.parameters_table, row, 0, "").strip().lower() == name.strip().lower():
-                value = _table_text(self.parameters_table, row, 1, "")
+                value = _table_text(self.parameters_table, row, 2, "")
                 return default if value == "" else value
         return default
 
-    def _species_rows(self) -> list[dict[str, Any]]:
-        rows: list[dict[str, Any]] = []
-        for row in range(self.species_table.rowCount()):
-            include_widget = self.species_table.cellWidget(row, 6)
-            include = True if not isinstance(include_widget, QCheckBox) else include_widget.isChecked()
-            fixed_widget = self.species_table.cellWidget(row, 7)
-            fixed = False if not isinstance(fixed_widget, QCheckBox) else fixed_widget.isChecked()
-            rows.append(
-                {
-                    "name": _table_text(self.species_table, row, 0, ""),
-                    "component": _table_text(self.species_table, row, 1, ""),
-                    "h_count": int(float(_table_text(self.species_table, row, 2, "0"))),
-                    "charge": int(float(_table_text(self.species_table, row, 3, "0"))),
-                    "log_beta": float(_table_text(self.species_table, row, 4, "0")),
-                    "fixed": fixed,
-                    "include": include,
-                }
-            )
-        return [row for row in rows if row["name"] and row["component"] and bool(row.get("include", True))]
-
     def _acid_base_model_config(self) -> dict[str, Any]:
-        components = self._component_rows()
-        model_components = []
-        for comp in components:
-            model_components.append(
-                {
-                    "name": comp["name"],
-                    "analytical_concentration": float(comp["analytical_concentration"]),
-                    "base_charge": int(comp["base_charge"]),
-                    "n_steps": int(comp["n_steps"]),
-                    "pka": [float(v) for v in comp["pka"]],
-                    "log_beta": [float(v) for v in comp["log_beta"]],
-                    "use_log_beta": bool(comp["use_log_beta"]),
-                    "role": str(comp["role"]),
-                    "fixed_concentration": bool(comp["fixed_concentration"]),
-                }
-            )
-        return {
-            "model_type": str(self.combo_model_type.currentData() or "simple_monoprotic"),
-            "components": model_components,
-            "species": self._species_rows(),
-        }
+        model = self._current_model_from_ui()
+        model = self._apply_parameter_table_to_model(model)
+        model["definition_mode"] = "equations" if self.radio_model_equations.isChecked() else "matrix"
+        model["constant_mode"] = normalize_constant_mode(self.combo_constant_mode.currentData())
+        model["equations_text"] = str(self.equation_editor.toPlainText() or "")
+        return model
 
     def _first_analyte_component(self, model: dict[str, Any]) -> dict[str, Any]:
         components = list(model.get("components") or [])
         for comp in components:
+            if bool(comp.get("is_proton", False)):
+                continue
             if str(comp.get("role") or "").lower() == "analyte":
                 return comp
-        if components:
-            return components[0]
-        raise ValueError("Define at least one acid-base component.")
+        for comp in components:
+            if not bool(comp.get("is_proton", False)):
+                return comp
+        raise ValueError("Define at least one non-proton acid-base component.")
+
+    def _experimental_ph_values(self) -> list[float]:
+        path = Path(str(self._file_path or ""))
+        if not path.exists():
+            return []
+        try:
+            if path.suffix.lower() == ".xlsx":
+                sheet = self.combo_sheet.currentData()
+                if sheet in (None, ""):
+                    sheet = 0
+                df = pd.read_excel(path, sheet_name=sheet)
+            else:
+                df = pd.read_csv(path)
+        except Exception:
+            return []
+        columns = {str(col).strip().lower(): str(col) for col in df.columns}
+        ph_col = columns.get("ph")
+        if ph_col is None:
+            return []
+        series = pd.to_numeric(df[ph_col], errors="coerce").dropna()
+        return [float(value) for value in series.to_numpy(dtype=float)]
+
+    def _collect_config(self) -> dict[str, Any]:
+        if not self._file_path:
+            raise ValueError("No data file selected.")
+        model = self._acid_base_model_config()
+        analysis_kind = str(self.combo_data_type.currentData() or "potentiometry")
+        errors, warnings = validate_acid_base_model(
+            model,
+            analysis_kind=analysis_kind,
+            experimental_pH=self._experimental_ph_values(),
+            require_charges=analysis_kind == "potentiometry",
+        )
+        if errors:
+            raise ValueError("\n".join(errors))
+        for warning in warnings:
+            self.log.append_text(f"Warning: {warning}")
+        analyte = self._first_analyte_component(model)
+        blocks = acid_base_constant_blocks(model)
+        primary_block = next(
+            (block for block in blocks if block["component_name"] == str(analyte.get("name") or "")),
+            blocks[0] if blocks else {"pka": [], "log_beta": []},
+        )
+        pkw = float(self._parameter_value("pKw", default="14.0000"))
+        if not 0.0 <= pkw <= 30.0:
+            raise ValueError("pKw must be between 0 and 30.")
+        kw = 10.0 ** (-pkw)
+        first_pka = [float(v) for v in list(primary_block.get("pka") or [])]
+        titrant_concentrations, custom_strong_charge = self._custom_titrant_config()
+        strong_mode = str(self.combo_strong_ion.currentData() or "automatic")
+        titrant_type = str(self.combo_titrant_type.currentData() or "base")
+
+        cfg = {
+            "file_path": self._file_path,
+            "sheet_name": str(self.combo_sheet.currentData() or ""),
+            "data_type": analysis_kind,
+            "acid_base_model": model,
+            "component_name": str(analyte.get("name") or "L"),
+            "pka_initial": ", ".join(str(v) for v in first_pka) if first_pka else "5.0",
+            "analyte_concentration": float(analyte.get("analytical_concentration", 0.0) or 0.0),
+            "base_charge": int(analyte.get("charge", -1) or -1),
+            "initial_volume": float(self.spin_initial_volume.value()),
+            "titrant_concentration": float(self.spin_titrant_conc.value()),
+            "titrant_type": titrant_type,
+            "strong_ion_mode": strong_mode,
+            "volume_offset": float(self.spin_volume_offset.value()),
+            "pH_bounds": [float(self.spin_ph_min.value()), float(self.spin_ph_max.value())],
+            "electrode_e0": _optional_float(str(self._parameter_value("electrode_e0", default=self.edit_e0.text()))),
+            "electrode_slope": _optional_float(str(self._parameter_value("electrode_slope", default=self.edit_slope.text()))),
+            "fit_electrode": bool(self.chk_fit_electrode.isChecked()),
+            "sigma_pH": float(self.spin_sigma_ph.value()),
+            "sigma_E": float(self.spin_sigma_emf.value()),
+            "pkw": pkw,
+            "kw": kw,
+            "baseline": bool(int(float(self._parameter_value("baseline", default="1" if self.chk_baseline.isChecked() else "0")))),
+        }
+        if strong_mode == "manual":
+            cfg["initial_strong_charge"] = float(self.spin_initial_strong_charge.value())
+            cfg["titrant_strong_charge"] = float(self.spin_titrant_strong_charge.value())
+        if titrant_type == "custom":
+            cfg["titrant_concentrations"] = titrant_concentrations
+            cfg["titrant_strong_charge"] = custom_strong_charge
+        return cfg
 
     def _selected_plot_ids(self) -> set[str]:
         selected: set[str] = set()
@@ -951,53 +1371,6 @@ class AcidBaseTab(QWidget):
             self.preview_text.setPlainText(df.to_string(index=False))
         except Exception as exc:
             self.preview_text.setPlainText(f"Could not preview data file: {exc}")
-
-    def _collect_config(self) -> dict[str, Any]:
-        if not self._file_path:
-            raise ValueError("No data file selected.")
-        model = self._acid_base_model_config()
-        analyte = self._first_analyte_component(model)
-        pkw = float(self._parameter_value("pKw", default="14.0000"))
-        if not 0.0 <= pkw <= 30.0:
-            raise ValueError("pKw must be between 0 and 30.")
-        kw = 10.0 ** (-pkw)
-        first_pka = list(analyte.get("pka") or log_beta_to_pka(list(analyte.get("log_beta") or [])))
-        titrant_concentrations, custom_strong_charge = self._custom_titrant_config()
-        strong_mode = str(self.combo_strong_ion.currentData() or "automatic")
-        titrant_type = str(self.combo_titrant_type.currentData() or "base")
-
-        cfg = {
-            "file_path": self._file_path,
-            "sheet_name": str(self.combo_sheet.currentData() or ""),
-            "data_type": str(self.combo_data_type.currentData() or "potentiometry"),
-            "acid_base_model": model,
-            # Legacy keys retained for existing code paths/configs.
-            "component_name": str(analyte.get("name") or "L"),
-            "pka_initial": ", ".join(str(v) for v in first_pka) if first_pka else "5.0",
-            "analyte_concentration": float(analyte.get("analytical_concentration", 0.0) or 0.0),
-            "base_charge": int(analyte.get("base_charge", -1) or -1),
-            "initial_volume": float(self.spin_initial_volume.value()),
-            "titrant_concentration": float(self.spin_titrant_conc.value()),
-            "titrant_type": titrant_type,
-            "strong_ion_mode": strong_mode,
-            "volume_offset": float(self.spin_volume_offset.value()),
-            "pH_bounds": [float(self.spin_ph_min.value()), float(self.spin_ph_max.value())],
-            "electrode_e0": _optional_float(self.edit_e0.text()),
-            "electrode_slope": _optional_float(self.edit_slope.text()),
-            "fit_electrode": bool(self.chk_fit_electrode.isChecked()),
-            "sigma_pH": float(self.spin_sigma_ph.value()),
-            "sigma_E": float(self.spin_sigma_emf.value()),
-            "pkw": pkw,
-            "kw": kw,
-            "baseline": bool(self.chk_baseline.isChecked()),
-        }
-        if strong_mode == "manual":
-            cfg["initial_strong_charge"] = float(self.spin_initial_strong_charge.value())
-            cfg["titrant_strong_charge"] = float(self.spin_titrant_strong_charge.value())
-        if titrant_type == "custom":
-            cfg["titrant_concentrations"] = titrant_concentrations
-            cfg["titrant_strong_charge"] = custom_strong_charge
-        return cfg
 
     def _set_running(self, running: bool) -> None:
         self._is_running = bool(running)
@@ -1272,84 +1645,62 @@ class AcidBaseTab(QWidget):
             ix = self.combo_sheet.findText(sheet_name)
             if ix >= 0:
                 self.combo_sheet.setCurrentIndex(ix)
-        model = config.get("acid_base_model") or {}
+        model = config.get("acid_base_model")
         if model:
-            model_type = str(model.get("model_type") or "simple_monoprotic")
-            ix = self.combo_model_type.findData(model_type)
-            if ix >= 0:
-                self.combo_model_type.setCurrentIndex(ix)
-            self._load_components_from_model(model)
-            self._refresh_species_table()
-            if str(self.combo_model_type.currentData() or "") == "custom_species":
-                self._load_species_from_model(model)
+            self._populate_model_from_definition(canonicalize_acid_base_model(model), update_template=True)
+        else:
+            fallback_model = canonicalize_acid_base_model(
+                None,
+                fallback_component_name=str(config.get("component_name") or "L"),
+                fallback_pka=_parse_float_list(config.get("pka_initial") or config.get("initial_pka"), default=[5.0]),
+                fallback_concentration=float(config.get("analyte_concentration", 1.0e-3) or 1.0e-3),
+                fallback_base_charge=int(config.get("base_charge", -1) or -1),
+            )
+            self._populate_model_from_definition(fallback_model, update_template=False)
         pkw = config.get("pkw")
         if pkw is None and config.get("kw") not in (None, ""):
             pkw = -np.log10(float(config["kw"]))
         if pkw is not None:
             self._set_parameter_value("pKw", f"{float(pkw):.4f}")
-
-    def _load_components_from_model(self, model: dict[str, Any]) -> None:
-        was_updating = self._updating_tables
-        self._updating_tables = True
-        try:
-            self.components_table.setRowCount(0)
-            for comp in list(model.get("components") or []):
-                row = self.components_table.rowCount()
-                self.components_table.insertRow(row)
-                use_log_beta = bool(comp.get("use_log_beta", False))
-                values = list((comp.get("log_beta") or []) if use_log_beta else (comp.get("pka") or []))
-                defaults = [
-                    comp.get("name", f"L{row + 1}"),
-                    comp.get("analytical_concentration", 0.0),
-                    comp.get("base_charge", 0),
-                    comp.get("n_steps", len(values)),
-                    ", ".join(str(v) for v in values),
-                ]
-                for col, value in enumerate(defaults):
-                    _set_table_text(self.components_table, row, col, value)
-                use_combo = self._make_combo(["pKa", "log_beta"], "log_beta" if use_log_beta else "pKa")
-                use_combo.currentIndexChanged.connect(self._on_component_table_changed)
-                self.components_table.setCellWidget(row, 5, use_combo)
-                fixed = self._make_checkbox(bool(comp.get("fixed_concentration", False)))
-                fixed.stateChanged.connect(self._on_component_table_changed)
-                self.components_table.setCellWidget(row, 6, fixed)
-                role = self._make_combo(
-                    ["analyte", "titrant", "background", "spectator", "imposed pH dataset"],
-                    str(comp.get("role") or "analyte"),
-                )
-                role.currentIndexChanged.connect(self._on_component_table_changed)
-                self.components_table.setCellWidget(row, 7, role)
-        finally:
-            self._updating_tables = was_updating
-
-    def _load_species_from_model(self, model: dict[str, Any]) -> None:
-        was_updating = self._updating_tables
-        self._updating_tables = True
-        try:
-            self.species_table.setRowCount(0)
-            for sp in list(model.get("species") or []):
-                row = self.species_table.rowCount()
-                self.species_table.insertRow(row)
-                for col, value in enumerate(
-                    [
-                        sp.get("name", ""),
-                        sp.get("component", ""),
-                        sp.get("h_count", 0),
-                        sp.get("charge", 0),
-                        sp.get("log_beta", 0.0),
-                        "",
-                    ]
-                ):
-                    _set_table_text(self.species_table, row, col, value)
-                self.species_table.setCellWidget(row, 6, self._make_checkbox(bool(sp.get("include", True))))
-                self.species_table.setCellWidget(row, 7, self._make_checkbox(bool(sp.get("fixed", False))))
-        finally:
-            self._updating_tables = was_updating
+        if config.get("initial_volume") not in (None, ""):
+            self.spin_initial_volume.setValue(float(config["initial_volume"]))
+        if config.get("titrant_concentration") not in (None, ""):
+            self.spin_titrant_conc.setValue(float(config["titrant_concentration"]))
+        titrant_type = str(config.get("titrant_type") or "")
+        if titrant_type:
+            idx = self.combo_titrant_type.findData(titrant_type)
+            if idx >= 0:
+                self.combo_titrant_type.setCurrentIndex(idx)
+        strong_mode = str(config.get("strong_ion_mode") or "")
+        if strong_mode:
+            idx = self.combo_strong_ion.findData(strong_mode)
+            if idx >= 0:
+                self.combo_strong_ion.setCurrentIndex(idx)
+        if config.get("initial_strong_charge") not in (None, ""):
+            self.spin_initial_strong_charge.setValue(float(config["initial_strong_charge"]))
+        if config.get("titrant_strong_charge") not in (None, ""):
+            self.spin_titrant_strong_charge.setValue(float(config["titrant_strong_charge"]))
+        if config.get("volume_offset") not in (None, ""):
+            self.spin_volume_offset.setValue(float(config["volume_offset"]))
+        if isinstance(config.get("pH_bounds"), (list, tuple)) and len(config["pH_bounds"]) >= 2:
+            self.spin_ph_min.setValue(float(config["pH_bounds"][0]))
+            self.spin_ph_max.setValue(float(config["pH_bounds"][1]))
+        if config.get("electrode_e0") not in (None, ""):
+            self.edit_e0.setText(str(config["electrode_e0"]))
+        if config.get("electrode_slope") not in (None, ""):
+            self.edit_slope.setText(str(config["electrode_slope"]))
+        self.chk_fit_electrode.setChecked(bool(config.get("fit_electrode", False)))
+        self.chk_baseline.setChecked(bool(config.get("baseline", False)))
+        if config.get("sigma_pH") not in (None, ""):
+            self.spin_sigma_ph.setValue(float(config["sigma_pH"]))
+        if config.get("sigma_E") not in (None, ""):
+            self.spin_sigma_emf.setValue(float(config["sigma_E"]))
+        self._refresh_parameter_table()
 
     def _set_parameter_value(self, name: str, value: str, *, update_spin: bool = True) -> None:
         for row in range(self.parameters_table.rowCount()):
             if _table_text(self.parameters_table, row, 0, "").strip().lower() == name.strip().lower():
-                _set_table_text(self.parameters_table, row, 1, value)
+                _set_table_text(self.parameters_table, row, 2, value)
                 if update_spin and name.strip().lower() == "pkw" and hasattr(self, "spin_pkw"):
                     try:
                         pkw_for_spin = float(value)
@@ -1372,8 +1723,7 @@ class AcidBaseTab(QWidget):
         self.preview_text.clear()
         self.combo_data_type.setCurrentIndex(0)
         self.combo_model_type.setCurrentIndex(0)
-        self.components_table.setRowCount(0)
-        self._add_default_component()
+        self._load_template("simple_monoprotic")
         self.custom_titrant_table.setRowCount(0)
         self.spin_initial_volume.setValue(10.0)
         self.spin_titrant_conc.setValue(1.0e-3)
@@ -1391,7 +1741,6 @@ class AcidBaseTab(QWidget):
         self.spin_pkw.setValue(14.0)
         self.spin_sigma_ph.setValue(1.0)
         self.spin_sigma_emf.setValue(1.0)
-        self._refresh_species_table()
         self._refresh_parameter_table()
         self._last_config = None
         self._last_result = None
@@ -1402,3 +1751,4 @@ class AcidBaseTab(QWidget):
             self.errors_panel.set_errors_context(None)
         self.canvas_main.show_message("Import a CSV or Excel file to begin")
         self._set_running(False)
+        self.log.append_text("Acid-base tab reset to the default monoprotic template.")
