@@ -10,6 +10,7 @@ from PySide6.QtCore import QSettings, QThread, QTimer, Qt, QUrl, Slot
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices
 from PySide6.QtWidgets import QApplication, QInputDialog, QMainWindow, QMessageBox, QTabWidget
 
+from hmfit_gui_qt.tabs.acid_base_tab import AcidBaseTab
 from hmfit_gui_qt.tabs.kinetics_tab import KineticsTab
 from hmfit_gui_qt.tabs.nmr_tab import NMRTab
 from hmfit_gui_qt.tabs.spectroscopy_tab import SpectroscopyTab
@@ -61,6 +62,7 @@ class MainWindow(QMainWindow):
         tabs = QTabWidget(self)
         tabs.addTab(SpectroscopyTab(parent=tabs), "Spectroscopy")
         tabs.addTab(NMRTab(parent=tabs), "NMR")
+        tabs.addTab(AcidBaseTab(parent=tabs), "Acid-base / Potentiometry")
         tabs.addTab(KineticsTab(parent=tabs), "Kinetics")
 
         self.setCentralWidget(tabs)

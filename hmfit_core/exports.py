@@ -61,6 +61,7 @@ def write_results_xlsx(
     is_nmr_export = any(
         key in export_data for key in ("Chemical_Shifts", "Calculated_Chemical_Shifts", "signal_names")
     )
+    is_acid_base_export = str(export_data.get("analysis_type") or "").lower() == "acid_base"
 
     TITLES_MAP = {
         "Constants": "Global constants and fitted parameters",
@@ -105,7 +106,34 @@ def write_results_xlsx(
             format_sheet(writer, "Report", TITLES_MAP["Report"])
 
         # --- Export payload sheets ---
-        if is_nmr_export:
+        if is_acid_base_export:
+            def acid_frame(key: str) -> pd.DataFrame:
+                data = export_data.get(key)
+                if data is None:
+                    return pd.DataFrame()
+                if isinstance(data, pd.DataFrame):
+                    return data
+                if isinstance(data, dict):
+                    return pd.DataFrame(data)
+                return pd.DataFrame(data)
+
+            acid_sheets = {
+                "pKa": acid_frame("pka_table"),
+                "log_beta": acid_frame("log_beta_table"),
+                "Parameters": acid_frame("parameter_table"),
+                "Experimental_vs_Calc": acid_frame("experimental_vs_calculated"),
+                "Species_vs_pH": acid_frame("species_vs_pH"),
+                "Species_vs_Volume": acid_frame("species_vs_volume"),
+                "Covariance": acid_frame("covariance_matrix"),
+                "Correlation": acid_frame("correlation_matrix"),
+                "Residuals": pd.DataFrame({"residual": np.asarray(export_data.get("residuals") or [], dtype=float).ravel()}),
+            }
+            for name, df in acid_sheets.items():
+                if df is None or df.empty:
+                    continue
+                df.to_excel(writer, sheet_name=name[:31], index=False)
+                format_sheet(writer, name[:31], name.replace("_", " "))
+        elif is_nmr_export:
             modelo = as_dataframe("Model", export_data.get("modelo"), allow_none=False)
             C_T = as_dataframe("Tot_con_comp", export_data.get("C_T"), allow_none=False)
             dq = as_dataframe("Chemical_Shifts", export_data.get("Chemical_Shifts"), allow_none=False)

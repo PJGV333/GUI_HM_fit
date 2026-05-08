@@ -95,3 +95,13 @@ def run_nmr_fit(
     from hmfit_core.run_nmr import run_nmr
 
     return run_nmr(_normalize_nmr_config(config), progress_cb=_wrap_progress(progress_cb, cancel))
+
+
+def run_acid_base_fit(
+    config: Mapping[str, Any] | Any,
+    progress_cb: ProgressCallback = None,
+    cancel: CancelCallback = None,
+) -> dict[str, Any]:
+    from hmfit_core.run_acid_base import run_acid_base
+
+    return run_acid_base(_normalize_config(config), progress_cb=_wrap_progress(progress_cb, cancel))

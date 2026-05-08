@@ -18,6 +18,9 @@ graph TD
 
 ### 1. `hmfit_core/` (Scientific Heart)
 - **`api.py`**: High-level entry points for fitting tasks.
+- **`acid_base.py` / `potentiometry.py`**: Reusable acid-base conventions,
+  distribution calculations, potentiometric electroneutrality wrappers, and
+  shared residuals for pH, spectroscopy, and proton NMR.
 - **`processors/`**: High-level data handling (Excel loading, Plotly data preparation).
     - `nmr_processor.py`: NMR-specific fitting and report generation.
     - `spectroscopy_processor.py`: Absorption/Spectroscopy fitting and report generation.
