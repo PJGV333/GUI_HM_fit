@@ -18,7 +18,7 @@ from hmfit_core.potentiometry import (
     fit_potentiometry,
     simulate_pH_titration,
 )
-from hmfit_core.run_acid_base import run_acid_base
+from hmfit_core.run_acid_base import _build_system, run_acid_base
 
 
 def test_pka_log_beta_roundtrip():
@@ -126,6 +126,7 @@ def test_xlsx_potentiometry_import_recovers_pka(tmp_path):
             index=False,
         )
 
+    messages: list[str] = []
     result = run_acid_base(
         {
             "file_path": str(path),
@@ -137,7 +138,35 @@ def test_xlsx_potentiometry_import_recovers_pka(tmp_path):
             "initial_volume": 10.0,
             "titrant_type": "base",
         },
-        progress_cb=lambda _msg: None,
+        progress_cb=messages.append,
     )
     assert result["success"] is True
     assert abs(float(result["constants"][0]["value"]) - 5.0) < 1.0e-6
+    assert any("pKw=14.0000" in message and "Kw=1e-14" in message for message in messages)
+
+
+def test_kw_config_changes_potentiometric_simulated_ph():
+    experiment = PotentiometryExperiment(
+        initial_volume=10.0,
+        titrant_volumes=np.asarray([0.0], dtype=float),
+        analyte_concentration=1.0e-12,
+        titrant_concentration=0.0,
+        titrant_type="base",
+    )
+    base_cfg = {
+        "component_name": "L",
+        "pka_initial": "5.0",
+        "analyte_concentration": 1.0e-12,
+        "base_charge": -1,
+    }
+    pH_default_kw = simulate_pH_titration(
+        experiment,
+        _build_system({**base_cfg, "kw": 1.0e-14}),
+    )[0]
+    pH_high_kw = simulate_pH_titration(
+        experiment,
+        _build_system({**base_cfg, "kw": 1.0e-10}),
+    )[0]
+    assert abs(float(pH_default_kw) - float(pH_high_kw)) > 1.0
+    assert abs(float(pH_default_kw) - 7.0) < 1.0e-3
+    assert abs(float(pH_high_kw) - 5.0) < 1.0e-3

@@ -82,6 +82,22 @@ def _configured_sheet(cfg: Mapping[str, Any]) -> Any:
     return cfg.get("sheet_name") or cfg.get("data_sheet") or cfg.get("excel_sheet")
 
 
+def _kw_from_config(cfg: Mapping[str, Any]) -> float:
+    if cfg.get("kw") not in (None, ""):
+        kw = float(cfg.get("kw"))
+    elif cfg.get("pkw") not in (None, ""):
+        kw = 10.0 ** (-float(cfg.get("pkw")))
+    else:
+        kw = 1e-14
+    if not np.isfinite(kw) or kw <= 0.0:
+        raise ValueError("Kw must be a positive finite value.")
+    return float(kw)
+
+
+def _pkw_from_kw(kw: float) -> float:
+    return float(-np.log10(float(kw)))
+
+
 def _build_system(cfg: Mapping[str, Any]):
     pka = _parse_float_list(cfg.get("pka_initial") or cfg.get("initial_pka"), default=[5.0])
     concentration = float(cfg.get("analyte_concentration", cfg.get("concentration", 1.0e-3)) or 1.0e-3)
@@ -92,7 +108,7 @@ def _build_system(cfg: Mapping[str, Any]):
         pka=pka,
         base_charge=base_charge,
         temperature=float(cfg.get("temperature", 298.15) or 298.15),
-        kw=float(cfg.get("kw", 1e-14) or 1e-14),
+        kw=_kw_from_config(cfg),
     )
 
 
@@ -287,6 +303,7 @@ def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[
         ]
         fit_options["bounds"] = ([-5.0, -1.0e5, -120.0], [25.0, 1.0e5, 120.0])
         fit_options["fit_signal"] = "emf"
+    log(f"Water autoionization: pKw={_pkw_from_kw(system.kw):.4f}, Kw={system.kw:.6g}")
     log("Fitting potentiometric acid-base data...")
     result = fit_potentiometry(experiment, system, initial_pka=initial_pka, fit_options=fit_options)
     fitted_system = clone_system_with_pka(system, result.fitted_pka)

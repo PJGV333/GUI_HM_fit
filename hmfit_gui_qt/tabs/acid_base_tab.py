@@ -203,9 +203,19 @@ class AcidBaseTab(QWidget):
         self.spin_sigma_emf.setDecimals(6)
         self.spin_sigma_emf.setRange(1.0e-12, 1.0e6)
         self.spin_sigma_emf.setValue(1.0)
+        self.spin_pkw = QDoubleSpinBox(tab)
+        self.spin_pkw.setDecimals(4)
+        self.spin_pkw.setRange(0.0, 30.0)
+        self.spin_pkw.setValue(14.0)
+        self.spin_pkw.setSingleStep(0.01)
+        self.spin_pkw.setToolTip(
+            "pKw sets Kw = 10^(-pKw). It affects potentiometric electroneutrality "
+            "calculations only; imposed-pH spectroscopy/NMR acid-base fits do not use Kw."
+        )
         self.chk_baseline = QCheckBox("Include linear baseline in spectroscopy", tab)
         layout.addRow("sigma pH", self.spin_sigma_ph)
         layout.addRow("sigma EMF", self.spin_sigma_emf)
+        layout.addRow("pKw", self.spin_pkw)
         layout.addRow("", self.chk_baseline)
         self.tabs.addTab(tab, "Parameters")
 
@@ -307,6 +317,7 @@ class AcidBaseTab(QWidget):
     def _collect_config(self) -> dict[str, Any]:
         if not self._file_path:
             raise ValueError("No data file selected.")
+        pkw = float(self.spin_pkw.value())
         cfg = {
             "file_path": self._file_path,
             "sheet_name": str(self.combo_sheet.currentData() or ""),
@@ -323,6 +334,8 @@ class AcidBaseTab(QWidget):
             "fit_electrode": bool(self.chk_fit_electrode.isChecked()),
             "sigma_pH": float(self.spin_sigma_ph.value()),
             "sigma_E": float(self.spin_sigma_emf.value()),
+            "pkw": pkw,
+            "kw": 10.0 ** (-pkw),
             "baseline": bool(self.chk_baseline.isChecked()),
         }
         return cfg
