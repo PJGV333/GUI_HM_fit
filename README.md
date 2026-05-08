@@ -1,29 +1,170 @@
-# HM fit 
+# HM fit
 
-Pedro Jancarlo Gomez Vega*, Alondra Karolina Montaño Preciado, José Octavio Juárez Sánchez, Felipe Medrano Valenzuela, David Octavio Corona Martínez, and Karen L. Ochoa Lara*
+Modular software for quantitative chemical equilibrium, spectroscopic, NMR, potentiometric, and kinetic analysis.
+
+Pedro Jancarlo Gomez Vega*, José Octavio Juárez Sánchez, Ramón Moreno Corral, Felipe Medrano Valenzuela, David Octavio Corona Martínez y Karen L. Ochoa Lara*
 
 Grupo de Química Supramolecular, Universidad de Sonora
 
-`* Corresponding authors`
+\* Corresponding authors
 
-HM fit is a PySide6 desktop application for the quantitative analysis and fitting of host-guest and related chemical models from spectroscopy, nuclear magnetic resonance (NMR), and kinetics data. The current graphical interface is organized into three modules, `Spectroscopy`, `NMR`, and `Kinetics`, which distinguish equilibrium-style analysis of spectroscopic and chemical-shift measurements from mechanism-based kinetic modeling while providing a unified environment for data handling, numerical fitting, diagnostics, plotting, and export of results.
+## Overview
 
-In the `Spectroscopy` module, `.xlsx` datasets can be imported with explicit selection of spectra and concentration sheets, configurable channel selection, EFA-assisted workflows, baseline correction, weighting options, and fitted plots with result export. The `NMR` module supports `.xlsx` import with concentration-sheet and chemical-shift-sheet selection, signal selection and assignment, model definition, numerical fitting, and export of the resulting analysis. The `Kinetics` module provides a dataset import wizard, editable reaction- and mechanism-based kinetic models, global fitting, ODE-based concentration profiles, fit diagnostics, and XLSX export of fitted results.
+HM fit is a PySide6 desktop application for quantitative analysis of chemical systems whose experimental signals depend on calculated species concentrations, equilibrium distributions, protonation states, spectroscopic responses, NMR observables, or kinetic concentration profiles.
+
+The application is designed to help users:
+
+- import experimental datasets,
+- define chemical equilibrium or kinetic models,
+- solve species distributions and concentration profiles,
+- fit thermodynamic or kinetic parameters,
+- visualize calculated and experimental results,
+- inspect residuals and diagnostics,
+- export tables, plots, and reports.
+
+The graphical interface is organized into four main modules: **Spectroscopy**, **NMR**, **Acid-base / Potentiometry**, and **Kinetics**.
+
+## Modular capabilities
+
+### Spectroscopy
+
+The Spectroscopy module analyzes UV-Vis, fluorescence, or related spectroscopic signals organized as single-channel traces or spectral matrices. It supports spreadsheet-based workflows with explicit selection of spectra and concentration sheets.
+
+Capabilities include:
+
+- import of `.xlsx` datasets,
+- selection of concentration columns and spectral channels,
+- equilibrium-model fitting for 1:1, 1:2, 2:1, and other models supported by the equilibrium core,
+- estimation of equilibrium constants,
+- variable-projection estimation of pure spectral profiles when applicable,
+- baseline options, channel selection, weighting, and EFA/SVD-assisted workflows,
+- plots for observed vs calculated signals, residuals, absorptivity profiles, and species distributions,
+- Excel export of fitted constants, concentrations, calculated spectra, diagnostics, and plots.
+
+### NMR
+
+The NMR module analyzes chemical-shift datasets, especially 1H NMR shifts measured as a function of composition or concentration. It is intended for receptor-guest and related equilibrium models where several signals can share the same chemical parameters.
+
+Capabilities include:
+
+- import of concentration and chemical-shift sheets from `.xlsx` files,
+- selection and assignment of NMR signals,
+- receptor-guest equilibrium models,
+- global fitting of multiple signals,
+- estimation of equilibrium constants,
+- calculation of limiting shifts or linear coefficients,
+- residual-based diagnostics,
+- Excel export of constants, calculated shifts, species concentrations, residuals, and reports.
+
+### Acid-base / Potentiometry
+
+The Acid-base / Potentiometry module studies acid-base equilibria and determines pKa or cumulative protonation constants (`log_beta`) from potentiometric, spectroscopic, or proton NMR data.
+
+Capabilities include:
+
+- fitting pKa values or cumulative protonation constants (`log_beta`),
+- conversion between pKa and `log_beta`,
+- species-distribution diagrams vs pH,
+- potentiometric fitting of pH vs titrant volume,
+- fitting of electrode potential (`E_mV`) vs titrant volume with an ideal electrode model,
+- dilution correction during titration,
+- pH calculation by electroneutrality with water autoionization (`Kw`),
+- fitting of spectroscopic signal vs pH,
+- fitting of spectral matrices organized as pH x wavelength,
+- fitting of proton NMR chemical shifts in the fast-exchange regime,
+- multimodal/global residuals where pKa or `log_beta` values can be shared between techniques.
+
+Current limitations of this initial module:
+
+- ideal solutions or fixed/ignored ionic strength,
+- activities approximated as concentrations,
+- ideal electrode with fixed or fitted slope,
+- proton NMR limited to fast exchange,
+- no automatic correction for atmospheric CO2.
+
+See [docs/ACID_BASE_POTENTIOMETRY.md](docs/ACID_BASE_POTENTIOMETRY.md) for the acid-base convention, accepted data layouts, and current limitations.
+
+### Kinetics
+
+The Kinetics module supports mechanism-based kinetic analysis using ordinary differential equations. It is designed for time-dependent concentration or signal profiles generated by editable reaction mechanisms.
+
+Capabilities include:
+
+- dataset import wizard,
+- editable kinetic mechanisms,
+- mass-action reactions,
+- ODE-based concentration-time simulation,
+- global fitting across datasets,
+- estimation of kinetic parameters,
+- support for concentration-time profiles and linear observation models,
+- SciPy backend, with JAX support where available,
+- least-squares and NNLS/variable-projection workflows where applicable,
+- residual diagnostics, plots, and Excel export.
+
+## Typical workflow
+
+1. Open HM fit.
+2. Choose the appropriate module.
+3. Import experimental data.
+4. Select sheets, columns, channels, or signals.
+5. Define the chemical or kinetic model.
+6. Provide initial parameter estimates and bounds when needed.
+7. Run the fit.
+8. Inspect fitted parameters, plots, species distributions, and residuals.
+9. Export results.
+
+## Accepted data formats
+
+| Module | Main accepted formats | Typical layout |
+| --- | --- | --- |
+| Spectroscopy | `.xlsx` | spectra/signal sheet plus concentration sheet |
+| NMR | `.xlsx` | concentration sheet plus chemical-shift sheet |
+| Acid-base / Potentiometry | `.csv`, `.txt`, `.xlsx` | direct pH, EMF, spectroscopy-vs-pH, or NMR-vs-pH tables |
+| Kinetics | `.xlsx` and delimited text formats where applicable | time axis plus concentration/signal matrix |
+
+Examples for Acid-base / Potentiometry:
+
+- Potentiometry: `volume_mL,pH` or `volume_mL,E_mV`
+- Acid-base spectroscopy: `pH,signal` or `pH,<wavelength columns>`
+- Acid-base NMR: `pH,H1,H2,H3`
+
+## Outputs
+
+Depending on the selected module and model, HM fit can produce:
+
+- fitted equilibrium constants,
+- pKa and `log_beta` values when applicable,
+- kinetic parameters when applicable,
+- calculated concentrations and species distributions,
+- pure spectral profiles or limiting NMR shifts when applicable,
+- observed vs calculated plots,
+- residual plots,
+- covariance and correlation matrices when available,
+- Excel and CSV exports.
 
 ## Architecture
 
-The project is organized into three main components:
-- `hmfit_core`: Core numerical routines for equilibrium-model fitting, plotting payloads, exports, and shared utilities.
-- `hmfit_gui_qt`: The PySide6 graphical user interface, including the `Spectroscopy`, `NMR`, and `Kinetics` modules.
-- `hmfit.kinetics`: Kinetics-specific data handling, mechanism parsing, model construction, ODE solving, fitting, diagnostics, and reporting utilities.
+The repository is organized into modular scientific and GUI layers:
+
+- `hmfit_core`: numerical equilibrium solvers, objective functions, spectroscopy/NMR processors, acid-base and potentiometric analysis, plotting payloads, export utilities, and shared numerical helpers.
+- `hmfit_gui_qt`: the PySide6 desktop interface, including the Spectroscopy, NMR, Acid-base / Potentiometry, and Kinetics tabs.
+- `hmfit.kinetics`: kinetic dataset handling, import tools, mechanism parsing, model construction, ODE integration, fitting, diagnostics, and reporting.
+- `docs`: technical and user-facing documentation.
+- `tests`: unit tests, regression checks, and synthetic datasets where applicable.
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for additional implementation details.
 
 ## Installation
+
+Install the Qt application dependencies from the repository root:
 
 ```bash
 python -m pip install -r requirements_qt.txt
 ```
 
 ## Running
+
+Start the PySide6 desktop application:
 
 ```bash
 python -m hmfit_gui_qt
@@ -33,24 +174,31 @@ python -m hmfit_gui_qt
 
 HM fit ships GitHub-based release artifacts for:
 
-- Linux `AppImage`
-- Linux `.flatpak`
-- Windows portable `.exe`
-- Windows installer `setup.exe`
+- Linux `AppImage`,
+- Linux `.flatpak`,
+- Windows portable `.exe`,
+- Windows installer `setup.exe`.
 
-The GUI updater supports two user-selectable channels:
+The in-app updater supports two user-selectable channels:
 
-- `stable`
-- `beta`
+- `stable`,
+- `beta`.
 
-See [`build_all.md`](build_all.md) for the GitHub Actions release flow and local packaging commands.
+See [build_all.md](build_all.md) for the GitHub Actions release flow and local packaging commands.
+
+## Documentation
+
+- [Acid-base and potentiometric analysis](docs/ACID_BASE_POTENTIOMETRY.md)
+- [Architecture notes](docs/ARCHITECTURE.md)
+- [Release and packaging guide](build_all.md)
 
 ## Requirements
 
 - Python 3.9+
 - PySide6
 - NumPy, SciPy, Pandas
-- Matplotlib, Plotly
+- Matplotlib
+- OpenPyXL
 
 ## License
 
