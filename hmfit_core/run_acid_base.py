@@ -65,13 +65,21 @@ def _csv_column(df: pd.DataFrame, names: Sequence[str]) -> str | None:
     return None
 
 
-def _read_csv(file_path: str | Path) -> pd.DataFrame:
+def _read_table(file_path: str | Path, sheet_name: Any = None) -> pd.DataFrame:
     path = Path(file_path)
     if not path.exists():
         raise FileNotFoundError(str(path))
-    if path.suffix.lower() not in {".csv", ".txt"}:
-        raise ValueError("Acid-base v1 imports CSV/TXT files.")
-    return pd.read_csv(path)
+    suffix = path.suffix.lower()
+    if suffix in {".csv", ".txt"}:
+        return pd.read_csv(path)
+    if suffix == ".xlsx":
+        sheet = 0 if sheet_name in (None, "") else sheet_name
+        return pd.read_excel(path, sheet_name=sheet)
+    raise ValueError("Acid-base v1 imports CSV/TXT/XLSX files.")
+
+
+def _configured_sheet(cfg: Mapping[str, Any]) -> Any:
+    return cfg.get("sheet_name") or cfg.get("data_sheet") or cfg.get("excel_sheet")
 
 
 def _build_system(cfg: Mapping[str, Any]):
@@ -234,14 +242,14 @@ def _base_result_payload(
 
 
 def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[str, Any]:
-    df = _read_csv(cfg["file_path"])
+    df = _read_table(cfg["file_path"], _configured_sheet(cfg))
     volume_col = _csv_column(df, ["volume_mL", "volume", "v", "v_ml"])
     if volume_col is None:
-        raise ValueError("Potentiometry CSV needs a volume_mL column.")
+        raise ValueError("Potentiometry data needs a volume_mL column.")
     ph_col = _csv_column(df, ["pH", "ph"])
     emf_col = _csv_column(df, ["E_mV", "emf", "emf_mV", "E"])
     if ph_col is None and emf_col is None:
-        raise ValueError("Potentiometry CSV needs pH or E_mV.")
+        raise ValueError("Potentiometry data needs pH or E_mV.")
 
     volumes = pd.to_numeric(df[volume_col], errors="coerce").to_numpy(dtype=float)
     measured_pH = None
@@ -316,14 +324,14 @@ def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[
 
 
 def _run_spectroscopy(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[str, Any]:
-    df = _read_csv(cfg["file_path"])
+    df = _read_table(cfg["file_path"], _configured_sheet(cfg))
     ph_col = _csv_column(df, ["pH", "ph"])
     if ph_col is None:
-        raise ValueError("Spectroscopy CSV needs a pH column.")
+        raise ValueError("Spectroscopy data needs a pH column.")
     pH = pd.to_numeric(df[ph_col], errors="coerce").to_numpy(dtype=float)
     value_cols = [col for col in df.columns if str(col) != ph_col]
     if not value_cols:
-        raise ValueError("Spectroscopy CSV needs signal columns.")
+        raise ValueError("Spectroscopy data needs signal columns.")
     signal = df[value_cols].apply(pd.to_numeric, errors="coerce").to_numpy(dtype=float)
     if signal.shape[1] == 1:
         signal = signal[:, 0]
@@ -370,14 +378,14 @@ def _run_spectroscopy(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[s
 
 
 def _run_nmr(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[str, Any]:
-    df = _read_csv(cfg["file_path"])
+    df = _read_table(cfg["file_path"], _configured_sheet(cfg))
     ph_col = _csv_column(df, ["pH", "ph"])
     if ph_col is None:
-        raise ValueError("NMR CSV needs a pH column.")
+        raise ValueError("NMR data needs a pH column.")
     pH = pd.to_numeric(df[ph_col], errors="coerce").to_numpy(dtype=float)
     shift_cols = [col for col in df.columns if str(col) != ph_col]
     if not shift_cols:
-        raise ValueError("NMR CSV needs one or more shift columns.")
+        raise ValueError("NMR data needs one or more shift columns.")
     shifts = df[shift_cols].apply(pd.to_numeric, errors="coerce").to_numpy(dtype=float)
     dataset = NMRAcidBaseDataset(pH=pH, shifts=shifts, nuclei_labels=[str(c) for c in shift_cols])
     system = _build_system(cfg)

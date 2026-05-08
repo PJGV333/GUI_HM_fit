@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 
 from hmfit_core.acid_base import (
     NMRAcidBaseDataset,
@@ -17,6 +18,7 @@ from hmfit_core.potentiometry import (
     fit_potentiometry,
     simulate_pH_titration,
 )
+from hmfit_core.run_acid_base import run_acid_base
 
 
 def test_pka_log_beta_roundtrip():
@@ -99,3 +101,43 @@ def test_synthetic_nmr_recovers_pka():
     result = fit_nmr_acid_base(dataset, start_system, initial_pka=[5.8])
     assert result.success
     assert abs(result.fitted_pka[0] - 5.0) < 0.02
+
+
+def test_xlsx_potentiometry_import_recovers_pka(tmp_path):
+    true_system = make_simple_acid_base_system(
+        analytical_concentration=1.0e-2,
+        pka=[5.0],
+        base_charge=-1,
+    )
+    volumes = np.linspace(0.0, 18.0, 30)
+    experiment = PotentiometryExperiment(
+        initial_volume=10.0,
+        titrant_volumes=volumes,
+        analyte_concentration=1.0e-2,
+        titrant_concentration=1.0e-2,
+        titrant_type="base",
+    )
+    pH = simulate_pH_titration(experiment, true_system)
+    path = tmp_path / "acid_base.xlsx"
+    with pd.ExcelWriter(path, engine="openpyxl") as writer:
+        pd.DataFrame({"volume_mL": volumes, "pH": pH}).to_excel(
+            writer,
+            sheet_name="Pot",
+            index=False,
+        )
+
+    result = run_acid_base(
+        {
+            "file_path": str(path),
+            "sheet_name": "Pot",
+            "data_type": "potentiometry",
+            "pka_initial": "4.2",
+            "analyte_concentration": 1.0e-2,
+            "titrant_concentration": 1.0e-2,
+            "initial_volume": 10.0,
+            "titrant_type": "base",
+        },
+        progress_cb=lambda _msg: None,
+    )
+    assert result["success"] is True
+    assert abs(float(result["constants"][0]["value"]) - 5.0) < 1.0e-6

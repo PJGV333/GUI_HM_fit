@@ -54,8 +54,8 @@ class AcidBaseTab(QWidget):
         self._is_running = False
         self._build_ui()
         self._set_running(False)
-        self.canvas_main.show_message("Import a CSV file to begin")
-        self.log.append_text("Ready. Import potentiometry, spectroscopy, or NMR CSV data.")
+        self.canvas_main.show_message("Import a CSV or Excel file to begin")
+        self.log.append_text("Ready. Import potentiometry, spectroscopy, or NMR CSV/XLSX data.")
 
     def _build_ui(self) -> None:
         outer = QVBoxLayout(self)
@@ -125,13 +125,18 @@ class AcidBaseTab(QWidget):
         layout.addLayout(form)
 
         file_row = QHBoxLayout()
-        self.btn_choose_file = QPushButton("Choose CSV...", tab)
+        self.btn_choose_file = QPushButton("Choose file...", tab)
         self.btn_choose_file.clicked.connect(self._on_choose_file_clicked)
         file_row.addWidget(self.btn_choose_file)
         self.lbl_file_status = QLabel("No file selected", tab)
         self.lbl_file_status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         file_row.addWidget(self.lbl_file_status, 1)
         layout.addLayout(file_row)
+
+        self.combo_sheet = QComboBox(tab)
+        self.combo_sheet.setEnabled(False)
+        self.combo_sheet.currentIndexChanged.connect(self._on_sheet_changed)
+        form.addRow("Excel sheet", self.combo_sheet)
 
         self.preview_text = QPlainTextEdit(tab)
         self.preview_text.setReadOnly(True)
@@ -243,7 +248,12 @@ class AcidBaseTab(QWidget):
         self.tabs.addTab(tab, "Export")
 
     def _on_choose_file_clicked(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Select CSV file", "", "CSV (*.csv *.txt)")
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select data file",
+            "",
+            "Data files (*.csv *.txt *.xlsx);;CSV (*.csv *.txt);;Excel (*.xlsx)",
+        )
         if not path:
             return
         self._set_file_path(path)
@@ -251,21 +261,55 @@ class AcidBaseTab(QWidget):
     def _set_file_path(self, file_path: str) -> None:
         path = Path(str(file_path or ""))
         if not path.exists():
-            QMessageBox.warning(self, "Missing file", f"CSV file not found:\n{path}")
+            QMessageBox.warning(self, "Missing file", f"Data file not found:\n{path}")
             return
         self._file_path = str(path)
         self.lbl_file_status.setText(self._file_path)
+        self.combo_sheet.blockSignals(True)
+        self.combo_sheet.clear()
+        suffix = path.suffix.lower()
+        if suffix == ".xlsx":
+            try:
+                sheets = pd.ExcelFile(path).sheet_names
+            except Exception as exc:
+                self.combo_sheet.setEnabled(False)
+                self.preview_text.setPlainText(f"Could not read Excel workbook: {exc}")
+                self.combo_sheet.blockSignals(False)
+                return
+            for sheet in sheets:
+                self.combo_sheet.addItem(str(sheet), str(sheet))
+            self.combo_sheet.setEnabled(bool(sheets))
+        else:
+            self.combo_sheet.addItem("CSV/TXT", "")
+            self.combo_sheet.setEnabled(False)
+        self.combo_sheet.blockSignals(False)
+        self._preview_selected_sheet()
+
+    def _on_sheet_changed(self) -> None:
+        self._preview_selected_sheet()
+
+    def _preview_selected_sheet(self) -> None:
+        path = Path(str(self._file_path or ""))
+        if not path.exists():
+            return
         try:
-            df = pd.read_csv(path, nrows=8)
+            if path.suffix.lower() == ".xlsx":
+                sheet = self.combo_sheet.currentData()
+                if sheet in (None, ""):
+                    sheet = 0
+                df = pd.read_excel(path, sheet_name=sheet, nrows=8)
+            else:
+                df = pd.read_csv(path, nrows=8)
             self.preview_text.setPlainText(df.to_string(index=False))
         except Exception as exc:
-            self.preview_text.setPlainText(f"Could not preview CSV: {exc}")
+            self.preview_text.setPlainText(f"Could not preview data file: {exc}")
 
     def _collect_config(self) -> dict[str, Any]:
         if not self._file_path:
-            raise ValueError("No CSV file selected.")
+            raise ValueError("No data file selected.")
         cfg = {
             "file_path": self._file_path,
+            "sheet_name": str(self.combo_sheet.currentData() or ""),
             "data_type": str(self.combo_data_type.currentData() or "potentiometry"),
             "component_name": self.edit_component_name.text().strip() or "L",
             "pka_initial": self.edit_pka.text().strip() or "5.0",
@@ -287,6 +331,12 @@ class AcidBaseTab(QWidget):
         self._is_running = bool(running)
         self.btn_process.setEnabled(not running)
         self.btn_choose_file.setEnabled(not running)
+        self.combo_sheet.setEnabled(
+            (not running)
+            and bool(self._file_path)
+            and Path(str(self._file_path)).suffix.lower() == ".xlsx"
+            and self.combo_sheet.count() > 0
+        )
         self.btn_cancel.setEnabled(running)
         self.btn_save.setEnabled((not running) and bool(self._last_result))
         self.btn_process.setText("Fitting..." if running else "Fit")

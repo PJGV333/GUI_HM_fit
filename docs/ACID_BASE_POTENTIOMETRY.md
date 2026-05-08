@@ -7,7 +7,8 @@ special case of those constants.
 
 ## Accepted data
 
-The PySide6 tab imports CSV files.
+The PySide6 tab imports CSV/TXT files and Excel workbooks (`.xlsx`).
+For Excel files, select the worksheet in the **Data** tab before fitting.
 
 Potentiometry can use direct pH:
 
