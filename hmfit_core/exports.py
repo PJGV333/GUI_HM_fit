@@ -107,8 +107,13 @@ def write_results_xlsx(
 
         # --- Export payload sheets ---
         if is_acid_base_export:
-            def acid_frame(key: str) -> pd.DataFrame:
-                data = export_data.get(key)
+            def acid_frame(*keys: str) -> pd.DataFrame:
+                data = None
+                for key in keys:
+                    if key in export_data:
+                        data = export_data.get(key)
+                        if data is not None:
+                            break
                 if data is None:
                     return pd.DataFrame()
                 if isinstance(data, pd.DataFrame):
@@ -118,20 +123,24 @@ def write_results_xlsx(
                 return pd.DataFrame(data)
 
             acid_sheets = {
-                "pKa": acid_frame("pka_table"),
-                "log_beta": acid_frame("log_beta_table"),
-                "Parameters": acid_frame("parameter_table"),
+                "Parameters": acid_frame("error_parameters", "parameter_table"),
+                "pKa": acid_frame("error_pka_table", "pka_table"),
+                "log_beta": acid_frame("error_log_beta_table", "log_beta_table"),
+                "Derived_constants": acid_frame("derived_constants"),
                 "Experimental_vs_Calc": acid_frame("experimental_vs_calculated"),
                 "Species_vs_pH": acid_frame("species_vs_pH"),
                 "Species_vs_Volume": acid_frame("species_vs_volume"),
-                "Covariance": acid_frame("covariance_matrix"),
-                "Correlation": acid_frame("correlation_matrix"),
+                "Covariance": acid_frame("error_covariance_matrix", "covariance_matrix"),
+                "Correlation": acid_frame("error_correlation_matrix", "correlation_matrix"),
+                "Error_diagnostics": acid_frame("error_diagnostics"),
+                "Bootstrap_samples": acid_frame("bootstrap_samples"),
                 "Residuals": pd.DataFrame({"residual": np.asarray(export_data.get("residuals") or [], dtype=float).ravel()}),
             }
             for name, df in acid_sheets.items():
                 if df is None or df.empty:
                     continue
-                df.to_excel(writer, sheet_name=name[:31], index=False)
+                use_index = name in {"Covariance", "Correlation"}
+                df.to_excel(writer, sheet_name=name[:31], index=use_index)
                 format_sheet(writer, name[:31], name.replace("_", " "))
         elif is_nmr_export:
             modelo = as_dataframe("Model", export_data.get("modelo"), allow_none=False)

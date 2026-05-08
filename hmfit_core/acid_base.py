@@ -87,6 +87,12 @@ class AcidBaseFitResult:
     reduced_chi_square: float | None
     aic: float | None
     bic: float | None
+    parameter_names: list[str] = field(default_factory=list)
+    theta_hat: np.ndarray = field(default_factory=lambda: np.asarray([], dtype=float))
+    jacobian: np.ndarray | None = None
+    bounds: Any = None
+    fixed_mask: list[bool] = field(default_factory=list)
+    parameter_space: str = "pka"
 
 
 _PKA_RE = re.compile(r"^pka(?:[_\-\s]*|\[)?(\d+)\]?$", re.IGNORECASE)
@@ -665,6 +671,10 @@ def _build_fit_result(
     system: AcidBaseSystem,
     residuals: np.ndarray,
     parameter_names: Sequence[str],
+    *,
+    bounds: Any = None,
+    fixed_mask: Sequence[bool] | None = None,
+    parameter_space: str = "pka",
 ) -> AcidBaseFitResult:
     pka = system_pka_values(system)
     log_beta = system_log_beta_values(system)
@@ -706,6 +716,16 @@ def _build_fit_result(
         reduced_chi_square=red,
         aic=aic,
         bic=bic,
+        parameter_names=[str(name) for name in parameter_names],
+        theta_hat=np.asarray(getattr(opt_result, "x", values), dtype=float).reshape(-1),
+        jacobian=(
+            None
+            if getattr(opt_result, "jac", None) is None
+            else np.asarray(getattr(opt_result, "jac"), dtype=float)
+        ),
+        bounds=bounds,
+        fixed_mask=[bool(v) for v in (fixed_mask or [False for _ in range(n_params)])],
+        parameter_space=str(parameter_space or "pka"),
     )
 
 
@@ -738,7 +758,15 @@ def fit_spectroscopy_acid_base(
 
     opt = least_squares(residual, x0, bounds=bounds, xtol=1e-10, ftol=1e-10, gtol=1e-10)
     fitted_system = clone_system_with_pka(system_template, opt.x)
-    return _build_fit_result(opt, fitted_system, residual(opt.x), parameter_names)
+    return _build_fit_result(
+        opt,
+        fitted_system,
+        residual(opt.x),
+        parameter_names,
+        bounds=bounds,
+        fixed_mask=opts.get("fixed_mask"),
+        parameter_space="pka",
+    )
 
 
 def fit_nmr_acid_base(
@@ -757,7 +785,15 @@ def fit_nmr_acid_base(
 
     opt = least_squares(residual, x0, bounds=bounds, xtol=1e-10, ftol=1e-10, gtol=1e-10)
     fitted_system = clone_system_with_pka(system_template, opt.x)
-    return _build_fit_result(opt, fitted_system, residual(opt.x), parameter_names)
+    return _build_fit_result(
+        opt,
+        fitted_system,
+        residual(opt.x),
+        parameter_names,
+        bounds=bounds,
+        fixed_mask=opts.get("fixed_mask"),
+        parameter_space="pka",
+    )
 
 
 def global_acid_base_residuals(

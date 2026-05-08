@@ -36,7 +36,9 @@ from PySide6.QtWidgets import (
 
 from hmfit_core.api import run_acid_base_fit
 from hmfit_core.acid_base import log_beta_to_pka, pka_to_log_beta
+from hmfit_core.acid_base_errors import compute_errors_acid_base_from_context
 from hmfit_core.exports import write_results_xlsx
+from hmfit_gui_qt.widgets.error_analysis_widget import ErrorAnalysisWidget
 from hmfit_gui_qt.widgets.log_console import LogConsole
 from hmfit_gui_qt.widgets.mpl_canvas import MplCanvas, NavigationToolbar
 from hmfit_gui_qt.workers.fit_worker import FitWorker
@@ -108,6 +110,7 @@ class AcidBaseTab(QWidget):
         self._plot_index = 0
         self._is_running = False
         self._updating_tables = False
+        self.errors_panel: ErrorAnalysisWidget | None = None
 
         self._build_ui()
         self._add_default_component()
@@ -419,10 +422,17 @@ class AcidBaseTab(QWidget):
     def _build_errors_tab(self) -> None:
         tab = QWidget(self.model_opt_tabs)
         layout = QVBoxLayout(tab)
-        self.errors_text = QPlainTextEdit(tab)
-        self.errors_text.setReadOnly(True)
-        self.errors_text.setPlainText("Advanced error analysis for acid-base fits is under development.")
-        layout.addWidget(self.errors_text, 1)
+        self.errors_panel = ErrorAnalysisWidget(self._compute_errors_payload, tab)
+        self.errors_panel.set_supported_methods(
+            {"analytic", "bootstrap_linear", "bootstrap_full_refit_audit"},
+            default="analytic",
+        )
+        self.errors_panel.combo_error_method.setToolTip(
+            "Acid-base errors support analytical covariance, linearized wild bootstrap, "
+            "and full-refit bootstrap. One-step LM bootstrap is not available here yet."
+        )
+        self.errors_panel.output_ready.connect(self._on_errors_output_ready)
+        layout.addWidget(self.errors_panel, 1)
         self.model_opt_tabs.addTab(tab, "Errors")
 
     def _build_actions_row(self, parent: QWidget, layout: QVBoxLayout) -> None:
@@ -1027,7 +1037,8 @@ class AcidBaseTab(QWidget):
         self._plot_pages = []
         self._plot_index = 0
         self.results_text.clear()
-        self.errors_text.setPlainText("Advanced error analysis for acid-base fits is under development.")
+        if self.errors_panel is not None:
+            self.errors_panel.set_errors_context(None)
         self.canvas_main.clear()
         self.log.append_text("Starting acid-base fit...")
 
@@ -1060,7 +1071,7 @@ class AcidBaseTab(QWidget):
         if text:
             self.log.append_text(text)
         self._build_plot_pages(result)
-        self._update_errors_tab(result)
+        self._update_errors_context_from_result(result)
         self._plot_index = 0
         self._render_current_plot()
         self.btn_save.setEnabled(True)
@@ -1086,28 +1097,69 @@ class AcidBaseTab(QWidget):
             if png and (not selected or str(key) in selected):
                 self._plot_pages.append((str(key), str(titles.get(key) or key)))
 
-    def _update_errors_tab(self, result: dict[str, Any]) -> None:
-        export = result.get("export_data") or {}
-        stats = result.get("statistics") or {}
-        lines = ["Acid-base fit error summary", ""]
-        lines.append(f"Reduced chi-square: {stats.get('reduced_chi_square')}")
-        lines.append("")
-        param_rows = export.get("parameter_table") or []
-        if param_rows:
-            lines.append("Parameter table:")
-            for row in param_rows:
-                lines.append(f"- {row.get('parameter')}: {row.get('value')} ± {row.get('stderr')}")
-        covariance = export.get("covariance_matrix")
-        correlation = export.get("correlation_matrix")
-        lines.append("")
-        lines.append("Covariance matrix:")
-        lines.append(str(covariance) if covariance is not None else "Not available.")
-        lines.append("")
-        lines.append("Correlation matrix:")
-        lines.append(str(correlation) if correlation is not None else "Not available.")
-        lines.append("")
-        lines.append("Advanced error analysis for acid-base fits is under development.")
-        self.errors_text.setPlainText("\n".join(lines))
+    def _compute_errors_payload(
+        self,
+        payload: dict[str, Any],
+        *,
+        progress_cb=None,
+        cancel_cb=None,
+    ) -> dict[str, Any]:
+        context = dict(payload.get("ctx") or {})
+        options = dict(payload.get("options") or {})
+        return compute_errors_acid_base_from_context(
+            context,
+            options=options,
+            progress_cb=progress_cb,
+            cancel_cb=cancel_cb,
+        )
+
+    def _update_errors_context_from_result(self, result: dict[str, Any], *, auto_compute: bool = True) -> None:
+        if self.errors_panel is None:
+            return
+        if not result.get("success", True):
+            self.errors_panel.set_errors_context(None)
+            return
+        context = result.get("errors_context")
+        if not isinstance(context, dict) or not context:
+            self.errors_panel.set_errors_context(None)
+            return
+        self.errors_panel.set_errors_context(context, auto_compute=auto_compute)
+
+    def _on_errors_output_ready(self, output: object) -> None:
+        if not isinstance(output, dict):
+            return
+        summary = str(output.get("summary") or "").strip()
+        if summary:
+            self.log.append_text(summary)
+        if not isinstance(self._last_result, dict):
+            return
+        export_data = self._last_result.setdefault("export_data", {})
+        if not isinstance(export_data, dict):
+            return
+        frames = dict(output.get("export_frames") or {})
+        if "Parameters" in frames:
+            export_data["error_parameters"] = frames["Parameters"]
+        if "pKa" in frames:
+            export_data["error_pka_table"] = frames["pKa"]
+        if "log_beta" in frames:
+            export_data["error_log_beta_table"] = frames["log_beta"]
+        if "Derived constants" in frames:
+            export_data["derived_constants"] = frames["Derived constants"]
+        if "Covariance" in frames:
+            export_data["error_covariance_matrix"] = frames["Covariance"]
+        if "Correlation" in frames:
+            export_data["error_correlation_matrix"] = frames["Correlation"]
+        if "Error diagnostics" in frames:
+            export_data["error_diagnostics"] = frames["Error diagnostics"]
+        if "Bootstrap samples" in frames:
+            export_data["bootstrap_samples"] = frames["Bootstrap samples"]
+        export_data["diagnostics_summary"] = summary
+        core_metrics = dict(output.get("core_metrics") or {})
+        stability_diag = dict(core_metrics.get("stability_diag") or {})
+        export_data["diagnostics_full"] = str(stability_diag.get("diag_full") or "")
+        export_data["stability_status"] = stability_diag.get("status")
+        export_data["condition_number"] = stability_diag.get("cond_jjt")
+        export_data["stability_indicator"] = stability_diag.get("stability_indicator")
 
     def _render_current_plot(self) -> None:
         if not self._plot_pages or not self._last_result:
@@ -1346,6 +1398,7 @@ class AcidBaseTab(QWidget):
         self._plot_pages = []
         self._plot_index = 0
         self.results_text.clear()
-        self.errors_text.setPlainText("Advanced error analysis for acid-base fits is under development.")
+        if self.errors_panel is not None:
+            self.errors_panel.set_errors_context(None)
         self.canvas_main.show_message("Import a CSV or Excel file to begin")
         self._set_running(False)

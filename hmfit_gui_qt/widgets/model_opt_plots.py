@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from hmfit_gui_qt.widgets.error_analysis_widget import ErrorAnalysisWidget
 from hmfit_gui_qt.widgets.equation_editor import EquationEditorWidget
 from hmfit_gui_qt.workers.errors_worker import ErrorsWorker
 
@@ -190,6 +191,7 @@ class ModelOptPlotsWidget(QWidget):
         self._errors_context: dict[str, Any] | None = None
         self._errors_last_output: dict[str, Any] | None = None
         self._errors_worker: ErrorsWorker | None = None
+        self.errors_panel: ErrorAnalysisWidget | None = None
         self._enable_equation_editor = bool(enable_equation_editor)
         self.equation_editor: EquationEditorWidget | None = None
         self._build_ui()
@@ -419,159 +421,8 @@ class ModelOptPlotsWidget(QWidget):
 
     def _build_errors_tab(self, parent: QWidget) -> None:
         layout = QVBoxLayout(parent)
-
-        controls_grid = QGridLayout()
-        controls_grid.setColumnStretch(1, 1)
-        controls_grid.setColumnStretch(3, 1)
-        controls_grid.setColumnStretch(5, 1)
-        controls_grid.setColumnStretch(7, 1)
-
-        controls_grid.addWidget(QLabel("Error method"), 0, 0)
-        self.combo_error_method = QComboBox(parent)
-        self.combo_error_method.addItem("Analytical (VarPro covariance)", "analytic")
-        self.combo_error_method.addItem("Bootstrap (linearized + wild)", "bootstrap_linear")
-        self.combo_error_method.addItem("Bootstrap (one-step LM)", "bootstrap_onestep")
-        self.combo_error_method.addItem("Bootstrap (full refit, audit)", "bootstrap_full_refit_audit")
-        self.combo_error_method.currentIndexChanged.connect(self._on_error_method_changed)
-        controls_grid.addWidget(self.combo_error_method, 0, 1, 1, 7)
-
-        controls_grid.addWidget(QLabel("B (replicates)"), 1, 0)
-        self.spin_error_b = QSpinBox(parent)
-        self.spin_error_b.setRange(50, 5000)
-        self.spin_error_b.setValue(500)
-        controls_grid.addWidget(self.spin_error_b, 1, 1)
-
-        controls_grid.addWidget(QLabel("Seed"), 1, 2)
-        self.edit_error_seed = QLineEdit(parent)
-        self.edit_error_seed.setPlaceholderText("optional")
-        controls_grid.addWidget(self.edit_error_seed, 1, 3)
-
-        controls_grid.addWidget(QLabel("Wild type"), 1, 4)
-        self.combo_error_wild = QComboBox(parent)
-        self.combo_error_wild.addItem("Rademacher (+/-1)", "rademacher")
-        self.combo_error_wild.addItem("Mammen", "mammen")
-        controls_grid.addWidget(self.combo_error_wild, 1, 5)
-
-        controls_grid.addWidget(QLabel("LM lambda"), 1, 6)
-        self.spin_error_lambda = QDoubleSpinBox(parent)
-        self.spin_error_lambda.setDecimals(6)
-        self.spin_error_lambda.setRange(0.0, 1e6)
-        self.spin_error_lambda.setSingleStep(1e-3)
-        self.spin_error_lambda.setValue(1e-3)
-        controls_grid.addWidget(self.spin_error_lambda, 1, 7)
-
-        self.lbl_error_max_iter = QLabel("Max iter", parent)
-        controls_grid.addWidget(self.lbl_error_max_iter, 2, 0)
-        self.spin_error_max_iter = QSpinBox(parent)
-        self.spin_error_max_iter.setRange(5, 200)
-        self.spin_error_max_iter.setValue(30)
-        controls_grid.addWidget(self.spin_error_max_iter, 2, 1)
-
-        self.lbl_error_tol = QLabel("Tol", parent)
-        controls_grid.addWidget(self.lbl_error_tol, 2, 2)
-        self.spin_error_tol = QDoubleSpinBox(parent)
-        self.spin_error_tol.setDecimals(12)
-        self.spin_error_tol.setRange(1e-12, 1e-2)
-        self.spin_error_tol.setSingleStep(1e-8)
-        self.spin_error_tol.setValue(1e-8)
-        controls_grid.addWidget(self.spin_error_tol, 2, 3)
-
-        self.lbl_error_fail_policy = QLabel("Fail policy", parent)
-        controls_grid.addWidget(self.lbl_error_fail_policy, 2, 4)
-        self.combo_error_fail_policy = QComboBox(parent)
-        self.combo_error_fail_policy.addItem("Skip failed replicates", "skip")
-        self.combo_error_fail_policy.addItem("Stop on first failure", "stop")
-        controls_grid.addWidget(self.combo_error_fail_policy, 2, 5, 1, 3)
-
-        layout.addLayout(controls_grid)
-
-        self.lbl_error_audit_warning = QLabel(
-            "Warning: Bootstrap (full refit, audit) can take several minutes. "
-            "Use Cancel to stop the computation if needed.",
-            parent,
-        )
-        self.lbl_error_audit_warning.setWordWrap(True)
-        self.lbl_error_audit_warning.setVisible(False)
-        layout.addWidget(self.lbl_error_audit_warning)
-
-        flags_row = QHBoxLayout()
-        self.chk_error_ci_16_84 = QCheckBox("Include 16/84 percentiles", parent)
-        self.chk_error_ci_16_84.setChecked(False)
-        self.chk_error_ci_16_84.toggled.connect(self._apply_errors_ci_visibility)
-        flags_row.addWidget(self.chk_error_ci_16_84)
-
-        self.chk_error_show_corr = QCheckBox("Show correlation matrix", parent)
-        self.chk_error_show_corr.setChecked(True)
-        self.chk_error_show_corr.toggled.connect(self._apply_errors_corr_visibility)
-        flags_row.addWidget(self.chk_error_show_corr)
-
-        flags_row.addStretch(1)
-        self.btn_error_compute = QPushButton("Compute", parent)
-        self.btn_error_compute.clicked.connect(self._on_error_compute_clicked)
-        flags_row.addWidget(self.btn_error_compute)
-        self.btn_error_export = QPushButton("Export XLSX", parent)
-        self.btn_error_export.setEnabled(False)
-        self.btn_error_export.clicked.connect(self._on_error_export_clicked)
-        flags_row.addWidget(self.btn_error_export)
-        layout.addLayout(flags_row)
-
-        progress_row = QHBoxLayout()
-        self.lbl_error_status = QLabel("", parent)
-        progress_row.addWidget(self.lbl_error_status)
-        self.progress_error = QProgressBar(parent)
-        self.progress_error.setVisible(False)
-        self.progress_error.setTextVisible(True)
-        self.progress_error.setFormat("Working...")
-        progress_row.addWidget(self.progress_error, 1)
-        self.btn_error_cancel = QPushButton("Cancel", parent)
-        self.btn_error_cancel.setEnabled(False)
-        self.btn_error_cancel.clicked.connect(self._on_error_cancel_clicked)
-        progress_row.addWidget(self.btn_error_cancel)
-        layout.addLayout(progress_row)
-
-        layout.addWidget(QLabel("Results", parent))
-        self.table_error_results = QTableWidget(parent)
-        self.table_error_results.setColumnCount(9)
-        self.table_error_results.setHorizontalHeaderLabels(
-            [
-                "Parameter",
-                "Estimate log10K",
-                "Median",
-                "CI 2.5",
-                "CI 97.5",
-                "CI 16",
-                "CI 84",
-                "SE(log10K)",
-                "%err(K)",
-            ]
-        )
-        self.table_error_results.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table_error_results.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        self.table_error_results.setAlternatingRowColors(True)
-        self.table_error_results.verticalHeader().setVisible(False)
-        header = self.table_error_results.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        for col in range(1, self.table_error_results.columnCount()):
-            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
-        layout.addWidget(self.table_error_results, 1)
-
-        self.lbl_error_corr = QLabel("Correlation matrix", parent)
-        layout.addWidget(self.lbl_error_corr)
-        self.table_error_corr = QTableWidget(parent)
-        self.table_error_corr.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table_error_corr.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        self.table_error_corr.setAlternatingRowColors(True)
-        layout.addWidget(self.table_error_corr)
-
-        layout.addWidget(QLabel("Summary", parent))
-        self.text_error_summary = QPlainTextEdit(parent)
-        self.text_error_summary.setReadOnly(True)
-        self.text_error_summary.setMinimumHeight(90)
-        layout.addWidget(self.text_error_summary)
-
-        self._apply_errors_ci_visibility()
-        self._apply_errors_corr_visibility()
-        self._on_error_method_changed()
+        self.errors_panel = ErrorAnalysisWidget(self._compute_errors_payload, parent)
+        layout.addWidget(self.errors_panel)
 
     # ---- Roles (Plots tab) ----
     def _reset_roles_ui(self) -> None:
@@ -588,12 +439,8 @@ class ModelOptPlotsWidget(QWidget):
     # ---- Errors tab ----
     def set_errors_context(self, context: dict[str, Any] | None, *, auto_compute: bool = False) -> None:
         self._errors_context = context
-        self._errors_last_output = None
-        self.btn_error_export.setEnabled(False)
-        self._clear_errors_tables()
-        if context and auto_compute:
-            self.combo_error_method.setCurrentIndex(0)
-            self._on_error_compute_clicked()
+        if self.errors_panel is not None:
+            self.errors_panel.set_errors_context(context, auto_compute=auto_compute)
 
     def _on_error_method_changed(self) -> None:
         method = str(self.combo_error_method.currentData() or "")
@@ -849,15 +696,16 @@ class ModelOptPlotsWidget(QWidget):
         )
         from hmfit_core.processors.nmr_processor import build_D_cols
 
-        method = str(self.combo_error_method.currentData() or "analytic")
-        seed = self._parse_error_seed()
-        wild = str(self.combo_error_wild.currentData() or "rademacher")
-        lam = float(self.spin_error_lambda.value())
-        B = int(self.spin_error_b.value())
-        include_16_84 = bool(self.chk_error_ci_16_84.isChecked())
-        max_iter = int(self.spin_error_max_iter.value())
-        tol = float(self.spin_error_tol.value())
-        fail_policy = str(self.combo_error_fail_policy.currentData() or "skip")
+        opts = dict(options or {})
+        method = str(opts.get("method") or "analytic")
+        seed = opts.get("seed")
+        wild = str(opts.get("wild") or "rademacher")
+        lam = float(opts.get("lam", 1e-3) or 1e-3)
+        B = int(opts.get("B", 500) or 500)
+        include_16_84 = bool(opts.get("include_16_84", False))
+        max_iter = int(opts.get("max_iter", 30) or 30)
+        tol = float(opts.get("tol", 1e-8) or 1e-8)
+        fail_policy = str(opts.get("fail_policy") or "skip")
 
         technique = str(ctx.get("technique") or "")
         k_hat_raw = ctx.get("k_hat")

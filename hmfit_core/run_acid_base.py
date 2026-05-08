@@ -19,6 +19,7 @@ from hmfit_core.acid_base import (
     NMRAcidBaseDataset,
     SpectroscopicAcidBaseDataset,
     clone_system_with_pka,
+    component_log_beta,
     fit_nmr_acid_base,
     fit_spectroscopy_acid_base,
     make_simple_acid_base_system,
@@ -28,8 +29,10 @@ from hmfit_core.acid_base import (
     simulate_species_vs_pH,
     system_pka_values,
 )
+from hmfit_core.acid_base_errors import compute_errors_acid_base_from_context
 from hmfit_core.potentiometry import (
     PotentiometryExperiment,
+    electrode_emf_from_pH,
     electrode_pH_from_emf,
     fit_potentiometry,
     observed_pH,
@@ -304,12 +307,167 @@ def _fit_result_tables(result: AcidBaseFitResult) -> tuple[list[dict[str, Any]],
     return pka_table, log_beta_table
 
 
+def _to_serializable(value: Any) -> Any:
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, (np.floating, np.integer, np.bool_)):
+        return value.item()
+    if isinstance(value, dict):
+        return {str(key): _to_serializable(val) for key, val in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_to_serializable(item) for item in value]
+    return value
+
+
+def _serializable_model_definition(cfg: Mapping[str, Any], system: AcidBaseSystem) -> dict[str, Any]:
+    model_def = cfg.get("acid_base_model")
+    if isinstance(model_def, Mapping) and model_def.get("components"):
+        return _to_serializable(dict(model_def))
+
+    components = []
+    species_rows = []
+    for idx, comp in enumerate(system.components):
+        log_beta = component_log_beta(comp)
+        pka = log_beta_to_pka(log_beta) if log_beta else []
+        species = sorted(list(comp.species or []), key=lambda sp: int(sp.h_count))
+        base_charge = int(species[0].charge) if species else 0
+        components.append(
+            {
+                "name": str(comp.name),
+                "analytical_concentration": float(comp.analytical_concentration),
+                "base_charge": base_charge,
+                "n_steps": len(log_beta),
+                "pka": [float(v) for v in pka],
+                "log_beta": [float(v) for v in log_beta],
+                "use_log_beta": False,
+                "role": "analyte" if idx == 0 else "spectator",
+                "fixed_concentration": False,
+            }
+        )
+        for sp in species:
+            species_rows.append(
+                {
+                    "name": str(sp.name),
+                    "component": str(comp.name),
+                    "h_count": int(sp.h_count),
+                    "charge": int(sp.charge),
+                    "log_beta": 0.0 if sp.log_beta is None else float(sp.log_beta),
+                    "fixed": bool(sp.fixed),
+                    "include": True,
+                }
+            )
+    return {
+        "model_type": "serialized_system",
+        "components": components,
+        "species": species_rows,
+    }
+
+
+def _serializable_bounds(bounds: Any, n_params: int) -> list[list[float | None]]:
+    out: list[list[float | None]] = [[None, None] for _ in range(max(0, int(n_params)))]
+    if bounds is None:
+        return out
+    if isinstance(bounds, tuple) and len(bounds) == 2:
+        left = np.asarray(bounds[0], dtype=float).reshape(-1)
+        right = np.asarray(bounds[1], dtype=float).reshape(-1)
+        if left.size == 1:
+            left = np.full(n_params, float(left[0]), dtype=float)
+        if right.size == 1:
+            right = np.full(n_params, float(right[0]), dtype=float)
+        for idx in range(min(n_params, left.size, right.size)):
+            out[idx] = [float(left[idx]), float(right[idx])]
+        return out
+    for idx, row in enumerate(list(bounds or [])[:n_params]):
+        if isinstance(row, Mapping):
+            lo = row.get("min")
+            hi = row.get("max")
+        else:
+            seq = list(row or [])
+            lo = seq[0] if len(seq) >= 1 else None
+            hi = seq[1] if len(seq) >= 2 else None
+        out[idx] = [
+            None if lo in (None, "") else float(lo),
+            None if hi in (None, "") else float(hi),
+        ]
+    return out
+
+
+def _build_errors_context(
+    *,
+    cfg: Mapping[str, Any],
+    system: AcidBaseSystem,
+    result: AcidBaseFitResult,
+    analysis_kind: str,
+    dataset: dict[str, Any],
+    fit_options: Mapping[str, Any],
+) -> dict[str, Any]:
+    theta_hat = np.asarray(result.theta_hat, dtype=float).reshape(-1)
+    return {
+        "analysis_type": "acid_base",
+        "analysis_kind": str(analysis_kind),
+        "theta_hat": theta_hat.tolist(),
+        "parameter_names": list(result.parameter_names or [row["parameter"] for row in _fit_result_tables(result)[0]]),
+        "fixed_mask": list(result.fixed_mask or [False for _ in range(theta_hat.size)]),
+        "bounds": _serializable_bounds(result.bounds, theta_hat.size),
+        "jacobian": (
+            None
+            if result.jacobian is None
+            else np.asarray(result.jacobian, dtype=float).tolist()
+        ),
+        "residuals": np.asarray(result.residuals, dtype=float).tolist(),
+        "primary_constant_space": str(result.parameter_space or "pka"),
+        "constant_parameter_indices": list(range(len(result.fitted_pka))),
+        "n_acid_base_constants": len(result.fitted_pka),
+        "dataset": _to_serializable(dataset),
+        "model": {
+            "acid_base_model": _serializable_model_definition(cfg, system),
+            "temperature": float(system.temperature),
+            "ionic_strength": (
+                None if system.ionic_strength is None else float(system.ionic_strength)
+            ),
+            "kw": float(system.kw),
+        },
+        "fit_options": _to_serializable(dict(fit_options or {})),
+    }
+
+
+def _merge_error_output_into_export(export_data: dict[str, Any], error_output: Mapping[str, Any]) -> None:
+    frames = dict(error_output.get("export_frames") or {})
+    if frames:
+        if "Parameters" in frames:
+            export_data["error_parameters"] = frames["Parameters"]
+        if "pKa" in frames:
+            export_data["error_pka_table"] = frames["pKa"]
+        if "log_beta" in frames:
+            export_data["error_log_beta_table"] = frames["log_beta"]
+        if "Derived constants" in frames:
+            export_data["derived_constants"] = frames["Derived constants"]
+        if "Covariance" in frames:
+            export_data["error_covariance_matrix"] = frames["Covariance"]
+        if "Correlation" in frames:
+            export_data["error_correlation_matrix"] = frames["Correlation"]
+        if "Error diagnostics" in frames:
+            export_data["error_diagnostics"] = frames["Error diagnostics"]
+        if "Bootstrap samples" in frames:
+            export_data["bootstrap_samples"] = frames["Bootstrap samples"]
+
+    core_metrics = dict(error_output.get("core_metrics") or {})
+    stability_diag = dict(core_metrics.get("stability_diag") or {})
+    export_data["diagnostics_summary"] = str(error_output.get("summary") or "")
+    export_data["diagnostics_full"] = str(stability_diag.get("diag_full") or "")
+    export_data["stability_status"] = stability_diag.get("status")
+    export_data["condition_number"] = stability_diag.get("cond_jjt")
+    export_data["stability_indicator"] = stability_diag.get("stability_indicator")
+
+
 def _base_result_payload(
     result: AcidBaseFitResult,
     *,
     analysis_kind: str,
     graphs: dict[str, str],
     export_data: dict[str, Any],
+    errors_context: dict[str, Any] | None = None,
+    error_output: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     pka_table, log_beta_table = _fit_result_tables(result)
     constants = pka_table + log_beta_table
@@ -320,6 +478,12 @@ def _base_result_payload(
         "bic": result.bic,
         "analysis_kind": analysis_kind,
     }
+    if error_output is not None:
+        core_metrics = dict(error_output.get("core_metrics") or {})
+        stability_diag = dict(core_metrics.get("stability_diag") or {})
+        stats["stability_status"] = stability_diag.get("status")
+        stats["condition_number"] = stability_diag.get("cond_jjt")
+        stats["max_abs_correlation"] = stability_diag.get("max_abs_corr")
     lines = ["Acid-base fit results", ""]
     for row in pka_table:
         lines.append(f"{row['parameter']}: {row['value']:.8g}")
@@ -342,6 +506,10 @@ def _base_result_payload(
         None if result.correlation_matrix is None else np.asarray(result.correlation_matrix).tolist()
     )
     export_data["residuals"] = np.asarray(result.residuals, dtype=float).tolist()
+    if errors_context is not None:
+        export_data["errors_context"] = _to_serializable(errors_context)
+    if error_output is not None:
+        _merge_error_output_into_export(export_data, error_output)
     return {
         "success": bool(result.success),
         "message": str(result.message),
@@ -361,6 +529,7 @@ def _base_result_payload(
             if graphs.get(key)
         ],
         "export_data": export_data,
+        "errors_context": _to_serializable(errors_context) if errors_context is not None else None,
     }
 
 
@@ -432,6 +601,15 @@ def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[
     obs_ph = observed_pH(experiment)
     obs_for_plot = measured_pH if measured_pH is not None else obs_ph
     residuals = np.asarray(obs_for_plot, dtype=float).reshape(-1) - calc_pH
+    fitted_params = {
+        str(name).strip().lower().replace(" ", "_").replace("-", "_"): float(value)
+        for name, value in zip(result.parameter_names or [], np.asarray(result.theta_hat, dtype=float).reshape(-1))
+    }
+    calc_emf = electrode_emf_from_pH(
+        calc_pH,
+        electrode_e0=fitted_params.get("electrode_e0", experiment.electrode_e0),
+        electrode_slope=fitted_params.get("electrode_slope", experiment.electrode_slope),
+    )
     dist_ph = simulate_species_vs_pH(fitted_system)
     dist_vol = simulate_species_vs_volume(experiment, fitted_system, fit_options)
     graphs = {
@@ -446,6 +624,8 @@ def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[
                 "volume_mL": volumes,
                 "pH_observed": obs_for_plot,
                 "pH_calculated": calc_pH,
+                "E_mV_observed": measured_emf,
+                "E_mV_calculated": calc_emf if measured_emf is not None else np.nan,
                 "residual_pH": residuals,
             }
         ).to_dict(orient="list"),
@@ -458,7 +638,54 @@ def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[
             columns=["volume_mL", "pH"] + dist_vol.species_names,
         ).to_dict(orient="list"),
     }
-    return _base_result_payload(result, analysis_kind="potentiometry", graphs=graphs, export_data=export_data)
+    dataset_context = {
+        "volume_mL": volumes.tolist(),
+        "pH_observed": None if measured_pH is None else np.asarray(measured_pH, dtype=float).tolist(),
+        "E_mV_observed": None if measured_emf is None else np.asarray(measured_emf, dtype=float).tolist(),
+        "pH_calculated": np.asarray(calc_pH, dtype=float).tolist(),
+        "E_mV_calculated": np.asarray(calc_emf, dtype=float).tolist(),
+        "observed_kind": "emf" if measured_pH is None and measured_emf is not None else "ph",
+        "initial_volume": float(experiment.initial_volume),
+        "analyte_concentration": (
+            None if experiment.analyte_concentration is None else float(experiment.analyte_concentration)
+        ),
+        "titrant_concentration": (
+            None if experiment.titrant_concentration is None else float(experiment.titrant_concentration)
+        ),
+        "titrant_type": str(experiment.titrant_type),
+        "temperature": float(experiment.temperature),
+        "electrode_e0": (
+            None if fitted_params.get("electrode_e0") is None else float(fitted_params["electrode_e0"])
+        ),
+        "electrode_slope": (
+            None if fitted_params.get("electrode_slope") is None else float(fitted_params["electrode_slope"])
+        ),
+        "volume_offset": float(fit_options.get("volume_offset", experiment.volume_offset or 0.0) or 0.0),
+    }
+    errors_context = _build_errors_context(
+        cfg=cfg,
+        system=system,
+        result=result,
+        analysis_kind="potentiometry",
+        dataset=dataset_context,
+        fit_options=fit_options,
+    )
+    error_output = None
+    try:
+        error_output = compute_errors_acid_base_from_context(
+            errors_context,
+            {"method": "analytic", "include_16_84": True},
+        )
+    except Exception as exc:
+        log(f"Analytical acid-base errors unavailable: {exc}")
+    return _base_result_payload(
+        result,
+        analysis_kind="potentiometry",
+        graphs=graphs,
+        export_data=export_data,
+        errors_context=errors_context,
+        error_output=error_output,
+    )
 
 
 def _run_spectroscopy(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[str, Any]:
@@ -512,7 +739,35 @@ def _run_spectroscopy(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[s
         ).to_dict(orient="list"),
         "pure_signals": np.asarray(pred["coefficients"], dtype=float).tolist(),
     }
-    return _base_result_payload(result, analysis_kind="spectroscopy", graphs=graphs, export_data=export_data)
+    errors_context = _build_errors_context(
+        cfg=cfg,
+        system=system,
+        result=result,
+        analysis_kind="spectroscopy",
+        dataset={
+            "pH": np.asarray(dataset.pH, dtype=float).tolist(),
+            "signal_observed": np.asarray(dataset.signal, dtype=float).tolist(),
+            "signal_calculated": np.asarray(pred["calculated"], dtype=float).tolist(),
+            "wavelengths": None if dataset.wavelengths is None else np.asarray(dataset.wavelengths, dtype=float).tolist(),
+        },
+        fit_options={"baseline": bool(cfg.get("baseline", False))},
+    )
+    error_output = None
+    try:
+        error_output = compute_errors_acid_base_from_context(
+            errors_context,
+            {"method": "analytic", "include_16_84": True},
+        )
+    except Exception as exc:
+        log(f"Analytical acid-base errors unavailable: {exc}")
+    return _base_result_payload(
+        result,
+        analysis_kind="spectroscopy",
+        graphs=graphs,
+        export_data=export_data,
+        errors_context=errors_context,
+        error_output=error_output,
+    )
 
 
 def _run_nmr(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[str, Any]:
@@ -554,7 +809,35 @@ def _run_nmr(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[str, Any]:
         ).to_dict(orient="list"),
         "limiting_shifts": np.asarray(pred["coefficients"], dtype=float).tolist(),
     }
-    return _base_result_payload(result, analysis_kind="nmr", graphs=graphs, export_data=export_data)
+    errors_context = _build_errors_context(
+        cfg=cfg,
+        system=system,
+        result=result,
+        analysis_kind="nmr",
+        dataset={
+            "pH": np.asarray(dataset.pH, dtype=float).tolist(),
+            "shifts_observed": np.asarray(dataset.shifts, dtype=float).tolist(),
+            "shifts_calculated": np.asarray(pred["calculated"], dtype=float).tolist(),
+            "nuclei_labels": [str(value) for value in dataset.nuclei_labels],
+        },
+        fit_options={},
+    )
+    error_output = None
+    try:
+        error_output = compute_errors_acid_base_from_context(
+            errors_context,
+            {"method": "analytic", "include_16_84": True},
+        )
+    except Exception as exc:
+        log(f"Analytical acid-base errors unavailable: {exc}")
+    return _base_result_payload(
+        result,
+        analysis_kind="nmr",
+        graphs=graphs,
+        export_data=export_data,
+        errors_context=errors_context,
+        error_output=error_output,
+    )
 
 
 def run_acid_base(config: Mapping[str, Any] | Any, progress_cb: ProgressCallback = None) -> dict[str, Any]:

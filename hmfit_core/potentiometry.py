@@ -474,7 +474,15 @@ def fit_potentiometry(
 
     opt = least_squares(residual, x0, bounds=bounds, xtol=1e-10, ftol=1e-10, gtol=1e-10)
     fitted_system, _ = update_system_from_parameter_vector(opt.x, system_template, opts)
-    return _build_fit_result(opt, fitted_system, residual(opt.x), parameter_names)
+    return _build_fit_result(
+        opt,
+        fitted_system,
+        residual(opt.x),
+        parameter_names,
+        bounds=bounds,
+        fixed_mask=opts.get("fixed_mask"),
+        parameter_space="pka",
+    )
 
 
 __all__ = [
