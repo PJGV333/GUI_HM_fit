@@ -437,22 +437,54 @@ def _base_result_payload(
 
 
 def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[str, Any]:
-    df = _read_table(cfg["file_path"], _configured_sheet(cfg))
-    volume_col = _csv_column(df, ["volume_mL", "volume", "v", "v_ml"])
-    if volume_col is None:
-        raise ValueError("Potentiometry data needs a volume_mL column.")
-    ph_col = _csv_column(df, ["pH", "ph"])
-    emf_col = _csv_column(df, ["E_mV", "emf", "emf_mV", "E"])
-    if ph_col is None and emf_col is None:
-        raise ValueError("Potentiometry data needs pH or E_mV.")
+    signal_type = str(cfg.get("signal_type") or "").strip()
+    volume_unit = str(cfg.get("volume_unit") or "mL").strip()
+    if cfg.get("titrant_volume") is not None and cfg.get("observed_signal") is not None:
+        volumes_all = np.asarray(cfg.get("titrant_volume"), dtype=float).reshape(-1)
+        observed_all = np.asarray(cfg.get("observed_signal"), dtype=float).reshape(-1)
+        include_raw = cfg.get("included_mask")
+        if include_raw is None:
+            include_mask = np.ones(volumes_all.shape, dtype=bool)
+        else:
+            include_mask = np.asarray(include_raw, dtype=bool).reshape(-1)
+        if volumes_all.size != observed_all.size or volumes_all.size != include_mask.size:
+            raise ValueError("Potentiometry titrant_volume, observed_signal, and included_mask must have the same length.")
+        volumes = volumes_all[include_mask]
+        observed = observed_all[include_mask]
+    else:
+        df = _read_table(cfg["file_path"], _configured_sheet(cfg))
+        volume_col = _csv_column(df, ["volume_mL", "volume", "v", "v_ml"])
+        if volume_col is None:
+            raise ValueError("Potentiometry data needs a volume_mL column.")
+        ph_col = _csv_column(df, ["pH", "ph"])
+        emf_col = _csv_column(df, ["E_mV", "emf", "emf_mV", "E"])
+        if ph_col is None and emf_col is None:
+            raise ValueError("Potentiometry data needs pH or E_mV.")
+        volumes = pd.to_numeric(df[volume_col], errors="coerce").to_numpy(dtype=float)
+        measured_pH = None
+        measured_emf = None
+        if ph_col is not None:
+            measured_pH = pd.to_numeric(df[ph_col], errors="coerce").to_numpy(dtype=float)
+            signal_type = signal_type or "pH"
+        if emf_col is not None:
+            measured_emf = pd.to_numeric(df[emf_col], errors="coerce").to_numpy(dtype=float)
+            if measured_pH is None:
+                signal_type = signal_type or "mV"
+        observed = measured_emf if measured_pH is None else measured_pH
+        include_mask = np.ones(volumes.shape, dtype=bool)
 
-    volumes = pd.to_numeric(df[volume_col], errors="coerce").to_numpy(dtype=float)
+    if volumes.size == 0:
+        raise ValueError("Potentiometry dataset has no included rows.")
     measured_pH = None
     measured_emf = None
-    if ph_col is not None:
-        measured_pH = pd.to_numeric(df[ph_col], errors="coerce").to_numpy(dtype=float)
-    if emf_col is not None:
-        measured_emf = pd.to_numeric(df[emf_col], errors="coerce").to_numpy(dtype=float)
+    if signal_type.lower() in {"ph", "ph*"}:
+        measured_pH = observed
+    elif signal_type.lower() == "mv":
+        measured_emf = observed
+    else:
+        raise ValueError("Potentiometry signal_type must be pH, pH*, or mV.")
+    for warning in list(cfg.get("potentiometry_warnings") or []):
+        log(f"Warning: {warning}")
 
     system = _build_system(cfg)
     initial_pka = _initial_pka_from_config(cfg, system)
@@ -530,6 +562,8 @@ def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[
                 "E_mV_observed": measured_emf,
                 "E_mV_calculated": calc_emf if measured_emf is not None else np.nan,
                 "residual_pH": residuals,
+                "signal_type": [signal_type] * volumes.size,
+                "source_volume_unit": [volume_unit] * volumes.size,
             }
         ).to_dict(orient="list"),
         "species_vs_pH": pd.DataFrame(
@@ -548,6 +582,8 @@ def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[
         "pH_calculated": np.asarray(calc_pH, dtype=float).tolist(),
         "E_mV_calculated": np.asarray(calc_emf, dtype=float).tolist(),
         "observed_kind": "emf" if measured_pH is None and measured_emf is not None else "ph",
+        "signal_type": signal_type,
+        "source_volume_unit": volume_unit,
         "initial_volume": float(experiment.initial_volume),
         "analyte_concentration": (
             None if experiment.analyte_concentration is None else float(experiment.analyte_concentration)

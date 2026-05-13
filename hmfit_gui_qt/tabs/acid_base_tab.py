@@ -88,6 +88,15 @@ def _set_table_text(table: QTableWidget, row: int, col: int, value: Any) -> None
     table.setItem(row, col, QTableWidgetItem(str(value)))
 
 
+def _volume_unit_factor_to_mL(unit: str) -> float:
+    key = str(unit or "").strip().lower()
+    if key in {"ul", "µl"}:
+        return 1.0e-3
+    if key == "l":
+        return 1.0e3
+    return 1.0
+
+
 class AcidBaseTab(QWidget):
     COMPONENT_COLUMNS = [
         "Role",
@@ -125,6 +134,8 @@ class AcidBaseTab(QWidget):
         self._worker: FitWorker | None = None
         self._thread: QThread | None = None
         self._file_path = ""
+        self._current_data_frame: pd.DataFrame | None = None
+        self._potentiometry_warning_messages: list[str] = []
         self._last_result: dict[str, Any] | None = None
         self._last_config: dict[str, Any] | None = None
         self._plot_pages: list[tuple[str, str]] = []
@@ -183,7 +194,7 @@ class AcidBaseTab(QWidget):
         self.combo_sheet = QComboBox(self._data_group)
         self.combo_sheet.setEnabled(False)
         self.combo_sheet.currentIndexChanged.connect(self._on_sheet_changed)
-        form.addRow("Excel sheet", self.combo_sheet)
+        form.addRow("Data sheet", self.combo_sheet)
         data_layout.addLayout(form)
 
         file_row = QHBoxLayout()
@@ -195,10 +206,66 @@ class AcidBaseTab(QWidget):
         file_row.addWidget(self.lbl_file_status, 1)
         data_layout.addLayout(file_row)
 
+        self._data_import_stack = QStackedWidget(self._data_group)
+        data_layout.addWidget(self._data_import_stack, 1)
+
+        pot_page = QWidget(self._data_import_stack)
+        pot_layout = QVBoxLayout(pot_page)
+        pot_form = QFormLayout()
+
+        self.combo_volume_column = QComboBox(pot_page)
+        self.combo_volume_column.currentIndexChanged.connect(self._refresh_potentiometry_preview)
+        pot_form.addRow("Volume column", self.combo_volume_column)
+
+        self.combo_volume_unit = QComboBox(pot_page)
+        self.combo_volume_unit.addItem("µL", "µL")
+        self.combo_volume_unit.addItem("mL", "mL")
+        self.combo_volume_unit.addItem("L", "L")
+        self.combo_volume_unit.setCurrentIndex(self.combo_volume_unit.findData("mL"))
+        self.combo_volume_unit.currentIndexChanged.connect(self._refresh_potentiometry_preview)
+        pot_form.addRow("Volume unit", self.combo_volume_unit)
+
+        self.combo_signal_type = QComboBox(pot_page)
+        self.combo_signal_type.addItem("pH", "pH")
+        self.combo_signal_type.addItem("pH*", "pH*")
+        self.combo_signal_type.addItem("mV", "mV")
+        self.combo_signal_type.currentIndexChanged.connect(self._refresh_potentiometry_preview)
+        pot_form.addRow("Signal type", self.combo_signal_type)
+
+        self.combo_signal_column = QComboBox(pot_page)
+        self.combo_signal_column.currentIndexChanged.connect(self._refresh_potentiometry_preview)
+        pot_form.addRow("Signal column", self.combo_signal_column)
+        pot_layout.addLayout(pot_form)
+
+        self.lbl_pot_validation = QLabel("", pot_page)
+        self.lbl_pot_validation.setWordWrap(True)
+        self.lbl_pot_validation.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        pot_layout.addWidget(self.lbl_pot_validation)
+
+        self.table_pot_preview = QTableWidget(0, 5, pot_page)
+        self.table_pot_preview.setHorizontalHeaderLabels(
+            [
+                "Include",
+                "Original row",
+                "Selected volume",
+                "Volume (mL)",
+                "Observed signal",
+            ]
+        )
+        self.table_pot_preview.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        self.table_pot_preview.horizontalHeader().setStretchLastSection(True)
+        self.table_pot_preview.setMinimumHeight(180)
+        pot_layout.addWidget(self.table_pot_preview, 1)
+        self._data_import_stack.addWidget(pot_page)
+
+        generic_page = QWidget(self._data_import_stack)
+        generic_layout = QVBoxLayout(generic_page)
         self.preview_text = QPlainTextEdit(self._data_group)
         self.preview_text.setReadOnly(True)
         self.preview_text.setMinimumHeight(130)
-        data_layout.addWidget(self.preview_text, 1)
+        generic_layout.addWidget(self.preview_text, 1)
+        self._data_import_stack.addWidget(generic_page)
+
         layout.addWidget(self._data_group)
 
     def _build_model_tab(self) -> None:
@@ -778,6 +845,9 @@ class AcidBaseTab(QWidget):
     def _on_data_type_changed(self) -> None:
         is_pot = str(self.combo_data_type.currentData() or "") == "potentiometry"
         self.titration_group.setVisible(is_pot)
+        if hasattr(self, "_data_import_stack"):
+            self._data_import_stack.setCurrentIndex(0 if is_pot else 1)
+        self._preview_selected_sheet()
         self._refresh_parameter_table()
 
     def _on_titrant_type_changed(self) -> None:
@@ -1212,6 +1282,19 @@ class AcidBaseTab(QWidget):
         raise ValueError("Define at least one non-proton acid-base component.")
 
     def _experimental_ph_values(self) -> list[float]:
+        if str(self.combo_data_type.currentData() or "") == "potentiometry":
+            try:
+                payload = self._build_potentiometry_import_payload()
+            except Exception:
+                return []
+            signal_type = str(payload.get("signal_type") or "")
+            if signal_type.lower() not in {"ph", "ph*"}:
+                return []
+            observed = np.asarray(payload.get("observed_signal") or [], dtype=float)
+            mask = np.asarray(payload.get("included_mask") or [], dtype=bool)
+            if observed.size != mask.size:
+                return []
+            return [float(v) for v in observed[mask]]
         path = Path(str(self._file_path or ""))
         if not path.exists():
             return []
@@ -1286,6 +1369,8 @@ class AcidBaseTab(QWidget):
             "kw": kw,
             "baseline": bool(int(float(self._parameter_value("baseline", default="1" if self.chk_baseline.isChecked() else "0")))),
         }
+        if analysis_kind == "potentiometry":
+            cfg.update(self._build_potentiometry_import_payload())
         if strong_mode == "manual":
             cfg["initial_strong_charge"] = float(self.spin_initial_strong_charge.value())
             cfg["titrant_strong_charge"] = float(self.spin_titrant_strong_charge.value())
@@ -1356,21 +1441,215 @@ class AcidBaseTab(QWidget):
     def _on_sheet_changed(self) -> None:
         self._preview_selected_sheet()
 
+    def _read_selected_dataframe(self, *, nrows: int | None = None) -> pd.DataFrame:
+        path = Path(str(self._file_path or ""))
+        if not path.exists():
+            raise FileNotFoundError("No data file selected.")
+        if path.suffix.lower() == ".xlsx":
+            sheet = self.combo_sheet.currentData()
+            if sheet in (None, ""):
+                sheet = 0
+            return pd.read_excel(path, sheet_name=sheet, nrows=nrows)
+        return pd.read_csv(path, nrows=nrows)
+
+    def _populate_potentiometry_columns(self, columns: list[str]) -> None:
+        previous_volume = str(self.combo_volume_column.currentData() or self.combo_volume_column.currentText() or "")
+        previous_signal = str(self.combo_signal_column.currentData() or self.combo_signal_column.currentText() or "")
+        for combo in (self.combo_volume_column, self.combo_signal_column):
+            combo.blockSignals(True)
+            combo.clear()
+            combo.addItem("Select column...", "")
+            for column in columns:
+                combo.addItem(column, column)
+            combo.blockSignals(False)
+        for combo, wanted in (
+            (self.combo_volume_column, previous_volume),
+            (self.combo_signal_column, previous_signal),
+        ):
+            index = combo.findData(wanted)
+            if index < 0 and not wanted:
+                index = 0
+            if index >= 0:
+                combo.setCurrentIndex(index)
+        if self.combo_volume_column.currentIndex() <= 0:
+            volume_candidates = {"volume", "volume_ml", "v", "v_ml", "volume_added"}
+            for idx, column in enumerate(columns, start=1):
+                if str(column).strip().lower() in volume_candidates:
+                    self.combo_volume_column.setCurrentIndex(idx)
+                    break
+        if self.combo_signal_column.currentIndex() <= 0:
+            preferred = ["ph", "ph*", "mv", "e_mv", "emf", "signal"]
+            lowered = [str(col).strip().lower() for col in columns]
+            for name in preferred:
+                if name in lowered:
+                    self.combo_signal_column.setCurrentIndex(lowered.index(name) + 1)
+                    break
+        if self.combo_signal_column.currentIndex() > 0:
+            signal_name = str(self.combo_signal_column.currentData() or "").strip().lower()
+            if signal_name in {"e", "e_mv", "emf", "emf_mv", "mv"}:
+                idx = self.combo_signal_type.findData("mV")
+                if idx >= 0:
+                    self.combo_signal_type.setCurrentIndex(idx)
+
+    def _set_pot_validation_messages(self, errors: list[str], warnings: list[str]) -> None:
+        self._potentiometry_warning_messages = list(warnings)
+        lines: list[str] = []
+        if errors:
+            lines.extend([f"Error: {msg}" for msg in errors])
+        if warnings:
+            lines.extend([f"Warning: {msg}" for msg in warnings])
+        self.lbl_pot_validation.setText("\n".join(lines))
+        color = "#a40000" if errors else ("#8f5c00" if warnings else "#444444")
+        self.lbl_pot_validation.setStyleSheet(f"color: {color};")
+
+    def _refresh_potentiometry_preview(self) -> None:
+        self.table_pot_preview.setRowCount(0)
+        if str(self.combo_data_type.currentData() or "") != "potentiometry":
+            self._set_pot_validation_messages([], [])
+            return
+        if self._current_data_frame is None or self._current_data_frame.empty:
+            self._set_pot_validation_messages([], [])
+            return
+        volume_col = str(self.combo_volume_column.currentData() or "")
+        signal_col = str(self.combo_signal_column.currentData() or "")
+        if not volume_col or not signal_col:
+            self._set_pot_validation_messages(["Select both the volume and signal columns."], [])
+            return
+        errors, warnings, preview_df = self._build_potentiometry_preview_dataframe(self._current_data_frame)
+        self._set_pot_validation_messages(errors, warnings)
+
+        signal_type = str(self.combo_signal_type.currentData() or "signal")
+        self.table_pot_preview.setHorizontalHeaderLabels(
+            [
+                "Include",
+                "Original row",
+                f"{volume_col}",
+                "Volume (mL)",
+                f"{signal_col} ({signal_type})",
+            ]
+        )
+        self.table_pot_preview.blockSignals(True)
+        try:
+            self.table_pot_preview.setRowCount(len(preview_df.index))
+            for row_idx, row in enumerate(preview_df.to_dict(orient="records")):
+                include_item = QTableWidgetItem()
+                include_item.setFlags(
+                    Qt.ItemFlag.ItemIsEnabled
+                    | Qt.ItemFlag.ItemIsSelectable
+                    | Qt.ItemFlag.ItemIsUserCheckable
+                )
+                include_item.setCheckState(
+                    Qt.CheckState.Checked if bool(row["include"]) else Qt.CheckState.Unchecked
+                )
+                self.table_pot_preview.setItem(row_idx, 0, include_item)
+                _set_table_text(self.table_pot_preview, row_idx, 1, int(row["original_row"]))
+                _set_table_text(self.table_pot_preview, row_idx, 2, row["volume_raw"])
+                _set_table_text(self.table_pot_preview, row_idx, 3, row["volume_mL"])
+                _set_table_text(self.table_pot_preview, row_idx, 4, row["signal_raw"])
+        finally:
+            self.table_pot_preview.blockSignals(False)
+
+    def _build_potentiometry_preview_dataframe(
+        self,
+        df: pd.DataFrame,
+        *,
+        include_from_table: bool = True,
+    ) -> tuple[list[str], list[str], pd.DataFrame]:
+        volume_col = str(self.combo_volume_column.currentData() or "")
+        signal_col = str(self.combo_signal_column.currentData() or "")
+        errors: list[str] = []
+        warnings: list[str] = []
+        if not volume_col or volume_col not in df.columns:
+            errors.append("Select a valid volume column.")
+        if not signal_col or signal_col not in df.columns:
+            errors.append("Select a valid signal column.")
+        if errors:
+            return errors, warnings, pd.DataFrame()
+
+        volume_numeric = pd.to_numeric(df[volume_col], errors="coerce")
+        signal_numeric = pd.to_numeric(df[signal_col], errors="coerce")
+        invalid_volume_rows = [int(idx) + 2 for idx, value in enumerate(volume_numeric) if pd.isna(value)]
+        invalid_signal_rows = [int(idx) + 2 for idx, value in enumerate(signal_numeric) if pd.isna(value)]
+        if invalid_volume_rows:
+            errors.append(
+                "Volume column must be numeric. Invalid rows: "
+                + ", ".join(str(v) for v in invalid_volume_rows[:8])
+            )
+        if invalid_signal_rows:
+            errors.append(
+                "Signal column must be numeric. Invalid rows: "
+                + ", ".join(str(v) for v in invalid_signal_rows[:8])
+            )
+        factor = _volume_unit_factor_to_mL(str(self.combo_volume_unit.currentData() or "mL"))
+        converted_volume = volume_numeric.astype(float) * factor
+        finite_volume = converted_volume.dropna().to_numpy(dtype=float)
+        if finite_volume.size >= 2 and np.any(np.diff(finite_volume) < 0.0):
+            errors.append("Volume should be non-decreasing.")
+        if finite_volume.size and abs(float(finite_volume[0])) <= 1.0e-15:
+            warnings.append("Initial volume is zero.")
+        signal_type = str(self.combo_signal_type.currentData() or "")
+        finite_signal = signal_numeric.dropna().to_numpy(dtype=float)
+        if signal_type.lower() in {"ph", "ph*"} and finite_signal.size and np.nanmax(finite_signal) > 14.0:
+            warnings.append("pH values above 14 detected; treat them as operational pH (pH*).")
+
+        preview_df = pd.DataFrame(
+            {
+                "include": [True] * len(df.index),
+                "original_row": np.arange(len(df.index), dtype=int) + 2,
+                "volume_raw": df[volume_col].tolist(),
+                "volume_mL": converted_volume.tolist(),
+                "signal_raw": signal_numeric.astype(float).tolist(),
+            }
+        )
+        if include_from_table and self.table_pot_preview.rowCount() == len(df.index):
+            include_mask: list[bool] = []
+            for row in range(self.table_pot_preview.rowCount()):
+                item = self.table_pot_preview.item(row, 0)
+                include_mask.append(bool(item is not None and item.checkState() == Qt.CheckState.Checked))
+            preview_df["include"] = include_mask
+        return errors, warnings, preview_df
+
+    def _build_potentiometry_import_payload(self) -> dict[str, Any]:
+        if self._current_data_frame is None:
+            raise ValueError("Load a data file before processing potentiometry data.")
+        errors, warnings, preview_df = self._build_potentiometry_preview_dataframe(
+            self._current_data_frame,
+            include_from_table=True,
+        )
+        self._set_pot_validation_messages(errors, warnings)
+        if errors:
+            raise ValueError("\n".join(errors))
+        included_mask = preview_df["include"].to_numpy(dtype=bool)
+        if not np.any(included_mask):
+            raise ValueError("Select at least one potentiometry row to include.")
+        return {
+            "titrant_volume": preview_df["volume_mL"].to_numpy(dtype=float).tolist(),
+            "observed_signal": preview_df["signal_raw"].to_numpy(dtype=float).tolist(),
+            "included_mask": included_mask.tolist(),
+            "signal_type": str(self.combo_signal_type.currentData() or "pH"),
+            "volume_unit": str(self.combo_volume_unit.currentData() or "mL"),
+            "volume_column": str(self.combo_volume_column.currentData() or ""),
+            "signal_column": str(self.combo_signal_column.currentData() or ""),
+            "potentiometry_warnings": list(warnings),
+        }
+
     def _preview_selected_sheet(self) -> None:
         path = Path(str(self._file_path or ""))
         if not path.exists():
             return
         try:
-            if path.suffix.lower() == ".xlsx":
-                sheet = self.combo_sheet.currentData()
-                if sheet in (None, ""):
-                    sheet = 0
-                df = pd.read_excel(path, sheet_name=sheet, nrows=8)
-            else:
-                df = pd.read_csv(path, nrows=8)
-            self.preview_text.setPlainText(df.to_string(index=False))
+            self._current_data_frame = self._read_selected_dataframe()
+            preview_df = self._current_data_frame.head(8)
+            self.preview_text.setPlainText(preview_df.to_string(index=False))
+            self._populate_potentiometry_columns([str(col) for col in self._current_data_frame.columns])
+            self._refresh_potentiometry_preview()
         except Exception as exc:
+            self._current_data_frame = None
             self.preview_text.setPlainText(f"Could not preview data file: {exc}")
+            self.combo_volume_column.clear()
+            self.combo_signal_column.clear()
+            self.table_pot_preview.setRowCount(0)
+            self._set_pot_validation_messages([f"Could not preview data file: {exc}"], [])
 
     def _set_running(self, running: bool) -> None:
         self._is_running = bool(running)
@@ -1645,6 +1924,26 @@ class AcidBaseTab(QWidget):
             ix = self.combo_sheet.findText(sheet_name)
             if ix >= 0:
                 self.combo_sheet.setCurrentIndex(ix)
+        volume_unit = str(config.get("volume_unit") or "")
+        if volume_unit:
+            idx = self.combo_volume_unit.findData(volume_unit)
+            if idx >= 0:
+                self.combo_volume_unit.setCurrentIndex(idx)
+        signal_type = str(config.get("signal_type") or "")
+        if signal_type:
+            idx = self.combo_signal_type.findData(signal_type)
+            if idx >= 0:
+                self.combo_signal_type.setCurrentIndex(idx)
+        volume_column = str(config.get("volume_column") or "")
+        if volume_column:
+            idx = self.combo_volume_column.findData(volume_column)
+            if idx >= 0:
+                self.combo_volume_column.setCurrentIndex(idx)
+        signal_column = str(config.get("signal_column") or "")
+        if signal_column:
+            idx = self.combo_signal_column.findData(signal_column)
+            if idx >= 0:
+                self.combo_signal_column.setCurrentIndex(idx)
         model = config.get("acid_base_model")
         if model:
             self._populate_model_from_definition(canonicalize_acid_base_model(model), update_template=True)
@@ -1720,7 +2019,14 @@ class AcidBaseTab(QWidget):
         self.lbl_file_status.setText("No file selected")
         self.combo_sheet.clear()
         self.combo_sheet.setEnabled(False)
+        self._current_data_frame = None
         self.preview_text.clear()
+        self.combo_volume_column.clear()
+        self.combo_signal_column.clear()
+        self.combo_volume_unit.setCurrentIndex(self.combo_volume_unit.findData("mL"))
+        self.combo_signal_type.setCurrentIndex(self.combo_signal_type.findData("pH"))
+        self.table_pot_preview.setRowCount(0)
+        self._set_pot_validation_messages([], [])
         self.combo_data_type.setCurrentIndex(0)
         self.combo_model_type.setCurrentIndex(0)
         self._load_template("simple_monoprotic")

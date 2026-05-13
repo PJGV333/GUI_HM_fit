@@ -356,3 +356,109 @@ def test_old_simple_config_still_builds_system():
     )
     assert system.components[0].name == "Lig"
     assert [sp.charge for sp in system.components[0].species] == [-2, -1, 0]
+
+
+def test_potentiometry_runner_uses_processed_arrays_and_mask():
+    true_system = make_simple_acid_base_system(
+        analytical_concentration=1.0e-2,
+        pka=[5.0],
+        base_charge=-1,
+    )
+    volumes_mL = np.linspace(0.0, 18.0, 30)
+    template = PotentiometryExperiment(
+        initial_volume=10.0,
+        titrant_volumes=volumes_mL,
+        analyte_concentration=1.0e-2,
+        titrant_concentration=1.0e-2,
+        titrant_type="base",
+    )
+    pH = simulate_pH_titration(template, true_system)
+    include_mask = np.ones(volumes_mL.shape, dtype=bool)
+    include_mask[[3, 7, 18]] = False
+
+    result = run_acid_base(
+        {
+            "file_path": __file__,
+            "data_type": "potentiometry",
+            "pka_initial": "4.4",
+            "analyte_concentration": 1.0e-2,
+            "titrant_concentration": 1.0e-2,
+            "initial_volume": 10.0,
+            "titrant_type": "base",
+            "titrant_volume": volumes_mL.tolist(),
+            "observed_signal": pH.tolist(),
+            "included_mask": include_mask.tolist(),
+            "signal_type": "pH",
+            "volume_unit": "mL",
+        },
+        progress_cb=lambda _msg: None,
+    )
+
+    assert result["success"] is True
+    assert abs(float(result["constants"][0]["value"]) - 5.0) < 1.0e-6
+    exported = result["export_data"]["experimental_vs_calculated"]
+    assert len(exported["volume_mL"]) == int(include_mask.sum())
+    assert exported["signal_type"] == ["pH"] * int(include_mask.sum())
+    assert exported["source_volume_unit"] == ["mL"] * int(include_mask.sum())
+
+
+def test_gui_potentiometry_import_payload_converts_units_and_preserves_selection(tmp_path, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    qt_widgets = pytest.importorskip("PySide6.QtWidgets")
+    qt_core = pytest.importorskip("PySide6.QtCore")
+    from hmfit_gui_qt.tabs.acid_base_tab import AcidBaseTab
+
+    app = qt_widgets.QApplication.instance() or qt_widgets.QApplication([])
+    _ = app
+
+    path = tmp_path / "pot_payload.xlsx"
+    with pd.ExcelWriter(path, engine="openpyxl") as writer:
+        pd.DataFrame(
+            {
+                "added_uL": [0.0, 250.0, 500.0, 900.0],
+                "glass_electrode": [6.20, 6.55, 6.90, 7.15],
+                "note": ["a", "b", "c", "d"],
+            }
+        ).to_excel(writer, sheet_name="Titration", index=False)
+
+    tab = AcidBaseTab()
+    tab._set_file_path(str(path))
+    tab.combo_data_type.setCurrentIndex(tab.combo_data_type.findData("potentiometry"))
+    tab.combo_sheet.setCurrentIndex(tab.combo_sheet.findData("Titration"))
+    tab.combo_volume_column.setCurrentIndex(tab.combo_volume_column.findData("added_uL"))
+    tab.combo_signal_column.setCurrentIndex(tab.combo_signal_column.findData("glass_electrode"))
+    tab.combo_volume_unit.setCurrentIndex(tab.combo_volume_unit.findData("µL"))
+    tab.combo_signal_type.setCurrentIndex(tab.combo_signal_type.findData("pH"))
+
+    item = tab.table_pot_preview.item(1, 0)
+    assert item is not None
+    item.setCheckState(qt_core.Qt.CheckState.Unchecked)
+    payload = tab._build_potentiometry_import_payload()
+
+    assert payload["volume_column"] == "added_uL"
+    assert payload["signal_column"] == "glass_electrode"
+    assert payload["volume_unit"] == "µL"
+    assert payload["signal_type"] == "pH"
+    assert payload["included_mask"] == [True, False, True, True]
+    assert payload["titrant_volume"] == pytest.approx([0.0, 0.25, 0.5, 0.9])
+    assert payload["observed_signal"] == pytest.approx([6.2, 6.55, 6.9, 7.15])
+
+
+def test_gui_potentiometry_validation_warns_for_operational_ph(tmp_path, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    qt_widgets = pytest.importorskip("PySide6.QtWidgets")
+    from hmfit_gui_qt.tabs.acid_base_tab import AcidBaseTab
+
+    app = qt_widgets.QApplication.instance() or qt_widgets.QApplication([])
+    _ = app
+
+    path = tmp_path / "pot_warn.csv"
+    pd.DataFrame({"volume_mL": [0.0, 0.2, 0.4], "pH": [13.9, 14.2, 14.5]}).to_csv(path, index=False)
+
+    tab = AcidBaseTab()
+    tab._set_file_path(str(path))
+    payload = tab._build_potentiometry_import_payload()
+
+    assert payload["signal_type"] == "pH"
+    assert any("operational pH" in warning for warning in payload["potentiometry_warnings"])
+    assert "Initial volume is zero." in payload["potentiometry_warnings"]
