@@ -479,6 +479,171 @@ def test_gui_config_can_mark_pkw_as_fitted(tmp_path, monkeypatch):
     assert cfg["fit_pkw"] is True
 
 
+def test_gui_detects_ul_volume_column(tmp_path, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    qt_widgets = pytest.importorskip("PySide6.QtWidgets")
+    from hmfit_gui_qt.tabs.acid_base_tab import AcidBaseTab
+
+    app = qt_widgets.QApplication.instance() or qt_widgets.QApplication([])
+    _ = app
+    path = tmp_path / "pot_ul.csv"
+    pd.DataFrame({"vol µL": [0.0, 50.0, 100.0], "pH": [7.0, 7.1, 7.2]}).to_csv(path, index=False)
+    tab = AcidBaseTab()
+    tab._set_file_path(str(path))
+
+    assert tab.combo_volume_column.currentData() == "vol µL"
+    assert tab.combo_volume_unit.currentData() == "µL"
+    payload = tab._build_potentiometry_import_payload()
+    assert payload["titrant_volume"] == pytest.approx([0.0, 0.05, 0.1])
+
+
+def test_gui_detects_emf_signal_column(tmp_path, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    qt_widgets = pytest.importorskip("PySide6.QtWidgets")
+    from hmfit_gui_qt.tabs.acid_base_tab import AcidBaseTab
+
+    app = qt_widgets.QApplication.instance() or qt_widgets.QApplication([])
+    _ = app
+    path = tmp_path / "pot_emf.csv"
+    pd.DataFrame({"Vadd": [0.0, 0.1, 0.2], "E_mV": [10.0, 11.0, 12.0]}).to_csv(path, index=False)
+    tab = AcidBaseTab()
+    tab._set_file_path(str(path))
+
+    assert tab.combo_volume_column.currentData() == "Vadd"
+    assert tab.combo_signal_column.currentData() == "E_mV"
+    assert tab.combo_signal_type.currentData() == "mV"
+
+
+def test_basic_mode_does_not_populate_advanced_tables_until_needed(tmp_path, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    qt_widgets = pytest.importorskip("PySide6.QtWidgets")
+    from hmfit_gui_qt.tabs.acid_base_tab import AcidBaseTab
+
+    app = qt_widgets.QApplication.instance() or qt_widgets.QApplication([])
+    _ = app
+    tab = AcidBaseTab()
+    before = tab._advanced_table_rebuild_count
+    tab._generate_basic_species(3)
+
+    assert tab.chk_advanced_mode.isChecked() is False
+    assert tab._advanced_table_rebuild_count == before
+
+
+def test_basic_fit_checkbox_semantics(tmp_path, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    qt_widgets = pytest.importorskip("PySide6.QtWidgets")
+    from hmfit_gui_qt.tabs.acid_base_tab import AcidBaseTab
+
+    app = qt_widgets.QApplication.instance() or qt_widgets.QApplication([])
+    _ = app
+    tab = AcidBaseTab()
+    tab._refresh_parameter_table()
+    tab._set_parameter_fit("pKa1", True)
+    assert tab._parameter_fixed("pKa1") is False
+    tab._set_parameter_fit("pKa1", False)
+    assert tab._parameter_fixed("pKa1") is True
+
+
+def test_basic_species_generates_matrix(tmp_path, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    qt_widgets = pytest.importorskip("PySide6.QtWidgets")
+    from hmfit_gui_qt.tabs.acid_base_tab import AcidBaseTab
+
+    app = qt_widgets.QApplication.instance() or qt_widgets.QApplication([])
+    _ = app
+    tab = AcidBaseTab()
+    tab._generate_basic_species(2)
+    model = tab._basic_model_from_species_table()
+
+    assert model["stoichiometric_matrix"] == [[1, 1, 1], [0, 1, 2]]
+
+
+def test_signal_type_ph_hides_electrode_options(tmp_path, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    qt_widgets = pytest.importorskip("PySide6.QtWidgets")
+    from hmfit_gui_qt.tabs.acid_base_tab import AcidBaseTab
+
+    app = qt_widgets.QApplication.instance() or qt_widgets.QApplication([])
+    _ = app
+    tab = AcidBaseTab()
+    tab.combo_signal_type.setCurrentIndex(tab.combo_signal_type.findData("pH"))
+    tab._on_signal_type_changed()
+
+    assert tab.chk_ideal_nernst.isVisible() is False
+    assert tab.chk_fit_electrode_basic.isVisible() is False
+    assert tab.electrode_group.isVisible() is False
+
+
+def test_signal_type_emf_shows_electrode_options(tmp_path, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    qt_widgets = pytest.importorskip("PySide6.QtWidgets")
+    from hmfit_gui_qt.tabs.acid_base_tab import AcidBaseTab
+
+    app = qt_widgets.QApplication.instance() or qt_widgets.QApplication([])
+    _ = app
+    tab = AcidBaseTab()
+    tab.combo_signal_type.setCurrentIndex(tab.combo_signal_type.findData("mV"))
+    tab._on_signal_type_changed()
+
+    assert tab.chk_ideal_nernst.isHidden() is False
+    assert tab.chk_fit_electrode_basic.isHidden() is False
+
+
+def test_mixed_solvent_pkw_suggestion(tmp_path, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    qt_widgets = pytest.importorskip("PySide6.QtWidgets")
+    from hmfit_gui_qt.tabs.acid_base_tab import AcidBaseTab
+
+    app = qt_widgets.QApplication.instance() or qt_widgets.QApplication([])
+    _ = app
+    path = tmp_path / "high_ph.csv"
+    pd.DataFrame({"volume_mL": [0.0, 0.1, 0.2], "pH*": [13.8, 14.3, 15.1]}).to_csv(path, index=False)
+    tab = AcidBaseTab()
+    tab._set_file_path(str(path))
+    tab._suggest_setup_from_data()
+
+    assert tab.combo_medium.currentData() == "mixed"
+    assert tab.spin_pkw.value() == pytest.approx(18.0)
+    assert "apparent pKw" in tab.lbl_pot_validation.text()
+
+
+def test_pkw_fitting_still_reaches_core(tmp_path, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    qt_widgets = pytest.importorskip("PySide6.QtWidgets")
+    from hmfit_gui_qt.tabs.acid_base_tab import AcidBaseTab
+
+    app = qt_widgets.QApplication.instance() or qt_widgets.QApplication([])
+    _ = app
+    path = tmp_path / "pot.csv"
+    pd.DataFrame({"volume_mL": [0.0, 0.1, 0.2], "pH": [7.0, 7.2, 7.4]}).to_csv(path, index=False)
+    tab = AcidBaseTab()
+    tab._set_file_path(str(path))
+    tab.combo_medium.setCurrentIndex(tab.combo_medium.findData("mixed"))
+    tab.chk_fit_pkw.setChecked(True)
+    cfg = tab._collect_config()
+
+    assert cfg["fit_pkw"] is True
+    assert cfg["pkw"] == pytest.approx(18.0)
+    assert cfg["pkw_bounds"] == pytest.approx([10.0, 30.0])
+
+
+def test_advanced_mode_exposes_full_model(tmp_path, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    qt_widgets = pytest.importorskip("PySide6.QtWidgets")
+    from hmfit_gui_qt.tabs.acid_base_tab import AcidBaseTab
+
+    app = qt_widgets.QApplication.instance() or qt_widgets.QApplication([])
+    _ = app
+    tab = AcidBaseTab()
+    tab.chk_advanced_mode.setChecked(True)
+
+    assert tab.components_table.isHidden() is False
+    assert tab.species_table.isHidden() is False
+    assert tab.stoich_table.isHidden() is False
+    assert tab.titration_group.isHidden() is False
+    assert tab.combo_titrant_type.findData("custom") >= 0
+
+
 def test_gui_equation_editor_generates_canonical_model(tmp_path, monkeypatch):
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
     qt_widgets = pytest.importorskip("PySide6.QtWidgets")

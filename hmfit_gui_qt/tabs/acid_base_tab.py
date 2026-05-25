@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import math
+import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -98,6 +101,74 @@ def _volume_unit_factor_to_mL(unit: str) -> float:
     return 1.0
 
 
+@dataclass
+class AcidBaseUiState:
+    data_type: str = "potentiometry"
+    file_path: str = ""
+    sheet_name: str = ""
+    volume_column: str = ""
+    volume_unit: str = "mL"
+    signal_type: str = "pH"
+    signal_column: str = ""
+    analyte_name: str = "L"
+    analyte_concentration: float = 1.0e-3
+    initial_volume: float = 10.0
+    titrant_type: str = "base"
+    titrant_concentration: float = 1.0e-3
+    charge_L: int = -1
+    species_rows: list[dict[str, Any]] = field(default_factory=list)
+    pka_rows: list[dict[str, Any]] = field(default_factory=list)
+    pkw: float = 14.0
+    pkw_bounds: tuple[float, float] = (0.0, 30.0)
+    fit_pkw: bool = False
+    fit_analyte_concentration: bool = False
+    fit_titrant_concentration: bool = False
+    fit_volume_offset: bool = False
+    fit_electrode: bool = False
+    advanced_options: dict[str, Any] = field(default_factory=dict)
+
+
+def _normalise_column_name(name: str) -> str:
+    text = str(name or "").strip().lower()
+    text = text.replace("µ", "u")
+    text = re.sub(r"[^a-z0-9]+", "_", text)
+    return text.strip("_")
+
+
+def _guess_volume_unit_from_name(name: str) -> str | None:
+    key = _normalise_column_name(name)
+    if "ul" in key or "microl" in key:
+        return "µL"
+    if "ml" in key:
+        return "mL"
+    if re.search(r"(?:^|_)l(?:$|_)", key) and "ml" not in key and "ul" not in key:
+        return "L"
+    return None
+
+
+def _volume_column_score(name: str) -> int:
+    key = _normalise_column_name(name)
+    score = 0
+    if any(token in key for token in ("volume", "vol", "vadd", "v_added", "added")):
+        score += 20
+    if key in {"v", "volume", "vol", "volume_ml", "v_ml", "volume_added", "vadd"}:
+        score += 30
+    if _guess_volume_unit_from_name(name):
+        score += 10
+    return score
+
+
+def _signal_column_score(name: str) -> tuple[int, str | None]:
+    key = _normalise_column_name(name)
+    if "ph" in key:
+        return 40, "pH"
+    if any(token in key for token in ("emf", "mv", "e_mv", "potential")) or key in {"e", "e_m_v"}:
+        return 40, "mV"
+    if key == "signal":
+        return 10, None
+    return 0, None
+
+
 class AcidBaseTab(QWidget):
     COMPONENT_COLUMNS = [
         "Role",
@@ -145,6 +216,10 @@ class AcidBaseTab(QWidget):
         self._is_running = False
         self._updating_tables = False
         self._updating_basic_fields = False
+        self._advanced_tables_dirty = True
+        self._advanced_table_rebuild_count = 0
+        self._pot_preview_restore_mask: list[bool] | None = None
+        self.ui_state = AcidBaseUiState()
         self.errors_panel: ErrorAnalysisWidget | None = None
 
         self._build_ui()
@@ -152,6 +227,8 @@ class AcidBaseTab(QWidget):
         self._refresh_parameter_table()
         self._on_titrant_type_changed()
         self._on_signal_type_changed()
+        self._sync_pkw_ui()
+        self._sync_plot_options_for_analysis()
         self._sync_advanced_ui(False)
         self._set_running(False)
         self.canvas_main.show_message("Import a CSV or Excel file to begin")
@@ -168,6 +245,18 @@ class AcidBaseTab(QWidget):
         left_container = QWidget(left_scroll)
         left_scroll.setWidget(left_container)
         left_layout = QVBoxLayout(left_container)
+
+        mode_row = QHBoxLayout()
+        mode_row.addWidget(QLabel("Advanced mode", left_container))
+        self.chk_advanced_mode = QCheckBox("OFF / ON", left_container)
+        self.chk_advanced_mode.setChecked(False)
+        self.chk_advanced_mode.toggled.connect(self._sync_advanced_ui)
+        mode_row.addWidget(self.chk_advanced_mode)
+        self.btn_suggest_setup = QPushButton("Suggest setup from data", left_container)
+        self.btn_suggest_setup.clicked.connect(self._suggest_setup_from_data)
+        mode_row.addWidget(self.btn_suggest_setup)
+        mode_row.addStretch(1)
+        left_layout.addLayout(mode_row)
 
         self._build_data_input_group(left_container, left_layout)
 
@@ -257,6 +346,28 @@ class AcidBaseTab(QWidget):
         self.lbl_pot_validation.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         pot_layout.addWidget(self.lbl_pot_validation)
 
+        preview_buttons = QHBoxLayout()
+        self.btn_include_all_points = QPushButton("Include all", pot_page)
+        self.btn_include_all_points.clicked.connect(lambda: self._set_preview_inclusion("all"))
+        self.btn_exclude_all_points = QPushButton("Exclude all", pot_page)
+        self.btn_exclude_all_points.clicked.connect(lambda: self._set_preview_inclusion("none"))
+        self.btn_exclude_first_point = QPushButton("Exclude first point", pot_page)
+        self.btn_exclude_first_point.clicked.connect(lambda: self._set_preview_inclusion("exclude_first"))
+        self.btn_exclude_selected_points = QPushButton("Exclude selected", pot_page)
+        self.btn_exclude_selected_points.clicked.connect(lambda: self._set_preview_inclusion("exclude_selected"))
+        self.btn_restore_point_selection = QPushButton("Restore selection", pot_page)
+        self.btn_restore_point_selection.clicked.connect(lambda: self._set_preview_inclusion("restore"))
+        for btn in (
+            self.btn_include_all_points,
+            self.btn_exclude_all_points,
+            self.btn_exclude_first_point,
+            self.btn_exclude_selected_points,
+            self.btn_restore_point_selection,
+        ):
+            preview_buttons.addWidget(btn)
+        preview_buttons.addStretch(1)
+        pot_layout.addLayout(preview_buttons)
+
         self.table_pot_preview = QTableWidget(0, 5, pot_page)
         self.table_pot_preview.setHorizontalHeaderLabels(
             [
@@ -316,6 +427,14 @@ class AcidBaseTab(QWidget):
         self.spin_base_charge.setRange(-20, 20)
         self.spin_base_charge.setValue(-1)
         self.spin_base_charge.valueChanged.connect(self._on_base_charge_changed)
+        self.combo_common_model = QComboBox(setup_group)
+        self.combo_common_model.addItem("Monoprotic acid: HA / A-", "monoprotic_acid")
+        self.combo_common_model.addItem("Monoprotic base: B / BH+", "monoprotic_base")
+        self.combo_common_model.addItem("Diprotic acid: H2A / HA- / A2-", "diprotic_acid")
+        self.combo_common_model.addItem("Diprotic base: B / BH+ / BH2 2+", "diprotic_base")
+        self.combo_common_model.addItem("Custom", "custom")
+        self.combo_common_model.currentIndexChanged.connect(self._on_common_model_changed)
+        setup_form.addRow("Common model", self.combo_common_model)
         setup_form.addRow("Analyte name", self.edit_analyte_name)
         setup_form.addRow("Initial volume", self.spin_initial_volume)
         setup_form.addRow("Analytical concentration", self.spin_analyte_conc)
@@ -327,7 +446,8 @@ class AcidBaseTab(QWidget):
         chemical_group = QGroupBox("Acid-base species model", tab)
         chemical_layout = QVBoxLayout(chemical_group)
         template_row = QHBoxLayout()
-        template_row.addWidget(QLabel("Preset", chemical_group))
+        self.lbl_model_preset = QLabel("Advanced preset", chemical_group)
+        template_row.addWidget(self.lbl_model_preset)
         self.combo_model_type = QComboBox(tab)
         self.combo_model_type.addItem("Simple monoprotic acid/base", "simple_monoprotic")
         self.combo_model_type.addItem("Diprotic acid/base", "diprotic_ligand")
@@ -357,6 +477,9 @@ class AcidBaseTab(QWidget):
         pka_count_row = QHBoxLayout()
         pka_count_row.addWidget(self.lbl_pka_count)
         pka_count_row.addWidget(self.spin_pka_count)
+        self.btn_generate_species_basic = QPushButton("Generate species", chemical_group)
+        self.btn_generate_species_basic.clicked.connect(lambda: self._generate_basic_species(int(self.spin_pka_count.value())))
+        pka_count_row.addWidget(self.btn_generate_species_basic)
         pka_count_row.addStretch(1)
         chemical_layout.addLayout(pka_count_row)
 
@@ -378,13 +501,13 @@ class AcidBaseTab(QWidget):
         self.btn_basic_triprotic = QPushButton("Generate triprotic", chemical_group)
         self.btn_basic_triprotic.clicked.connect(lambda: self._generate_basic_species(3))
         species_buttons.addWidget(self.btn_basic_triprotic)
-        self.btn_basic_add_species = QPushButton("Add species", chemical_group)
+        self.btn_basic_add_species = QPushButton("Add custom species", chemical_group)
         self.btn_basic_add_species.clicked.connect(self._add_basic_species_row)
         species_buttons.addWidget(self.btn_basic_add_species)
         self.btn_basic_remove_species = QPushButton("Remove selected", chemical_group)
         self.btn_basic_remove_species.clicked.connect(self._remove_selected_basic_species)
         species_buttons.addWidget(self.btn_basic_remove_species)
-        self.btn_show_matrix = QPushButton("Show matrix", chemical_group)
+        self.btn_show_matrix = QPushButton("Show generated matrix", chemical_group)
         self.btn_show_matrix.setCheckable(True)
         self.btn_show_matrix.toggled.connect(self._refresh_basic_matrix)
         species_buttons.addWidget(self.btn_show_matrix)
@@ -398,14 +521,17 @@ class AcidBaseTab(QWidget):
         self.basic_matrix_table.setVisible(False)
         chemical_layout.addWidget(self.basic_matrix_table)
 
-        self.table_basic_pka = QTableWidget(0, 2, chemical_group)
-        self.table_basic_pka.setHorizontalHeaderLabels(["pKa", "Initial guess"])
+        pka_group = QGroupBox("Initial pKa guesses", tab)
+        pka_layout = QVBoxLayout(pka_group)
+        self.table_basic_pka = QTableWidget(0, 5, pka_group)
+        self.table_basic_pka.setHorizontalHeaderLabels(["Parameter", "Initial guess", "Min", "Max", "Fit"])
         self.table_basic_pka.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.table_basic_pka.horizontalHeader().setStretchLastSection(True)
         self.table_basic_pka.setMinimumHeight(90)
         self.table_basic_pka.itemChanged.connect(self._on_basic_pka_table_changed)
-        self.table_basic_pka.setVisible(False)
+        pka_layout.addWidget(self.table_basic_pka)
         layout.addWidget(chemical_group)
+        layout.addWidget(pka_group)
 
         self.model_advanced_group = QGroupBox("Advanced options", tab)
         self.model_advanced_group.setCheckable(True)
@@ -645,6 +771,12 @@ class AcidBaseTab(QWidget):
 
         self.pkw_group = QGroupBox("Apparent pKw / medium autoprotolysis", tab)
         pkw_layout = QFormLayout(self.pkw_group)
+        self.combo_medium = QComboBox(self.pkw_group)
+        self.combo_medium.addItem("Aqueous, fixed pKw = 14", "aqueous")
+        self.combo_medium.addItem("Mixed/non-aqueous, use apparent pKw", "mixed")
+        self.combo_medium.addItem("Custom", "custom")
+        self.combo_medium.currentIndexChanged.connect(self._on_medium_changed)
+        pkw_layout.addRow("Medium / solvent", self.combo_medium)
         self.spin_pkw = QDoubleSpinBox(self.pkw_group)
         self.spin_pkw.setDecimals(4)
         self.spin_pkw.setRange(-50.0, 100.0)
@@ -668,7 +800,7 @@ class AcidBaseTab(QWidget):
         pkw_bounds_row.addWidget(self.spin_pkw_min)
         pkw_bounds_row.addWidget(QLabel("to", self.pkw_group))
         pkw_bounds_row.addWidget(self.spin_pkw_max)
-        self.chk_fit_pkw = QCheckBox("Fit pKw", self.pkw_group)
+        self.chk_fit_pkw = QCheckBox("Fit apparent pKw", self.pkw_group)
         self.chk_fit_pkw.setChecked(False)
         self.chk_fit_pkw.toggled.connect(self._on_fit_pkw_toggled)
         self.lbl_pkw_help = QLabel(
@@ -677,7 +809,7 @@ class AcidBaseTab(QWidget):
             self.pkw_group,
         )
         self.lbl_pkw_help.setWordWrap(True)
-        pkw_layout.addRow("Initial pKw", self.spin_pkw)
+        pkw_layout.addRow("Initial pKw_app", self.spin_pkw)
         pkw_layout.addRow("Min / Max", pkw_bounds_row)
         pkw_layout.addRow("", self.chk_fit_pkw)
         pkw_layout.addRow("", self.lbl_pkw_help)
@@ -852,6 +984,8 @@ class AcidBaseTab(QWidget):
         return chk
 
     def _advanced_visible(self) -> bool:
+        if hasattr(self, "chk_advanced_mode"):
+            return bool(self.chk_advanced_mode.isChecked())
         return bool(hasattr(self, "model_advanced_group") and self.model_advanced_group.isChecked())
 
     def _set_combo_item_enabled(self, combo: QComboBox, data: str, enabled: bool) -> None:
@@ -862,14 +996,35 @@ class AcidBaseTab(QWidget):
 
     def _sync_advanced_ui(self, checked: bool | None = None) -> None:
         advanced = self._advanced_visible() if checked is None else bool(checked)
+        if hasattr(self, "chk_advanced_mode") and self.chk_advanced_mode.isChecked() != advanced:
+            self.chk_advanced_mode.blockSignals(True)
+            self.chk_advanced_mode.setChecked(advanced)
+            self.chk_advanced_mode.blockSignals(False)
+        if hasattr(self, "model_advanced_group") and self.model_advanced_group.isChecked() != advanced:
+            self.model_advanced_group.blockSignals(True)
+            self.model_advanced_group.setChecked(advanced)
+            self.model_advanced_group.blockSignals(False)
         if hasattr(self, "model_advanced_content"):
             self.model_advanced_content.setVisible(advanced)
+        if hasattr(self, "model_advanced_group"):
+            self.model_advanced_group.setVisible(advanced)
         if hasattr(self, "pkw_group"):
-            self.pkw_group.setVisible(advanced)
+            self._sync_pkw_ui()
         if hasattr(self, "electrode_group"):
-            self.electrode_group.setVisible(advanced)
+            is_emf = str(self.combo_signal_type.currentData() or "").lower() == "mv" if hasattr(self, "combo_signal_type") else False
+            self.electrode_group.setVisible((advanced and is_emf) or (is_emf and self.chk_fit_electrode_basic.isChecked()))
         if hasattr(self, "weight_group"):
             self.weight_group.setVisible(advanced)
+        for widget_name in (
+            "lbl_model_preset",
+            "combo_model_type",
+            "btn_load_template",
+            "btn_basic_monoprotic",
+            "btn_basic_diprotic",
+            "btn_basic_triprotic",
+        ):
+            if hasattr(self, widget_name):
+                getattr(self, widget_name).setVisible(advanced)
         if hasattr(self, "combo_model_type"):
             self._set_combo_item_enabled(self.combo_model_type, "multiple_components", advanced)
             self._set_combo_item_enabled(self.combo_model_type, "custom_acid_base_system", advanced)
@@ -878,6 +1033,13 @@ class AcidBaseTab(QWidget):
                 idx = self.combo_model_type.findData("simple_monoprotic")
                 if idx >= 0:
                     self.combo_model_type.setCurrentIndex(idx)
+        if hasattr(self, "combo_titrant_type"):
+            self._sync_titrant_options(advanced)
+        if advanced and self._advanced_tables_dirty:
+            try:
+                self._populate_advanced_tables_from_basic_model(self._basic_model_from_species_table())
+            except Exception:
+                pass
         self._sync_template_controls()
         self._apply_parameter_table_visibility()
         self._refresh_basic_matrix()
@@ -887,16 +1049,50 @@ class AcidBaseTab(QWidget):
             )
         self._on_titrant_type_changed()
         self._on_signal_type_changed()
+        self._sync_plot_options_for_analysis()
+
+    def _sync_titrant_options(self, advanced: bool) -> None:
+        current = str(self.combo_titrant_type.currentData() or "base")
+        self.combo_titrant_type.blockSignals(True)
+        try:
+            self.combo_titrant_type.clear()
+            self.combo_titrant_type.addItem("strong base", "base")
+            self.combo_titrant_type.addItem("strong acid", "acid")
+            if advanced:
+                self.combo_titrant_type.addItem("custom titrant", "custom")
+            idx = self.combo_titrant_type.findData(current if advanced or current != "custom" else "base")
+            self.combo_titrant_type.setCurrentIndex(max(0, idx))
+        finally:
+            self.combo_titrant_type.blockSignals(False)
 
     def _sync_template_controls(self) -> None:
         if not hasattr(self, "combo_model_type"):
             return
         template_id = str(self.combo_model_type.currentData() or "")
-        needs_count = template_id == "polyprotic_acid_base"
+        needs_count = (not self._advanced_visible()) or template_id == "polyprotic_acid_base"
         if hasattr(self, "lbl_pka_count"):
             self.lbl_pka_count.setVisible(needs_count)
         if hasattr(self, "spin_pka_count"):
             self.spin_pka_count.setVisible(needs_count)
+        if hasattr(self, "btn_generate_species_basic"):
+            self.btn_generate_species_basic.setVisible(needs_count)
+
+    def _sync_pkw_ui(self) -> None:
+        if not hasattr(self, "pkw_group"):
+            return
+        advanced = self._advanced_visible()
+        medium = str(self.combo_medium.currentData() or "aqueous") if hasattr(self, "combo_medium") else "aqueous"
+        fit_pkw = bool(self.chk_fit_pkw.isChecked()) if hasattr(self, "chk_fit_pkw") else False
+        is_pot = str(self.combo_data_type.currentData() or "potentiometry") == "potentiometry" if hasattr(self, "combo_data_type") else True
+        show = is_pot or advanced
+        show_fields = advanced or medium in {"mixed", "custom"} or fit_pkw
+        self.pkw_group.setVisible(show)
+        if hasattr(self, "spin_pkw"):
+            self.spin_pkw.setVisible(show_fields)
+            self.spin_pkw_min.setVisible(show_fields)
+            self.spin_pkw_max.setVisible(show_fields)
+            self.chk_fit_pkw.setVisible(show_fields)
+            self.lbl_pkw_help.setVisible(show_fields and medium in {"mixed", "custom"})
 
     def _on_model_template_changed(self) -> None:
         if self._updating_tables:
@@ -926,8 +1122,33 @@ class AcidBaseTab(QWidget):
     def _on_pka_count_changed(self) -> None:
         if self._updating_tables:
             return
-        if str(self.combo_model_type.currentData() or "") == "polyprotic_acid_base":
+        if not self._advanced_visible() or str(self.combo_model_type.currentData() or "") == "polyprotic_acid_base":
             self._generate_basic_species(int(self.spin_pka_count.value()))
+
+    def _on_common_model_changed(self) -> None:
+        if self._updating_tables or self._updating_basic_fields:
+            return
+        model = str(self.combo_common_model.currentData() or "custom")
+        if model == "custom":
+            return
+        settings = {
+            "monoprotic_acid": ("A", -1, 1),
+            "monoprotic_base": ("B", 0, 1),
+            "diprotic_acid": ("A", -2, 2),
+            "diprotic_base": ("B", 0, 2),
+        }.get(model)
+        if settings is None:
+            return
+        name, charge, n_pka = settings
+        was = self._updating_basic_fields
+        self._updating_basic_fields = True
+        try:
+            self.edit_analyte_name.setText(name)
+            self.spin_base_charge.setValue(charge)
+            self.spin_pka_count.setValue(n_pka)
+        finally:
+            self._updating_basic_fields = was
+        self._generate_basic_species(n_pka)
 
     def _default_species_name(self, h_count: int) -> str:
         if h_count <= 0:
@@ -984,6 +1205,10 @@ class AcidBaseTab(QWidget):
         try:
             self.table_basic_species.setRowCount(0)
             base_charge = int(self.spin_base_charge.value())
+            if hasattr(self, "spin_pka_count") and self.spin_pka_count.value() != int(n_pka):
+                self.spin_pka_count.blockSignals(True)
+                self.spin_pka_count.setValue(int(n_pka))
+                self.spin_pka_count.blockSignals(False)
             for h_count in range(int(n_pka) + 1):
                 self._insert_basic_species_row(
                     h_count=h_count,
@@ -1048,7 +1273,9 @@ class AcidBaseTab(QWidget):
         except Exception:
             self._refresh_basic_matrix()
             return
-        self._populate_advanced_tables_from_basic_model(model)
+        self._advanced_tables_dirty = True
+        if self._advanced_visible():
+            self._populate_advanced_tables_from_basic_model(model)
         self._refresh_basic_matrix()
         self._refresh_parameter_table()
 
@@ -1140,6 +1367,8 @@ class AcidBaseTab(QWidget):
                 values = list(matrix[row] or []) if row < len(matrix) else []
                 for col in range(self.stoich_table.columnCount()):
                     _set_table_text(self.stoich_table, row, col, values[col] if col < len(values) else 0)
+            self._advanced_tables_dirty = False
+            self._advanced_table_rebuild_count += 1
         finally:
             self._updating_tables = was_updating
 
@@ -1199,6 +1428,21 @@ class AcidBaseTab(QWidget):
                 values.append(float(raw))
         return values
 
+    def _basic_pka_rows(self) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for row in range(self.table_basic_pka.rowCount()):
+            fit_widget = self.table_basic_pka.cellWidget(row, 4)
+            rows.append(
+                {
+                    "parameter": _table_text(self.table_basic_pka, row, 0, f"pKa{row + 1}"),
+                    "initial": float(_table_text(self.table_basic_pka, row, 1, "5.0")),
+                    "min": float(_table_text(self.table_basic_pka, row, 2, "-5.0")),
+                    "max": float(_table_text(self.table_basic_pka, row, 3, "25.0")),
+                    "fit": True if not isinstance(fit_widget, QCheckBox) else fit_widget.isChecked(),
+                }
+            )
+        return rows
+
     def _set_basic_pka_table_from_model(self, model: dict[str, Any]) -> None:
         if not hasattr(self, "table_basic_pka"):
             return
@@ -1208,29 +1452,66 @@ class AcidBaseTab(QWidget):
         self._updating_basic_fields = True
         self.table_basic_pka.blockSignals(True)
         try:
+            previous = {
+                _table_text(self.table_basic_pka, row, 0, f"pKa{row + 1}"): {
+                    "min": _table_text(self.table_basic_pka, row, 2, "-5.0"),
+                    "max": _table_text(self.table_basic_pka, row, 3, "25.0"),
+                    "fit": (
+                        True
+                        if not isinstance(self.table_basic_pka.cellWidget(row, 4), QCheckBox)
+                        else self.table_basic_pka.cellWidget(row, 4).isChecked()
+                    ),
+                }
+                for row in range(self.table_basic_pka.rowCount())
+            }
             self.table_basic_pka.setRowCount(len(pka_values))
             for idx, value in enumerate(pka_values, start=1):
+                key = f"pKa{idx}"
                 label = QTableWidgetItem(f"pKa{idx}")
                 label.setFlags(label.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.table_basic_pka.setItem(idx - 1, 0, label)
                 _set_table_text(self.table_basic_pka, idx - 1, 1, f"{float(value):.6g}")
+                _set_table_text(self.table_basic_pka, idx - 1, 2, previous.get(key, {}).get("min", "-5.0"))
+                _set_table_text(self.table_basic_pka, idx - 1, 3, previous.get(key, {}).get("max", "25.0"))
+                fit = self._make_checkbox(bool(previous.get(key, {}).get("fit", True)))
+                fit.stateChanged.connect(self._on_basic_pka_fit_changed)
+                self.table_basic_pka.setCellWidget(idx - 1, 4, fit)
         finally:
             self.table_basic_pka.blockSignals(False)
             self._updating_basic_fields = was_updating
 
     def _on_basic_pka_table_changed(self, item: QTableWidgetItem) -> None:
-        if self._updating_basic_fields or self._updating_tables or item.column() != 1:
+        if self._updating_basic_fields or self._updating_tables or item.column() not in {1, 2, 3}:
             return
         try:
             value = float(item.text())
         except Exception:
-            item.setToolTip("Use a numeric pKa value.")
+            item.setToolTip("Use a numeric value.")
             return
-        if not -5.0 <= value <= 25.0:
+        if item.column() == 1 and not -5.0 <= value <= 25.0:
             item.setToolTip("Recommended pKa guesses are between -5 and 25.")
         else:
             item.setToolTip("")
-        self._set_parameter_value(f"pKa{item.row() + 1}", f"{value:.6g}", update_spin=False)
+        self._sync_parameter_row_from_basic_pka(item.row())
+
+    def _on_basic_pka_fit_changed(self) -> None:
+        if self._updating_basic_fields or self._updating_tables:
+            return
+        for row in range(self.table_basic_pka.rowCount()):
+            self._sync_parameter_row_from_basic_pka(row)
+        self._refresh_parameter_table()
+
+    def _sync_parameter_row_from_basic_pka(self, row: int) -> None:
+        name = f"pKa{int(row) + 1}"
+        self._set_parameter_value(name, _table_text(self.table_basic_pka, row, 1, "5.0"), update_spin=False)
+        self._set_parameter_bounds(
+            name,
+            _table_text(self.table_basic_pka, row, 2, "-5.0"),
+            _table_text(self.table_basic_pka, row, 3, "25.0"),
+        )
+        fit_widget = self.table_basic_pka.cellWidget(row, 4)
+        fit = True if not isinstance(fit_widget, QCheckBox) else fit_widget.isChecked()
+        self._set_parameter_fit(name, fit)
 
     def _set_first_analyte_concentration(self, value: float) -> None:
         if not hasattr(self, "components_table"):
@@ -1311,6 +1592,10 @@ class AcidBaseTab(QWidget):
             self.chk_fit_electrode.blockSignals(True)
             self.chk_fit_electrode.setChecked(bool(checked))
             self.chk_fit_electrode.blockSignals(False)
+        if hasattr(self, "electrode_group"):
+            is_emf = str(self.combo_signal_type.currentData() or "").lower() == "mv"
+            self.electrode_group.setVisible(is_emf and (self._advanced_visible() or bool(checked)))
+        self._refresh_parameter_table()
 
     def _on_fit_electrode_advanced_toggled(self, checked: bool) -> None:
         if hasattr(self, "chk_fit_electrode_basic"):
@@ -1361,7 +1646,7 @@ class AcidBaseTab(QWidget):
         if not hasattr(self, "parameters_table"):
             return
         advanced = self._advanced_visible()
-        self.parameters_table.setHorizontalHeaderItem(5, QTableWidgetItem("Fixed" if advanced else "Fit"))
+        self.parameters_table.setHorizontalHeaderItem(5, QTableWidgetItem("Fit"))
         for col in range(self.parameters_table.columnCount()):
             self.parameters_table.setColumnHidden(col, (not advanced) and col in {1, 6, 7})
         hidden_basic_names = {
@@ -1375,11 +1660,14 @@ class AcidBaseTab(QWidget):
         }
         for row in range(self.parameters_table.rowCount()):
             name = _table_text(self.parameters_table, row, 0, "").strip().lower()
+            fit_widget = self.parameters_table.cellWidget(row, 5)
+            is_fit = bool(isinstance(fit_widget, QCheckBox) and fit_widget.isChecked())
             show_optional = (
-                (name == "analyte concentration" and self.chk_fit_analyte_conc.isChecked())
-                or (name == "titrant concentration" and self.chk_fit_titrant_conc.isChecked())
-                or (name == "volume offset" and self.chk_fit_volume_offset.isChecked())
-                or (name in {"electrode_e0", "electrode_slope"} and self.chk_fit_electrode_basic.isChecked())
+                (name == "analyte concentration" and is_fit)
+                or (name == "titrant concentration" and is_fit)
+                or (name == "volume offset" and is_fit)
+                or (name == "pkw" and is_fit)
+                or (name in {"electrode_e0", "electrode_slope"} and is_fit)
             )
             self.parameters_table.setRowHidden(row, (not advanced) and name in hidden_basic_names and not show_optional)
 
@@ -1394,8 +1682,9 @@ class AcidBaseTab(QWidget):
         if hasattr(self, "chk_fit_electrode_basic"):
             self.chk_fit_electrode_basic.setVisible(is_emf)
         if hasattr(self, "electrode_group"):
-            self.electrode_group.setVisible(self._advanced_visible() and is_emf)
+            self.electrode_group.setVisible(is_emf and (self._advanced_visible() or self.chk_fit_electrode_basic.isChecked()))
         self._refresh_potentiometry_preview()
+        self._sync_plot_options_for_analysis()
 
     def _on_ideal_nernst_toggled(self, checked: bool) -> None:
         if not checked:
@@ -1562,6 +1851,8 @@ class AcidBaseTab(QWidget):
             self._data_import_stack.setCurrentIndex(0 if is_pot else 1)
         self._preview_selected_sheet()
         self._refresh_parameter_table()
+        self._sync_plot_options_for_analysis()
+        self._sync_pkw_ui()
 
     def _on_titrant_type_changed(self) -> None:
         advanced = self._advanced_visible()
@@ -1780,24 +2071,29 @@ class AcidBaseTab(QWidget):
             definition_mode = str(model.get("definition_mode") or "matrix")
             self.radio_model_matrix.setChecked(definition_mode != "equations")
             self.radio_model_equations.setChecked(definition_mode == "equations")
-            self.components_table.setRowCount(0)
-            for comp in list(model.get("components") or []):
-                self._insert_component_row(comp)
-            self.species_table.setRowCount(0)
-            for sp in list(model.get("species") or []):
-                self._insert_species_row(sp)
-            self.spin_n_components_model.setValue(max(1, self.components_table.rowCount()))
-            self.spin_n_species_model.setValue(max(1, self.species_table.rowCount()))
-            self._sync_matrix_headers()
-            matrix = list(model.get("stoichiometric_matrix") or [])
-            for row in range(self.stoich_table.rowCount()):
-                values = list(matrix[row] or []) if row < len(matrix) else []
-                for col in range(self.stoich_table.columnCount()):
-                    _set_table_text(self.stoich_table, row, col, values[col] if col < len(values) else 0)
+            if self._advanced_visible():
+                self.components_table.setRowCount(0)
+                for comp in list(model.get("components") or []):
+                    self._insert_component_row(comp)
+                self.species_table.setRowCount(0)
+                for sp in list(model.get("species") or []):
+                    self._insert_species_row(sp)
+                self.spin_n_components_model.setValue(max(1, self.components_table.rowCount()))
+                self.spin_n_species_model.setValue(max(1, self.species_table.rowCount()))
+                self._sync_matrix_headers()
+                matrix = list(model.get("stoichiometric_matrix") or [])
+                for row in range(self.stoich_table.rowCount()):
+                    values = list(matrix[row] or []) if row < len(matrix) else []
+                    for col in range(self.stoich_table.columnCount()):
+                        _set_table_text(self.stoich_table, row, col, values[col] if col < len(values) else 0)
+                self._advanced_tables_dirty = False
+            else:
+                self._advanced_tables_dirty = True
         finally:
             self._updating_tables = was_updating
         self._sync_model_mode_ui()
-        self._sync_basic_fields_from_model()
+        self._populate_basic_species_from_model(model)
+        self._set_basic_pka_table_from_model(model)
         self._refresh_parameter_table()
 
     def _current_model_from_ui(self) -> dict[str, Any]:
@@ -1906,7 +2202,7 @@ class AcidBaseTab(QWidget):
         previous_values: dict[str, str] = {}
         previous_min: dict[str, str] = {}
         previous_max: dict[str, str] = {}
-        previous_fixed: dict[str, bool] = {}
+        previous_fit: dict[str, bool] = {}
         for row in range(self.parameters_table.rowCount()):
             name = _table_text(self.parameters_table, row, 0, "")
             if not name:
@@ -1914,8 +2210,8 @@ class AcidBaseTab(QWidget):
             previous_values[name] = _table_text(self.parameters_table, row, 2, "")
             previous_min[name] = _table_text(self.parameters_table, row, 3, "")
             previous_max[name] = _table_text(self.parameters_table, row, 4, "")
-            fixed_widget = self.parameters_table.cellWidget(row, 5)
-            previous_fixed[name] = bool(isinstance(fixed_widget, QCheckBox) and fixed_widget.isChecked())
+            fit_widget = self.parameters_table.cellWidget(row, 5)
+            previous_fit[name] = bool(isinstance(fit_widget, QCheckBox) and fit_widget.isChecked())
 
         try:
             model = self._current_model_from_ui()
@@ -2040,32 +2336,36 @@ class AcidBaseTab(QWidget):
                         item = self.parameters_table.item(row, col)
                         if item is not None:
                             item.setToolTip(pkw_tooltip)
-                checked = previous_fixed.get(name, bool(row_data.get("fixed", False)))
-                if not self._advanced_visible():
-                    checked = (
-                        name.lower().startswith("pka")
-                        or name.lower().startswith("log_beta")
-                        or name.lower()
-                        in {
-                            "analyte concentration",
-                            "titrant concentration",
-                            "volume offset",
-                            "electrode_e0",
-                            "electrode_slope",
-                            "pkw",
-                            "baseline",
-                        }
+                checked = previous_fit.get(name, not bool(row_data.get("fixed", False)))
+                lowered_name = name.strip().lower()
+                if lowered_name == "analyte concentration":
+                    checked = bool(self.chk_fit_analyte_conc.isChecked())
+                elif lowered_name == "titrant concentration":
+                    checked = bool(self.chk_fit_titrant_conc.isChecked())
+                elif lowered_name == "volume offset":
+                    checked = bool(self.chk_fit_volume_offset.isChecked())
+                elif lowered_name in {"electrode_e0", "electrode_slope"}:
+                    checked = bool(self.chk_fit_electrode_basic.isChecked())
+                elif lowered_name == "pkw":
+                    checked = bool(self.chk_fit_pkw.isChecked())
+                elif lowered_name.startswith("pka"):
+                    try:
+                        pka_row = int(lowered_name.replace("pka", "") or "0") - 1
+                        pka_fit = self.table_basic_pka.cellWidget(pka_row, 4)
+                        if isinstance(pka_fit, QCheckBox):
+                            checked = bool(pka_fit.isChecked())
+                    except Exception:
+                        pass
+                fit = self._make_checkbox(checked)
+                fit.stateChanged.connect(
+                    lambda state, pname=name: self._on_parameter_fit_changed(
+                        pname,
+                        state == Qt.CheckState.Checked.value,
                     )
-                fixed = self._make_checkbox(checked)
+                )
                 if name == "pKw":
-                    fixed.setToolTip(pkw_tooltip)
-                    fixed.stateChanged.connect(
-                        lambda state, pname=name: self._on_parameter_fixed_changed(
-                            pname,
-                            state == Qt.CheckState.Checked.value,
-                        )
-                    )
-                self.parameters_table.setCellWidget(row, 5, fixed)
+                    fit.setToolTip(pkw_tooltip)
+                self.parameters_table.setCellWidget(row, 5, fit)
                 _set_table_text(self.parameters_table, row, 6, row_data.get("linked_species", ""))
                 _set_table_text(self.parameters_table, row, 7, row_data.get("description", ""))
                 if name == "pKw":
@@ -2091,7 +2391,7 @@ class AcidBaseTab(QWidget):
                     self.spin_pkw_min.blockSignals(False)
                     self.spin_pkw_max.blockSignals(False)
                     self.chk_fit_pkw.blockSignals(True)
-                    self.chk_fit_pkw.setChecked(not checked)
+                    self.chk_fit_pkw.setChecked(checked)
                     self.chk_fit_pkw.blockSignals(False)
         finally:
             self._updating_tables = was_updating
@@ -2102,6 +2402,22 @@ class AcidBaseTab(QWidget):
         if self._updating_tables:
             return
         self._set_parameter_value("pKw", f"{float(value):.4f}", update_spin=False)
+
+    def _on_medium_changed(self) -> None:
+        if self._updating_tables:
+            return
+        medium = str(self.combo_medium.currentData() or "aqueous")
+        if medium == "aqueous":
+            self.spin_pkw.setValue(14.0)
+            self.spin_pkw_min.setValue(0.0)
+            self.spin_pkw_max.setValue(30.0)
+            self.chk_fit_pkw.setChecked(False)
+        elif medium == "mixed":
+            self.spin_pkw.setValue(18.0)
+            self.spin_pkw_min.setValue(10.0)
+            self.spin_pkw_max.setValue(30.0)
+        self._sync_pkw_ui()
+        self._refresh_parameter_table()
 
     def _on_pkw_bounds_changed(self, _value: float) -> None:
         if self._updating_tables:
@@ -2115,15 +2431,34 @@ class AcidBaseTab(QWidget):
     def _on_fit_pkw_toggled(self, checked: bool) -> None:
         if self._updating_tables:
             return
-        self._set_parameter_fixed("pKw", not bool(checked))
+        self._set_parameter_fit("pKw", bool(checked))
+        self._sync_pkw_ui()
 
-    def _on_parameter_fixed_changed(self, name: str, checked: bool) -> None:
+    def _on_parameter_fit_changed(self, name: str, checked: bool) -> None:
         if self._updating_tables:
             return
-        if name.strip().lower() == "pkw" and hasattr(self, "chk_fit_pkw"):
+        lowered = name.strip().lower()
+        checkbox_map = {
+            "analyte concentration": getattr(self, "chk_fit_analyte_conc", None),
+            "titrant concentration": getattr(self, "chk_fit_titrant_conc", None),
+            "volume offset": getattr(self, "chk_fit_volume_offset", None),
+        }
+        target = checkbox_map.get(lowered)
+        if isinstance(target, QCheckBox):
+            target.blockSignals(True)
+            target.setChecked(bool(checked))
+            target.blockSignals(False)
+        if lowered in {"electrode_e0", "electrode_slope"} and hasattr(self, "chk_fit_electrode_basic"):
+            self.chk_fit_electrode_basic.blockSignals(True)
+            self.chk_fit_electrode_basic.setChecked(bool(checked))
+            self.chk_fit_electrode_basic.blockSignals(False)
+        if lowered == "pkw" and hasattr(self, "chk_fit_pkw"):
             self.chk_fit_pkw.blockSignals(True)
-            self.chk_fit_pkw.setChecked(not bool(checked))
+            self.chk_fit_pkw.setChecked(bool(checked))
             self.chk_fit_pkw.blockSignals(False)
+            self._sync_pkw_ui()
+        if not self._advanced_visible():
+            self._apply_parameter_table_visibility()
 
     def _parameter_value(self, name: str, default: Any = "") -> Any:
         for row in range(self.parameters_table.rowCount()):
@@ -2143,8 +2478,10 @@ class AcidBaseTab(QWidget):
     def _parameter_fixed(self, name: str, default: bool = True) -> bool:
         for row in range(self.parameters_table.rowCount()):
             if _table_text(self.parameters_table, row, 0, "").strip().lower() == name.strip().lower():
-                fixed_widget = self.parameters_table.cellWidget(row, 5)
-                return bool(isinstance(fixed_widget, QCheckBox) and fixed_widget.isChecked())
+                fit_widget = self.parameters_table.cellWidget(row, 5)
+                if isinstance(fit_widget, QCheckBox):
+                    return not bool(fit_widget.isChecked())
+                return bool(default)
         return bool(default)
 
     def _acid_base_model_config(self) -> dict[str, Any]:
@@ -2224,6 +2561,44 @@ class AcidBaseTab(QWidget):
                 break
         return errors
 
+    def _snapshot_ui_state(self) -> AcidBaseUiState:
+        pka_rows = self._basic_pka_rows() if hasattr(self, "table_basic_pka") else []
+        pkw_min, pkw_max = self._parameter_min_max("pKw", default_min="0.0", default_max="30.0")
+        return AcidBaseUiState(
+            data_type=str(self.combo_data_type.currentData() or "potentiometry"),
+            file_path=str(self._file_path or ""),
+            sheet_name=str(self.combo_sheet.currentData() or ""),
+            volume_column=str(self.combo_volume_column.currentData() or ""),
+            volume_unit=str(self.combo_volume_unit.currentData() or "mL"),
+            signal_type=str(self.combo_signal_type.currentData() or "pH"),
+            signal_column=str(self.combo_signal_column.currentData() or ""),
+            analyte_name=str(self.edit_analyte_name.text() or "L"),
+            analyte_concentration=float(self.spin_analyte_conc.value()),
+            initial_volume=float(self.spin_initial_volume.value()),
+            titrant_type=str(self.combo_titrant_type.currentData() or "base"),
+            titrant_concentration=float(self.spin_titrant_conc.value()),
+            charge_L=int(self.spin_base_charge.value()),
+            species_rows=self._basic_species_rows() if hasattr(self, "table_basic_species") else [],
+            pka_rows=pka_rows,
+            pkw=float(self._parameter_value("pKw", default="14.0000")),
+            pkw_bounds=(float(pkw_min), float(pkw_max)),
+            fit_pkw=not self._parameter_fixed("pKw", default=True),
+            fit_analyte_concentration=not self._parameter_fixed("analyte concentration", default=True),
+            fit_titrant_concentration=not self._parameter_fixed("titrant concentration", default=True),
+            fit_volume_offset=not self._parameter_fixed("volume offset", default=True),
+            fit_electrode=(
+                (not self._parameter_fixed("electrode_e0", default=True))
+                or (not self._parameter_fixed("electrode_slope", default=True))
+            ),
+            advanced_options={
+                "advanced_mode": self._advanced_visible(),
+                "medium": str(self.combo_medium.currentData() or "aqueous") if hasattr(self, "combo_medium") else "aqueous",
+                "pH_bounds": [float(self.spin_ph_min.value()), float(self.spin_ph_max.value())],
+                "sigma_pH": float(self.spin_sigma_ph.value()),
+                "sigma_E": float(self.spin_sigma_emf.value()),
+            },
+        )
+
     def _experimental_ph_values(self) -> list[float]:
         if str(self.combo_data_type.currentData() or "") == "potentiometry":
             try:
@@ -2265,6 +2640,7 @@ class AcidBaseTab(QWidget):
         if basic_errors:
             raise ValueError("\n".join(basic_errors))
         model = self._acid_base_model_config()
+        self.ui_state = self._snapshot_ui_state()
         analysis_kind = str(self.combo_data_type.currentData() or "potentiometry")
         if float(self.spin_initial_volume.value()) <= 0.0:
             raise ValueError("Initial volume must be greater than zero.")
@@ -2329,10 +2705,15 @@ class AcidBaseTab(QWidget):
             "pH_bounds": [float(self.spin_ph_min.value()), float(self.spin_ph_max.value())],
             "electrode_e0": _optional_float(str(self._parameter_value("electrode_e0", default=self.edit_e0.text()))),
             "electrode_slope": _optional_float(str(self._parameter_value("electrode_slope", default=self.edit_slope.text()))),
-            "fit_electrode": bool(self.chk_fit_electrode.isChecked()),
-            "fit_analyte_concentration": bool(self.chk_fit_analyte_conc.isChecked()),
-            "fit_titrant_concentration": bool(self.chk_fit_titrant_conc.isChecked()),
-            "fit_volume_offset": bool(self.chk_fit_volume_offset.isChecked()),
+            "fit_electrode": (
+                (not self._parameter_fixed("electrode_e0", default=True))
+                or (not self._parameter_fixed("electrode_slope", default=True))
+            ),
+            "fit_analyte_concentration": not self._parameter_fixed("analyte concentration", default=True),
+            "fit_titrant_concentration": not self._parameter_fixed("titrant concentration", default=True),
+            "fit_volume_offset": not self._parameter_fixed("volume offset", default=True),
+            "pka_fit_mask": [bool(row["fit"]) for row in self._basic_pka_rows()],
+            "pka_bounds": [[float(row["min"]), float(row["max"])] for row in self._basic_pka_rows()],
             "sigma_pH": float(self.spin_sigma_ph.value()),
             "sigma_E": float(self.spin_sigma_emf.value()),
             "pkw": pkw,
@@ -2370,6 +2751,22 @@ class AcidBaseTab(QWidget):
             if item.checkState() == Qt.CheckState.Checked:
                 selected.add(str(item.data(Qt.ItemDataRole.UserRole)))
         return selected
+
+    def _sync_plot_options_for_analysis(self) -> None:
+        if not hasattr(self, "plot_options"):
+            return
+        kind = str(self.combo_data_type.currentData() or "potentiometry")
+        visible_by_kind = {
+            "potentiometry": {"fit", "residuals", "species_pH", "species_volume"},
+            "spectroscopy": {"fit", "residuals", "species_pH", "spectroscopy_pure"},
+            "nmr": {"fit", "residuals", "species_pH", "nmr_limiting"},
+        }.get(kind, {"fit", "residuals"})
+        for row in range(self.plot_options.count()):
+            item = self.plot_options.item(row)
+            plot_id = str(item.data(Qt.ItemDataRole.UserRole))
+            item.setHidden(plot_id not in visible_by_kind)
+            if plot_id in visible_by_kind and item.checkState() != Qt.CheckState.Checked:
+                item.setCheckState(Qt.CheckState.Checked)
 
     def _custom_titrant_config(self) -> tuple[dict[str, float], float]:
         titrant_conc: dict[str, float] = {}
@@ -2463,22 +2860,31 @@ class AcidBaseTab(QWidget):
             if index >= 0:
                 combo.setCurrentIndex(index)
         if self.combo_volume_column.currentIndex() <= 0:
-            volume_candidates = {"volume", "volume_ml", "v", "v_ml", "volume_added"}
-            for idx, column in enumerate(columns, start=1):
-                if str(column).strip().lower() in volume_candidates:
-                    self.combo_volume_column.setCurrentIndex(idx)
-                    break
+            scored = [(_volume_column_score(column), idx, column) for idx, column in enumerate(columns, start=1)]
+            scored = [item for item in scored if item[0] > 0]
+            if scored:
+                _score, idx, column = max(scored, key=lambda item: (item[0], -item[1]))
+                self.combo_volume_column.setCurrentIndex(idx)
+                guessed_unit = _guess_volume_unit_from_name(column)
+                if guessed_unit:
+                    unit_idx = self.combo_volume_unit.findData(guessed_unit)
+                    if unit_idx >= 0:
+                        self.combo_volume_unit.setCurrentIndex(unit_idx)
         if self.combo_signal_column.currentIndex() <= 0:
-            preferred = ["ph", "ph*", "mv", "e_mv", "emf", "signal"]
-            lowered = [str(col).strip().lower() for col in columns]
-            for name in preferred:
-                if name in lowered:
-                    self.combo_signal_column.setCurrentIndex(lowered.index(name) + 1)
-                    break
+            scored_signal = [(*_signal_column_score(column), idx) for idx, column in enumerate(columns, start=1)]
+            scored_signal = [item for item in scored_signal if item[0] > 0]
+            if scored_signal:
+                _score, kind, idx = max(scored_signal, key=lambda item: (item[0], -item[2]))
+                self.combo_signal_column.setCurrentIndex(idx)
+                if kind:
+                    type_idx = self.combo_signal_type.findData(kind)
+                    if type_idx >= 0:
+                        self.combo_signal_type.setCurrentIndex(type_idx)
         if self.combo_signal_column.currentIndex() > 0:
-            signal_name = str(self.combo_signal_column.currentData() or "").strip().lower()
-            if signal_name in {"e", "e_mv", "emf", "emf_mv", "mv"}:
-                idx = self.combo_signal_type.findData("mV")
+            signal_name = str(self.combo_signal_column.currentData() or "")
+            _score, kind = _signal_column_score(signal_name)
+            if kind:
+                idx = self.combo_signal_type.findData(kind)
                 if idx >= 0:
                     self.combo_signal_type.setCurrentIndex(idx)
 
@@ -2489,11 +2895,12 @@ class AcidBaseTab(QWidget):
             lines.extend([f"Error: {msg}" for msg in errors])
         if warnings:
             lines.extend([f"Warning: {msg}" for msg in warnings])
-        self.lbl_pot_validation.setText("\n".join(lines))
+        self.lbl_pot_validation.setText("\n".join(lines) if lines else "Pre-fit checks: no issues detected yet.")
         color = "#a40000" if errors else ("#8f5c00" if warnings else "#444444")
         self.lbl_pot_validation.setStyleSheet(f"color: {color};")
 
     def _refresh_potentiometry_preview(self) -> None:
+        existing_mask = self._current_preview_mask() if hasattr(self, "table_pot_preview") else []
         self.table_pot_preview.setRowCount(0)
         if str(self.combo_data_type.currentData() or "") != "potentiometry":
             self._set_pot_validation_messages([], [])
@@ -2507,6 +2914,8 @@ class AcidBaseTab(QWidget):
             self._set_pot_validation_messages(["Select both the volume and signal columns."], [])
             return
         errors, warnings, preview_df = self._build_potentiometry_preview_dataframe(self._current_data_frame)
+        if existing_mask and len(existing_mask) == len(preview_df.index):
+            preview_df["include"] = existing_mask
         self._set_pot_validation_messages(errors, warnings)
 
         signal_type = str(self.combo_signal_type.currentData() or "signal")
@@ -2539,6 +2948,56 @@ class AcidBaseTab(QWidget):
                 _set_table_text(self.table_pot_preview, row_idx, 4, row["signal_raw"])
         finally:
             self.table_pot_preview.blockSignals(False)
+
+    def _current_preview_mask(self) -> list[bool]:
+        mask: list[bool] = []
+        for row in range(self.table_pot_preview.rowCount()):
+            item = self.table_pot_preview.item(row, 0)
+            mask.append(bool(item is not None and item.checkState() == Qt.CheckState.Checked))
+        return mask
+
+    def _apply_preview_mask(self, mask: list[bool]) -> None:
+        self.table_pot_preview.blockSignals(True)
+        try:
+            for row, include in enumerate(mask[: self.table_pot_preview.rowCount()]):
+                item = self.table_pot_preview.item(row, 0)
+                if item is not None:
+                    item.setCheckState(Qt.CheckState.Checked if include else Qt.CheckState.Unchecked)
+        finally:
+            self.table_pot_preview.blockSignals(False)
+        try:
+            errors, warnings, _preview_df = self._build_potentiometry_preview_dataframe(
+                self._current_data_frame,
+                include_from_table=True,
+            )
+            self._set_pot_validation_messages(errors, warnings)
+        except Exception:
+            pass
+
+    def _set_preview_inclusion(self, action: str) -> None:
+        n = self.table_pot_preview.rowCount()
+        if n <= 0:
+            return
+        current = self._current_preview_mask()
+        action = str(action)
+        if action != "restore":
+            self._pot_preview_restore_mask = list(current)
+        if action == "all":
+            mask = [True] * n
+        elif action == "none":
+            mask = [False] * n
+        elif action == "exclude_first":
+            mask = list(current)
+            if mask:
+                mask[0] = False
+        elif action == "exclude_selected":
+            selected_rows = {idx.row() for idx in self.table_pot_preview.selectedIndexes()}
+            mask = [include and row not in selected_rows for row, include in enumerate(current)]
+        elif action == "restore" and self._pot_preview_restore_mask is not None:
+            mask = list(self._pot_preview_restore_mask)
+        else:
+            return
+        self._apply_preview_mask(mask)
 
     def _build_potentiometry_preview_dataframe(
         self,
@@ -2578,6 +3037,14 @@ class AcidBaseTab(QWidget):
             errors.append("Volume should be non-decreasing.")
         if finite_volume.size and abs(float(finite_volume[0])) <= 1.0e-15:
             warnings.append("Initial volume is zero.")
+        if finite_volume.size:
+            vmax = float(np.nanmax(np.abs(finite_volume)))
+            if vmax > 10000.0:
+                warnings.append("Converted volumes are very large in mL. Check whether the source column is in µL.")
+            elif 0.0 < vmax < 1.0e-6:
+                warnings.append("Converted volumes are extremely small in mL. Check the selected volume unit.")
+        if len(finite_volume) < 6:
+            warnings.append("Very few points are included. Fits are usually more reliable with more titration points.")
         signal_type = str(self.combo_signal_type.currentData() or "")
         finite_signal = signal_numeric.dropna().to_numpy(dtype=float)
         if signal_type.lower() in {"ph", "ph*"} and finite_signal.size:
@@ -2585,8 +3052,8 @@ class AcidBaseTab(QWidget):
             signal_max = float(np.nanmax(finite_signal))
             if signal_min < -2.0 or signal_max > 16.0:
                 warnings.append("Some pH values are outside the usual -2 to 16 range; the fit can still run.")
-            elif signal_max > 14.0:
-                warnings.append("pH values above 14 detected; treat them as operational pH.")
+            if signal_max > 14.0:
+                warnings.append("pH values above 14 detected. For mixed solvents, consider using apparent pKw and wider pH bounds.")
 
         preview_df = pd.DataFrame(
             {
@@ -2646,6 +3113,49 @@ class AcidBaseTab(QWidget):
             self.combo_signal_column.clear()
             self.table_pot_preview.setRowCount(0)
             self._set_pot_validation_messages([f"Could not preview data file: {exc}"], [])
+
+    def _suggest_setup_from_data(self) -> None:
+        if self._current_data_frame is None or self._current_data_frame.empty:
+            self.log.append_text("Suggestion: load a potentiometry file first.")
+            return
+        columns = [str(col) for col in self._current_data_frame.columns]
+        self._populate_potentiometry_columns(columns)
+        suggestions: list[str] = []
+        volume_col = str(self.combo_volume_column.currentData() or "")
+        signal_col = str(self.combo_signal_column.currentData() or "")
+        if volume_col:
+            unit = _guess_volume_unit_from_name(volume_col)
+            raw_volume = pd.to_numeric(self._current_data_frame[volume_col], errors="coerce").dropna()
+            if unit is None and not raw_volume.empty:
+                vmax = float(raw_volume.max())
+                unit = "µL" if vmax > 1000.0 else "mL"
+            if unit:
+                idx = self.combo_volume_unit.findData(unit)
+                if idx >= 0:
+                    self.combo_volume_unit.setCurrentIndex(idx)
+                    suggestions.append(f"Volume unit: {unit}")
+        if signal_col:
+            _score, kind = _signal_column_score(signal_col)
+            if kind:
+                idx = self.combo_signal_type.findData(kind)
+                if idx >= 0:
+                    self.combo_signal_type.setCurrentIndex(idx)
+                    suggestions.append(f"Signal type: {'EMF' if kind == 'mV' else kind}")
+        if str(self.combo_signal_type.currentData() or "").lower() in {"ph", "ph*"} and signal_col:
+            signal = pd.to_numeric(self._current_data_frame[signal_col], errors="coerce").dropna()
+            if not signal.empty:
+                ph_min = float(signal.min())
+                ph_max = float(signal.max())
+                self.spin_ph_min.setValue(max(-10.0, math.floor(ph_min) - 1.0))
+                self.spin_ph_max.setValue(min(30.0, math.ceil(ph_max) + 1.0))
+                suggestions.append(f"pH bounds: {self.spin_ph_min.value():.0f} to {self.spin_ph_max.value():.0f}")
+                if ph_max > 14.0:
+                    idx = self.combo_medium.findData("mixed")
+                    if idx >= 0:
+                        self.combo_medium.setCurrentIndex(idx)
+                    suggestions.append("pH > 14: apparent pKw_app = 18 suggested for mixed/non-aqueous media.")
+        self._refresh_potentiometry_preview()
+        self.log.append_text("Suggestions: " + ("; ".join(suggestions) if suggestions else "no changes suggested."))
 
     def _set_running(self, running: bool) -> None:
         self._is_running = bool(running)
@@ -3026,15 +3536,18 @@ class AcidBaseTab(QWidget):
                 _set_table_text(self.parameters_table, row, 4, max_value)
                 return
 
-    def _set_parameter_fixed(self, name: str, fixed: bool) -> None:
+    def _set_parameter_fit(self, name: str, fit: bool) -> None:
         for row in range(self.parameters_table.rowCount()):
             if _table_text(self.parameters_table, row, 0, "").strip().lower() == name.strip().lower():
-                fixed_widget = self.parameters_table.cellWidget(row, 5)
-                if isinstance(fixed_widget, QCheckBox):
-                    fixed_widget.blockSignals(True)
-                    fixed_widget.setChecked(bool(fixed))
-                    fixed_widget.blockSignals(False)
+                fit_widget = self.parameters_table.cellWidget(row, 5)
+                if isinstance(fit_widget, QCheckBox):
+                    fit_widget.blockSignals(True)
+                    fit_widget.setChecked(bool(fit))
+                    fit_widget.blockSignals(False)
                 return
+
+    def _set_parameter_fixed(self, name: str, fixed: bool) -> None:
+        self._set_parameter_fit(name, not bool(fixed))
 
     def reset_tab(self) -> None:
         if self._worker is not None:

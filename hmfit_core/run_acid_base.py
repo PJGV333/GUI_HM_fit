@@ -555,10 +555,37 @@ def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[
     if not pkw_min <= pkw_initial <= pkw_max:
         raise ValueError("Initial pKw must be within the configured pKw bounds.")
 
-    parameter_names = [f"pKa{idx + 1}" for idx in range(len(initial_pka))]
-    initial_params = [float(value) for value in initial_pka]
-    lower_bounds = [-5.0] * len(initial_pka)
-    upper_bounds = [25.0] * len(initial_pka)
+    pka_fit_mask_raw = cfg.get("pka_fit_mask")
+    if pka_fit_mask_raw is None:
+        pka_fit_mask = [True] * len(initial_pka)
+    else:
+        pka_fit_mask = [bool(v) for v in list(pka_fit_mask_raw)[: len(initial_pka)]]
+        while len(pka_fit_mask) < len(initial_pka):
+            pka_fit_mask.append(True)
+    pka_bounds_raw = list(cfg.get("pka_bounds") or [])
+    parameter_names = []
+    initial_params = []
+    lower_bounds = []
+    upper_bounds = []
+    for idx, value in enumerate(initial_pka):
+        if not pka_fit_mask[idx]:
+            continue
+        lo, hi = -5.0, 25.0
+        if idx < len(pka_bounds_raw):
+            raw_bounds = pka_bounds_raw[idx]
+            if isinstance(raw_bounds, Mapping):
+                lo = float(raw_bounds.get("min", lo))
+                hi = float(raw_bounds.get("max", hi))
+            else:
+                seq = list(raw_bounds or [])
+                if len(seq) >= 2:
+                    lo, hi = float(seq[0]), float(seq[1])
+        if lo >= hi:
+            raise ValueError(f"pKa{idx + 1} min must be lower than max.")
+        parameter_names.append(f"pKa{idx + 1}")
+        initial_params.append(float(value))
+        lower_bounds.append(float(lo))
+        upper_bounds.append(float(hi))
     fit_pkw = bool(cfg.get("fit_pkw", cfg.get("fit_pKw", False)))
     if bool(cfg.get("fit_analyte_concentration", False)):
         parameter_names.append("analyte_concentration")
@@ -606,7 +633,10 @@ def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[
                 "pKw only when the titration data contain enough information and the solvent "
                 "system justifies it."
             )
-    if parameter_names != [f"pKa{idx + 1}" for idx in range(len(initial_pka))]:
+    default_all_pka = [f"pKa{idx + 1}" for idx in range(len(initial_pka))]
+    if not parameter_names:
+        raise ValueError("Select at least one parameter to fit.")
+    if parameter_names != default_all_pka or pka_bounds_raw:
         fit_options["parameter_names"] = parameter_names
         fit_options["initial_params"] = initial_params
         fit_options["bounds"] = (lower_bounds, upper_bounds)
@@ -731,6 +761,50 @@ def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[
     payload["export_data"]["medium_parameters"] = [pkw_row]
     if fit_pkw:
         payload["export_data"]["potentiometry_note"] = "pKw was fitted as an apparent medium parameter."
+    species_names = []
+    try:
+        species_names = [str(sp.name) for comp in fitted_system.components for sp in comp.species]
+    except Exception:
+        species_names = []
+    summary_lines = [
+        "Acid-base fit summary",
+        "",
+        "Model:",
+        f"- Species: {', '.join(species_names) if species_names else 'n/a'}",
+        f"- Titrant: {str(experiment.titrant_type)}",
+        f"- Initial volume: {float(experiment.initial_volume):.8g}",
+        f"- Analyte concentration: {float(experiment.analyte_concentration or 0.0):.8g}",
+        f"- Titrant concentration: {float(experiment.titrant_concentration or 0.0):.8g}",
+        f"- Points included: {int(volumes.size)}",
+        "",
+        "Fitted parameters:",
+    ]
+    for row in payload.get("constants") or []:
+        name = str(row.get("parameter") or "")
+        if name.startswith("pKa") or name == "pKw_app":
+            summary_lines.append(f"- {name} = {float(row.get('value')):.8g}")
+    summary_lines.extend(
+        [
+            "",
+            "Statistics:",
+            f"- chi_square = {float(result.chi_square):.8g}",
+        ]
+    )
+    if result.reduced_chi_square is not None:
+        summary_lines.append(f"- reduced_chi_square = {float(result.reduced_chi_square):.8g}")
+    if result.aic is not None:
+        summary_lines.append(f"- AIC = {float(result.aic):.8g}")
+    if result.bic is not None:
+        summary_lines.append(f"- BIC = {float(result.bic):.8g}")
+    warnings_out: list[str] = []
+    if fit_pkw:
+        warnings_out.append("pKw_app fitted as an apparent medium parameter.")
+    if warnings_out:
+        summary_lines.append("")
+        summary_lines.append("Warnings:")
+        summary_lines.extend(f"- {warning}" for warning in warnings_out)
+    payload["results_text"] = "\n".join(summary_lines) + "\n\n" + str(payload.get("results_text") or "")
+    payload["export_data"]["fit_summary"] = {"line": summary_lines}
     return payload
 
 
