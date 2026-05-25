@@ -519,15 +519,40 @@ def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[
         fit_options["initial_concentrations"] = dict(cfg.get("initial_concentrations") or {})
     if isinstance(cfg.get("titrant_concentrations"), Mapping):
         fit_options["titrant_concentrations"] = dict(cfg.get("titrant_concentrations") or {})
+    parameter_names = [f"pKa{idx + 1}" for idx in range(len(initial_pka))]
+    initial_params = [float(value) for value in initial_pka]
+    lower_bounds = [-5.0] * len(initial_pka)
+    upper_bounds = [25.0] * len(initial_pka)
+    if bool(cfg.get("fit_analyte_concentration", False)):
+        parameter_names.append("analyte_concentration")
+        initial_params.append(float(experiment.analyte_concentration or 0.0))
+        lower_bounds.append(1.0e-12)
+        upper_bounds.append(1.0e6)
+    if bool(cfg.get("fit_titrant_concentration", False)):
+        parameter_names.append("titrant_concentration")
+        initial_params.append(float(experiment.titrant_concentration or 0.0))
+        lower_bounds.append(1.0e-12)
+        upper_bounds.append(1.0e6)
+    if bool(cfg.get("fit_volume_offset", False)):
+        parameter_names.append("volume_offset")
+        initial_params.append(float(fit_options.get("volume_offset", experiment.volume_offset or 0.0) or 0.0))
+        lower_bounds.append(-1.0e9)
+        upper_bounds.append(1.0e9)
     if bool(cfg.get("fit_electrode", False)) and measured_emf is not None:
-        fit_options["parameter_names"] = ["pKa1", "electrode_e0", "electrode_slope"]
-        fit_options["initial_params"] = [
-            float(initial_pka[0]),
-            0.0 if experiment.electrode_e0 is None else float(experiment.electrode_e0),
-            -59.16 if experiment.electrode_slope is None else float(experiment.electrode_slope),
-        ]
-        fit_options["bounds"] = ([-5.0, -1.0e5, -120.0], [25.0, 1.0e5, 120.0])
+        parameter_names.extend(["electrode_e0", "electrode_slope"])
+        initial_params.extend(
+            [
+                0.0 if experiment.electrode_e0 is None else float(experiment.electrode_e0),
+                -59.16 if experiment.electrode_slope is None else float(experiment.electrode_slope),
+            ]
+        )
+        lower_bounds.extend([-1.0e5, -120.0])
+        upper_bounds.extend([1.0e5, 120.0])
         fit_options["fit_signal"] = "emf"
+    if parameter_names != [f"pKa{idx + 1}" for idx in range(len(initial_pka))]:
+        fit_options["parameter_names"] = parameter_names
+        fit_options["initial_params"] = initial_params
+        fit_options["bounds"] = (lower_bounds, upper_bounds)
     log(f"Water autoionization: pKw={_pkw_from_kw(system.kw):.4f}, Kw={system.kw:.6g}")
     log("Fitting potentiometric acid-base data...")
     result = fit_potentiometry(experiment, system, initial_pka=initial_pka, fit_options=fit_options)
