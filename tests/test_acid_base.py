@@ -218,6 +218,15 @@ def test_matrix_generated_monoprotic_model_template():
     assert model["log_beta"] == pytest.approx([5.20])
 
 
+def test_polyprotic_template_generates_ladder_species_and_matrix():
+    model = build_acid_base_template("polyprotic_acid_base", n_pka=4, pka=[3.0, 5.0, 7.0, 9.0])
+    assert model["component_names"] == ["L", "H"]
+    assert model["species_names"] == ["L", "HL", "H2L", "H3L", "H4L"]
+    assert [row["charge"] for row in model["species"]] == [-4, -3, -2, -1, 0]
+    assert model["stoichiometric_matrix"] == [[1, 1, 1, 1, 1], [0, 1, 2, 3, 4]]
+    assert model["pka"] == pytest.approx([3.0, 5.0, 7.0, 9.0])
+
+
 def test_matrix_generated_diprotic_model_template():
     model = build_acid_base_template("diprotic_ligand")
     assert model["component_names"] == ["L", "H"]

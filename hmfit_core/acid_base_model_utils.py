@@ -206,6 +206,8 @@ def build_acid_base_template(
     template_id: str,
     *,
     analytical_concentration: float = 1.0e-3,
+    n_pka: int | None = None,
+    pka: Sequence[float] | None = None,
 ) -> dict[str, Any]:
     key = str(template_id or "").strip().lower()
     if key == "simple_monoprotic":
@@ -230,6 +232,19 @@ def build_acid_base_template(
             component_name="L",
             pka=[2.10, 6.70, 10.20],
             base_charge=-3,
+            analytical_concentration=analytical_concentration,
+        )
+    if key in {"polyprotic_acid_base", "polyprotic"}:
+        count = int(n_pka or (len(list(pka or [])) if pka else 3))
+        count = max(1, min(12, count))
+        values = [float(v) for v in list(pka or [])[:count]]
+        if len(values) < count:
+            values.extend([4.5 + 2.5 * idx for idx in range(len(values), count)])
+        return _make_template(
+            "polyprotic_acid_base",
+            component_name="L",
+            pka=values,
+            base_charge=-count,
             analytical_concentration=analytical_concentration,
         )
     if key == "multiple_components":

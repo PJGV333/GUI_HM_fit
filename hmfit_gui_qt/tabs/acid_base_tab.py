@@ -43,6 +43,7 @@ from hmfit_core.acid_base_errors import compute_errors_acid_base_from_context
 from hmfit_core.acid_base_model_utils import (
     acid_base_constant_blocks,
     acid_base_model_from_equations,
+    build_acid_base_template,
     canonicalize_acid_base_model,
     normalize_constant_mode,
     parameter_rows_from_model,
@@ -124,7 +125,7 @@ class AcidBaseTab(QWidget):
         "Initial value",
         "Min",
         "Max",
-        "Fixed",
+        "Fit / Fixed",
         "Linked species",
         "Description",
     ]
@@ -142,12 +143,15 @@ class AcidBaseTab(QWidget):
         self._plot_index = 0
         self._is_running = False
         self._updating_tables = False
+        self._updating_basic_fields = False
         self.errors_panel: ErrorAnalysisWidget | None = None
 
         self._build_ui()
         self._load_template("simple_monoprotic")
         self._refresh_parameter_table()
         self._on_titrant_type_changed()
+        self._on_signal_type_changed()
+        self._sync_advanced_ui(False)
         self._set_running(False)
         self.canvas_main.show_message("Import a CSV or Excel file to begin")
         self.log.append_text("Ready. Import potentiometry, spectroscopy, or NMR CSV/TXT/XLSX data.")
@@ -184,17 +188,23 @@ class AcidBaseTab(QWidget):
         data_layout = QVBoxLayout(self._data_group)
         form = QFormLayout()
 
+        self.lbl_data_type = QLabel("Data type", self._data_group)
         self.combo_data_type = QComboBox(self._data_group)
         self.combo_data_type.addItem("Potentiometry pH/EMF", "potentiometry")
         self.combo_data_type.addItem("Spectroscopy signal vs pH", "spectroscopy")
         self.combo_data_type.addItem("1H NMR shifts vs pH", "nmr")
         self.combo_data_type.currentIndexChanged.connect(self._on_data_type_changed)
-        form.addRow("Data type", self.combo_data_type)
+        form.addRow(self.lbl_data_type, self.combo_data_type)
+        self.lbl_data_type.setVisible(False)
+        self.combo_data_type.setVisible(False)
 
+        self.lbl_sheet = QLabel("Data sheet", self._data_group)
         self.combo_sheet = QComboBox(self._data_group)
         self.combo_sheet.setEnabled(False)
         self.combo_sheet.currentIndexChanged.connect(self._on_sheet_changed)
-        form.addRow("Data sheet", self.combo_sheet)
+        form.addRow(self.lbl_sheet, self.combo_sheet)
+        self.lbl_sheet.setVisible(False)
+        self.combo_sheet.setVisible(False)
         data_layout.addLayout(form)
 
         file_row = QHBoxLayout()
@@ -227,14 +237,18 @@ class AcidBaseTab(QWidget):
 
         self.combo_signal_type = QComboBox(pot_page)
         self.combo_signal_type.addItem("pH", "pH")
-        self.combo_signal_type.addItem("pH*", "pH*")
-        self.combo_signal_type.addItem("mV", "mV")
-        self.combo_signal_type.currentIndexChanged.connect(self._refresh_potentiometry_preview)
+        self.combo_signal_type.addItem("EMF", "mV")
+        self.combo_signal_type.currentIndexChanged.connect(self._on_signal_type_changed)
         pot_form.addRow("Signal type", self.combo_signal_type)
 
         self.combo_signal_column = QComboBox(pot_page)
         self.combo_signal_column.currentIndexChanged.connect(self._refresh_potentiometry_preview)
         pot_form.addRow("Signal column", self.combo_signal_column)
+
+        self.chk_ideal_nernst = QCheckBox("Use ideal Nernst slope", pot_page)
+        self.chk_ideal_nernst.setChecked(True)
+        self.chk_ideal_nernst.toggled.connect(self._on_ideal_nernst_toggled)
+        pot_form.addRow("", self.chk_ideal_nernst)
         pot_layout.addLayout(pot_form)
 
         self.lbl_pot_validation = QLabel("", pot_page)
@@ -272,27 +286,89 @@ class AcidBaseTab(QWidget):
         tab = QWidget(self.model_opt_tabs)
         layout = QVBoxLayout(tab)
 
+        setup_group = QGroupBox("Titration setup", tab)
+        setup_form = QFormLayout(setup_group)
+        self.spin_initial_volume = QDoubleSpinBox(setup_group)
+        self.spin_initial_volume.setDecimals(6)
+        self.spin_initial_volume.setRange(1.0e-12, 1.0e9)
+        self.spin_initial_volume.setValue(10.0)
+        self.spin_analyte_conc = QDoubleSpinBox(setup_group)
+        self.spin_analyte_conc.setDecimals(8)
+        self.spin_analyte_conc.setRange(1.0e-12, 1.0e6)
+        self.spin_analyte_conc.setValue(1.0e-3)
+        self.spin_analyte_conc.setSingleStep(1.0e-4)
+        self.spin_analyte_conc.valueChanged.connect(self._on_analyte_concentration_changed)
+        self.spin_titrant_conc = QDoubleSpinBox(setup_group)
+        self.spin_titrant_conc.setDecimals(8)
+        self.spin_titrant_conc.setRange(1.0e-12, 1.0e6)
+        self.spin_titrant_conc.setValue(1.0e-3)
+        self.spin_titrant_conc.setSingleStep(1.0e-4)
+        self.spin_titrant_conc.valueChanged.connect(self._on_titrant_concentration_changed)
+        self.combo_titrant_type = QComboBox(setup_group)
+        self.combo_titrant_type.addItem("strong base", "base")
+        self.combo_titrant_type.addItem("strong acid", "acid")
+        self.combo_titrant_type.addItem("custom titrant", "custom")
+        self.combo_titrant_type.currentIndexChanged.connect(self._on_titrant_type_changed)
+        setup_form.addRow("Initial volume", self.spin_initial_volume)
+        setup_form.addRow("Analyte concentration", self.spin_analyte_conc)
+        setup_form.addRow("Titrant concentration", self.spin_titrant_conc)
+        setup_form.addRow("Titrant type", self.combo_titrant_type)
+        layout.addWidget(setup_group)
+
+        chemical_group = QGroupBox("Chemical model", tab)
+        chemical_layout = QVBoxLayout(chemical_group)
         template_row = QHBoxLayout()
-        template_row.addWidget(QLabel("Load template", tab))
+        template_row.addWidget(QLabel("Template / model type", chemical_group))
         self.combo_model_type = QComboBox(tab)
         self.combo_model_type.addItem("Simple monoprotic acid/base", "simple_monoprotic")
-        self.combo_model_type.addItem("Diprotic ligand", "diprotic_ligand")
-        self.combo_model_type.addItem("Triprotic ligand", "triprotic_ligand")
+        self.combo_model_type.addItem("Diprotic acid/base", "diprotic_ligand")
+        self.combo_model_type.addItem("Polyprotic acid/base", "polyprotic_acid_base")
         self.combo_model_type.addItem("Multiple acid-base components", "multiple_components")
         self.combo_model_type.addItem("Custom acid-base system", "custom_acid_base_system")
         self.combo_model_type.addItem(
             "Coupled acid-base / host-guest model (future)",
             "coupled_future",
         )
+        self.combo_model_type.currentIndexChanged.connect(self._on_model_template_changed)
         future_idx = self.combo_model_type.findData("coupled_future")
         future_item = self.combo_model_type.model().item(future_idx)
         if future_item is not None:
             future_item.setEnabled(False)
         template_row.addWidget(self.combo_model_type, 1)
-        self.btn_load_template = QPushButton("Load template", tab)
+        self.btn_load_template = QPushButton("Load template", chemical_group)
         self.btn_load_template.clicked.connect(self._on_load_template_clicked)
         template_row.addWidget(self.btn_load_template)
-        layout.addLayout(template_row)
+        chemical_layout.addLayout(template_row)
+
+        self.lbl_pka_count = QLabel("Number of pKa values", chemical_group)
+        self.spin_pka_count = QSpinBox(chemical_group)
+        self.spin_pka_count.setRange(1, 12)
+        self.spin_pka_count.setValue(3)
+        self.spin_pka_count.valueChanged.connect(self._on_pka_count_changed)
+        pka_count_row = QHBoxLayout()
+        pka_count_row.addWidget(self.lbl_pka_count)
+        pka_count_row.addWidget(self.spin_pka_count)
+        pka_count_row.addStretch(1)
+        chemical_layout.addLayout(pka_count_row)
+
+        self.table_basic_pka = QTableWidget(0, 2, chemical_group)
+        self.table_basic_pka.setHorizontalHeaderLabels(["pKa", "Initial guess"])
+        self.table_basic_pka.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        self.table_basic_pka.horizontalHeader().setStretchLastSection(True)
+        self.table_basic_pka.setMinimumHeight(90)
+        self.table_basic_pka.itemChanged.connect(self._on_basic_pka_table_changed)
+        chemical_layout.addWidget(QLabel("Initial guesses for pKa", chemical_group))
+        chemical_layout.addWidget(self.table_basic_pka)
+        layout.addWidget(chemical_group)
+
+        self.model_advanced_group = QGroupBox("Advanced options", tab)
+        self.model_advanced_group.setCheckable(True)
+        self.model_advanced_group.setChecked(False)
+        self.model_advanced_group.toggled.connect(self._sync_advanced_ui)
+        self.model_advanced_content = QWidget(self.model_advanced_group)
+        advanced_outer = QVBoxLayout(self.model_advanced_group)
+        advanced_outer.addWidget(self.model_advanced_content)
+        advanced_layout = QVBoxLayout(self.model_advanced_content)
 
         mode_row = QHBoxLayout()
         mode_row.addWidget(QLabel("Model definition", tab))
@@ -304,7 +380,7 @@ class AcidBaseTab(QWidget):
         mode_row.addWidget(self.radio_model_matrix)
         mode_row.addWidget(self.radio_model_equations)
         mode_row.addStretch(1)
-        layout.addLayout(mode_row)
+        advanced_layout.addLayout(mode_row)
 
         constants_group = QGroupBox("Constant convention", tab)
         constants_form = QFormLayout(constants_group)
@@ -313,10 +389,10 @@ class AcidBaseTab(QWidget):
         self.combo_constant_mode.addItem("log_beta", "log_beta")
         self.combo_constant_mode.currentIndexChanged.connect(self._refresh_parameter_table)
         constants_form.addRow("Primary input mode", self.combo_constant_mode)
-        layout.addWidget(constants_group)
+        advanced_layout.addWidget(constants_group)
 
         self.model_definition_stack = QStackedWidget(tab)
-        layout.addWidget(self.model_definition_stack, 1)
+        advanced_layout.addWidget(self.model_definition_stack, 1)
 
         matrix_page = QWidget(self.model_definition_stack)
         matrix_layout = QVBoxLayout(matrix_page)
@@ -428,21 +504,6 @@ class AcidBaseTab(QWidget):
         self.titration_group = QGroupBox("Potentiometric titration model", tab)
         titration_layout = QVBoxLayout(self.titration_group)
         titration_form = QFormLayout()
-        self.spin_initial_volume = QDoubleSpinBox(self.titration_group)
-        self.spin_initial_volume.setDecimals(6)
-        self.spin_initial_volume.setRange(1.0e-12, 1.0e9)
-        self.spin_initial_volume.setValue(10.0)
-        self.spin_titrant_conc = QDoubleSpinBox(self.titration_group)
-        self.spin_titrant_conc.setDecimals(8)
-        self.spin_titrant_conc.setRange(0.0, 1.0e6)
-        self.spin_titrant_conc.setValue(1.0e-3)
-        self.spin_titrant_conc.setSingleStep(1.0e-4)
-        self.spin_titrant_conc.valueChanged.connect(self._refresh_parameter_table)
-        self.combo_titrant_type = QComboBox(self.titration_group)
-        self.combo_titrant_type.addItem("strong base", "base")
-        self.combo_titrant_type.addItem("strong acid", "acid")
-        self.combo_titrant_type.addItem("custom titrant", "custom")
-        self.combo_titrant_type.currentIndexChanged.connect(self._on_titrant_type_changed)
         self.combo_strong_ion = QComboBox(self.titration_group)
         self.combo_strong_ion.addItem("automatic", "automatic")
         self.combo_strong_ion.addItem("manual", "manual")
@@ -458,7 +519,7 @@ class AcidBaseTab(QWidget):
         self.spin_volume_offset.setDecimals(6)
         self.spin_volume_offset.setRange(-1.0e9, 1.0e9)
         self.spin_volume_offset.setValue(0.0)
-        self.spin_volume_offset.valueChanged.connect(self._refresh_parameter_table)
+        self.spin_volume_offset.valueChanged.connect(self._on_volume_offset_changed)
         self.spin_ph_min = QDoubleSpinBox(self.titration_group)
         self.spin_ph_min.setDecimals(3)
         self.spin_ph_min.setRange(-10.0, 30.0)
@@ -468,9 +529,6 @@ class AcidBaseTab(QWidget):
         self.spin_ph_max.setRange(-10.0, 30.0)
         self.spin_ph_max.setValue(16.0)
 
-        titration_form.addRow("Initial volume", self.spin_initial_volume)
-        titration_form.addRow("Titrant concentration", self.spin_titrant_conc)
-        titration_form.addRow("Titrant type", self.combo_titrant_type)
         titration_form.addRow("Strong ion contribution", self.combo_strong_ion)
         titration_form.addRow("Initial strong ion charge", self.spin_initial_strong_charge)
         titration_form.addRow("Titrant strong ion charge", self.spin_titrant_strong_charge)
@@ -499,7 +557,8 @@ class AcidBaseTab(QWidget):
         custom_buttons.addWidget(self.btn_remove_titrant_row)
         custom_buttons.addStretch(1)
         titration_layout.addLayout(custom_buttons)
-        layout.addWidget(self.titration_group)
+        advanced_layout.addWidget(self.titration_group)
+        layout.addWidget(self.model_advanced_group)
 
         self.model_opt_tabs.addTab(tab, "Model")
 
@@ -512,6 +571,7 @@ class AcidBaseTab(QWidget):
         self.parameters_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.parameters_table.horizontalHeader().setStretchLastSection(True)
         self.parameters_table.setMinimumHeight(220)
+        self.parameters_table.itemChanged.connect(self._on_parameter_table_item_changed)
         self.parameters_table.setToolTip(
             "pKw is accepted for all acid-base datasets, but it only affects "
             "potentiometric electroneutrality calculations in v1. Spectroscopy "
@@ -519,9 +579,26 @@ class AcidBaseTab(QWidget):
         )
         layout.addWidget(self.parameters_table, 1)
 
-        pkw_group = QGroupBox("Water autoionization", tab)
-        pkw_layout = QFormLayout(pkw_group)
-        self.spin_pkw = QDoubleSpinBox(pkw_group)
+        fit_options_group = QGroupBox("Fit options", tab)
+        fit_options_layout = QVBoxLayout(fit_options_group)
+        self.chk_fit_analyte_conc = QCheckBox("Fit analyte concentration", fit_options_group)
+        self.chk_fit_titrant_conc = QCheckBox("Fit titrant concentration", fit_options_group)
+        self.chk_fit_volume_offset = QCheckBox("Fit volume offset", fit_options_group)
+        self.chk_fit_electrode_basic = QCheckBox("Fit electrode parameters", fit_options_group)
+        self.chk_fit_electrode_basic.toggled.connect(self._on_fit_electrode_basic_toggled)
+        for chk in (
+            self.chk_fit_analyte_conc,
+            self.chk_fit_titrant_conc,
+            self.chk_fit_volume_offset,
+            self.chk_fit_electrode_basic,
+        ):
+            chk.setChecked(False)
+            fit_options_layout.addWidget(chk)
+        layout.addWidget(fit_options_group)
+
+        self.pkw_group = QGroupBox("Water autoionization", tab)
+        pkw_layout = QFormLayout(self.pkw_group)
+        self.spin_pkw = QDoubleSpinBox(self.pkw_group)
         self.spin_pkw.setDecimals(4)
         self.spin_pkw.setRange(0.0, 30.0)
         self.spin_pkw.setValue(14.0)
@@ -532,7 +609,7 @@ class AcidBaseTab(QWidget):
         )
         self.spin_pkw.valueChanged.connect(self._on_pkw_spin_changed)
         pkw_layout.addRow("pKw", self.spin_pkw)
-        layout.addWidget(pkw_group)
+        layout.addWidget(self.pkw_group)
 
         opt_buttons = QHBoxLayout()
         self.btn_refresh_params = QPushButton("Refresh parameter table", tab)
@@ -541,36 +618,37 @@ class AcidBaseTab(QWidget):
         opt_buttons.addStretch(1)
         layout.addLayout(opt_buttons)
 
-        electrode_group = QGroupBox("Electrode / spectroscopy options", tab)
-        electrode_layout = QFormLayout(electrode_group)
-        self.edit_e0 = QLineEdit("", electrode_group)
+        self.electrode_group = QGroupBox("Electrode / spectroscopy options", tab)
+        electrode_layout = QFormLayout(self.electrode_group)
+        self.edit_e0 = QLineEdit("0.0", self.electrode_group)
         self.edit_e0.setPlaceholderText("fixed E0, mV")
-        self.edit_e0.textChanged.connect(self._refresh_parameter_table)
-        self.edit_slope = QLineEdit("-59.16", electrode_group)
+        self.edit_e0.textChanged.connect(self._on_electrode_text_changed)
+        self.edit_slope = QLineEdit("-59.16", self.electrode_group)
         self.edit_slope.setPlaceholderText("fixed slope, mV/pH")
-        self.edit_slope.textChanged.connect(self._refresh_parameter_table)
-        self.chk_fit_electrode = QCheckBox("Fit E0 and slope for EMF data", electrode_group)
-        self.chk_baseline = QCheckBox("Include linear baseline in spectroscopy", electrode_group)
+        self.edit_slope.textChanged.connect(self._on_electrode_text_changed)
+        self.chk_fit_electrode = QCheckBox("Fit E0 and slope for EMF data", self.electrode_group)
+        self.chk_fit_electrode.toggled.connect(self._on_fit_electrode_advanced_toggled)
+        self.chk_baseline = QCheckBox("Include linear baseline in spectroscopy", self.electrode_group)
         self.chk_baseline.toggled.connect(self._refresh_parameter_table)
         electrode_layout.addRow("Electrode E0", self.edit_e0)
         electrode_layout.addRow("Electrode slope", self.edit_slope)
         electrode_layout.addRow("", self.chk_fit_electrode)
         electrode_layout.addRow("", self.chk_baseline)
-        layout.addWidget(electrode_group)
+        layout.addWidget(self.electrode_group)
 
-        weight_group = QGroupBox("Residual weights", tab)
-        weight_layout = QFormLayout(weight_group)
-        self.spin_sigma_ph = QDoubleSpinBox(weight_group)
+        self.weight_group = QGroupBox("Residual weights", tab)
+        weight_layout = QFormLayout(self.weight_group)
+        self.spin_sigma_ph = QDoubleSpinBox(self.weight_group)
         self.spin_sigma_ph.setDecimals(6)
         self.spin_sigma_ph.setRange(1.0e-12, 1.0e6)
         self.spin_sigma_ph.setValue(1.0)
-        self.spin_sigma_emf = QDoubleSpinBox(weight_group)
+        self.spin_sigma_emf = QDoubleSpinBox(self.weight_group)
         self.spin_sigma_emf.setDecimals(6)
         self.spin_sigma_emf.setRange(1.0e-12, 1.0e6)
         self.spin_sigma_emf.setValue(1.0)
         weight_layout.addRow("sigma pH", self.spin_sigma_ph)
         weight_layout.addRow("sigma EMF", self.spin_sigma_emf)
-        layout.addWidget(weight_group)
+        layout.addWidget(self.weight_group)
 
         self.results_text = QPlainTextEdit(tab)
         self.results_text.setReadOnly(True)
@@ -701,6 +779,268 @@ class AcidBaseTab(QWidget):
         chk.setChecked(bool(checked))
         return chk
 
+    def _advanced_visible(self) -> bool:
+        return bool(hasattr(self, "model_advanced_group") and self.model_advanced_group.isChecked())
+
+    def _set_combo_item_enabled(self, combo: QComboBox, data: str, enabled: bool) -> None:
+        idx = combo.findData(data)
+        item = combo.model().item(idx) if idx >= 0 else None
+        if item is not None:
+            item.setEnabled(bool(enabled))
+
+    def _sync_advanced_ui(self, checked: bool | None = None) -> None:
+        advanced = self._advanced_visible() if checked is None else bool(checked)
+        if hasattr(self, "model_advanced_content"):
+            self.model_advanced_content.setVisible(advanced)
+        if hasattr(self, "pkw_group"):
+            self.pkw_group.setVisible(advanced)
+        if hasattr(self, "electrode_group"):
+            self.electrode_group.setVisible(advanced)
+        if hasattr(self, "weight_group"):
+            self.weight_group.setVisible(advanced)
+        if hasattr(self, "combo_model_type"):
+            self._set_combo_item_enabled(self.combo_model_type, "multiple_components", advanced)
+            self._set_combo_item_enabled(self.combo_model_type, "custom_acid_base_system", advanced)
+            current = str(self.combo_model_type.currentData() or "")
+            if not advanced and current in {"multiple_components", "custom_acid_base_system"}:
+                idx = self.combo_model_type.findData("simple_monoprotic")
+                if idx >= 0:
+                    self.combo_model_type.setCurrentIndex(idx)
+        self._sync_template_controls()
+        self._apply_parameter_table_visibility()
+        if hasattr(self, "titration_group") and hasattr(self, "combo_data_type"):
+            self.titration_group.setVisible(
+                advanced and str(self.combo_data_type.currentData() or "") == "potentiometry"
+            )
+        self._on_titrant_type_changed()
+        self._on_signal_type_changed()
+
+    def _sync_template_controls(self) -> None:
+        if not hasattr(self, "combo_model_type"):
+            return
+        template_id = str(self.combo_model_type.currentData() or "")
+        needs_count = template_id == "polyprotic_acid_base"
+        if hasattr(self, "lbl_pka_count"):
+            self.lbl_pka_count.setVisible(needs_count)
+        if hasattr(self, "spin_pka_count"):
+            self.spin_pka_count.setVisible(needs_count)
+
+    def _on_model_template_changed(self) -> None:
+        if self._updating_tables:
+            return
+        self._sync_template_controls()
+        template_id = str(self.combo_model_type.currentData() or "simple_monoprotic")
+        if template_id == "coupled_future":
+            QMessageBox.information(
+                self,
+                "Template unavailable",
+                "The coupled acid-base / host-guest template is reserved for a future extension.",
+            )
+            return
+        if template_id in {"multiple_components", "custom_acid_base_system"} and not self._advanced_visible():
+            idx = self.combo_model_type.findData("simple_monoprotic")
+            if idx >= 0:
+                self.combo_model_type.setCurrentIndex(idx)
+            return
+        self._load_template(template_id)
+
+    def _on_pka_count_changed(self) -> None:
+        if self._updating_tables:
+            return
+        if str(self.combo_model_type.currentData() or "") == "polyprotic_acid_base":
+            self._load_template("polyprotic_acid_base")
+
+    def _basic_pka_values(self) -> list[float]:
+        values: list[float] = []
+        for row in range(self.table_basic_pka.rowCount()):
+            raw = _table_text(self.table_basic_pka, row, 1, "")
+            if raw:
+                values.append(float(raw))
+        return values
+
+    def _set_basic_pka_table_from_model(self, model: dict[str, Any]) -> None:
+        if not hasattr(self, "table_basic_pka"):
+            return
+        blocks = acid_base_constant_blocks(model)
+        pka_values = list(blocks[0].get("pka") or []) if blocks else []
+        was_updating = self._updating_basic_fields
+        self._updating_basic_fields = True
+        self.table_basic_pka.blockSignals(True)
+        try:
+            self.table_basic_pka.setRowCount(len(pka_values))
+            for idx, value in enumerate(pka_values, start=1):
+                label = QTableWidgetItem(f"pKa{idx}")
+                label.setFlags(label.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self.table_basic_pka.setItem(idx - 1, 0, label)
+                _set_table_text(self.table_basic_pka, idx - 1, 1, f"{float(value):.6g}")
+        finally:
+            self.table_basic_pka.blockSignals(False)
+            self._updating_basic_fields = was_updating
+
+    def _on_basic_pka_table_changed(self, item: QTableWidgetItem) -> None:
+        if self._updating_basic_fields or self._updating_tables or item.column() != 1:
+            return
+        try:
+            value = float(item.text())
+        except Exception:
+            item.setToolTip("Use a numeric pKa value.")
+            return
+        if not -5.0 <= value <= 25.0:
+            item.setToolTip("Recommended pKa guesses are between -5 and 25.")
+        else:
+            item.setToolTip("")
+        self._set_parameter_value(f"pKa{item.row() + 1}", f"{value:.6g}", update_spin=False)
+
+    def _set_first_analyte_concentration(self, value: float) -> None:
+        if not hasattr(self, "components_table"):
+            return
+        was_updating = self._updating_tables
+        self._updating_tables = True
+        try:
+            for row in range(self.components_table.rowCount()):
+                is_proton_widget = self.components_table.cellWidget(row, 4)
+                name = _table_text(self.components_table, row, 1, "")
+                if bool(isinstance(is_proton_widget, QCheckBox) and is_proton_widget.isChecked()):
+                    continue
+                if str(name).strip().lower() == proton_component_name().lower():
+                    continue
+                _set_table_text(self.components_table, row, 2, f"{float(value):.8g}")
+                break
+        finally:
+            self._updating_tables = was_updating
+
+    def _sync_basic_fields_from_model(self) -> None:
+        if self._updating_basic_fields or not hasattr(self, "spin_analyte_conc"):
+            return
+        try:
+            model = self._current_model_from_ui()
+            analyte = self._first_analyte_component(model)
+        except Exception:
+            return
+        was_updating = self._updating_basic_fields
+        self._updating_basic_fields = True
+        try:
+            conc = analyte.get("analytical_concentration")
+            if conc not in (None, ""):
+                self.spin_analyte_conc.blockSignals(True)
+                self.spin_analyte_conc.setValue(float(conc))
+                self.spin_analyte_conc.blockSignals(False)
+            self._set_basic_pka_table_from_model(model)
+        finally:
+            self._updating_basic_fields = was_updating
+
+    def _on_analyte_concentration_changed(self, value: float) -> None:
+        if self._updating_basic_fields:
+            return
+        self._set_first_analyte_concentration(float(value))
+        self._set_parameter_value("analyte concentration", f"{float(value):.8g}", update_spin=False)
+        self._refresh_parameter_table()
+
+    def _on_titrant_concentration_changed(self, value: float) -> None:
+        if self._updating_basic_fields:
+            return
+        self._set_parameter_value("titrant concentration", f"{float(value):.8g}", update_spin=False)
+        self._refresh_parameter_table()
+
+    def _on_volume_offset_changed(self, value: float) -> None:
+        if self._updating_basic_fields:
+            return
+        self._set_parameter_value("volume offset", f"{float(value):.8g}", update_spin=False)
+        self._refresh_parameter_table()
+
+    def _on_electrode_text_changed(self) -> None:
+        if self._updating_basic_fields:
+            return
+        self._set_parameter_value("electrode_e0", self.edit_e0.text(), update_spin=False)
+        self._set_parameter_value("electrode_slope", self.edit_slope.text(), update_spin=False)
+        self._refresh_parameter_table()
+
+    def _on_fit_electrode_basic_toggled(self, checked: bool) -> None:
+        if hasattr(self, "chk_fit_electrode"):
+            self.chk_fit_electrode.blockSignals(True)
+            self.chk_fit_electrode.setChecked(bool(checked))
+            self.chk_fit_electrode.blockSignals(False)
+
+    def _on_fit_electrode_advanced_toggled(self, checked: bool) -> None:
+        if hasattr(self, "chk_fit_electrode_basic"):
+            self.chk_fit_electrode_basic.blockSignals(True)
+            self.chk_fit_electrode_basic.setChecked(bool(checked))
+            self.chk_fit_electrode_basic.blockSignals(False)
+
+    def _on_parameter_table_item_changed(self, item: QTableWidgetItem) -> None:
+        if self._updating_tables or self._updating_basic_fields or item.column() != 2:
+            return
+        name = _table_text(self.parameters_table, item.row(), 0, "").strip().lower()
+        value = str(item.text() or "").strip()
+        was_updating = self._updating_basic_fields
+        self._updating_basic_fields = True
+        try:
+            if name == "analyte concentration" and value:
+                numeric = float(value)
+                self.spin_analyte_conc.setValue(numeric)
+                self._set_first_analyte_concentration(numeric)
+            elif name == "titrant concentration" and value:
+                self.spin_titrant_conc.setValue(float(value))
+            elif name == "volume offset" and value:
+                self.spin_volume_offset.setValue(float(value))
+            elif name == "pkw" and value:
+                self.spin_pkw.setValue(float(value))
+            elif name == "electrode_e0":
+                self.edit_e0.setText(value)
+            elif name == "electrode_slope":
+                self.edit_slope.setText(value)
+            elif name.startswith("pka"):
+                idx = int(name.replace("pka", "") or "0") - 1
+                if 0 <= idx < self.table_basic_pka.rowCount():
+                    _set_table_text(self.table_basic_pka, idx, 1, value)
+        except Exception:
+            return
+        finally:
+            self._updating_basic_fields = was_updating
+
+    def _apply_parameter_table_visibility(self) -> None:
+        if not hasattr(self, "parameters_table"):
+            return
+        advanced = self._advanced_visible()
+        for col in range(self.parameters_table.columnCount()):
+            self.parameters_table.setColumnHidden(col, (not advanced) and col in {1, 6, 7})
+        hidden_basic_names = {
+            "analyte concentration",
+            "titrant concentration",
+            "volume offset",
+            "electrode_e0",
+            "electrode_slope",
+            "pkw",
+            "baseline",
+        }
+        for row in range(self.parameters_table.rowCount()):
+            name = _table_text(self.parameters_table, row, 0, "").strip().lower()
+            self.parameters_table.setRowHidden(row, (not advanced) and name in hidden_basic_names)
+
+    def _on_signal_type_changed(self) -> None:
+        is_emf = str(self.combo_signal_type.currentData() or "").lower() == "mv" if hasattr(self, "combo_signal_type") else False
+        if hasattr(self, "chk_ideal_nernst"):
+            self.chk_ideal_nernst.setVisible(is_emf)
+        if not is_emf and hasattr(self, "chk_fit_electrode_basic"):
+            self.chk_fit_electrode_basic.setChecked(False)
+        if is_emf and hasattr(self, "chk_ideal_nernst") and self.chk_ideal_nernst.isChecked():
+            self._on_ideal_nernst_toggled(True)
+        if hasattr(self, "chk_fit_electrode_basic"):
+            self.chk_fit_electrode_basic.setVisible(is_emf)
+        if hasattr(self, "electrode_group"):
+            self.electrode_group.setVisible(self._advanced_visible() and is_emf)
+        self._refresh_potentiometry_preview()
+
+    def _on_ideal_nernst_toggled(self, checked: bool) -> None:
+        if not checked:
+            return
+        if hasattr(self, "edit_e0"):
+            self.edit_e0.setText("0.0")
+        if hasattr(self, "edit_slope"):
+            self.edit_slope.setText("-59.16")
+        if hasattr(self, "chk_fit_electrode"):
+            self.chk_fit_electrode.setChecked(False)
+
     def _sync_model_mode_ui(self) -> None:
         if not hasattr(self, "model_definition_stack"):
             return
@@ -718,9 +1058,16 @@ class AcidBaseTab(QWidget):
         self._load_template(template_id)
 
     def _load_template(self, template_id: str) -> None:
-        from hmfit_core.acid_base_model_utils import build_acid_base_template
-
-        model = build_acid_base_template(template_id)
+        concentration = float(self.spin_analyte_conc.value()) if hasattr(self, "spin_analyte_conc") else 1.0e-3
+        n_pka = int(self.spin_pka_count.value()) if hasattr(self, "spin_pka_count") else None
+        pka_values = self._basic_pka_values() if hasattr(self, "table_basic_pka") else []
+        pka = pka_values if str(template_id) == "polyprotic_acid_base" and pka_values else None
+        model = build_acid_base_template(
+            template_id,
+            analytical_concentration=concentration,
+            n_pka=n_pka,
+            pka=pka,
+        )
         self._populate_model_from_definition(model, update_template=True)
 
     def _define_model_dimensions(self) -> None:
@@ -844,14 +1191,20 @@ class AcidBaseTab(QWidget):
 
     def _on_data_type_changed(self) -> None:
         is_pot = str(self.combo_data_type.currentData() or "") == "potentiometry"
-        self.titration_group.setVisible(is_pot)
+        self.titration_group.setVisible(is_pot and self._advanced_visible())
         if hasattr(self, "_data_import_stack"):
             self._data_import_stack.setCurrentIndex(0 if is_pot else 1)
         self._preview_selected_sheet()
         self._refresh_parameter_table()
 
     def _on_titrant_type_changed(self) -> None:
-        custom = str(self.combo_titrant_type.currentData() or "") == "custom"
+        advanced = self._advanced_visible()
+        self._set_combo_item_enabled(self.combo_titrant_type, "custom", advanced)
+        if not advanced and str(self.combo_titrant_type.currentData() or "") == "custom":
+            idx = self.combo_titrant_type.findData("base")
+            if idx >= 0:
+                self.combo_titrant_type.setCurrentIndex(idx)
+        custom = str(self.combo_titrant_type.currentData() or "") == "custom" and advanced
         self.custom_titrant_table.setEnabled(custom)
         self.btn_add_titrant_row.setEnabled(custom)
         self.btn_remove_titrant_row.setEnabled(custom)
@@ -860,17 +1213,20 @@ class AcidBaseTab(QWidget):
         if self._updating_tables:
             return
         self._sync_matrix_headers()
+        self._sync_basic_fields_from_model()
         self._refresh_parameter_table()
 
     def _on_species_table_changed(self) -> None:
         if self._updating_tables:
             return
         self._sync_matrix_headers()
+        self._sync_basic_fields_from_model()
         self._refresh_parameter_table()
 
     def _on_stoich_table_changed(self) -> None:
         if self._updating_tables:
             return
+        self._sync_basic_fields_from_model()
         self._refresh_parameter_table()
 
     def _sync_matrix_headers(self) -> None:
@@ -1015,6 +1371,8 @@ class AcidBaseTab(QWidget):
         was_updating = self._updating_tables
         self._updating_tables = True
         try:
+            if update_template and hasattr(self, "parameters_table"):
+                self.parameters_table.setRowCount(0)
             if update_template:
                 idx = self.combo_model_type.findData(str(model.get("template_id") or "custom_acid_base_system"))
                 if idx >= 0:
@@ -1044,6 +1402,7 @@ class AcidBaseTab(QWidget):
         finally:
             self._updating_tables = was_updating
         self._sync_model_mode_ui()
+        self._sync_basic_fields_from_model()
         self._refresh_parameter_table()
 
     def _current_model_from_ui(self) -> dict[str, Any]:
@@ -1248,6 +1607,8 @@ class AcidBaseTab(QWidget):
                     self.spin_pkw.blockSignals(False)
         finally:
             self._updating_tables = was_updating
+        self._set_basic_pka_table_from_model(self._apply_parameter_table_to_model(model))
+        self._apply_parameter_table_visibility()
 
     def _on_pkw_spin_changed(self, value: float) -> None:
         if self._updating_tables:
@@ -1280,6 +1641,20 @@ class AcidBaseTab(QWidget):
             if not bool(comp.get("is_proton", False)):
                 return comp
         raise ValueError("Define at least one non-proton acid-base component.")
+
+    def _friendly_model_message(self, message: str) -> str:
+        text = str(message or "")
+        lowered = text.lower()
+        if "missing constants" in lowered or "non-consecutive" in lowered or "stoichiometric" in lowered:
+            return (
+                "The selected acid-base model could not be generated correctly. "
+                "Please check the number of pKa values or switch to Advanced mode."
+            )
+        if "proton" in lowered:
+            return "The model needs a proton component. This is created automatically in Basic mode."
+        if "charge" in lowered:
+            return "The model needs valid charges for potentiometry. Check Advanced mode if you are using a custom model."
+        return text
 
     def _experimental_ph_values(self) -> list[float]:
         if str(self.combo_data_type.currentData() or "") == "potentiometry":
@@ -1320,6 +1695,15 @@ class AcidBaseTab(QWidget):
             raise ValueError("No data file selected.")
         model = self._acid_base_model_config()
         analysis_kind = str(self.combo_data_type.currentData() or "potentiometry")
+        if float(self.spin_initial_volume.value()) <= 0.0:
+            raise ValueError("Initial volume must be greater than zero.")
+        if float(self.spin_analyte_conc.value()) <= 0.0:
+            raise ValueError("Analyte concentration must be greater than zero.")
+        if float(self.spin_titrant_conc.value()) <= 0.0:
+            raise ValueError("Titrant concentration must be greater than zero.")
+        for value in self._basic_pka_values():
+            if not -5.0 <= float(value) <= 25.0:
+                raise ValueError("pKa initial guesses should be between -5 and 25.")
         errors, warnings = validate_acid_base_model(
             model,
             analysis_kind=analysis_kind,
@@ -1327,7 +1711,7 @@ class AcidBaseTab(QWidget):
             require_charges=analysis_kind == "potentiometry",
         )
         if errors:
-            raise ValueError("\n".join(errors))
+            raise ValueError("\n".join(self._friendly_model_message(msg) for msg in errors))
         for warning in warnings:
             self.log.append_text(f"Warning: {warning}")
         analyte = self._first_analyte_component(model)
@@ -1426,15 +1810,22 @@ class AcidBaseTab(QWidget):
                 sheets = pd.ExcelFile(path).sheet_names
             except Exception as exc:
                 self.combo_sheet.setEnabled(False)
+                self.combo_sheet.setVisible(False)
+                self.lbl_sheet.setVisible(False)
                 self.preview_text.setPlainText(f"Could not read Excel workbook: {exc}")
                 self.combo_sheet.blockSignals(False)
                 return
             for sheet in sheets:
                 self.combo_sheet.addItem(str(sheet), str(sheet))
-            self.combo_sheet.setEnabled(bool(sheets))
+            show_sheet = len(sheets) > 1
+            self.combo_sheet.setEnabled(show_sheet)
+            self.combo_sheet.setVisible(show_sheet)
+            self.lbl_sheet.setVisible(show_sheet)
         else:
             self.combo_sheet.addItem("CSV/TXT", "")
             self.combo_sheet.setEnabled(False)
+            self.combo_sheet.setVisible(False)
+            self.lbl_sheet.setVisible(False)
         self.combo_sheet.blockSignals(False)
         self._preview_selected_sheet()
 
@@ -1589,8 +1980,13 @@ class AcidBaseTab(QWidget):
             warnings.append("Initial volume is zero.")
         signal_type = str(self.combo_signal_type.currentData() or "")
         finite_signal = signal_numeric.dropna().to_numpy(dtype=float)
-        if signal_type.lower() in {"ph", "ph*"} and finite_signal.size and np.nanmax(finite_signal) > 14.0:
-            warnings.append("pH values above 14 detected; treat them as operational pH (pH*).")
+        if signal_type.lower() in {"ph", "ph*"} and finite_signal.size:
+            signal_min = float(np.nanmin(finite_signal))
+            signal_max = float(np.nanmax(finite_signal))
+            if signal_min < -2.0 or signal_max > 16.0:
+                warnings.append("Some pH values are outside the usual -2 to 16 range; the fit can still run.")
+            elif signal_max > 14.0:
+                warnings.append("pH values above 14 detected; treat them as operational pH.")
 
         preview_df = pd.DataFrame(
             {
@@ -2019,6 +2415,8 @@ class AcidBaseTab(QWidget):
         self.lbl_file_status.setText("No file selected")
         self.combo_sheet.clear()
         self.combo_sheet.setEnabled(False)
+        self.combo_sheet.setVisible(False)
+        self.lbl_sheet.setVisible(False)
         self._current_data_frame = None
         self.preview_text.clear()
         self.combo_volume_column.clear()
@@ -2029,6 +2427,7 @@ class AcidBaseTab(QWidget):
         self._set_pot_validation_messages([], [])
         self.combo_data_type.setCurrentIndex(0)
         self.combo_model_type.setCurrentIndex(0)
+        self.spin_pka_count.setValue(3)
         self._load_template("simple_monoprotic")
         self.custom_titrant_table.setRowCount(0)
         self.spin_initial_volume.setValue(10.0)
@@ -2040,13 +2439,17 @@ class AcidBaseTab(QWidget):
         self.spin_volume_offset.setValue(0.0)
         self.spin_ph_min.setValue(-2.0)
         self.spin_ph_max.setValue(16.0)
-        self.edit_e0.clear()
+        self.edit_e0.setText("0.0")
         self.edit_slope.setText("-59.16")
         self.chk_fit_electrode.setChecked(False)
+        self.chk_fit_electrode_basic.setChecked(False)
+        self.chk_ideal_nernst.setChecked(True)
         self.chk_baseline.setChecked(False)
         self.spin_pkw.setValue(14.0)
         self.spin_sigma_ph.setValue(1.0)
         self.spin_sigma_emf.setValue(1.0)
+        self.model_advanced_group.setChecked(False)
+        self._sync_advanced_ui(False)
         self._refresh_parameter_table()
         self._last_config = None
         self._last_result = None
