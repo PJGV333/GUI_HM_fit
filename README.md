@@ -71,7 +71,7 @@ Capabilities include:
 - potentiometric fitting of pH vs titrant volume,
 - fitting of electrode potential (`E_mV`) vs titrant volume with an ideal electrode model,
 - dilution correction during titration,
-- pH calculation by electroneutrality with water autoionization (`Kw`) and user-selected `pKw`,
+- pH calculation by electroneutrality with water autoionization (`Kw`) and fixed or fitted apparent `pKw`,
 - fitting of spectroscopic signal vs pH,
 - fitting of spectral matrices organized as pH x wavelength,
 - fitting of proton NMR chemical shifts in the fast-exchange regime,
@@ -85,7 +85,7 @@ Current limitations of this initial module:
 - proton NMR limited to fast exchange,
 - no automatic correction for atmospheric CO2.
 
-The GUI follows the same layout style as the Spectroscopy and NMR workflows: **DATA / INPUT** at the top, then **Model**, **Optimization**, **Plots**, and **Errors** tabs. The `pKw` parameter is entered in **Optimization**; it affects potentiometric electroneutrality calculations, while spectroscopy and NMR acid-base datasets use measured pH directly.
+The GUI follows the same layout style as the Spectroscopy and NMR workflows: **DATA / INPUT** at the top, then **Model**, **Optimization**, **Plots**, and **Errors** tabs. The `pKw` parameter is entered in **Optimization**; in Advanced mode it can be fitted as an apparent medium parameter with bounds. It affects potentiometric electroneutrality calculations, while spectroscopy and NMR acid-base datasets use measured pH directly.
 
 See [docs/ACID_BASE_POTENTIOMETRY.md](docs/ACID_BASE_POTENTIOMETRY.md) for the acid-base convention, model definition examples, accepted data layouts, and current limitations.
 

@@ -24,6 +24,9 @@ from hmfit_core.acid_base import (
 )
 
 
+_PKW_PARAMETER_NAMES = {"pkw", "pkw_app", "apparent_pkw", "operational_pkw"}
+
+
 @dataclass
 class PotentiometryExperiment:
     initial_volume: float
@@ -370,6 +373,9 @@ def _apply_potentiometry_local_params(
             exp.electrode_slope = value
         elif name == "kw":
             sys.kw = value
+        elif name in _PKW_PARAMETER_NAMES:
+            sys.kw = 10.0 ** (-value)
+            local_opts["pkw"] = value
     return exp, sys, local_opts
 
 
@@ -456,6 +462,8 @@ def fit_potentiometry(
                     x_values.append(float(experiment.volume_offset or 0.0))
                 elif name == "kw":
                     x_values.append(float(system_template.kw))
+                elif name in _PKW_PARAMETER_NAMES:
+                    x_values.append(float(-np.log10(float(system_template.kw))))
                 else:
                     x_values.append(0.0)
             x0 = np.asarray(x_values, dtype=float)
@@ -473,7 +481,14 @@ def fit_potentiometry(
         return potentiometry_residuals(theta, experiment, system_template, opts)
 
     opt = least_squares(residual, x0, bounds=bounds, xtol=1e-10, ftol=1e-10, gtol=1e-10)
-    fitted_system, _ = update_system_from_parameter_vector(opt.x, system_template, opts)
+    fitted_system, consumed = update_system_from_parameter_vector(opt.x, system_template, opts)
+    _exp, fitted_system, _local_opts = _apply_potentiometry_local_params(
+        np.asarray(opt.x, dtype=float),
+        consumed,
+        experiment,
+        fitted_system,
+        opts,
+    )
     return _build_fit_result(
         opt,
         fitted_system,

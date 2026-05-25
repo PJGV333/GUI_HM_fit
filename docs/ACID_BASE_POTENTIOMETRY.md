@@ -281,13 +281,16 @@ analytical component in the standard potentiometric workflow.
 
 ## pKw and when it matters
 
-`pKw` is entered in **Optimization** under **Water autoionization**.
+`pKw` is entered in **Optimization** under **Apparent pKw / medium
+autoprotolysis**.
 
 ```text
 Kw = 10^(-pKw)
 ```
 
 - In potentiometry, `pKw` affects electroneutrality and therefore calculated pH.
+- In Advanced mode, `pKw` can be fixed or fitted with user-defined bounds. When
+  fitted, it is reported as `pKw_app`, an apparent/operational medium parameter.
 - In spectroscopy and NMR v1, pH is imposed by the dataset, so `pKw` does not
   alter species fractions.
 
@@ -295,6 +298,7 @@ Default:
 
 ```text
 pKw = 14.0000
+fixed = true
 ```
 
 ## Validation

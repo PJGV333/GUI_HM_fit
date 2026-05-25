@@ -643,19 +643,44 @@ class AcidBaseTab(QWidget):
             fit_options_layout.addWidget(chk)
         layout.addWidget(fit_options_group)
 
-        self.pkw_group = QGroupBox("Water autoionization", tab)
+        self.pkw_group = QGroupBox("Apparent pKw / medium autoprotolysis", tab)
         pkw_layout = QFormLayout(self.pkw_group)
         self.spin_pkw = QDoubleSpinBox(self.pkw_group)
         self.spin_pkw.setDecimals(4)
-        self.spin_pkw.setRange(0.0, 30.0)
+        self.spin_pkw.setRange(-50.0, 100.0)
         self.spin_pkw.setValue(14.0)
         self.spin_pkw.setToolTip(
-            "Kw = 10^(-pKw). This value affects potentiometric electroneutrality "
-            "calculations only; imposed-pH spectroscopy and NMR fits do not use "
-            "Kw to calculate fractions in v1."
+            "Use fixed pKw for ordinary aqueous titrations. Enable fitting only "
+            "for non-aqueous or mixed solvents, or when an apparent pH scale is being used."
         )
         self.spin_pkw.valueChanged.connect(self._on_pkw_spin_changed)
-        pkw_layout.addRow("pKw", self.spin_pkw)
+        self.spin_pkw_min = QDoubleSpinBox(self.pkw_group)
+        self.spin_pkw_min.setDecimals(4)
+        self.spin_pkw_min.setRange(-50.0, 100.0)
+        self.spin_pkw_min.setValue(0.0)
+        self.spin_pkw_min.valueChanged.connect(self._on_pkw_bounds_changed)
+        self.spin_pkw_max = QDoubleSpinBox(self.pkw_group)
+        self.spin_pkw_max.setDecimals(4)
+        self.spin_pkw_max.setRange(-50.0, 100.0)
+        self.spin_pkw_max.setValue(30.0)
+        self.spin_pkw_max.valueChanged.connect(self._on_pkw_bounds_changed)
+        pkw_bounds_row = QHBoxLayout()
+        pkw_bounds_row.addWidget(self.spin_pkw_min)
+        pkw_bounds_row.addWidget(QLabel("to", self.pkw_group))
+        pkw_bounds_row.addWidget(self.spin_pkw_max)
+        self.chk_fit_pkw = QCheckBox("Fit pKw", self.pkw_group)
+        self.chk_fit_pkw.setChecked(False)
+        self.chk_fit_pkw.toggled.connect(self._on_fit_pkw_toggled)
+        self.lbl_pkw_help = QLabel(
+            "Use fixed pKw for ordinary aqueous titrations. Enable fitting only for "
+            "non-aqueous or mixed solvents, or when an apparent pH scale is being used.",
+            self.pkw_group,
+        )
+        self.lbl_pkw_help.setWordWrap(True)
+        pkw_layout.addRow("Initial pKw", self.spin_pkw)
+        pkw_layout.addRow("Min / Max", pkw_bounds_row)
+        pkw_layout.addRow("", self.chk_fit_pkw)
+        pkw_layout.addRow("", self.lbl_pkw_help)
         layout.addWidget(self.pkw_group)
 
         opt_buttons = QHBoxLayout()
@@ -1294,13 +1319,21 @@ class AcidBaseTab(QWidget):
             self.chk_fit_electrode_basic.blockSignals(False)
 
     def _on_parameter_table_item_changed(self, item: QTableWidgetItem) -> None:
-        if self._updating_tables or self._updating_basic_fields or item.column() != 2:
+        if self._updating_tables or self._updating_basic_fields or item.column() not in {2, 3, 4}:
             return
         name = _table_text(self.parameters_table, item.row(), 0, "").strip().lower()
         value = str(item.text() or "").strip()
         was_updating = self._updating_basic_fields
         self._updating_basic_fields = True
         try:
+            if name == "pkw" and item.column() in {3, 4}:
+                if hasattr(self, "spin_pkw_min") and item.column() == 3 and value:
+                    self.spin_pkw_min.setValue(float(value))
+                if hasattr(self, "spin_pkw_max") and item.column() == 4 and value:
+                    self.spin_pkw_max.setValue(float(value))
+                return
+            if item.column() != 2:
+                return
             if name == "analyte concentration" and value:
                 numeric = float(value)
                 self.spin_analyte_conc.setValue(numeric)
@@ -1871,12 +1904,16 @@ class AcidBaseTab(QWidget):
         if self._updating_tables:
             return
         previous_values: dict[str, str] = {}
+        previous_min: dict[str, str] = {}
+        previous_max: dict[str, str] = {}
         previous_fixed: dict[str, bool] = {}
         for row in range(self.parameters_table.rowCount()):
             name = _table_text(self.parameters_table, row, 0, "")
             if not name:
                 continue
             previous_values[name] = _table_text(self.parameters_table, row, 2, "")
+            previous_min[name] = _table_text(self.parameters_table, row, 3, "")
+            previous_max[name] = _table_text(self.parameters_table, row, 4, "")
             fixed_widget = self.parameters_table.cellWidget(row, 5)
             previous_fixed[name] = bool(isinstance(fixed_widget, QCheckBox) and fixed_widget.isChecked())
 
@@ -1952,11 +1989,11 @@ class AcidBaseTab(QWidget):
                     "parameter": "pKw",
                     "type": "local",
                     "initial_value": f"{float(self.spin_pkw.value()):.4f}" if hasattr(self, "spin_pkw") else "14.0000",
-                    "min": 0.0,
-                    "max": 30.0,
-                    "fixed": True,
+                    "min": f"{float(self.spin_pkw_min.value()):.4f}" if hasattr(self, "spin_pkw_min") else 0.0,
+                    "max": f"{float(self.spin_pkw_max.value()):.4f}" if hasattr(self, "spin_pkw_max") else 30.0,
+                    "fixed": not bool(self.chk_fit_pkw.isChecked()) if hasattr(self, "chk_fit_pkw") else True,
                     "linked_species": "",
-                    "description": "Kw = 10^(-pKw); affects potentiometric electroneutrality only.",
+                    "description": "Apparent medium autoprotolysis; Kw = 10^(-pKw).",
                 },
                 {
                     "parameter": "baseline",
@@ -1987,13 +2024,15 @@ class AcidBaseTab(QWidget):
                 initial = previous_values.get(name, row_data.get("initial_value", ""))
                 if initial is None:
                     initial = ""
+                row_min = previous_min.get(name, row_data.get("min", ""))
+                row_max = previous_max.get(name, row_data.get("max", ""))
                 for col, value in enumerate(
                     [
                         name,
                         row_data.get("type", ""),
                         initial,
-                        row_data.get("min", ""),
-                        row_data.get("max", ""),
+                        row_min,
+                        row_max,
                     ]
                 ):
                     _set_table_text(self.parameters_table, row, col, value)
@@ -2013,11 +2052,19 @@ class AcidBaseTab(QWidget):
                             "volume offset",
                             "electrode_e0",
                             "electrode_slope",
+                            "pkw",
+                            "baseline",
                         }
                     )
                 fixed = self._make_checkbox(checked)
                 if name == "pKw":
                     fixed.setToolTip(pkw_tooltip)
+                    fixed.stateChanged.connect(
+                        lambda state, pname=name: self._on_parameter_fixed_changed(
+                            pname,
+                            state == Qt.CheckState.Checked.value,
+                        )
+                    )
                 self.parameters_table.setCellWidget(row, 5, fixed)
                 _set_table_text(self.parameters_table, row, 6, row_data.get("linked_species", ""))
                 _set_table_text(self.parameters_table, row, 7, row_data.get("description", ""))
@@ -2027,8 +2074,25 @@ class AcidBaseTab(QWidget):
                     except Exception:
                         pkw_value = 14.0
                     self.spin_pkw.blockSignals(True)
-                    self.spin_pkw.setValue(min(30.0, max(0.0, pkw_value)))
+                    self.spin_pkw.setValue(pkw_value)
                     self.spin_pkw.blockSignals(False)
+                    try:
+                        pkw_min = float(row_min)
+                    except Exception:
+                        pkw_min = 0.0
+                    try:
+                        pkw_max = float(row_max)
+                    except Exception:
+                        pkw_max = 30.0
+                    self.spin_pkw_min.blockSignals(True)
+                    self.spin_pkw_max.blockSignals(True)
+                    self.spin_pkw_min.setValue(pkw_min)
+                    self.spin_pkw_max.setValue(pkw_max)
+                    self.spin_pkw_min.blockSignals(False)
+                    self.spin_pkw_max.blockSignals(False)
+                    self.chk_fit_pkw.blockSignals(True)
+                    self.chk_fit_pkw.setChecked(not checked)
+                    self.chk_fit_pkw.blockSignals(False)
         finally:
             self._updating_tables = was_updating
         self._set_basic_pka_table_from_model(self._apply_parameter_table_to_model(model))
@@ -2039,12 +2103,49 @@ class AcidBaseTab(QWidget):
             return
         self._set_parameter_value("pKw", f"{float(value):.4f}", update_spin=False)
 
+    def _on_pkw_bounds_changed(self, _value: float) -> None:
+        if self._updating_tables:
+            return
+        self._set_parameter_bounds(
+            "pKw",
+            f"{float(self.spin_pkw_min.value()):.4f}",
+            f"{float(self.spin_pkw_max.value()):.4f}",
+        )
+
+    def _on_fit_pkw_toggled(self, checked: bool) -> None:
+        if self._updating_tables:
+            return
+        self._set_parameter_fixed("pKw", not bool(checked))
+
+    def _on_parameter_fixed_changed(self, name: str, checked: bool) -> None:
+        if self._updating_tables:
+            return
+        if name.strip().lower() == "pkw" and hasattr(self, "chk_fit_pkw"):
+            self.chk_fit_pkw.blockSignals(True)
+            self.chk_fit_pkw.setChecked(not bool(checked))
+            self.chk_fit_pkw.blockSignals(False)
+
     def _parameter_value(self, name: str, default: Any = "") -> Any:
         for row in range(self.parameters_table.rowCount()):
             if _table_text(self.parameters_table, row, 0, "").strip().lower() == name.strip().lower():
                 value = _table_text(self.parameters_table, row, 2, "")
                 return default if value == "" else value
         return default
+
+    def _parameter_min_max(self, name: str, default_min: Any = "", default_max: Any = "") -> tuple[Any, Any]:
+        for row in range(self.parameters_table.rowCount()):
+            if _table_text(self.parameters_table, row, 0, "").strip().lower() == name.strip().lower():
+                lo = _table_text(self.parameters_table, row, 3, "")
+                hi = _table_text(self.parameters_table, row, 4, "")
+                return (default_min if lo == "" else lo, default_max if hi == "" else hi)
+        return default_min, default_max
+
+    def _parameter_fixed(self, name: str, default: bool = True) -> bool:
+        for row in range(self.parameters_table.rowCount()):
+            if _table_text(self.parameters_table, row, 0, "").strip().lower() == name.strip().lower():
+                fixed_widget = self.parameters_table.cellWidget(row, 5)
+                return bool(isinstance(fixed_widget, QCheckBox) and fixed_widget.isChecked())
+        return bool(default)
 
     def _acid_base_model_config(self) -> dict[str, Any]:
         model = self._current_model_from_ui()
@@ -2193,10 +2294,19 @@ class AcidBaseTab(QWidget):
             (block for block in blocks if block["component_name"] == str(analyte.get("name") or "")),
             blocks[0] if blocks else {"pka": [], "log_beta": []},
         )
-        pkw = float(self._parameter_value("pKw", default="14.0000"))
-        if not 0.0 <= pkw <= 30.0:
-            raise ValueError("pKw must be between 0 and 30.")
+        try:
+            pkw = float(self._parameter_value("pKw", default="14.0000"))
+            pkw_min_raw, pkw_max_raw = self._parameter_min_max("pKw", default_min="0.0", default_max="30.0")
+            pkw_min = float(pkw_min_raw)
+            pkw_max = float(pkw_max_raw)
+        except Exception as exc:
+            raise ValueError("pKw and pKw bounds must be numeric.") from exc
+        if pkw_min >= pkw_max:
+            raise ValueError("pKw min must be lower than pKw max.")
+        if not pkw_min <= pkw <= pkw_max:
+            raise ValueError("Initial pKw must be within the configured pKw bounds.")
         kw = 10.0 ** (-pkw)
+        fit_pkw = not self._parameter_fixed("pKw", default=True)
         first_pka = [float(v) for v in list(primary_block.get("pka") or [])]
         titrant_concentrations, custom_strong_charge = self._custom_titrant_config()
         strong_mode = str(self.combo_strong_ion.currentData() or "automatic")
@@ -2226,11 +2336,25 @@ class AcidBaseTab(QWidget):
             "sigma_pH": float(self.spin_sigma_ph.value()),
             "sigma_E": float(self.spin_sigma_emf.value()),
             "pkw": pkw,
+            "pkw_bounds": [pkw_min, pkw_max],
+            "fit_pkw": bool(fit_pkw),
             "kw": kw,
             "baseline": bool(int(float(self._parameter_value("baseline", default="1" if self.chk_baseline.isChecked() else "0")))),
         }
         if analysis_kind == "potentiometry":
             cfg.update(self._build_potentiometry_import_payload())
+            if fit_pkw and (
+                bool(cfg["fit_analyte_concentration"])
+                or bool(cfg["fit_titrant_concentration"])
+                or bool(cfg["fit_volume_offset"])
+                or bool(cfg["fit_electrode"])
+            ):
+                self.log.append_text(
+                    "Warning: Fitting pKw together with concentration, electrode and volume "
+                    "offset parameters may lead to strong parameter correlation. For reliable "
+                    "results, fit pKw only when the titration data contain enough information "
+                    "and the solvent system justifies it."
+                )
         if strong_mode == "manual":
             cfg["initial_strong_charge"] = float(self.spin_initial_strong_charge.value())
             cfg["titrant_strong_charge"] = float(self.spin_titrant_strong_charge.value())
@@ -2828,11 +2952,23 @@ class AcidBaseTab(QWidget):
                 fallback_base_charge=int(config.get("base_charge", -1) or -1),
             )
             self._populate_model_from_definition(fallback_model, update_template=False)
+        if bool(config.get("fit_pkw", False)) and hasattr(self, "model_advanced_group"):
+            self.model_advanced_group.setChecked(True)
         pkw = config.get("pkw")
         if pkw is None and config.get("kw") not in (None, ""):
             pkw = -np.log10(float(config["kw"]))
         if pkw is not None:
             self._set_parameter_value("pKw", f"{float(pkw):.4f}")
+        pkw_bounds = config.get("pkw_bounds")
+        if isinstance(pkw_bounds, (list, tuple)) and len(pkw_bounds) >= 2:
+            self._set_parameter_bounds("pKw", f"{float(pkw_bounds[0]):.4f}", f"{float(pkw_bounds[1]):.4f}")
+            if hasattr(self, "spin_pkw_min"):
+                self.spin_pkw_min.setValue(float(pkw_bounds[0]))
+            if hasattr(self, "spin_pkw_max"):
+                self.spin_pkw_max.setValue(float(pkw_bounds[1]))
+        if hasattr(self, "chk_fit_pkw"):
+            self.chk_fit_pkw.setChecked(bool(config.get("fit_pkw", False)))
+            self._set_parameter_fixed("pKw", not bool(config.get("fit_pkw", False)))
         if config.get("initial_volume") not in (None, ""):
             self.spin_initial_volume.setValue(float(config["initial_volume"]))
         if config.get("titrant_concentration") not in (None, ""):
@@ -2877,10 +3013,27 @@ class AcidBaseTab(QWidget):
                         pkw_for_spin = float(value)
                     except (TypeError, ValueError):
                         pkw_for_spin = self.spin_pkw.value()
-                    pkw_for_spin = min(30.0, max(0.0, pkw_for_spin))
+                    pkw_for_spin = min(self.spin_pkw.maximum(), max(self.spin_pkw.minimum(), pkw_for_spin))
                     self.spin_pkw.blockSignals(True)
                     self.spin_pkw.setValue(pkw_for_spin)
                     self.spin_pkw.blockSignals(False)
+                return
+
+    def _set_parameter_bounds(self, name: str, min_value: str, max_value: str) -> None:
+        for row in range(self.parameters_table.rowCount()):
+            if _table_text(self.parameters_table, row, 0, "").strip().lower() == name.strip().lower():
+                _set_table_text(self.parameters_table, row, 3, min_value)
+                _set_table_text(self.parameters_table, row, 4, max_value)
+                return
+
+    def _set_parameter_fixed(self, name: str, fixed: bool) -> None:
+        for row in range(self.parameters_table.rowCount()):
+            if _table_text(self.parameters_table, row, 0, "").strip().lower() == name.strip().lower():
+                fixed_widget = self.parameters_table.cellWidget(row, 5)
+                if isinstance(fixed_widget, QCheckBox):
+                    fixed_widget.blockSignals(True)
+                    fixed_widget.setChecked(bool(fixed))
+                    fixed_widget.blockSignals(False)
                 return
 
     def reset_tab(self) -> None:

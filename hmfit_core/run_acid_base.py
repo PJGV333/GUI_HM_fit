@@ -111,6 +111,37 @@ def _pkw_from_kw(kw: float) -> float:
     return float(-np.log10(float(kw)))
 
 
+def _pkw_from_config(cfg: Mapping[str, Any], *, default_kw: float = 1.0e-14) -> float:
+    if cfg.get("pkw") not in (None, ""):
+        pkw = float(cfg.get("pkw"))
+    elif cfg.get("kw") not in (None, ""):
+        pkw = _pkw_from_kw(float(cfg.get("kw")))
+    else:
+        pkw = _pkw_from_kw(default_kw)
+    if not np.isfinite(pkw):
+        raise ValueError("pKw must be a finite numeric value.")
+    return float(pkw)
+
+
+def _pkw_bounds_from_config(cfg: Mapping[str, Any]) -> tuple[float, float]:
+    raw = cfg.get("pkw_bounds")
+    if isinstance(raw, Mapping):
+        lo = raw.get("min", raw.get("lower", 0.0))
+        hi = raw.get("max", raw.get("upper", 30.0))
+    elif isinstance(raw, (list, tuple)) and len(raw) >= 2:
+        lo, hi = raw[0], raw[1]
+    else:
+        lo = cfg.get("pkw_min", 0.0)
+        hi = cfg.get("pkw_max", 30.0)
+    lo_f = float(lo)
+    hi_f = float(hi)
+    if not (np.isfinite(lo_f) and np.isfinite(hi_f)):
+        raise ValueError("pKw bounds must be finite numeric values.")
+    if lo_f >= hi_f:
+        raise ValueError("pKw min must be lower than pKw max.")
+    return lo_f, hi_f
+
+
 def _build_system(cfg: Mapping[str, Any]):
     model_def = cfg.get("acid_base_model")
     if isinstance(model_def, Mapping) and model_def.get("components"):
@@ -519,10 +550,16 @@ def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[
         fit_options["initial_concentrations"] = dict(cfg.get("initial_concentrations") or {})
     if isinstance(cfg.get("titrant_concentrations"), Mapping):
         fit_options["titrant_concentrations"] = dict(cfg.get("titrant_concentrations") or {})
+    pkw_initial = _pkw_from_config(cfg, default_kw=system.kw)
+    pkw_min, pkw_max = _pkw_bounds_from_config(cfg)
+    if not pkw_min <= pkw_initial <= pkw_max:
+        raise ValueError("Initial pKw must be within the configured pKw bounds.")
+
     parameter_names = [f"pKa{idx + 1}" for idx in range(len(initial_pka))]
     initial_params = [float(value) for value in initial_pka]
     lower_bounds = [-5.0] * len(initial_pka)
     upper_bounds = [25.0] * len(initial_pka)
+    fit_pkw = bool(cfg.get("fit_pkw", cfg.get("fit_pKw", False)))
     if bool(cfg.get("fit_analyte_concentration", False)):
         parameter_names.append("analyte_concentration")
         initial_params.append(float(experiment.analyte_concentration or 0.0))
@@ -549,6 +586,26 @@ def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[
         lower_bounds.extend([-1.0e5, -120.0])
         upper_bounds.extend([1.0e5, 120.0])
         fit_options["fit_signal"] = "emf"
+    if fit_pkw:
+        parameter_names.append("pKw")
+        initial_params.append(float(pkw_initial))
+        lower_bounds.append(float(pkw_min))
+        upper_bounds.append(float(pkw_max))
+        correlated = [
+            "pKa",
+            "analyte concentration" if bool(cfg.get("fit_analyte_concentration", False)) else "",
+            "titrant concentration" if bool(cfg.get("fit_titrant_concentration", False)) else "",
+            "volume offset" if bool(cfg.get("fit_volume_offset", False)) else "",
+            "electrode parameters" if bool(cfg.get("fit_electrode", False)) and measured_emf is not None else "",
+        ]
+        correlated = [item for item in correlated if item]
+        if len(correlated) >= 2:
+            log(
+                "Warning: Fitting pKw together with concentration, electrode and volume offset "
+                "parameters may lead to strong parameter correlation. For reliable results, fit "
+                "pKw only when the titration data contain enough information and the solvent "
+                "system justifies it."
+            )
     if parameter_names != [f"pKa{idx + 1}" for idx in range(len(initial_pka))]:
         fit_options["parameter_names"] = parameter_names
         fit_options["initial_params"] = initial_params
@@ -556,15 +613,17 @@ def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[
     log(f"Water autoionization: pKw={_pkw_from_kw(system.kw):.4f}, Kw={system.kw:.6g}")
     log("Fitting potentiometric acid-base data...")
     result = fit_potentiometry(experiment, system, initial_pka=initial_pka, fit_options=fit_options)
-    fitted_system = clone_system_with_pka(system, result.fitted_pka)
-    calc_pH = simulate_pH_titration(experiment, fitted_system, fit_options)
-    obs_ph = observed_pH(experiment)
-    obs_for_plot = measured_pH if measured_pH is not None else obs_ph
-    residuals = np.asarray(obs_for_plot, dtype=float).reshape(-1) - calc_pH
     fitted_params = {
         str(name).strip().lower().replace(" ", "_").replace("-", "_"): float(value)
         for name, value in zip(result.parameter_names or [], np.asarray(result.theta_hat, dtype=float).reshape(-1))
     }
+    fitted_pkw = float(fitted_params.get("pkw", _pkw_from_kw(system.kw)))
+    fitted_system = clone_system_with_pka(system, result.fitted_pka)
+    fitted_system.kw = 10.0 ** (-fitted_pkw)
+    calc_pH = simulate_pH_titration(experiment, fitted_system, fit_options)
+    obs_ph = observed_pH(experiment)
+    obs_for_plot = measured_pH if measured_pH is not None else obs_ph
+    residuals = np.asarray(obs_for_plot, dtype=float).reshape(-1) - calc_pH
     calc_emf = electrode_emf_from_pH(
         calc_pH,
         electrode_e0=fitted_params.get("electrode_e0", experiment.electrode_e0),
@@ -625,10 +684,13 @@ def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[
             None if fitted_params.get("electrode_slope") is None else float(fitted_params["electrode_slope"])
         ),
         "volume_offset": float(fit_options.get("volume_offset", experiment.volume_offset or 0.0) or 0.0),
+        "pkw": float(fitted_pkw),
+        "kw": float(fitted_system.kw),
+        "pkw_fitted": bool(fit_pkw),
     }
     errors_context = _build_errors_context(
         cfg=cfg,
-        system=system,
+        system=fitted_system,
         result=result,
         analysis_kind="potentiometry",
         dataset=dataset_context,
@@ -642,7 +704,7 @@ def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[
         )
     except Exception as exc:
         log(f"Analytical acid-base errors unavailable: {exc}")
-    return _base_result_payload(
+    payload = _base_result_payload(
         result,
         analysis_kind="potentiometry",
         graphs=graphs,
@@ -650,6 +712,26 @@ def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[
         errors_context=errors_context,
         error_output=error_output,
     )
+    pkw_row = {
+        "parameter": "pKw_app" if fit_pkw else "apparent pKw",
+        "value": float(fitted_pkw),
+        "fixed": not bool(fit_pkw),
+        "description": (
+            "pKw was fitted as an apparent medium parameter."
+            if fit_pkw
+            else "Fixed apparent medium autoprotolysis parameter."
+        ),
+    }
+    payload["constants"].append({"parameter": pkw_row["parameter"], "value": pkw_row["value"]})
+    payload["results_text"] = (
+        str(payload.get("results_text") or "")
+        + f"\n{pkw_row['parameter']}: {pkw_row['value']:.8g} "
+        + ("(fitted apparent medium parameter)" if fit_pkw else "(fixed)")
+    )
+    payload["export_data"]["medium_parameters"] = [pkw_row]
+    if fit_pkw:
+        payload["export_data"]["potentiometry_note"] = "pKw was fitted as an apparent medium parameter."
+    return payload
 
 
 def _run_spectroscopy(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[str, Any]:

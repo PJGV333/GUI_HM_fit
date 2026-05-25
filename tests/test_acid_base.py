@@ -77,6 +77,129 @@ def test_synthetic_potentiometry_recovers_pka():
     assert abs(result.fitted_pka[0] - 5.0) < 0.03
 
 
+def test_synthetic_potentiometry_keeps_fixed_pkw_out_of_fit():
+    true_system = make_simple_acid_base_system(
+        analytical_concentration=1.0e-2,
+        pka=[7.0],
+        base_charge=-1,
+        kw=1.0e-14,
+    )
+    volumes = np.linspace(0.0, 18.0, 45)
+    experiment_template = PotentiometryExperiment(
+        initial_volume=10.0,
+        titrant_volumes=volumes,
+        analyte_concentration=1.0e-2,
+        titrant_concentration=1.0e-2,
+        titrant_type="base",
+    )
+    pH = simulate_pH_titration(experiment_template, true_system)
+    experiment = PotentiometryExperiment(
+        initial_volume=10.0,
+        titrant_volumes=volumes,
+        measured_pH=pH,
+        analyte_concentration=1.0e-2,
+        titrant_concentration=1.0e-2,
+        titrant_type="base",
+    )
+    start_system = make_simple_acid_base_system(
+        analytical_concentration=1.0e-2,
+        pka=[6.5],
+        base_charge=-1,
+        kw=1.0e-14,
+    )
+    result = fit_potentiometry(experiment, start_system, initial_pka=[6.5])
+    assert result.success
+    assert "pKw" not in result.parameter_names
+
+
+def test_synthetic_potentiometry_can_fit_apparent_pkw():
+    true_system = make_simple_acid_base_system(
+        analytical_concentration=1.0e-2,
+        pka=[7.0],
+        base_charge=-1,
+        kw=1.0e-18,
+    )
+    volumes = np.linspace(0.0, 28.0, 70)
+    experiment_template = PotentiometryExperiment(
+        initial_volume=10.0,
+        titrant_volumes=volumes,
+        analyte_concentration=1.0e-2,
+        titrant_concentration=1.0e-2,
+        titrant_type="base",
+    )
+    fit_options = {"pH_bounds": (-2.0, 24.0)}
+    pH = simulate_pH_titration(experiment_template, true_system, fit_options)
+    experiment = PotentiometryExperiment(
+        initial_volume=10.0,
+        titrant_volumes=volumes,
+        measured_pH=pH,
+        analyte_concentration=1.0e-2,
+        titrant_concentration=1.0e-2,
+        titrant_type="base",
+    )
+    start_system = make_simple_acid_base_system(
+        analytical_concentration=1.0e-2,
+        pka=[6.4],
+        base_charge=-1,
+        kw=1.0e-14,
+    )
+    result = fit_potentiometry(
+        experiment,
+        start_system,
+        fit_options={
+            "parameter_names": ["pKa1", "pKw"],
+            "initial_params": [6.4, 14.0],
+            "bounds": ([0.0, 10.0], [14.0, 30.0]),
+            "pH_bounds": (-2.0, 24.0),
+        },
+    )
+    pkw_idx = result.parameter_names.index("pKw")
+    assert result.success
+    assert abs(result.fitted_pka[0] - 7.0) < 1.0e-5
+    assert abs(float(result.theta_hat[pkw_idx]) - 18.0) < 1.0e-5
+
+
+def test_potentiometry_runner_reports_fitted_apparent_pkw():
+    true_system = make_simple_acid_base_system(
+        analytical_concentration=1.0e-2,
+        pka=[7.0],
+        base_charge=-1,
+        kw=1.0e-18,
+    )
+    volumes = np.linspace(0.0, 28.0, 70)
+    experiment = PotentiometryExperiment(
+        initial_volume=10.0,
+        titrant_volumes=volumes,
+        analyte_concentration=1.0e-2,
+        titrant_concentration=1.0e-2,
+        titrant_type="base",
+    )
+    pH = simulate_pH_titration(experiment, true_system, {"pH_bounds": (-2.0, 24.0)})
+    result = run_acid_base(
+        {
+            "data_type": "potentiometry",
+            "signal_type": "pH",
+            "titrant_volume": volumes,
+            "observed_signal": pH,
+            "pka_initial": "6.4",
+            "analyte_concentration": 1.0e-2,
+            "titrant_concentration": 1.0e-2,
+            "initial_volume": 10.0,
+            "titrant_type": "base",
+            "pkw": 14.0,
+            "fit_pkw": True,
+            "pkw_bounds": [10.0, 30.0],
+            "pH_bounds": [-2.0, 24.0],
+        },
+        progress_cb=lambda _msg: None,
+    )
+    pkw_rows = [row for row in result["constants"] if row["parameter"] == "pKw_app"]
+    assert result["success"] is True
+    assert pkw_rows
+    assert abs(float(pkw_rows[0]["value"]) - 18.0) < 1.0e-5
+    assert "pKw was fitted as an apparent medium parameter." in result["export_data"]["potentiometry_note"]
+
+
 def test_synthetic_spectroscopy_recovers_pka():
     rng = np.random.default_rng(5678)
     pH = np.linspace(2.0, 8.0, 41)
@@ -312,6 +435,7 @@ def test_gui_config_generates_diprotic_species_and_pkw(tmp_path, monkeypatch):
     assert [row["charge"] for row in species[:3]] == [-2, -1, 0]
     assert [row["log_beta"] for row in species[:3]] == pytest.approx([0.0, 4.5, 13.4])
     assert cfg["kw"] == pytest.approx(10.0**-13.78)
+    assert cfg["fit_pkw"] is False
 
 
 def test_gui_config_default_pkw_is_14(tmp_path, monkeypatch):
@@ -327,7 +451,32 @@ def test_gui_config_default_pkw_is_14(tmp_path, monkeypatch):
     tab._set_file_path(str(path))
     cfg = tab._collect_config()
     assert cfg["pkw"] == pytest.approx(14.0)
+    assert cfg["pkw_bounds"] == pytest.approx([0.0, 30.0])
+    assert cfg["fit_pkw"] is False
     assert cfg["kw"] == pytest.approx(1.0e-14)
+
+
+def test_gui_config_can_mark_pkw_as_fitted(tmp_path, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    qt_widgets = pytest.importorskip("PySide6.QtWidgets")
+    from hmfit_gui_qt.tabs.acid_base_tab import AcidBaseTab
+
+    app = qt_widgets.QApplication.instance() or qt_widgets.QApplication([])
+    _ = app
+    path = tmp_path / "pot.csv"
+    pd.DataFrame({"volume_mL": [0.0, 0.1], "pH": [7.0, 7.2]}).to_csv(path, index=False)
+    tab = AcidBaseTab()
+    tab._set_file_path(str(path))
+    tab.model_advanced_group.setChecked(True)
+    tab.spin_pkw.setValue(18.0)
+    tab.spin_pkw_min.setValue(10.0)
+    tab.spin_pkw_max.setValue(30.0)
+    tab.chk_fit_pkw.setChecked(True)
+
+    cfg = tab._collect_config()
+    assert cfg["pkw"] == pytest.approx(18.0)
+    assert cfg["pkw_bounds"] == pytest.approx([10.0, 30.0])
+    assert cfg["fit_pkw"] is True
 
 
 def test_gui_equation_editor_generates_canonical_model(tmp_path, monkeypatch):
