@@ -587,8 +587,24 @@ def canonicalize_acid_base_model(
     fallback_pka: Sequence[float] | None = None,
     fallback_concentration: float = 1.0e-3,
     fallback_base_charge: int = -1,
+    auto_add_proton: bool = True,
+    infer_proton_from_name: bool = True,
 ) -> dict[str, Any]:
     if not isinstance(model_def, Mapping) or not model_def:
+        if not auto_add_proton:
+            return {
+                "template_id": "custom_acid_base_system",
+                "definition_mode": "matrix",
+                "constant_mode": "pKa",
+                "equations_text": "",
+                "components": [],
+                "species": [],
+                "stoichiometric_matrix": [],
+                "component_names": [],
+                "species_names": [],
+                "pka": [],
+                "log_beta": [],
+            }
         return acid_base_model_from_simple_config(
             component_name=fallback_component_name,
             pka=fallback_pka,
@@ -604,6 +620,20 @@ def canonicalize_acid_base_model(
     components_in = [dict(item) for item in list(raw.get("components") or [])]
     species_in = [dict(item) for item in list(raw.get("species") or [])]
     if not components_in:
+        if not auto_add_proton:
+            return {
+                "template_id": str(raw.get("template_id") or raw.get("model_type") or "custom_acid_base_system"),
+                "definition_mode": str(raw.get("definition_mode") or "matrix"),
+                "constant_mode": normalize_constant_mode(raw.get("constant_mode")),
+                "equations_text": str(raw.get("equations_text") or ""),
+                "components": [],
+                "species": [],
+                "stoichiometric_matrix": [],
+                "component_names": [],
+                "species_names": [],
+                "pka": [],
+                "log_beta": [],
+            }
         return acid_base_model_from_simple_config(
             component_name=fallback_component_name,
             pka=fallback_pka,
@@ -615,7 +645,9 @@ def canonicalize_acid_base_model(
     for idx, comp in enumerate(components_in):
         name = str(comp.get("name") or f"C{idx + 1}").strip()
         role = _normalize_component_role(comp, fallback="analyte" if idx == 0 else "spectator")
-        is_proton = bool(comp.get("is_proton")) or is_proton_component_name(name) or role == "proton"
+        explicit_non_proton_role = role in {"analyte", "titrant", "background", "spectator", "imposed ph"}
+        is_name_proton = bool(infer_proton_from_name) and is_proton_component_name(name) and not explicit_non_proton_role
+        is_proton = bool(comp.get("is_proton")) or is_name_proton or role == "proton"
         components.append(
             {
                 "name": name,
@@ -629,7 +661,7 @@ def canonicalize_acid_base_model(
                 "implicit": bool(comp.get("implicit", False)) or is_proton,
             }
         )
-    if not any(bool(comp.get("is_proton")) for comp in components):
+    if auto_add_proton and not any(bool(comp.get("is_proton")) for comp in components):
         components.append(
             {
                 "name": proton_component_name(),
@@ -710,6 +742,21 @@ def canonicalize_acid_base_model(
         )
 
     if not species:
+        if not auto_add_proton:
+            species_names: list[str] = []
+            return {
+                "template_id": str(raw.get("template_id") or raw.get("model_type") or "custom_acid_base_system"),
+                "definition_mode": str(raw.get("definition_mode") or "matrix"),
+                "constant_mode": normalize_constant_mode(raw.get("constant_mode")),
+                "equations_text": str(raw.get("equations_text") or ""),
+                "components": components,
+                "species": [],
+                "stoichiometric_matrix": [[0 for _ in species_names] for _ in components],
+                "component_names": [str(comp["name"]) for comp in components],
+                "species_names": species_names,
+                "pka": [],
+                "log_beta": [],
+            }
         template = acid_base_model_from_simple_config(
             component_name=fallback_component_name,
             pka=fallback_pka,

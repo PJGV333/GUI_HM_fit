@@ -644,6 +644,141 @@ def test_advanced_mode_exposes_full_model(tmp_path, monkeypatch):
     assert tab.combo_titrant_type.findData("custom") >= 0
 
 
+def test_acid_base_matrix_uses_species_rows_and_component_columns(tmp_path, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    qt_widgets = pytest.importorskip("PySide6.QtWidgets")
+    from hmfit_gui_qt.tabs.acid_base_tab import AcidBaseTab
+
+    app = qt_widgets.QApplication.instance() or qt_widgets.QApplication([])
+    _ = app
+    tab = AcidBaseTab()
+    tab.chk_advanced_mode.setChecked(True)
+    tab.edit_analyte_name.setText("B")
+    tab.spin_base_charge.setValue(0)
+    tab._generate_basic_species(2)
+
+    assert [tab.stoich_table.verticalHeaderItem(row).text() for row in range(3)] == ["B", "HB", "H2B"]
+    assert [tab.stoich_table.horizontalHeaderItem(col).text() for col in range(2)] == ["B", "H"]
+    assert tab.stoich_table.rowCount() == 3
+    assert tab.stoich_table.columnCount() == 2
+
+    tab.stoich_table.selectRow(1)
+    model = tab._current_model_from_ui()
+
+    assert model["stoichiometric_matrix"] == [[1, 1, 1], [0, 1, 2]]
+    assert model["species"][1]["observable"] is False
+    assert model["species"][1]["non_observable"] is True
+
+
+def test_custom_model_selector_exposes_component_species_editor(tmp_path, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    qt_widgets = pytest.importorskip("PySide6.QtWidgets")
+    from hmfit_gui_qt.tabs.acid_base_tab import AcidBaseTab
+
+    app = qt_widgets.QApplication.instance() or qt_widgets.QApplication([])
+    _ = app
+    tab = AcidBaseTab()
+    custom_idx = tab.combo_model_type.findData("custom_acid_base_system")
+
+    assert custom_idx >= 0
+    assert tab.combo_model_type.model().item(custom_idx).isEnabled() is True
+
+    tab.combo_model_type.setCurrentIndex(custom_idx)
+
+    assert tab.chk_advanced_mode.isChecked() is True
+    assert tab.components_table.isHidden() is False
+    assert tab.species_table.isHidden() is False
+    assert tab.stoich_table.isHidden() is False
+    assert tab.components_table.rowCount() == 0
+    assert tab.species_table.rowCount() == 0
+    assert tab.parameters_table.rowCount() == 0
+
+
+def test_custom_model_dimensions_start_without_forced_roles(tmp_path, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    qt_widgets = pytest.importorskip("PySide6.QtWidgets")
+    from hmfit_gui_qt.tabs.acid_base_tab import AcidBaseTab
+
+    app = qt_widgets.QApplication.instance() or qt_widgets.QApplication([])
+    _ = app
+    tab = AcidBaseTab()
+    tab.combo_model_type.setCurrentIndex(tab.combo_model_type.findData("custom_acid_base_system"))
+    tab.spin_n_components_model.setValue(2)
+    tab.spin_n_species_model.setValue(2)
+    tab._define_model_dimensions()
+
+    assert [tab.components_table.cellWidget(row, 0).currentText() for row in range(2)] == ["", ""]
+    assert [tab.components_table.item(row, 1).text() for row in range(2)] == ["C1", "C2"]
+    assert [tab.species_table.item(row, 0).text() for row in range(2)] == ["S1", "S2"]
+    assert tab.stoich_table.rowCount() == 2
+    assert tab.stoich_table.columnCount() == 2
+    assert [tab.stoich_table.verticalHeaderItem(row).text() for row in range(2)] == ["S1", "S2"]
+    assert [tab.stoich_table.horizontalHeaderItem(col).text() for col in range(2)] == ["C1", "C2"]
+    assert tab.components_group.isHidden() is True
+    assert tab.species_group.isHidden() is True
+
+    tab.stoich_table.item(0, 0).setText("1")
+    tab.stoich_table.item(0, 1).setText("0")
+    tab.stoich_table.item(1, 0).setText("1")
+    tab.stoich_table.item(1, 1).setText("2")
+    tab.stoich_table.selectRow(1)
+    model = tab._current_model_from_ui()
+
+    assert len(model["components"]) == 2
+    assert model["components"][1]["is_proton"] is False
+    assert model["stoichiometric_matrix"] == [[1, 1], [0, 2]]
+    assert model["species"][1]["observable"] is False
+    assert model["species"][1]["non_observable"] is True
+
+
+def test_define_dimensions_forces_custom_without_adding_proton(tmp_path, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    qt_widgets = pytest.importorskip("PySide6.QtWidgets")
+    from hmfit_gui_qt.tabs.acid_base_tab import AcidBaseTab
+
+    app = qt_widgets.QApplication.instance() or qt_widgets.QApplication([])
+    _ = app
+    tab = AcidBaseTab()
+    tab.chk_advanced_mode.setChecked(True)
+    tab.combo_model_type.setCurrentIndex(tab.combo_model_type.findData("multiple_components"))
+    tab.spin_n_components_model.setValue(5)
+    tab.spin_n_species_model.setValue(2)
+    tab._define_model_dimensions()
+    model = tab._current_model_from_ui()
+
+    assert tab.combo_model_type.currentData() == "custom_acid_base_system"
+    assert tab.stoich_table.rowCount() == 2
+    assert tab.stoich_table.columnCount() == 5
+    assert len(model["components"]) == 5
+    assert all(not comp["is_proton"] for comp in model["components"])
+
+
+def test_initial_pka_input_lives_in_optimization_table(tmp_path, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    qt_widgets = pytest.importorskip("PySide6.QtWidgets")
+    from hmfit_gui_qt.tabs.acid_base_tab import AcidBaseTab
+
+    app = qt_widgets.QApplication.instance() or qt_widgets.QApplication([])
+    _ = app
+    path = tmp_path / "pot.csv"
+    pd.DataFrame({"volume_mL": [0.0, 0.1], "pH": [6.5, 6.6]}).to_csv(path, index=False)
+
+    tab = AcidBaseTab()
+    tab._set_file_path(str(path))
+    tab._refresh_parameter_table()
+    tab._set_parameter_value("pKa1", "6.25")
+    tab._set_parameter_bounds("pKa1", "1.0", "12.0")
+    tab._set_parameter_fit("pKa1", False)
+
+    cfg = tab._collect_config()
+
+    assert tab.basic_pka_group.isHidden() is True
+    assert tab._parameter_value("pKa1") == "6.25"
+    assert cfg["pka_initial"] == "6.25"
+    assert cfg["pka_bounds"] == pytest.approx([[1.0, 12.0]])
+    assert cfg["pka_fit_mask"] == [False]
+
+
 def test_gui_equation_editor_generates_canonical_model(tmp_path, monkeypatch):
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
     qt_widgets = pytest.importorskip("PySide6.QtWidgets")
