@@ -30,6 +30,7 @@ from hmfit_core.utils.errors import (
     bootstrap_quality_notes,
     build_identifiability_report,
     leverage_rescale_factor,
+    linearized_covariance,
     percent_metrics_from_log10K,
     t_quantile,
 )
@@ -39,6 +40,14 @@ _LOGBETA_RE = re.compile(
     r"^(?:log[_\-\s]*beta|logbeta|beta)(?:[_\-\s]*|\[)?(\d+)\]?$",
     re.IGNORECASE,
 )
+
+
+def _array_or_empty(value: Any) -> np.ndarray:
+    """None -> empty float array; anything else -> float ndarray (never `value or []`,
+    whose truth test raises for NumPy arrays with more than one element)."""
+    if value is None:
+        return np.zeros(0, dtype=float)
+    return np.asarray(value, dtype=float)
 
 
 def _as_float_vector(values: Sequence[float] | np.ndarray | None, *, name: str) -> np.ndarray:
@@ -51,11 +60,16 @@ def _as_float_vector(values: Sequence[float] | np.ndarray | None, *, name: str) 
 
 
 def _normalize_fixed_mask(fixed_mask: Sequence[bool] | np.ndarray | None, size: int) -> np.ndarray:
+    """None or empty -> nothing fixed; otherwise exactly one entry per parameter."""
     if fixed_mask is None:
         return np.zeros(size, dtype=bool)
     mask = np.asarray(fixed_mask, dtype=bool).reshape(-1)
+    if mask.size == 0:
+        return np.zeros(size, dtype=bool)
     if mask.size != size:
-        raise ValueError("fixed_mask length does not match parameter vector.")
+        raise ValueError(
+            f"fixed_mask has {mask.size} entries but there are {size} parameters."
+        )
     return mask
 
 
@@ -65,7 +79,10 @@ def _normalize_bounds(bounds: Any, size: int) -> tuple[np.ndarray, np.ndarray]:
     if bounds is None:
         return lower, upper
     if isinstance(bounds, Mapping):
-        bounds = bounds.get("pairs") or bounds.get("bounds") or []
+        picked = bounds.get("pairs")
+        if picked is None:
+            picked = bounds.get("bounds")
+        bounds = [] if picked is None else picked
     if isinstance(bounds, tuple) and len(bounds) == 2:
         left, right = bounds
         left_arr = np.asarray(left, dtype=float).reshape(-1)
@@ -74,26 +91,33 @@ def _normalize_bounds(bounds: Any, size: int) -> tuple[np.ndarray, np.ndarray]:
             left_arr = np.full(size, float(left_arr[0]), dtype=float)
         if right_arr.size == 1:
             right_arr = np.full(size, float(right_arr[0]), dtype=float)
-        if left_arr.size == size:
-            lower[:] = left_arr
-        if right_arr.size == size:
-            upper[:] = right_arr
-        return lower, upper
-
-    rows = list(bounds or [])
-    for idx in range(min(size, len(rows))):
-        row = rows[idx]
-        if isinstance(row, Mapping):
-            lo = row.get("min")
-            hi = row.get("max")
-        else:
-            seq = list(row or [])
-            lo = seq[0] if len(seq) >= 1 else None
-            hi = seq[1] if len(seq) >= 2 else None
-        if lo not in (None, ""):
-            lower[idx] = float(lo)
-        if hi not in (None, ""):
-            upper[idx] = float(hi)
+        if left_arr.size != size or right_arr.size != size:
+            raise ValueError("Bounds must have one entry per parameter.")
+        lower[:] = left_arr
+        upper[:] = right_arr
+    else:
+        rows = list(bounds) if bounds is not None else []
+        for idx in range(min(size, len(rows))):
+            row = rows[idx]
+            if isinstance(row, Mapping):
+                lo = row.get("min")
+                hi = row.get("max")
+            else:
+                seq = [] if row is None else list(np.asarray(row, dtype=object).reshape(-1))
+                lo = seq[0] if len(seq) >= 1 else None
+                hi = seq[1] if len(seq) >= 2 else None
+            if lo is not None and lo != "":
+                lower[idx] = float(lo)
+            if hi is not None and hi != "":
+                upper[idx] = float(hi)
+    if np.any(np.isnan(lower)) or np.any(np.isnan(upper)):
+        raise ValueError("Bounds contain NaN.")
+    bad = np.where(lower > upper)[0]
+    if bad.size:
+        raise ValueError(
+            "Invalid bounds (lower > upper) for parameter index(es): "
+            + ", ".join(str(int(i) + 1) for i in bad)
+        )
     return lower, upper
 
 
@@ -376,17 +400,29 @@ def compute_errors_acid_base(
         nobs = int(residuals.size)
         p_free = int(free_idx.size)
         n_linear = int(opts.get("n_linear", 0) or 0)
-        # Linear observation coefficients (pure-species signals / limiting shifts) are
-        # eliminated by projection but are fitted parameters and consume dof.
-        dof = nobs - p_free - n_linear
         sse = float(np.sum(residuals**2))
-        s2 = sse / float(max(dof, 1))
-        cov_free = s2 * np.linalg.pinv(jtj, rcond=float(opts.get("rcond", 1e-12) or 1e-12))
+        # Linear observation coefficients (pure-species signals / limiting shifts) are
+        # eliminated by projection but are fitted parameters and consume dof. dof <= 0 or a
+        # rank-deficient Jacobian yield NaN uncertainties with an explicit note, never zeros.
+        lin = linearized_covariance(J_free, sse, nobs, n_linear)
+        dof = lin["dof"]
+        s2 = lin["s2"]
+        cov_free = lin["cov"]
         cov_full = np.zeros((theta.size, theta.size), dtype=float)
         cov_full[np.ix_(free_idx, free_idx)] = cov_free
-        se = np.sqrt(np.clip(np.diag(cov_full), 0.0, np.inf))
-        corr = _cov_to_corr(cov_full)
-        stability_diag = build_identifiability_report(jtj, cov_free, param_names=[param_names[i] for i in free_idx])
+        d_full = np.diag(cov_full)
+        se = np.where(np.isfinite(d_full), np.sqrt(np.clip(d_full, 0.0, np.inf)), np.nan)
+        corr = _cov_to_corr(np.nan_to_num(cov_full))
+        nonid_full = np.zeros(theta.size, dtype=bool)
+        nonid_full[free_idx] = lin["nonidentifiable"]
+        corr[nonid_full, :] = np.nan
+        corr[:, nonid_full] = np.nan
+        stability_diag = build_identifiability_report(
+            jtj, np.nan_to_num(cov_free), param_names=[param_names[i] for i in free_idx]
+        )
+        if lin["notes"]:
+            stability_diag = dict(stability_diag)
+            stability_diag["notes"] = list(lin["notes"])
         result = {
             "theta_hat": theta,
             "param_names": param_names,
@@ -405,6 +441,8 @@ def compute_errors_acid_base(
             "stability_diag": stability_diag,
             "samples": None,
             "bootstrap_summary": None,
+            "nonidentifiable": nonid_full,
+            "notes": list(lin["notes"]),
         }
 
     if method == "analytic":
@@ -742,6 +780,9 @@ def _build_acid_base_output(
         nobs=int(raw.get("nobs") or 0),
         p_free=int(raw.get("p_free") or 0),
     )
+    for _note in raw.get("notes") or []:
+        if _note not in notes:
+            notes.append(str(_note))
 
     method_labels = {
         "analytic": "Analytical covariance",
@@ -906,7 +947,7 @@ def _potentiometry_objects(context: Mapping[str, Any], observed_override: np.nda
     fit_options = dict(context.get("fit_options") or {})
     experiment = PotentiometryExperiment(
         initial_volume=float(dataset.get("initial_volume", 10.0) or 10.0),
-        titrant_volumes=np.asarray(dataset.get("volume_mL") or [], dtype=float),
+        titrant_volumes=_array_or_empty(dataset.get("volume_mL")),
         measured_pH=(
             observed_override
             if observed_override is not None and str(dataset.get("observed_kind") or "ph") == "ph"
@@ -943,7 +984,7 @@ def _spectroscopy_objects(context: Mapping[str, Any], observed_override: np.ndar
     if observed_override is not None:
         signal = np.asarray(observed_override, dtype=float)
     obj = SpectroscopicAcidBaseDataset(
-        pH=np.asarray(dataset.get("pH") or [], dtype=float),
+        pH=_array_or_empty(dataset.get("pH")),
         signal=signal,
         wavelengths=(
             None
@@ -961,9 +1002,9 @@ def _nmr_objects(context: Mapping[str, Any], observed_override: np.ndarray | Non
     if observed_override is not None:
         shifts = np.asarray(observed_override, dtype=float)
     obj = NMRAcidBaseDataset(
-        pH=np.asarray(dataset.get("pH") or [], dtype=float),
+        pH=_array_or_empty(dataset.get("pH")),
         shifts=shifts,
-        nuclei_labels=[str(value) for value in (dataset.get("nuclei_labels") or [])],
+        nuclei_labels=[str(value) for value in (list(dataset.get("nuclei_labels")) if dataset.get("nuclei_labels") is not None else [])],
     )
     return obj, fit_options
 
@@ -990,8 +1031,8 @@ def _linear_structure(context: Mapping[str, Any]) -> tuple[int, np.ndarray | Non
     """
     dataset = dict(context.get("dataset") or {})
     analysis_kind = str(context.get("analysis_kind") or "").strip().lower()
-    theta = np.asarray(context.get("theta_hat") or [], dtype=float).reshape(-1)
-    try:
+    theta = _array_or_empty(context.get("theta_hat")).reshape(-1)
+    if True:
         if analysis_kind == "potentiometry":
             n = int(np.asarray(_residual_fn_from_context(context)(theta)).size)
             return 0, np.arange(n)
@@ -1018,8 +1059,6 @@ def _linear_structure(context: Mapping[str, Any]) -> tuple[int, np.ndarray | Non
             coeff = np.asarray(pred["coefficients"], dtype=float)
             n_linear = int(np.count_nonzero(np.isfinite(coeff)))
         return n_linear, groups
-    except Exception:
-        return 0, None
 
 
 def _make_data_star_fn(context: Mapping[str, Any], fit_values: np.ndarray, *, block: str = "row",
@@ -1104,7 +1143,7 @@ def compute_errors_acid_base_from_context(
     ctx = dict(context or {})
     opts = dict(options or {})
     theta_hat = _as_float_vector(ctx.get("theta_hat"), name="theta_hat")
-    parameter_names = [str(value) for value in (ctx.get("parameter_names") or [])]
+    parameter_names = [str(value) for value in (list(ctx.get("parameter_names")) if ctx.get("parameter_names") is not None else [])]
     fixed_mask = _normalize_fixed_mask(ctx.get("fixed_mask"), theta_hat.size)
     method = str(opts.get("method") or "analytic")
 

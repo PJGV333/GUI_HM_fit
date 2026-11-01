@@ -802,6 +802,7 @@ class ModelOptPlotsWidget(QWidget):
                 weights=weights,
                 group_map=group_map,
                 param_transform=solver_param_transform,
+                fixed_mask=fixed_mask,
             )
 
             if method == "bootstrap_linear":
@@ -844,6 +845,7 @@ class ModelOptPlotsWidget(QWidget):
                     group_map=group_map,
                     param_transform=solver_param_transform,
                     wild_block=wild_block,
+                    fixed_mask=fixed_mask,
                 )
                 samples = boot["samples"]
             elif method == "bootstrap_full_refit_audit":

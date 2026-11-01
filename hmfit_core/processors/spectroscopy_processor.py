@@ -161,6 +161,9 @@ def format_results_table(k, SE_log10K, percK, rms, covfit, lof=None, fixed_mask=
         if is_fixed:
             se_str = "const"
             perc_str = ""
+        elif not onp.isfinite(SE_log10K[i]):
+            se_str = "undefined"
+            perc_str = "not identifiable / dof<=0"
         else:
             se_str = f"{SE_log10K[i]:.2e}"
             perc_str = f"{percK[i]:.2f} %"
@@ -1741,7 +1744,15 @@ def process_spectroscopy_data(
         # Vacíos -> ±inf (sin introducir rangos artificiales)
         min_val = _to_bound(min_raw, -np.inf)
         max_val = _to_bound(max_raw, np.inf)
+        if min_val > max_val:
+            raise ValueError(
+                f"Invalid bounds for parameter {i + 1}: min={min_val:g} > max={max_val:g}."
+            )
         processed_bounds.append((min_val, max_val))
+    # Parameters fixed in the GUI arrive as min == max == value (finite).
+    fixed_from_bounds = [
+        bool(np.isfinite(lo) and np.isfinite(hi) and lo == hi) for (lo, hi) in processed_bounds
+    ]
     stage_times["parse_s"] = time.perf_counter() - t_parse_start
     t_solver_start = time.perf_counter()
     
@@ -2012,6 +2023,7 @@ def process_spectroscopy_data(
         weights=weights_per_lambda,
         group_map=abs_group_map,
         param_transform=solver_param_transform_arr,
+        fixed_mask=fixed_from_bounds if len(fixed_from_bounds) == len(k) else None,
     )
     
     SE_log10K = metrics["SE_log10K"]
@@ -2232,7 +2244,10 @@ def process_spectroscopy_data(
         dif_en_ct = 0.0
 
     # Tabla formateada para resultados (alineada como en la interfaz anterior)
-    results_text = format_results_table(k, SE_log10K, percK, rms, covfit, lof=lof, param_names=k_names)
+    results_text = format_results_table(
+        k, SE_log10K, percK, rms, covfit, lof=lof, param_names=k_names,
+        fixed_mask=fixed_from_bounds if len(fixed_from_bounds) == len(k) else None,
+    )
 
     # Stability Diagnostics
     if stability_diag:

@@ -633,26 +633,22 @@ def nmr_acid_base_residuals(
 def _covariance_and_correlation(
     opt_result: Any, residuals: np.ndarray, n_params: int, n_linear: int = 0
 ) -> tuple[np.ndarray | None, np.ndarray | None]:
+    """Linearized covariance of the fit (NaN when dof <= 0 or not identifiable)."""
     jac = getattr(opt_result, "jac", None)
     if jac is None or n_params <= 0:
         return None, None
     J = np.asarray(jac, dtype=float)
     if J.ndim != 2 or J.shape[1] != n_params:
         return None, None
-    dof = int(residuals.size) - int(n_params) - int(n_linear)
-    if dof <= 0:
-        scale = 1.0
-    else:
-        scale = float(np.sum(residuals**2)) / float(dof)
-    try:
-        cov = np.linalg.pinv(J.T @ J, rcond=1e-12) * scale
-    except np.linalg.LinAlgError:
-        return None, None
+    from hmfit_core.utils.errors import linearized_covariance
+
+    lin = linearized_covariance(J, float(np.sum(residuals**2)), int(residuals.size), int(n_linear))
+    cov = lin["cov"]
     diag = np.diag(cov)
     corr = np.full_like(cov, np.nan, dtype=float)
-    good = diag > 0.0
+    good = np.isfinite(diag) & (diag > 0.0)
     if np.any(good):
-        denom = np.sqrt(np.outer(diag, diag))
+        denom = np.sqrt(np.outer(np.where(good, diag, np.nan), np.where(good, diag, np.nan)))
         with np.errstate(divide="ignore", invalid="ignore"):
             corr = cov / denom
         corr[~np.isfinite(corr)] = np.nan
@@ -693,7 +689,8 @@ def _build_fit_result(
         values = np.asarray(pka[:n_params], dtype=float)
     stderr = None
     if cov is not None and cov.shape[0] == n_params:
-        stderr = np.sqrt(np.maximum(np.diag(cov), 0.0))
+        _d = np.diag(cov)
+        stderr = np.where(np.isfinite(_d), np.sqrt(np.clip(_d, 0.0, np.inf)), np.nan)
     table = pd.DataFrame(
         {
             "parameter": list(parameter_names),
@@ -727,7 +724,10 @@ def _build_fit_result(
             else np.asarray(getattr(opt_result, "jac"), dtype=float)
         ),
         bounds=bounds,
-        fixed_mask=[bool(v) for v in (fixed_mask or [False for _ in range(n_params)])],
+        fixed_mask=[
+            bool(v)
+            for v in (fixed_mask if fixed_mask is not None and len(fixed_mask) > 0 else [False] * n_params)
+        ],
         parameter_space=str(parameter_space or "pka"),
     )
 

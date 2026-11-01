@@ -931,8 +931,10 @@ def process_nmr_data(
         diff_final = dq - dq_fit
         valid_residuals_final = mask & np.isfinite(dq_fit)
         residuals_vec = diff_final[valid_residuals_final].ravel()
-        SE_log10K_full = np.zeros_like(k_opt_full, dtype=float)
-        percK_full = np.zeros_like(k_opt_full, dtype=float)
+        # NaN (not zero) until the uncertainty is actually computed: a failure of the
+        # error analysis must never be reported as a perfectly determined constant.
+        SE_log10K_full = np.full(np.shape(k_opt_full), np.nan, dtype=float)
+        percK_full = np.full(np.shape(k_opt_full), np.nan, dtype=float)
         covfit_val = np.nan
         try:
             k_names = [f"K{i+1}" for i in range(len(k_opt_full))]

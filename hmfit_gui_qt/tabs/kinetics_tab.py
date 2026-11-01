@@ -1020,6 +1020,7 @@ def _compute_covariance(
     param_names: Sequence[str],
     log_params: set[str],
 ) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None, float | None]:
+    """Linearized covariance for the JAX path (same rules as ``fit_global``)."""
     errors = None
     covariance = None
     correlations = None
@@ -1030,38 +1031,46 @@ def _compute_covariance(
     if J.size == 0:
         return errors, covariance, correlations, condition_number
     from hmfit.kinetics.fit.optimizer import _scaled_condition_number
+    from hmfit_core.utils.errors import linearized_covariance
 
     n_data = result.fun.size if result.fun is not None else J.shape[0]
     m = J.shape[1]
-    free = np.where(np.any(J != 0.0, axis=0))[0]
+    # Free/fixed comes from the explicit mask: a zero Jacobian column means
+    # "not identifiable", never "fixed".
+    fixed = np.asarray(getattr(result, "fixed_mask", np.zeros(m, dtype=bool)), dtype=bool)
+    free = np.where(~fixed)[0]
     n_linear = int(getattr(result, "n_linear", 0) or 0)
-    dof = max(n_data - int(free.size) - n_linear, 1)
-    sigma2 = 2.0 * result.cost / dof
+    lin = linearized_covariance(J[:, free], 2.0 * result.cost, n_data, n_linear)
     try:
-        result.dof = dof
-        result.sigma2 = sigma2
+        result.dof = lin["dof"]
+        result.sigma2 = lin["s2"]
+        result.notes = tuple(lin["notes"])
     except Exception:
         pass
     covariance = np.zeros((m, m), dtype=float)
+    nonid = np.zeros(m, dtype=bool)
     if free.size:
-        Jf = J[:, free]
-        condition_number = _scaled_condition_number(Jf)
-        covariance[np.ix_(free, free)] = sigma2 * np.linalg.pinv(Jf.T @ Jf)
+        condition_number = _scaled_condition_number(J[:, free])
+        covariance[np.ix_(free, free)] = lin["cov"]
+        nonid[free] = lin["nonidentifiable"]
     if log_params:
+        params = _params_vector_to_dict(result.x, param_names, log_params)
         scale = np.ones(m, dtype=float)
         for idx, name in enumerate(param_names):
             if name in log_params:
-                params = _params_vector_to_dict(result.x, param_names, log_params)
                 scale[idx] = np.log(10.0) * float(params[name])
         covariance = (scale[:, None] * covariance) * scale[None, :]
-    errors = np.sqrt(np.clip(np.diag(covariance), 0.0, np.inf))
+    diag = np.diag(covariance)
+    errors = np.where(np.isfinite(diag), np.sqrt(np.clip(diag, 0.0, np.inf)), np.nan)
     denom = np.outer(errors, errors)
-    correlations = np.divide(
-        covariance,
-        denom,
-        out=np.zeros_like(covariance),
-        where=denom != 0,
-    )
+    with np.errstate(invalid="ignore"):
+        correlations = np.divide(
+            covariance, denom, out=np.zeros_like(covariance),
+            where=(denom != 0) & np.isfinite(denom),
+        )
+    correlations[nonid, :] = np.nan
+    correlations[:, nonid] = np.nan
+    np.fill_diagonal(correlations, np.where(fixed | nonid, np.nan, 1.0))
     return errors, covariance, correlations, condition_number
 
 
@@ -1069,10 +1078,14 @@ def _randomize_params(
     x0: np.ndarray,
     bounds: tuple[np.ndarray, np.ndarray],
     rng: np.random.Generator,
+    fixed_mask: Sequence[bool] | None = None,
 ) -> np.ndarray:
-    lower, upper = bounds
+    lower, upper = (np.broadcast_to(np.asarray(b, dtype=float), np.shape(x0)) for b in bounds)
     x = np.array(x0, dtype=float)
+    fixed = list(fixed_mask) if fixed_mask is not None else []
     for idx in range(x.size):
+        if idx < len(fixed) and fixed[idx]:
+            continue  # multi-start must never move a fixed parameter
         lo = lower[idx] if idx < lower.size else -np.inf
         hi = upper[idx] if idx < upper.size else np.inf
         if np.isfinite(lo) and np.isfinite(hi):
@@ -1169,12 +1182,24 @@ def _build_parameter_error_summary(
                 ci_low[idx] = estimate[idx] * 10.0 ** (-q * se_log)
                 ci_high[idx] = estimate[idx] * 10.0 ** (q * se_log)
 
+    status = []
     for idx, is_fixed in enumerate(fixed):
         if is_fixed:
+            # zero by definition: the value was imposed, not estimated
             se[idx] = 0.0
             perc_err[idx] = 0.0
             ci_low[idx] = estimate[idx]
             ci_high[idx] = estimate[idx]
+            status.append("fixed (not estimated)")
+        elif not np.isfinite(se[idx]):
+            status.append("not identifiable / unavailable")
+        else:
+            status.append("estimated")
+    if any(not f and not np.isfinite(se[i]) for i, f in enumerate(fixed)) and cov is not None and not unreliable:
+        warnings.append(
+            "Some free parameters are not identifiable from these data (rank-deficient "
+            "Jacobian); their uncertainty is reported as NaN, not as zero."
+        )
 
     unique_warnings = list(dict.fromkeys(str(msg) for msg in warnings if str(msg).strip()))
     summary = {
@@ -1185,6 +1210,7 @@ def _build_parameter_error_summary(
         "ci_low": ci_low.tolist(),
         "ci_high": ci_high.tolist(),
         "fixed": fixed,
+        "status": status,
         "scale": scale,
         "ci_level": 0.95,
     }
@@ -1339,14 +1365,15 @@ def _run_kinetics_fit(
         def jac_np(x_vec):
             return np.asarray(jac_fn(jnp.asarray(x_vec, dtype=float)))
 
+        from hmfit.kinetics.fit.optimizer import resolve_fixed_parameters
+
         lower_b = np.broadcast_to(np.asarray(bounds[0], dtype=float), x0.shape).astype(float)
         upper_b = np.broadcast_to(np.asarray(bounds[1], dtype=float), x0.shape).astype(float)
-        fixed_arr = np.zeros(x0.size, dtype=bool)
-        if fixed_mask:
-            fixed_arr[: len(fixed_mask)] = np.asarray(fixed_mask, dtype=bool)[: x0.size]
-        fixed_arr |= np.isfinite(lower_b) & np.isfinite(upper_b) & (upper_b <= lower_b)
+        x_base, fixed_arr = resolve_fixed_parameters(
+            np.asarray(x0, dtype=float), lower_b, upper_b,
+            fixed_mask=fixed_mask, param_names=param_names,
+        )
         free_arr = np.where(~fixed_arr)[0]
-        x_base = np.asarray(x0, dtype=float).copy()
 
         def _expand(xf):
             x_full = x_base.copy()
@@ -1355,7 +1382,7 @@ def _run_kinetics_fit(
 
         result = least_squares(
             lambda xf: residuals_np(_expand(xf)),
-            x0=np.clip(x_base[free_arr], lower_b[free_arr], upper_b[free_arr]),
+            x0=x_base[free_arr],
             bounds=(lower_b[free_arr], upper_b[free_arr]),
             method=ls_method,
             jac=lambda xf: jac_np(_expand(xf))[:, free_arr],
@@ -1366,6 +1393,7 @@ def _run_kinetics_fit(
         jac_full_res = np.zeros((jac_free_res.shape[0], x0.size), dtype=float)
         jac_full_res[:, free_arr] = jac_free_res
         result.jac = jac_full_res
+        result.fixed_mask = fixed_arr
 
         params = _params_vector_to_dict(result.x, param_names, log_params)
         from hmfit.kinetics.fit.optimizer import _count_linear_parameters
@@ -1405,7 +1433,7 @@ def _run_kinetics_fit(
             raise FitCancelled("Fit cancelled.")
         seed = run_seeds[run_idx] if run_idx < len(run_seeds) else None
         rng = np.random.default_rng(seed)
-        x0 = params0 if run_idx == 0 else _randomize_params(params0, bounds, rng)
+        x0 = params0 if run_idx == 0 else _randomize_params(params0, bounds, rng, fixed_mask)
         if progress_cb is not None:
             progress_cb(f"Run {run_idx + 1}/{total_runs}...")
         payload = _run_once(x0)
@@ -1611,7 +1639,7 @@ def _run_kinetics_fit(
         for run_idx in range(run_total):
             seed = seed_list[run_idx] if run_idx < len(seed_list) else None
             rng = np.random.default_rng(seed)
-            x0 = x0_opt if run_idx == 0 else _randomize_params(x0_opt, bounds, rng)
+            x0 = x0_opt if run_idx == 0 else _randomize_params(x0_opt, bounds, rng, fixed_mask)
             try:
                 # max_iter counts optimizer iterations; each finite-difference
                 # Jacobian costs (p_free + 1) evaluations, so budget accordingly.

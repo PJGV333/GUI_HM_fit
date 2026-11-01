@@ -341,7 +341,11 @@ def _build_errors_context(
         "analysis_kind": str(analysis_kind),
         "theta_hat": theta_hat.tolist(),
         "parameter_names": list(result.parameter_names or [row["parameter"] for row in _fit_result_tables(result)[0]]),
-        "fixed_mask": list(result.fixed_mask or [False for _ in range(theta_hat.size)]),
+        "fixed_mask": (
+            [bool(v) for v in result.fixed_mask]
+            if result.fixed_mask is not None and len(result.fixed_mask) > 0
+            else [False] * theta_hat.size
+        ),
         "bounds": _serializable_bounds(result.bounds, theta_hat.size),
         "jacobian": (
             None
@@ -562,7 +566,8 @@ def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[
         pka_fit_mask = [bool(v) for v in list(pka_fit_mask_raw)[: len(initial_pka)]]
         while len(pka_fit_mask) < len(initial_pka):
             pka_fit_mask.append(True)
-    pka_bounds_raw = list(cfg.get("pka_bounds") or [])
+    _pb = cfg.get("pka_bounds")
+    pka_bounds_raw = list(_pb) if _pb is not None else []
     parameter_names = []
     initial_params = []
     lower_bounds = []
@@ -577,7 +582,7 @@ def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[
                 lo = float(raw_bounds.get("min", lo))
                 hi = float(raw_bounds.get("max", hi))
             else:
-                seq = list(raw_bounds or [])
+                seq = [] if raw_bounds is None else list(np.asarray(raw_bounds, dtype=object).reshape(-1))
                 if len(seq) >= 2:
                     lo, hi = float(seq[0]), float(seq[1])
         if lo >= hi:
