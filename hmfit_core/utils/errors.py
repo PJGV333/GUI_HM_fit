@@ -471,9 +471,13 @@ def compute_errors_spectro_varpro(
     group_map=None,
     param_transform=None,
     count_linear_dof=True,
+    fixed_mask=None,
 ):
     """
     Cálculo robusto (variable projection) para espectroscopía.
+
+    fixed_mask : optional (p,) bool. Fixed parameters are excluded from the covariance
+                 (SE = 0 by definition) and from the degrees of freedom.
     k       : (p,)
     res     : solver con .concentraciones(k) -> (C_abs, Co_all)
     Y       : (m × nw)  datos (filas: puntos de titulación; cols: longitudes de onda)
@@ -545,9 +549,22 @@ def compute_errors_spectro_varpro(
         rank_c = int(_onp.linalg.matrix_rank(_as_onp(C_eff), tol=None))
     except Exception:
         rank_c = int(C_eff.shape[1])
-    n_linear = int(rank_c * nw)
-    dof = max(r.size - p - (n_linear if count_linear_dof else 0), 1)
-    s2  = float((r @ r) / dof)
+    # Only observations with positive weight are data; a wavelength with zero weight
+    # everywhere contributes neither observations nor fitted linear coefficients.
+    W_onp_arr = _onp.asarray(W_onp, dtype=float)
+    used = W_onp_arr > 0.0
+    n_obs_used = int(_onp.count_nonzero(used))
+    n_wl_used = int(_onp.count_nonzero(_onp.any(used, axis=0)))
+    n_linear = int(rank_c * n_wl_used)
+
+    fixed = _onp.zeros(p, dtype=bool)
+    if fixed_mask is not None:
+        fm = _onp.asarray(fixed_mask, dtype=bool).ravel()
+        if fm.size == p:
+            fixed = fm
+        elif fm.size != 0:
+            raise ValueError(f"fixed_mask has {fm.size} entries for {p} parameters.")
+    free_idx = _onp.where(~fixed)[0]
 
     # Jacobiano proyectado
     dC_all = _build_dC_all(Co, Ms, nas, param_idx)
@@ -558,18 +575,33 @@ def compute_errors_spectro_varpro(
     W_flat = W.reshape(-1)
     J = J_raw * W_flat[None, :]
 
-    # Identifiability
-    JJT = J @ J.T
-    Cov_log10K = s2 * _pinv_backend(JJT, rcond=rcond)
-    
-    # Filter param_names if provided
+    # Covariance of the free parameters (fixed ones: exactly zero, by definition)
+    J_onp = _as_onp(J)
+    J_free = J_onp[free_idx, :]
+    lin = linearized_covariance(
+        J_free.T, float(_as_onp(r) @ _as_onp(r)), n_obs_used,
+        n_linear if count_linear_dof else 0,
+    )
+    dof = lin["dof"]
+    s2 = lin["s2"]
+    Cov_log10K = _onp.zeros((p, p), dtype=float)
+    Cov_log10K[_onp.ix_(free_idx, free_idx)] = lin["cov"]
+
     param_names_free = None
     if param_names is not None:
-        param_names_free = list(param_names) # Assuming all are free in spectro currently or handled by calling code
-    
-    diag = build_identifiability_report(JJT, _as_onp(Cov_log10K), param_names=param_names_free)
-    
-    SE_log10K = _onp.sqrt(_onp.clip(_onp.diag(_as_onp(Cov_log10K)), 0.0, _onp.inf))
+        names_all = list(param_names)
+        param_names_free = [names_all[i] for i in free_idx] if len(names_all) == p else None
+    JJT = J_free @ J_free.T
+    if free_idx.size:
+        diag = build_identifiability_report(JJT, _onp.nan_to_num(lin["cov"]), param_names=param_names_free)
+    else:
+        diag = {"status": "warn", "diag_summary": "All parameters are fixed; nothing estimated."}
+    if lin["notes"]:
+        diag = dict(diag)
+        diag["notes"] = list(lin["notes"])
+
+    d = _onp.diag(Cov_log10K)
+    SE_log10K = _onp.where(_onp.isfinite(d), _onp.sqrt(_onp.clip(d, 0.0, _onp.inf)), _onp.nan)
     pm = percent_metrics_from_log10K(_as_onp(k), SE_log10K)
 
     percK      = pm["perc_linear"]      # %Error (K) por delta method (simétrico)
@@ -586,9 +618,12 @@ def compute_errors_spectro_varpro(
         "A_species": _as_onp(A_species),
         "group_map": _as_onp(G_map),
         "J": _as_onp(J), "yfit": _as_onp((C_eff @ A_group).T),
-        "r": _as_onp(r), "dof": int(dof), "nobs": int(r.size), "n_linear": int(n_linear),
+        "r": _as_onp(r), "dof": int(dof), "nobs": n_obs_used, "n_linear": int(n_linear),
         "RMS_raw": RMS_raw,
-        "stability_diag": diag
+        "stability_diag": diag,
+        "fixed_mask": fixed, "free_idx": free_idx,
+        "nonidentifiable": _onp.isin(_onp.arange(p), free_idx[lin["nonidentifiable"]]),
+        "notes": list(lin["notes"]), "variance_valid": bool(lin["valid"]),
     }
 
 
@@ -797,20 +832,18 @@ def compute_errors_nmr_varpro(
     # J_full is (p x M_eff). w_full is (M_eff,)
     J_w = J_full * w_full[None, :]
 
-    nobs = r_raw.size
+    # Observations actually used: finite, unmasked and with positive weight.
+    nobs = int(_onp.count_nonzero(w_full > 0.0))
+    chi2 = float(_onp.sum((r_raw * w_full) ** 2))
     # Degrees of freedom: the limiting shifts / linear coefficients solved by variable
-    # projection are fitted parameters too and must be subtracted (otherwise s^2 and
-    # every SE are biased low, strongly so for small titrations).
-    dof = nobs - p_free - (int(n_linear) if count_linear_dof else 0)
-    dof_capped = max(dof, 1)
-    
-    # Weighted reduced chi-squared: sum(w * r^2) / dof
-    chi2 = _onp.sum( (r_raw * w_full)**2 )
-    s2   = float(chi2 / dof_capped)
-    # Note: If weights are 1/sigma^2, then s2 should be close to 1 if model fits. 
-    # But usually we still scale Cov by s2 (estimated variance factor).
+    # projection are fitted parameters too (n_linear = sum of the effective ranks of the
+    # per-signal design matrices). No silent clamp: dof <= 0 -> variance undefined (NaN).
+    nonid_full = _onp.zeros(p_total, dtype=bool)
+    notes = []
 
     if p_free == 0:
+        dof = nobs - (int(n_linear) if count_linear_dof else 0)
+        s2 = chi2 / dof if dof > 0 else float("nan")
         SE_log10K_full = _onp.zeros(p_total)
         Cov_free = _onp.zeros((0, 0))
         stability_diag = {
@@ -826,29 +859,34 @@ def compute_errors_nmr_varpro(
             "diag_full": ""
         }
     else:
-        if rcond_cov is None:
-            rcond_cov = rcond
-            
         # Use Weighted Jacobian for Fisher Info Matrix
         J = J_w[free_idx, :]   # (p_free x M_eff)
         JJT = J @ J.T          # (p_free x p_free)
         JJT = 0.5 * (JJT + JJT.T.conj())
 
-        invJJT = pinv_psd_eigh(JJT, xp=_onp, rcond=rcond_cov, ridge=ridge_cov)
-        Cov_free = s2 * invJJT
+        lin = linearized_covariance(J.T, chi2, nobs, int(n_linear) if count_linear_dof else 0)
+        dof = lin["dof"]
+        s2 = lin["s2"]
+        Cov_free = lin["cov"]
+        notes.extend(lin["notes"])
+        nonid_full[free_idx] = lin["nonidentifiable"]
 
         # --- Stability Diagnostics ---
         param_names_free = None
         if param_names is not None:
             param_names_free = [param_names[i] for i in free_idx]
             
-        stability_diag = build_identifiability_report(JJT, Cov_free, param_names=param_names_free)
+        stability_diag = build_identifiability_report(JJT, _onp.nan_to_num(Cov_free), param_names=param_names_free)
+        if notes:
+            stability_diag = dict(stability_diag)
+            stability_diag["notes"] = list(notes)
 
         if debug:
             print(stability_diag["diag_full"])
 
-        SE_log10K_free = _onp.sqrt(_onp.clip(_onp.diag(_as_onp(Cov_free)), 0.0, _onp.inf))
-        
+        d_free = _onp.diag(_as_onp(Cov_free))
+        SE_log10K_free = _onp.where(_onp.isfinite(d_free), _onp.sqrt(_onp.clip(d_free, 0.0, _onp.inf)), _onp.nan)
+
         SE_log10K_full = _onp.zeros(p_total)
         SE_log10K_full[free_idx] = SE_log10K_free
     
@@ -861,7 +899,10 @@ def compute_errors_nmr_varpro(
         "dof": dof, "nobs": nobs, "n_linear": int(n_linear),
         "row_index": _onp.concatenate(row_blocks) if row_blocks else _onp.zeros(0, dtype=int),
         "residuals_vec": _as_onp(r_raw), "r": _as_onp(r_raw),
-        "stability_diag": stability_diag
+        "stability_diag": stability_diag,
+        "fixed_mask": _onp.asarray(fixed_mask, dtype=bool), "free_idx": free_idx,
+        "nonidentifiable": nonid_full, "notes": notes,
+        "variance_valid": bool(_onp.isfinite(s2)),
     }
 
 
@@ -897,6 +938,77 @@ class BootstrapCancelled(RuntimeError):
 
 # --- Statistical helpers shared by every module -----------------------------
 
+def linearized_covariance(J_free, sse, n_obs, n_linear=0, *, rank_tol=None):
+    """
+    Linearized covariance of the *free* nonlinear parameters, s^2 (J^T J)^-1.
+
+    J_free  : (n_obs, p_free) Jacobian of the (weighted) residual vector w.r.t. the free
+              parameters (rows = observations).
+    sse     : weighted residual sum of squares.
+    n_linear: number of linear coefficients estimated by variable projection.
+
+    Returns a dict with
+      dof, s2           : n_obs - p_free - n_linear and SSE/dof. If dof <= 0 the variance
+                          cannot be estimated: s2 = NaN and ``valid`` is False (no silent
+                          clamp of dof to 1).
+      cov               : (p_free, p_free) covariance; NaN rows/cols for non-identifiable
+                          parameters, i.e. those with a non-negligible component in the
+                          numerical null space of the column-scaled Jacobian.
+      rank, nonidentifiable (bool mask), notes (list of str), valid (bool).
+    A standard error of zero is therefore never used to mean "not identifiable".
+    """
+    J = _onp.asarray(J_free, dtype=float)
+    if J.ndim != 2:
+        raise ValueError("J_free must be 2-D (n_obs, p_free).")
+    n_obs = int(n_obs)
+    p = int(J.shape[1])
+    n_linear = int(n_linear or 0)
+    notes = []
+    dof = n_obs - p - n_linear
+    if dof <= 0:
+        s2 = float("nan")
+        notes.append(
+            f"Insufficient degrees of freedom (n_obs={n_obs}, nonlinear={p}, linear={n_linear}, "
+            f"dof={dof}): the residual variance and the uncertainties cannot be estimated."
+        )
+    else:
+        s2 = float(sse) / float(dof)
+    cov = _onp.full((p, p), _onp.nan, dtype=float)
+    nonid = _onp.zeros(p, dtype=bool)
+    rank = 0
+    if p == 0:
+        return {"cov": _onp.zeros((0, 0)), "dof": dof, "s2": s2, "rank": 0,
+                "nonidentifiable": nonid, "notes": notes, "valid": dof > 0}
+    if not _onp.all(_onp.isfinite(J)):
+        notes.append("Jacobian contains non-finite values; covariance not available.")
+        return {"cov": cov, "dof": dof, "s2": s2, "rank": 0,
+                "nonidentifiable": _onp.ones(p, dtype=bool), "notes": notes, "valid": False}
+    norms = _onp.linalg.norm(J, axis=0)
+    zero_col = norms <= 0.0
+    scale = _onp.where(zero_col, 1.0, norms)
+    Js = J / scale[None, :]
+    U, sv, Vt = _onp.linalg.svd(Js, full_matrices=False)
+    if rank_tol is None:
+        rank_tol = max(J.shape) * _onp.finfo(float).eps * (sv[0] if sv.size else 0.0)
+    keep = sv > rank_tol
+    rank = int(_onp.count_nonzero(keep))
+    if rank < p:
+        V_null = Vt[~keep, :].T  # (p, p-rank)
+        nonid = (_onp.linalg.norm(V_null, axis=1) > 1e-6) | zero_col
+        names = ", ".join(str(i + 1) for i in _onp.where(nonid)[0])
+        notes.append(
+            f"Jacobian is rank deficient (rank {rank} < {p} free parameters): parameter(s) "
+            f"#{names} are not identifiable from these data; their uncertainty is undefined (NaN)."
+        )
+    inv = Vt[keep, :].T @ _onp.diag(1.0 / sv[keep] ** 2) @ Vt[keep, :]
+    cov_s = s2 * inv
+    cov = cov_s / scale[:, None] / scale[None, :]
+    cov[nonid, :] = _onp.nan
+    cov[:, nonid] = _onp.nan
+    return {"cov": cov, "dof": dof, "s2": s2, "rank": rank, "nonidentifiable": nonid,
+            "notes": notes, "valid": bool(dof > 0 and rank > 0)}
+
+
 def t_quantile(dof, prob=0.975):
     """Student-t quantile for ``dof`` degrees of freedom (normal if dof is huge/invalid)."""
     try:
@@ -912,6 +1024,14 @@ def t_quantile(dof, prob=0.975):
         return float(_t.ppf(prob, dof))
     except Exception:  # pragma: no cover - scipy is a hard dependency
         return 1.959963984540054 if prob == 0.975 else 1.0
+
+
+def nonidentifiable_parameters(J_rows_params):
+    """Boolean mask of parameters lying in the numerical null space of J (rows = params)."""
+    J = _onp.asarray(J_rows_params, dtype=float)
+    if J.ndim != 2 or J.shape[0] == 0:
+        return _onp.zeros(J.shape[0] if J.ndim == 2 else 0, dtype=bool)
+    return linearized_covariance(J.T, 0.0, J.shape[1] + J.shape[0] + 1)["nonidentifiable"]
 
 
 def lm_damped_step(J, r, lam=1e-3, rcond=1e-10):
@@ -940,17 +1060,79 @@ def lm_damped_step(J, r, lam=1e-3, rcond=1e-10):
         return -_onp.linalg.pinv(A, rcond=rcond) @ g
 
 
-def leverage_rescale_factor(n_obs, n_params_total):
+def sample_correlation(samples):
     """
-    sqrt(n / (n - p_total)): inflates raw residuals before wild/residual resampling
-    so that the bootstrap variance is not biased low by the fitted parameters
-    (nonlinear *and* linear ones absorb part of the noise).  HC1-type correction.
+    Correlation matrix of bootstrap samples. Columns with zero spread (fixed parameters)
+    or non-finite values (non-identifiable) get NaN correlations (undefined), diagonal 1
+    for the others. Always 2-D, also for a single parameter.
+    """
+    X = _onp.atleast_2d(_onp.asarray(samples, dtype=float))
+    p = X.shape[1]
+    corr = _onp.full((p, p), _onp.nan)
+    if X.shape[0] < 2:
+        return corr
+    ok = _onp.all(_onp.isfinite(X), axis=0) & (_onp.std(X, axis=0) > 0)
+    idx = _onp.where(ok)[0]
+    if idx.size:
+        sub = _onp.atleast_2d(_onp.corrcoef(X[:, idx], rowvar=False))
+        corr[_onp.ix_(idx, idx)] = sub
+        corr[idx, idx] = 1.0
+    return corr
+
+
+def hc1_rescale_factor(n_obs, n_params_total):
+    """
+    Global HC1-type degrees-of-freedom correction sqrt(n / (n - p_total)).
+
+    Raw least-squares residuals are on average smaller than the errors because the fitted
+    parameters (nonlinear *and* linear) absorb part of the noise: E[sum r^2] = (n - p) s^2.
+    Multiplying every residual by sqrt(n/(n-p)) restores the average variance before wild
+    or residual resampling. It is a single global factor: it does NOT correct the
+    leverage of individual observations (that would be HC2, r_i / sqrt(1 - h_ii), or HC3,
+    r_i / (1 - h_ii), which require the diagonal of the hat matrix).
+    Returns 1.0 when n - p_total <= 0 (no correction is possible).
     """
     n = int(n_obs)
     p = int(max(n_params_total, 0))
     if n <= 0 or n - p <= 0:
         return 1.0
     return float(_onp.sqrt(n / float(n - p)))
+
+
+# Backwards-compatible alias (the factor was previously called a "leverage" correction,
+# which is inaccurate: it is a global HC1-type correction).
+leverage_rescale_factor = hc1_rescale_factor
+
+
+def resampling_notes(n_blocks, block="row", n_params_free=None):
+    """
+    Statistical caveats of the wild bootstrap given the number of independent units.
+
+    n_blocks: independent resampling units (titration points / spectra for block="row";
+    individual residuals for block="element").
+    """
+    notes = []
+    n_blocks = int(n_blocks)
+    if str(block).lower().startswith("row"):
+        if n_blocks < 20:
+            notes.append(
+                f"Only {n_blocks} independent blocks (titration points / spectra): with a "
+                f"Rademacher wild bootstrap there are at most 2^{n_blocks} distinct resamples "
+                "and the bootstrap variance is imprecise and can be biased low. Treat the "
+                "intervals as indicative and compare with the analytic estimate."
+            )
+        if n_params_free is not None and n_blocks <= 2 * int(n_params_free):
+            notes.append(
+                f"The number of blocks ({n_blocks}) is small relative to the free parameters "
+                f"({int(n_params_free)})."
+            )
+    else:
+        notes.append(
+            "Element-wise resampling assumes independent errors between channels of the "
+            "same spectrum / titration point; correlated errors (baseline drift, dilution) "
+            "make it optimistic."
+        )
+    return notes
 
 
 def block_wild_multipliers(rng, shape, kind="rademacher", block="row"):
@@ -995,7 +1177,7 @@ def make_wild_data_star_fn(fitted, observed, *, point_axis=0, block="row",
     fitted/observed : arrays of identical shape.
     point_axis      : axis that indexes titration points / spectra / times.
     block           : "row" (one multiplier per point, keeps channel correlation) or "element".
-    n_params_total  : nonlinear + linear fitted parameters, for the leverage correction.
+    n_params_total  : nonlinear + linear fitted parameters, for the global HC1-type correction.
     mask            : optional boolean array; unobserved entries are copied from ``observed``.
     """
     fitted = _onp.asarray(fitted, dtype=float)
@@ -1005,7 +1187,7 @@ def make_wild_data_star_fn(fitted, observed, *, point_axis=0, block="row",
     resid = observed - fitted
     valid = _onp.isfinite(resid) if mask is None else (_onp.asarray(mask, dtype=bool) & _onp.isfinite(resid))
     resid = _onp.where(valid, resid, 0.0)
-    resid = resid * leverage_rescale_factor(int(_onp.count_nonzero(valid)), n_params_total)
+    resid = resid * hc1_rescale_factor(int(_onp.count_nonzero(valid)), n_params_total)
     moved = _onp.moveaxis(resid, point_axis, 0) if resid.ndim > 1 else resid
 
     def _fn(rng, wild=kind_default):
@@ -1110,11 +1292,7 @@ def bootstrap_full_refit(
 
     corr = None
     if n_success >= 2:
-        corr = _onp.atleast_2d(_onp.corrcoef(samples, rowvar=False))
-        corr = _onp.nan_to_num(corr, nan=0.0)
-        if corr.ndim == 2:
-            for i in range(corr.shape[0]):
-                corr[i, i] = 1.0
+        corr = sample_correlation(samples)
 
     return {
         "samples": samples,
@@ -1153,7 +1331,7 @@ def bootstrap_linearized_wild(
              residual). When given, one wild multiplier is drawn per group so residuals of
              the same spectrum keep their mutual correlation (block wild bootstrap).
     n_linear : number of linear (variable-projection) parameters, used together with p
-             for the sqrt(n/(n-p_total)) leverage correction of the residuals.
+             for the global HC1-type sqrt(n/(n-p_total)) correction of the residuals.
     Returns dict with samples (B x p).
     """
     k_hat = _onp.asarray(k_hat, dtype=float).ravel()
@@ -1169,7 +1347,7 @@ def bootstrap_linearized_wild(
     G = J @ J.T
     G_inv = pinv_psd_eigh(G, xp=_onp, rcond=rcond, ridge=ridge)
     if leverage_correction:
-        r = r * leverage_rescale_factor(r.size, k_hat.size + int(n_linear or 0))
+        r = r * hc1_rescale_factor(r.size, k_hat.size + int(n_linear or 0))
     inv = None
     n_groups = 0
     if groups is not None:
@@ -1190,8 +1368,13 @@ def bootstrap_linearized_wild(
         dk = G_inv @ g
         samples[b, :] = k_hat + dk
 
+    # The pseudo-inverse gives zero movement along null-space directions, which would
+    # look like a (spuriously small) uncertainty. Non-identifiable parameters -> NaN.
+    nonid = nonidentifiable_parameters(J)
+    samples[:, nonid] = _onp.nan
     return {
         "samples": samples,
+        "nonidentifiable": nonid,
     }
 
 
@@ -1212,6 +1395,7 @@ def bootstrap_one_step_spectro(
     param_transform=None,
     wild_block="row",
     leverage_correction=True,
+    fixed_mask=None,
 ):
     """
     One-step LM bootstrap (spectroscopy): dataset perturbation + recompute J,r at k_hat + 1 LM step.
@@ -1235,7 +1419,9 @@ def bootstrap_one_step_spectro(
         weights=weights,
         group_map=group_map,
         param_transform=param_transform,
+        fixed_mask=fixed_mask,
     )
+    free_idx = _onp.asarray(metrics0["free_idx"], dtype=int)
     yfit = _onp.asarray(metrics0["yfit"], dtype=float)
     Y_obs = _onp.asarray(Y, dtype=float)
     if yfit.shape != Y_obs.shape:
@@ -1243,10 +1429,10 @@ def bootstrap_one_step_spectro(
 
     R = yfit - Y_obs
     if leverage_correction:
-        n_lin = int(_onp.asarray(metrics0.get("A")).size) if metrics0.get("A") is not None else 0
-        R = R * leverage_rescale_factor(R.size, k_hat.size + n_lin)
+        n_lin = int(metrics0.get("n_linear", 0) or 0)
+        R = R * hc1_rescale_factor(int(metrics0["nobs"]), free_idx.size + n_lin)
     rng = _onp.random.default_rng(seed)
-    samples = _onp.zeros((B, k_hat.size), dtype=float)
+    samples = _onp.tile(k_hat, (B, 1)).astype(float)
 
     for b in range(B):
         # rows of R.T are titration points
@@ -1265,14 +1451,19 @@ def bootstrap_one_step_spectro(
             group_map=group_map,
             param_transform=param_transform,
         )
-        J = _onp.asarray(metrics_star["J"], dtype=float)
+        if free_idx.size == 0:
+            continue
+        J = _onp.asarray(metrics_star["J"], dtype=float)[free_idx, :]
         r_star = _onp.asarray(metrics_star["r"], dtype=float).ravel()
 
-        dk = lm_damped_step(J, r_star, lam=lam, rcond=rcond)
-        samples[b, :] = k_hat + dk
+        # fixed parameters never move
+        samples[b, free_idx] = k_hat[free_idx] + lm_damped_step(J, r_star, lam=lam, rcond=rcond)
 
+    nonid = _onp.asarray(metrics0["nonidentifiable"], dtype=bool)
+    samples[:, nonid] = _onp.nan
     return {
         "samples": samples,
+        "nonidentifiable": nonid,
     }
 
 
@@ -1340,7 +1531,7 @@ def bootstrap_one_step_nmr(
             n_lin = int(m0.get("n_linear", 0) or 0)
         except Exception:
             n_lin = 0
-        R = R * leverage_rescale_factor(n_obs, free_idx.size + n_lin)
+        R = R * hc1_rescale_factor(n_obs, free_idx.size + n_lin)
     rng = _onp.random.default_rng(seed)
     samples = _onp.zeros((B, k_hat.size), dtype=float)
 
@@ -1380,6 +1571,10 @@ def bootstrap_one_step_nmr(
         k1[free_idx] = k1[free_idx] + dk
         samples[b, :] = k1
 
+    if free_idx.size:
+        J_last = _onp.asarray(metrics_star["J"], dtype=float)[free_idx, :]
+        nonid_free = nonidentifiable_parameters(J_last)
+        samples[:, free_idx[nonid_free]] = _onp.nan
     return {
         "samples": samples,
     }

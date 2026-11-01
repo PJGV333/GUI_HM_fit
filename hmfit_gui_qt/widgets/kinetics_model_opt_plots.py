@@ -956,8 +956,9 @@ class KineticsModelOptPlotsWidget(QWidget):
             bootstrap_full_refit,
             bootstrap_linearized_wild,
             bootstrap_quality_notes,
-            leverage_rescale_factor,
+            hc1_rescale_factor,
             lm_damped_step,
+            nonidentifiable_parameters,
             t_quantile,
             wild_multipliers,
         )
@@ -975,7 +976,8 @@ class KineticsModelOptPlotsWidget(QWidget):
         fail_policy = str(options.get("fail_policy") or "skip")
         wild_block = str(options.get("wild_block") or "row")
 
-        param_names = list(ctx.get("param_names") or [])
+        _pn = ctx.get("param_names")
+        param_names = list(_pn) if _pn is not None else []
         k_hat_raw = ctx.get("k_hat")
         k_hat = np.asarray(k_hat_raw if k_hat_raw is not None else [], dtype=float).ravel()
         if k_hat.size == 0:
@@ -1001,11 +1003,15 @@ class KineticsModelOptPlotsWidget(QWidget):
                     scale[idx] = np.log(10.0) * max(float(k_hat[idx]), 1e-300)
             jac_lin = jac / scale[None, :]
 
-        fixed_ctx = list(ctx.get("fixed_mask") or [])
+        fixed_raw = ctx.get("fixed_mask")
         fixed_arr = np.zeros(p, dtype=bool)
-        fixed_arr[: min(len(fixed_ctx), p)] = np.asarray(fixed_ctx[:p], dtype=bool)
-        if jac_lin.size:
-            fixed_arr |= ~np.any(jac_lin != 0.0, axis=0)
+        if fixed_raw is not None:
+            fm = np.asarray(fixed_raw, dtype=bool).reshape(-1)
+            if fm.size == p:
+                fixed_arr = fm.copy()
+            elif fm.size != 0:
+                raise ValueError(f"fixed_mask has {fm.size} entries for {p} parameters.")
+        # NOTE: a zero Jacobian column means "not identifiable", never "fixed".
         free_idx = np.where(~fixed_arr)[0]
         n_linear = int(ctx.get("n_linear") or 0)
         dof_ctx = ctx.get("dof")
@@ -1023,7 +1029,7 @@ class KineticsModelOptPlotsWidget(QWidget):
                 cand = np.concatenate(parts)
                 if cand.size == nobs:
                     groups = cand
-        lev = leverage_rescale_factor(nobs, int(free_idx.size) + n_linear)
+        lev = hc1_rescale_factor(nobs, int(free_idx.size) + n_linear)
 
         cov = None
         se = None
@@ -1086,6 +1092,9 @@ class KineticsModelOptPlotsWidget(QWidget):
                     r_star = r_scaled * wild_multipliers(rng, nobs, kind=wild)
                 if free_idx.size:
                     samples[b, free_idx] = k_hat[free_idx] - lm_damped_step(J_free_T, r_star, lam=lam)
+            if free_idx.size:
+                nonid = nonidentifiable_parameters(J_free_T)
+                samples[:, free_idx[nonid]] = np.nan
         elif method == "bootstrap_full_refit":
             if "refit_fn" not in ctx:
                 raise ValueError("Missing refit function for full refit bootstrap.")
@@ -1219,8 +1228,14 @@ class KineticsModelOptPlotsWidget(QWidget):
         else:
             extra.append(
                 f"resampling unit={'time point (spectrum)' if wild_block == 'row' else 'data element'}, "
-                "residuals rescaled by sqrt(n/(n-p_total))"
+                "residuals rescaled by the global HC1-type factor sqrt(n/(n-p_total))"
             )
+        if method != "analytic":
+            from hmfit_core.utils.errors import resampling_notes
+
+            n_blocks = int(np.unique(groups).size) if (groups is not None and wild_block == "row") else nobs
+            for note in resampling_notes(n_blocks, wild_block, int(free_idx.size)):
+                extra.append(f"NOTE: {note}")
         if method == "bootstrap_full_refit" and n_success is not None:
             for note in bootstrap_quality_notes(int(n_success or 0), int(n_fail or 0), B):
                 extra.append(f"WARNING: {note}")

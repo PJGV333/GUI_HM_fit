@@ -45,8 +45,10 @@ SE/SD ≈ 1) y la cobertura real del IC 95 % (ideal ≈ 95 %).
 
   Con ruido i.i.d. el remuestreo por espectro sigue siendo razonable (SE/SD 0.86–0.97). Se añadió
   el selector *Resample by* en la pestaña Errors (todas las técnicas).
-* **Corrección de leverage (HC1):** los residuos se reescalan por √(n/(n − p_total)) antes de
-  remuestrear, incluyendo los parámetros lineales.
+* **Corrección global tipo HC1** (corregido en la Fase 1; antes se llamaba erróneamente
+  "corrección de leverage"): los residuos se reescalan por el factor único √(n/(n − p_total))
+  antes de remuestrear, incluyendo los parámetros lineales. No corrige el leverage individual de
+  cada observación (eso serían HC2/HC3).
 * **Semilla siempre registrada:** si el usuario no da semilla se genera una y se muestra en el
   resumen, de modo que todo resultado bootstrap es reproducible.
 * **Avisos de calidad:** si > 5 % de réplicas fallan o hay < 30 réplicas exitosas, el resumen lo
@@ -98,10 +100,13 @@ empírica 0.0034: el estimador era sesgado y con varianza artificialmente baja.
 
 Lectura:
 
-* El **SE analítico es conservador** (2–6× más ancho de lo real) porque se calcula con
-  absortividades sin restricción mientras el ajuste impone ε ≥ 0. Nunca subestima, pero exagera.
-  La corrección de fondo es calcular el Jacobiano de proyección variable con el conjunto activo de
-  ε fijo (las ε recortadas a 0 dejan de ser parámetros lineales libres). Queda como tarea prioritaria.
+* En estas simulaciones el **SE analítico resultó 2–6× más ancho** que la dispersión real, porque
+  se calcula con absortividades sin restricción mientras el ajuste impone ε ≥ 0. *Nota de la
+  Fase 1:* esto se observó en dos diseños concretos y **no demuestra que el SE analítico sea
+  siempre conservador**; simplemente no está derivado para el estimador restringido. Desde la
+  Fase 1 HM fit informa cuántos coeficientes están en la restricción y advierte. La corrección de
+  fondo (Jacobiano condicional al conjunto activo, con su validación cerca de la frontera ε = 0)
+  queda como prioridad de la Fase 2.
 * El **bootstrap full-refit por punto** es el método mejor calibrado en ambos escenarios y debe
   presentarse como referencia ("auditoría") para resultados publicables.
 * Con deriva de línea base no modelada, el sesgo (3.04) domina sobre el ruido: ningún método de
@@ -118,9 +123,9 @@ Lectura:
    defecto, con Powell/Nelder–Mead como respaldo. Reportar siempre `success`, número de iteraciones
    y gradiente final.
 2. **Coherencia estimador–error:** el error analítico se calcula con absortividades sin restricción
-   (pinv), mientras que el ajuste usa ε ≥ 0. Si hay restricciones activas, el SE analítico es
-   conservador; indicarlo en el resumen ("n restricciones activas") y recomendar bootstrap
-   full-refit en ese caso.
+   (pinv), mientras que el ajuste usa ε ≥ 0. Si hay restricciones activas, el SE analítico no
+   está derivado para el estimador usado (sin dirección garantizada del error). *Implementado en
+   la Fase 1:* aviso con el número de restricciones activas y recomendación del full-refit.
 3. **Motor único de incertidumbre.** Hoy hay tres implementaciones paralelas (`model_opt_plots`,
    `kinetics_model_opt_plots`, `acid_base_errors`) con la misma lógica copiada. Mover todo a un
    `hmfit_core/uncertainty.py` con una interfaz única (`residual_fn`, `refit_fn`, `groups`,

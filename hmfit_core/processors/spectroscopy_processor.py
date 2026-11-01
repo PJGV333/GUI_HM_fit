@@ -161,6 +161,9 @@ def format_results_table(k, SE_log10K, percK, rms, covfit, lof=None, fixed_mask=
         if is_fixed:
             se_str = "const"
             perc_str = ""
+        elif not onp.isfinite(SE_log10K[i]):
+            se_str = "undefined"
+            perc_str = "not identifiable / dof<=0"
         else:
             se_str = f"{SE_log10K[i]:.2e}"
             perc_str = f"{percK[i]:.2f} %"
@@ -440,6 +443,63 @@ def _build_smoothness_laplacian(n_lambda: int):
         D2[i, i + 1] = -2.0
         D2[i, i + 2] = 1.0
     return D2.T @ D2
+
+
+def absorptivity_constraint_report(
+    A_unconstrained,
+    *,
+    eps_solver_mode="soft_penalty",
+    delta_mode="off",
+    alpha_smooth=0.0,
+    lower_bound=None,
+):
+    """
+    Compare the absorptivity estimator used by the fit with the one assumed by the
+    linearized (VarPro) uncertainty analysis.
+
+    The fit imposes epsilon >= 0 (``soft_penalty``: quadratic penalty on negative values;
+    ``nnls_hard``: exact NNLS; ``soft_bound``/``delta_mode``: lower bound) and may add a
+    smoothness penalty. The analytic covariance, the linearized bootstrap and the one-step
+    bootstrap use the *unconstrained* projection A = C^+ Y. When the unconstrained
+    solution violates the constraint, those two estimators differ and the analytic
+    covariance is not derived for the estimator actually used (no general direction of the
+    discrepancy can be asserted; near epsilon = 0 the estimator is not Gaussian).
+
+    Returns {"n_active", "n_total", "fraction", "penalized", "note"}.
+    """
+    A = onp.asarray(A_unconstrained, dtype=float)
+    n_total = int(A.size)
+    mode = str(eps_solver_mode or "soft_penalty").strip().lower()
+    constrained = mode in {"soft_penalty", "nnls_hard", "soft_bound"} or str(delta_mode).lower() != "off"
+    if lower_bound is not None:
+        lb = onp.asarray(lower_bound, dtype=float)
+        if lb.ndim == 1 and A.ndim == 2 and lb.size == A.shape[0]:
+            lb = lb[:, None]
+        active = A < lb
+    else:
+        active = A < 0.0
+    n_active = int(onp.count_nonzero(active)) if constrained else 0
+    penalized = bool(float(alpha_smooth or 0.0) > 0.0)
+    notes = []
+    if n_active:
+        notes.append(
+            f"{n_active} of {n_total} absorptivity coefficients ({100.0 * n_active / max(n_total, 1):.0f}%) "
+            f"are at the epsilon>=0 constraint ({mode}). Analytic / linearized / one-step "
+            "uncertainties assume unconstrained absorptivities and are not derived for the "
+            "constrained estimator; use Bootstrap (full refit) as the reference."
+        )
+    if penalized:
+        notes.append(
+            "A smoothness penalty on the absorptivities is active (alpha_smooth > 0): the "
+            "linearized covariance does not include the penalty."
+        )
+    return {
+        "n_active": n_active,
+        "n_total": n_total,
+        "fraction": (n_active / n_total) if n_total else 0.0,
+        "penalized": penalized,
+        "note": " ".join(notes),
+    }
 
 
 def _exact_soft_penalty_columns(C, YT, mu=1e-2, max_newton=60):
@@ -1741,7 +1801,15 @@ def process_spectroscopy_data(
         # Vacíos -> ±inf (sin introducir rangos artificiales)
         min_val = _to_bound(min_raw, -np.inf)
         max_val = _to_bound(max_raw, np.inf)
+        if min_val > max_val:
+            raise ValueError(
+                f"Invalid bounds for parameter {i + 1}: min={min_val:g} > max={max_val:g}."
+            )
         processed_bounds.append((min_val, max_val))
+    # Parameters fixed in the GUI arrive as min == max == value (finite).
+    fixed_from_bounds = [
+        bool(np.isfinite(lo) and np.isfinite(hi) and lo == hi) for (lo, hi) in processed_bounds
+    ]
     stage_times["parse_s"] = time.perf_counter() - t_parse_start
     t_solver_start = time.perf_counter()
     
@@ -2012,6 +2080,7 @@ def process_spectroscopy_data(
         weights=weights_per_lambda,
         group_map=abs_group_map,
         param_transform=solver_param_transform_arr,
+        fixed_mask=fixed_from_bounds if len(fixed_from_bounds) == len(k) else None,
     )
     
     SE_log10K = metrics["SE_log10K"]
@@ -2044,6 +2113,15 @@ def process_spectroscopy_data(
     A_species_solver = final_fit["A_species"]
     y_cal = final_fit["yfit"]
     lower_bound_final = final_fit["lower_bound"]
+    constraint_report = absorptivity_constraint_report(
+        metrics["A"],
+        eps_solver_mode=eps_solver_mode,
+        delta_mode=delta_mode,
+        alpha_smooth=alpha_smooth,
+        lower_bound=lower_bound_final,
+    )
+    if constraint_report["note"]:
+        log_progress("WARNING: " + constraint_report["note"])
     if lower_bound_final is not None:
         lb_fin = onp.asarray(lower_bound_final, dtype=float).ravel()
         log_progress(
@@ -2232,7 +2310,14 @@ def process_spectroscopy_data(
         dif_en_ct = 0.0
 
     # Tabla formateada para resultados (alineada como en la interfaz anterior)
-    results_text = format_results_table(k, SE_log10K, percK, rms, covfit, lof=lof, param_names=k_names)
+    results_text = format_results_table(
+        k, SE_log10K, percK, rms, covfit, lof=lof, param_names=k_names,
+        fixed_mask=fixed_from_bounds if len(fixed_from_bounds) == len(k) else None,
+    )
+    for _note in list(metrics.get("notes") or []):
+        results_text += f"\n\n>>> WARNING: {_note}"
+    if constraint_report["note"]:
+        results_text += f"\n\n>>> WARNING (uncertainty model): {constraint_report['note']}"
 
     # Stability Diagnostics
     if stability_diag:
@@ -2353,6 +2438,9 @@ def process_spectroscopy_data(
         "weights": onp.asarray(weights_per_lambda, dtype=float).tolist(),
         "weighting_meta": weighting_meta,
         "eps_solver_mode": eps_solver_mode,
+        "eps_constraint_active": int(constraint_report["n_active"]),
+        "eps_constraint_total": int(constraint_report["n_total"]),
+        "uncertainty_notes": [n for n in (list(metrics.get("notes") or []) + [constraint_report["note"]]) if n],
         "mu": float(eps_mu),
         "delta_mode": delta_mode,
         "delta_rel": float(delta_rel),
