@@ -1138,6 +1138,19 @@ class ModelOptPlotsWidget(QWidget):
             extra_lines.append(f"resampling unit={'titration point' if wild_block == 'row' else 'data element'}")
         if method == "analytic":
             extra_lines.append(f"CI from Student-t (dof={base_metrics.get('dof')})")
+        for _note in base_metrics.get("notes") or []:
+            extra_lines.append(f"WARNING: {_note}")
+        if technique == "spectro" and method != "bootstrap_full_refit_audit":
+            from hmfit_core.processors.spectroscopy_processor import absorptivity_constraint_report
+
+            _rep = absorptivity_constraint_report(
+                base_metrics.get("A"),
+                eps_solver_mode=str(ctx.get("eps_solver_mode") or "soft_penalty"),
+                delta_mode=str(ctx.get("delta_mode") or "off"),
+                alpha_smooth=float(ctx.get("alpha_smooth") or 0.0),
+            )
+            if _rep["note"]:
+                extra_lines.append(f"WARNING: {_rep['note']}")
         if boot_summary is not None:
             for note in boot_summary.get("quality_notes") or []:
                 extra_lines.append(f"WARNING: {note}")
