@@ -1135,7 +1135,23 @@ class ModelOptPlotsWidget(QWidget):
                 f"n_obs={int(base_metrics.get('nobs') or 0)}, linear params (VarPro)={int(base_metrics.get('n_linear') or 0)}"
             )
         if method != "analytic":
-            extra_lines.append(f"resampling unit={'titration point' if wild_block == 'row' else 'data element'}")
+            from hmfit_core.utils.errors import resampling_notes
+
+            extra_lines.append(
+                f"resampling unit={'titration point' if wild_block == 'row' else 'data element'}; "
+                "residuals rescaled by the global HC1-type factor sqrt(n/(n-p_total))"
+            )
+            if technique == "spectro":
+                n_points = int(np.asarray(ctx.get("Y")).shape[1]) if np.asarray(ctx.get("Y")).ndim == 2 else 0
+            else:
+                _dq = np.asarray(ctx.get("dq"), dtype=float)
+                n_points = int(np.count_nonzero(np.any(np.isfinite(_dq), axis=1))) if _dq.ndim == 2 else 0
+            for _note in resampling_notes(
+                n_points if wild_block == "row" else int(base_metrics.get("nobs") or 0),
+                wild_block,
+                int(np.count_nonzero(~fixed_mask)),
+            ):
+                extra_lines.append(f"NOTE: {_note}")
         if method == "analytic":
             extra_lines.append(f"CI from Student-t (dof={base_metrics.get('dof')})")
         for _note in base_metrics.get("notes") or []:

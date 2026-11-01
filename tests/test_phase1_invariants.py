@@ -288,3 +288,63 @@ def test_acid_base_fixed_pka_is_respected_in_nmr_and_spectroscopy(kind):
         assert abs(float(params.loc[0, "Estimate"]) - 4.0) < 0.05
         assert float(params.loc[0, "SE"]) > 0.0
         assert out["dof"] == 15 - 1 - 3
+
+
+# --------------------------------------------------------------------------------------
+# Steps 6–7 — absorptivity constraints, HC1 terminology, reproducibility
+# --------------------------------------------------------------------------------------
+
+def test_absorptivity_constraint_report_counts_active_coefficients():
+    from hmfit_core.processors.spectroscopy_processor import absorptivity_constraint_report
+
+    A = np.array([[1.0, -0.2, 3.0], [-1e-3, 2.0, 0.5]])
+    rep = absorptivity_constraint_report(A, eps_solver_mode="nnls_hard")
+    assert rep["n_active"] == 2 and rep["n_total"] == 6 and "full refit" in rep["note"]
+    clean = absorptivity_constraint_report(np.abs(A), eps_solver_mode="soft_penalty")
+    assert clean["n_active"] == 0 and clean["note"] == ""
+    smooth = absorptivity_constraint_report(np.abs(A), alpha_smooth=0.1)
+    assert smooth["penalized"] and "smoothness" in smooth["note"]
+
+
+def test_hc1_factor_and_resampling_notes():
+    from hmfit_core.utils.errors import hc1_rescale_factor, leverage_rescale_factor, resampling_notes
+
+    assert hc1_rescale_factor(100, 4) == pytest.approx(np.sqrt(100 / 96))
+    assert hc1_rescale_factor(3, 5) == 1.0
+    assert leverage_rescale_factor is hc1_rescale_factor  # backwards-compatible alias
+    assert any("Only 12 independent blocks" in n for n in resampling_notes(12, "row", 1))
+    assert resampling_notes(200, "row", 2) == []
+    assert any("independent errors" in n for n in resampling_notes(500, "element"))
+
+
+def test_bootstrap_reproducible_with_seed_and_counts_failures():
+    from hmfit_core.utils.errors import bootstrap_full_refit
+
+    rng0 = np.random.default_rng(5)
+    J = rng0.normal(size=(2, 60))
+    r = rng0.normal(size=60)
+    a = bootstrap_linearized_wild(np.zeros(2), J, r, 50, seed=11)["samples"]
+    b = bootstrap_linearized_wild(np.zeros(2), J, r, 50, seed=11)["samples"]
+    c = bootstrap_linearized_wild(np.zeros(2), J, r, 50, seed=12)["samples"]
+    assert np.array_equal(a, b) and not np.array_equal(a, c)
+
+    calls = {"n": 0}
+
+    def refit(d, t0, max_iter=30, tol=1e-8):
+        calls["n"] += 1
+        ok = calls["n"] % 4 != 0  # every 4th replicate fails
+        return t0 + 0.01 * d[:1], ok, ({} if ok else {"error": "no convergence"})
+
+    out = bootstrap_full_refit(np.array([1.0]), lambda rng, wild="rademacher": rng.normal(size=3), refit, 40, seed=3)
+    assert out["n_fail"] == 10 and out["n_success"] == 30
+    assert any("failed and were discarded" in n for n in out["quality_notes"])
+
+
+def test_acid_base_full_refit_bootstrap_is_reproducible():
+    ctx = _acid_base_nmr_ctx()
+    o1 = compute_errors_acid_base_from_context(ctx, {"method": "bootstrap_full_refit_audit", "B": 12, "seed": 7})
+    o2 = compute_errors_acid_base_from_context(ctx, {"method": "bootstrap_full_refit_audit", "B": 12, "seed": 7})
+    p1 = o1["export_frames"]["Parameters"]["SE"].astype(float).to_numpy()
+    p2 = o2["export_frames"]["Parameters"]["SE"].astype(float).to_numpy()
+    assert np.array_equal(p1, p2)
+    assert "Resampling unit" in o1["summary"]

@@ -956,7 +956,7 @@ class KineticsModelOptPlotsWidget(QWidget):
             bootstrap_full_refit,
             bootstrap_linearized_wild,
             bootstrap_quality_notes,
-            leverage_rescale_factor,
+            hc1_rescale_factor,
             lm_damped_step,
             nonidentifiable_parameters,
             t_quantile,
@@ -1029,7 +1029,7 @@ class KineticsModelOptPlotsWidget(QWidget):
                 cand = np.concatenate(parts)
                 if cand.size == nobs:
                     groups = cand
-        lev = leverage_rescale_factor(nobs, int(free_idx.size) + n_linear)
+        lev = hc1_rescale_factor(nobs, int(free_idx.size) + n_linear)
 
         cov = None
         se = None
@@ -1228,8 +1228,14 @@ class KineticsModelOptPlotsWidget(QWidget):
         else:
             extra.append(
                 f"resampling unit={'time point (spectrum)' if wild_block == 'row' else 'data element'}, "
-                "residuals rescaled by sqrt(n/(n-p_total))"
+                "residuals rescaled by the global HC1-type factor sqrt(n/(n-p_total))"
             )
+        if method != "analytic":
+            from hmfit_core.utils.errors import resampling_notes
+
+            n_blocks = int(np.unique(groups).size) if (groups is not None and wild_block == "row") else nobs
+            for note in resampling_notes(n_blocks, wild_block, int(free_idx.size)):
+                extra.append(f"NOTE: {note}")
         if method == "bootstrap_full_refit" and n_success is not None:
             for note in bootstrap_quality_notes(int(n_success or 0), int(n_fail or 0), B):
                 extra.append(f"WARNING: {note}")

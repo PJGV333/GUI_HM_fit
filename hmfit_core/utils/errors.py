@@ -1060,17 +1060,79 @@ def lm_damped_step(J, r, lam=1e-3, rcond=1e-10):
         return -_onp.linalg.pinv(A, rcond=rcond) @ g
 
 
-def leverage_rescale_factor(n_obs, n_params_total):
+def sample_correlation(samples):
     """
-    sqrt(n / (n - p_total)): inflates raw residuals before wild/residual resampling
-    so that the bootstrap variance is not biased low by the fitted parameters
-    (nonlinear *and* linear ones absorb part of the noise).  HC1-type correction.
+    Correlation matrix of bootstrap samples. Columns with zero spread (fixed parameters)
+    or non-finite values (non-identifiable) get NaN correlations (undefined), diagonal 1
+    for the others. Always 2-D, also for a single parameter.
+    """
+    X = _onp.atleast_2d(_onp.asarray(samples, dtype=float))
+    p = X.shape[1]
+    corr = _onp.full((p, p), _onp.nan)
+    if X.shape[0] < 2:
+        return corr
+    ok = _onp.all(_onp.isfinite(X), axis=0) & (_onp.std(X, axis=0) > 0)
+    idx = _onp.where(ok)[0]
+    if idx.size:
+        sub = _onp.atleast_2d(_onp.corrcoef(X[:, idx], rowvar=False))
+        corr[_onp.ix_(idx, idx)] = sub
+        corr[idx, idx] = 1.0
+    return corr
+
+
+def hc1_rescale_factor(n_obs, n_params_total):
+    """
+    Global HC1-type degrees-of-freedom correction sqrt(n / (n - p_total)).
+
+    Raw least-squares residuals are on average smaller than the errors because the fitted
+    parameters (nonlinear *and* linear) absorb part of the noise: E[sum r^2] = (n - p) s^2.
+    Multiplying every residual by sqrt(n/(n-p)) restores the average variance before wild
+    or residual resampling. It is a single global factor: it does NOT correct the
+    leverage of individual observations (that would be HC2, r_i / sqrt(1 - h_ii), or HC3,
+    r_i / (1 - h_ii), which require the diagonal of the hat matrix).
+    Returns 1.0 when n - p_total <= 0 (no correction is possible).
     """
     n = int(n_obs)
     p = int(max(n_params_total, 0))
     if n <= 0 or n - p <= 0:
         return 1.0
     return float(_onp.sqrt(n / float(n - p)))
+
+
+# Backwards-compatible alias (the factor was previously called a "leverage" correction,
+# which is inaccurate: it is a global HC1-type correction).
+leverage_rescale_factor = hc1_rescale_factor
+
+
+def resampling_notes(n_blocks, block="row", n_params_free=None):
+    """
+    Statistical caveats of the wild bootstrap given the number of independent units.
+
+    n_blocks: independent resampling units (titration points / spectra for block="row";
+    individual residuals for block="element").
+    """
+    notes = []
+    n_blocks = int(n_blocks)
+    if str(block).lower().startswith("row"):
+        if n_blocks < 20:
+            notes.append(
+                f"Only {n_blocks} independent blocks (titration points / spectra): with a "
+                f"Rademacher wild bootstrap there are at most 2^{n_blocks} distinct resamples "
+                "and the bootstrap variance is imprecise and can be biased low. Treat the "
+                "intervals as indicative and compare with the analytic estimate."
+            )
+        if n_params_free is not None and n_blocks <= 2 * int(n_params_free):
+            notes.append(
+                f"The number of blocks ({n_blocks}) is small relative to the free parameters "
+                f"({int(n_params_free)})."
+            )
+    else:
+        notes.append(
+            "Element-wise resampling assumes independent errors between channels of the "
+            "same spectrum / titration point; correlated errors (baseline drift, dilution) "
+            "make it optimistic."
+        )
+    return notes
 
 
 def block_wild_multipliers(rng, shape, kind="rademacher", block="row"):
@@ -1115,7 +1177,7 @@ def make_wild_data_star_fn(fitted, observed, *, point_axis=0, block="row",
     fitted/observed : arrays of identical shape.
     point_axis      : axis that indexes titration points / spectra / times.
     block           : "row" (one multiplier per point, keeps channel correlation) or "element".
-    n_params_total  : nonlinear + linear fitted parameters, for the leverage correction.
+    n_params_total  : nonlinear + linear fitted parameters, for the global HC1-type correction.
     mask            : optional boolean array; unobserved entries are copied from ``observed``.
     """
     fitted = _onp.asarray(fitted, dtype=float)
@@ -1125,7 +1187,7 @@ def make_wild_data_star_fn(fitted, observed, *, point_axis=0, block="row",
     resid = observed - fitted
     valid = _onp.isfinite(resid) if mask is None else (_onp.asarray(mask, dtype=bool) & _onp.isfinite(resid))
     resid = _onp.where(valid, resid, 0.0)
-    resid = resid * leverage_rescale_factor(int(_onp.count_nonzero(valid)), n_params_total)
+    resid = resid * hc1_rescale_factor(int(_onp.count_nonzero(valid)), n_params_total)
     moved = _onp.moveaxis(resid, point_axis, 0) if resid.ndim > 1 else resid
 
     def _fn(rng, wild=kind_default):
@@ -1230,11 +1292,7 @@ def bootstrap_full_refit(
 
     corr = None
     if n_success >= 2:
-        corr = _onp.atleast_2d(_onp.corrcoef(samples, rowvar=False))
-        corr = _onp.nan_to_num(corr, nan=0.0)
-        if corr.ndim == 2:
-            for i in range(corr.shape[0]):
-                corr[i, i] = 1.0
+        corr = sample_correlation(samples)
 
     return {
         "samples": samples,
@@ -1273,7 +1331,7 @@ def bootstrap_linearized_wild(
              residual). When given, one wild multiplier is drawn per group so residuals of
              the same spectrum keep their mutual correlation (block wild bootstrap).
     n_linear : number of linear (variable-projection) parameters, used together with p
-             for the sqrt(n/(n-p_total)) leverage correction of the residuals.
+             for the global HC1-type sqrt(n/(n-p_total)) correction of the residuals.
     Returns dict with samples (B x p).
     """
     k_hat = _onp.asarray(k_hat, dtype=float).ravel()
@@ -1289,7 +1347,7 @@ def bootstrap_linearized_wild(
     G = J @ J.T
     G_inv = pinv_psd_eigh(G, xp=_onp, rcond=rcond, ridge=ridge)
     if leverage_correction:
-        r = r * leverage_rescale_factor(r.size, k_hat.size + int(n_linear or 0))
+        r = r * hc1_rescale_factor(r.size, k_hat.size + int(n_linear or 0))
     inv = None
     n_groups = 0
     if groups is not None:
@@ -1372,7 +1430,7 @@ def bootstrap_one_step_spectro(
     R = yfit - Y_obs
     if leverage_correction:
         n_lin = int(metrics0.get("n_linear", 0) or 0)
-        R = R * leverage_rescale_factor(int(metrics0["nobs"]), free_idx.size + n_lin)
+        R = R * hc1_rescale_factor(int(metrics0["nobs"]), free_idx.size + n_lin)
     rng = _onp.random.default_rng(seed)
     samples = _onp.tile(k_hat, (B, 1)).astype(float)
 
@@ -1473,7 +1531,7 @@ def bootstrap_one_step_nmr(
             n_lin = int(m0.get("n_linear", 0) or 0)
         except Exception:
             n_lin = 0
-        R = R * leverage_rescale_factor(n_obs, free_idx.size + n_lin)
+        R = R * hc1_rescale_factor(n_obs, free_idx.size + n_lin)
     rng = _onp.random.default_rng(seed)
     samples = _onp.zeros((B, k_hat.size), dtype=float)
 

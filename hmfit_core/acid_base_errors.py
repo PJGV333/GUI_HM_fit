@@ -29,7 +29,7 @@ from hmfit_core.utils.errors import (
     block_wild_multipliers,
     bootstrap_quality_notes,
     build_identifiability_report,
-    leverage_rescale_factor,
+    hc1_rescale_factor,
     linearized_covariance,
     percent_metrics_from_log10K,
     t_quantile,
@@ -638,11 +638,9 @@ def _build_acid_base_output(
         ci_16 = np.percentile(samples, 16.0, axis=0) if include_16_84 else None
         ci_84 = np.percentile(samples, 84.0, axis=0) if include_16_84 else None
         se = np.std(samples, axis=0, ddof=1 if samples.shape[0] > 1 else 0)
-        sample_corr = np.atleast_2d(np.corrcoef(samples, rowvar=False)) if samples.shape[0] >= 2 else corr
-        sample_corr = np.nan_to_num(sample_corr, nan=0.0)
-        if sample_corr.ndim == 2:
-            for idx in range(sample_corr.shape[0]):
-                sample_corr[idx, idx] = 1.0
+        from hmfit_core.utils.errors import sample_correlation
+
+        sample_corr = sample_correlation(samples) if samples.shape[0] >= 2 else corr
         sample_count = int(samples.shape[0])
         boot_summary = dict(raw.get("bootstrap_summary") or {})
         n_success = boot_summary.get("n_success")
@@ -805,6 +803,26 @@ def _build_acid_base_output(
             summary_lines.append(f"WARNING: {_note}")
     if method == "analytic":
         summary_lines.append(f"CI from Student-t (dof={int(raw.get('dof') or 0)})")
+    else:
+        from hmfit_core.utils.errors import resampling_notes
+
+        block = str(options.get("wild_block") or "row")
+        kind = str(context.get("analysis_kind") or "").lower()
+        _ds = dict(context.get("dataset") or {})
+        _obs = _ds.get("pH_observed") if kind == "potentiometry" else (
+            _ds.get("signal_observed") if kind == "spectroscopy" else _ds.get("shifts_observed"))
+        _obs_arr = _array_or_empty(_obs)
+        if _obs_arr.ndim <= 1 or kind == "potentiometry":
+            n_units, block_eff = int(np.count_nonzero(np.isfinite(_obs_arr))), "row"
+        else:
+            n_units = int(np.count_nonzero(np.any(np.isfinite(_obs_arr), axis=1))) if block == "row" else int(raw.get("nobs") or 0)
+            block_eff = block
+        summary_lines.append(
+            f"Resampling unit: {'pH point' if block_eff == 'row' else 'data element'} "
+            f"({n_units} units); residuals rescaled by the global HC1-type factor sqrt(n/(n-p_total))."
+        )
+        for _note in resampling_notes(n_units, block_eff, int(raw.get("p_free") or 0)):
+            summary_lines.append(f"NOTE: {_note}")
     if stability_diag:
         summary_lines.append(f"Stability class: {_stability_classification(stability_diag)}")
         diag_summary = str(stability_diag.get("diag_summary") or "").strip()
@@ -1084,7 +1102,7 @@ def _make_data_star_fn(context: Mapping[str, Any], fit_values: np.ndarray, *, bl
     valid = np.isfinite(residuals)
     residuals = np.where(valid, residuals, 0.0)
     # HC1-type correction: fitted (nonlinear + linear) parameters absorb part of the noise.
-    residuals = residuals * leverage_rescale_factor(int(np.count_nonzero(valid)), n_params_total)
+    residuals = residuals * hc1_rescale_factor(int(np.count_nonzero(valid)), n_params_total)
 
     def _fn(rng, wild: str = "rademacher"):
         if residuals.ndim <= 1:
