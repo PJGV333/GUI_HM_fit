@@ -631,9 +631,13 @@ def nmr_acid_base_residuals(
 
 
 def _covariance_and_correlation(
-    opt_result: Any, residuals: np.ndarray, n_params: int, n_linear: int = 0
+    opt_result: Any,
+    residuals: np.ndarray,
+    n_params: int,
+    n_linear: int = 0,
+    fixed_mask: Sequence[bool] | None = None,
 ) -> tuple[np.ndarray | None, np.ndarray | None]:
-    """Linearized covariance of the fit (NaN when dof <= 0 or not identifiable)."""
+    """Linearized covariance (fixed: exactly 0; NaN when dof <= 0 or not identifiable)."""
     jac = getattr(opt_result, "jac", None)
     if jac is None or n_params <= 0:
         return None, None
@@ -642,8 +646,13 @@ def _covariance_and_correlation(
         return None, None
     from hmfit_core.utils.errors import linearized_covariance
 
-    lin = linearized_covariance(J, float(np.sum(residuals**2)), int(residuals.size), int(n_linear))
-    cov = lin["cov"]
+    fixed = np.zeros(n_params, dtype=bool)
+    if fixed_mask is not None and len(fixed_mask) == n_params:
+        fixed = np.asarray(fixed_mask, dtype=bool)
+    free = np.where(~fixed)[0]
+    lin = linearized_covariance(J[:, free], float(np.sum(residuals**2)), int(residuals.size), int(n_linear))
+    cov = np.zeros((n_params, n_params), dtype=float)
+    cov[np.ix_(free, free)] = lin["cov"]
     diag = np.diag(cov)
     corr = np.full_like(cov, np.nan, dtype=float)
     good = np.isfinite(diag) & (diag > 0.0)
@@ -679,11 +688,18 @@ def _build_fit_result(
     log_beta = system_log_beta_values(system)
     residuals = np.asarray(residuals, dtype=float).reshape(-1)
     n_params = len(parameter_names)
+    fixed_list = [
+        bool(v)
+        for v in (fixed_mask if fixed_mask is not None and len(fixed_mask) == n_params else [False] * n_params)
+    ]
+    n_free = n_params - sum(fixed_list)
     chi = float(np.sum(residuals**2))
-    dof = int(residuals.size) - int(n_params) - int(n_linear)
+    dof = int(residuals.size) - int(n_free) - int(n_linear)
     red = (chi / float(dof)) if dof > 0 else None
-    aic, bic = _information_criteria(chi, int(residuals.size), int(n_params) + int(n_linear))
-    cov, corr = _covariance_and_correlation(opt_result, residuals, n_params, n_linear=n_linear)
+    aic, bic = _information_criteria(chi, int(residuals.size), int(n_free) + int(n_linear))
+    cov, corr = _covariance_and_correlation(
+        opt_result, residuals, n_params, n_linear=n_linear, fixed_mask=fixed_list
+    )
     values = np.asarray(getattr(opt_result, "x", []), dtype=float).reshape(-1)
     if values.size != n_params:
         values = np.asarray(pka[:n_params], dtype=float)
@@ -700,7 +716,7 @@ def _build_fit_result(
                 if stderr is not None
                 else [np.nan for _ in range(n_params)]
             ),
-            "fixed": [False for _ in range(n_params)],
+            "fixed": list(fixed_list),
         }
     )
     return AcidBaseFitResult(
@@ -724,10 +740,7 @@ def _build_fit_result(
             else np.asarray(getattr(opt_result, "jac"), dtype=float)
         ),
         bounds=bounds,
-        fixed_mask=[
-            bool(v)
-            for v in (fixed_mask if fixed_mask is not None and len(fixed_mask) > 0 else [False] * n_params)
-        ],
+        fixed_mask=list(fixed_list),
         parameter_space=str(parameter_space or "pka"),
     )
 
@@ -745,11 +758,70 @@ def _default_pka_start(
     return arr
 
 
+def _least_squares_with_fixed(residual, x0, bounds, fixed_mask=None, **kwargs):
+    """
+    least_squares over the free parameters only. Fixed parameters keep x0 exactly; the
+    returned result has full-length ``x`` and a full Jacobian (zero columns for fixed).
+    Bounds: (lo, hi) scalars or arrays; lo > hi or NaN raise ValueError.
+    """
+    x0 = np.asarray(x0, dtype=float).reshape(-1)
+    n = x0.size
+    lo, hi = bounds if bounds is not None else (-np.inf, np.inf)
+    lo = np.broadcast_to(np.asarray(lo, dtype=float), (n,)).astype(float)
+    hi = np.broadcast_to(np.asarray(hi, dtype=float), (n,)).astype(float)
+    if np.any(np.isnan(lo)) or np.any(np.isnan(hi)):
+        raise ValueError("pKa bounds contain NaN.")
+    if np.any(lo > hi):
+        raise ValueError("Invalid pKa bounds (lower > upper).")
+    fixed = np.zeros(n, dtype=bool)
+    if fixed_mask is not None and len(fixed_mask) > 0:
+        fm = np.asarray(fixed_mask, dtype=bool).reshape(-1)
+        if fm.size != n:
+            raise ValueError(f"fixed_mask has {fm.size} entries for {n} parameters.")
+        fixed = fm.copy()
+    fixed |= np.isfinite(lo) & np.isfinite(hi) & (lo == hi) & ~fixed
+    free = np.where(~fixed)[0]
+
+    def full(xf):
+        x = x0.copy()
+        x[free] = xf
+        return x
+
+    if free.size == 0:
+        from scipy.optimize import OptimizeResult
+
+        fun = np.asarray(residual(x0), dtype=float)
+        return OptimizeResult(x=x0.copy(), fun=fun, jac=np.zeros((fun.size, n)), success=True,
+                              status=1, message="All parameters fixed.", nfev=1), fixed
+    opt = least_squares(lambda xf: residual(full(xf)), x0[free], bounds=(lo[free], hi[free]), **kwargs)
+    jac_full = np.zeros((np.asarray(opt.fun).size, n), dtype=float)
+    jac_full[:, free] = np.asarray(opt.jac, dtype=float)
+    opt.x = full(np.asarray(opt.x, dtype=float))
+    opt.jac = jac_full
+    return opt, fixed
+
+
 def _count_linear_coefficients(pred: Mapping[str, Any], opts: Mapping[str, Any], fixed_key: str) -> int:
+    """
+    Number of linear observation coefficients actually estimated: for every observed
+    channel, the effective rank of the design matrix (species fractions [+ baseline])
+    restricted to the rows observed in that channel. Imposed pure-species values -> 0.
+    """
     if opts.get(fixed_key) is not None:
         return 0
-    coeff = np.asarray(pred.get("coefficients"), dtype=float)
-    return int(np.count_nonzero(np.isfinite(coeff)))
+    F = np.asarray(pred.get("fractions"), dtype=float)
+    if F.ndim != 2:
+        return 0
+    X = np.column_stack([F, np.ones(F.shape[0])]) if bool(opts.get("baseline", False)) else F
+    R = np.asarray(pred.get("residuals"), dtype=float)
+    if R.ndim == 1:
+        R = R.reshape(-1, 1)
+    total = 0
+    for j in range(R.shape[1]):
+        rows = np.isfinite(R[:, j]) & np.all(np.isfinite(X), axis=1)
+        if np.any(rows):
+            total += int(np.linalg.matrix_rank(X[rows, :]))
+    return total
 
 
 def fit_spectroscopy_acid_base(
@@ -766,7 +838,10 @@ def fit_spectroscopy_acid_base(
     def residual(theta: np.ndarray) -> np.ndarray:
         return spectroscopy_acid_base_residuals(theta, dataset, system_template, opts)
 
-    opt = least_squares(residual, x0, bounds=bounds, xtol=1e-10, ftol=1e-10, gtol=1e-10)
+    opt, fixed = _least_squares_with_fixed(
+        residual, x0, bounds, opts.get("fixed_mask"), xtol=1e-10, ftol=1e-10, gtol=1e-10
+    )
+    opts["fixed_mask"] = fixed.tolist()
     fitted_system = clone_system_with_pka(system_template, opt.x)
     n_linear = _count_linear_coefficients(
         predict_spectroscopy_acid_base(dataset, fitted_system, opts), opts, "species_signals"
@@ -797,7 +872,10 @@ def fit_nmr_acid_base(
     def residual(theta: np.ndarray) -> np.ndarray:
         return nmr_acid_base_residuals(theta, dataset, system_template, opts)
 
-    opt = least_squares(residual, x0, bounds=bounds, xtol=1e-10, ftol=1e-10, gtol=1e-10)
+    opt, fixed = _least_squares_with_fixed(
+        residual, x0, bounds, opts.get("fixed_mask"), xtol=1e-10, ftol=1e-10, gtol=1e-10
+    )
+    opts["fixed_mask"] = fixed.tolist()
     fitted_system = clone_system_with_pka(system_template, opt.x)
     n_linear = _count_linear_coefficients(
         predict_nmr_acid_base(dataset, fitted_system, opts), opts, "species_shifts"

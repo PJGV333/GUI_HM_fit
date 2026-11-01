@@ -1054,10 +1054,11 @@ def _linear_structure(context: Mapping[str, Any]) -> tuple[int, np.ndarray | Non
             resid = resid.reshape(-1, 1)
         finite = np.isfinite(resid)
         groups = np.nonzero(finite)[0]  # row index, C-order == residual vector order
-        n_linear = 0
-        if not pure_given:
-            coeff = np.asarray(pred["coefficients"], dtype=float)
-            n_linear = int(np.count_nonzero(np.isfinite(coeff)))
+        from hmfit_core.acid_base import _count_linear_coefficients
+
+        n_linear = _count_linear_coefficients(
+            pred, fit_options, "species_signals" if analysis_kind == "spectroscopy" else "species_shifts"
+        )
         return n_linear, groups
 
 

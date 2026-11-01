@@ -183,6 +183,38 @@ def _initial_pka_from_config(cfg: Mapping[str, Any], system: AcidBaseSystem) -> 
         return [5.0]
 
 
+def _pka_fit_controls(cfg: Mapping[str, Any], n: int) -> tuple[list[bool], tuple[np.ndarray, np.ndarray]]:
+    """
+    Fixed mask (from ``pka_fit_mask``: True = fit) and bounds (``pka_bounds``) for the
+    pKa vector, shared by the spectroscopy and NMR acid-base paths (potentiometry builds
+    its own parameter list with the same semantics).
+    """
+    fit_raw = cfg.get("pka_fit_mask")
+    fit = [True] * n
+    if fit_raw is not None:
+        vals = [bool(v) for v in list(fit_raw)]
+        for i in range(min(n, len(vals))):
+            fit[i] = vals[i]
+    lo = np.full(n, -5.0)
+    hi = np.full(n, 25.0)
+    _pb = cfg.get("pka_bounds")
+    rows = list(_pb) if _pb is not None else []
+    for idx in range(min(n, len(rows))):
+        raw = rows[idx]
+        if isinstance(raw, Mapping):
+            if raw.get("min") not in (None, ""):
+                lo[idx] = float(raw.get("min"))
+            if raw.get("max") not in (None, ""):
+                hi[idx] = float(raw.get("max"))
+        elif raw is not None:
+            seq = list(np.asarray(raw, dtype=object).reshape(-1))
+            if len(seq) >= 2:
+                lo[idx], hi[idx] = float(seq[0]), float(seq[1])
+        if fit[idx] and lo[idx] >= hi[idx]:
+            raise ValueError(f"pKa{idx + 1} min must be lower than max.")
+    return [not f for f in fit], (lo, hi)
+
+
 def _figure_to_base64(fig: Figure) -> str:
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches="tight")
@@ -834,11 +866,20 @@ def _run_spectroscopy(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[s
     system = _build_system(cfg)
     initial_pka = _initial_pka_from_config(cfg, system)
     log("Fitting spectroscopic acid-base data...")
+    fixed_pka, pka_bounds = _pka_fit_controls(cfg, len(initial_pka))
+    # fixed pKa keep their value: bounds of fixed entries are irrelevant to the optimiser
+    pka_bounds = (
+        np.where(fixed_pka, -np.inf, pka_bounds[0]), np.where(fixed_pka, np.inf, pka_bounds[1])
+    )
     result = fit_spectroscopy_acid_base(
         dataset,
         system,
         initial_pka=initial_pka,
-        fit_options={"baseline": bool(cfg.get("baseline", False))},
+        fit_options={
+            "baseline": bool(cfg.get("baseline", False)),
+            "fixed_mask": fixed_pka,
+            "bounds": pka_bounds,
+        },
     )
     fitted_system = clone_system_with_pka(system, result.fitted_pka)
     pred = predict_spectroscopy_acid_base(dataset, fitted_system, {"baseline": bool(cfg.get("baseline", False))})
@@ -909,7 +950,14 @@ def _run_nmr(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[str, Any]:
     system = _build_system(cfg)
     initial_pka = _initial_pka_from_config(cfg, system)
     log("Fitting fast-exchange 1H NMR acid-base data...")
-    result = fit_nmr_acid_base(dataset, system, initial_pka=initial_pka)
+    fixed_pka, pka_bounds = _pka_fit_controls(cfg, len(initial_pka))
+    pka_bounds = (
+        np.where(fixed_pka, -np.inf, pka_bounds[0]), np.where(fixed_pka, np.inf, pka_bounds[1])
+    )
+    result = fit_nmr_acid_base(
+        dataset, system, initial_pka=initial_pka,
+        fit_options={"fixed_mask": fixed_pka, "bounds": pka_bounds},
+    )
     fitted_system = clone_system_with_pka(system, result.fitted_pka)
     pred = predict_nmr_acid_base(dataset, fitted_system)
     residuals = np.asarray(dataset.shifts, dtype=float) - np.asarray(pred["calculated"], dtype=float)
