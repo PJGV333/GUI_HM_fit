@@ -11,8 +11,11 @@ def test_nmr_regression():
     # Path to test file
     file_path = os.path.join(os.path.dirname(__file__), '..', 'test_2_tit_RMN3.xlsx')
     if not os.path.exists(file_path):
-        print("Test file not found")
-        return
+        import pytest
+
+        # The reference workbook is not versioned (*.xlsx is git-ignored). Report the test
+        # as skipped instead of letting it pass without executing any check.
+        pytest.skip("Reference data test_2_tit_RMN3.xlsx not available in the repository.")
 
     # Columns from previous inspection
     # ['P (mol L⁻¹)', 'Q (mol L⁻¹)', 'X (mol L⁻¹)', 'NH-2 (P)', 'CH-C (P)', 'CH-B (P)', 'NH-1 (P)', 'CH2-Bn (P)', 'CH2N (P)', 'Me (Q)']
@@ -106,9 +109,7 @@ def test_nmr_regression():
         non_absorbent_species=nas
     )
     
-    if "error" in result:
-        print(f"Error: {result['error']}")
-        return
+    assert "error" not in result, f"NMR processing failed: {result.get('error')}"
 
     # Verify Results
     print("Processing successful.")
