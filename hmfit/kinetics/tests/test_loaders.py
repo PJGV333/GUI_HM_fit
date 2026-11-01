@@ -33,8 +33,13 @@ def test_load_csv_channels_named() -> None:
     assert x is None
 
 
-def test_load_xlsx_matrix_numeric_header() -> None:
-    path = DATA_DIR / "matrix_numeric.xlsx"
+def test_load_xlsx_matrix_numeric_header(tmp_path: Path) -> None:
+    # Built on the fly from the CSV fixture: *.xlsx files are git-ignored, so a committed
+    # workbook was never present in fresh clones / CI.
+    import pandas as pd
+
+    path = tmp_path / "matrix_numeric.xlsx"
+    pd.read_csv(DATA_DIR / "matrix_numeric.csv").to_excel(path, sheet_name="data", index=False)
     t, D, x, labels = load_xlsx(path, sheet="data")
 
     assert np.allclose(t, [0.0, 1.0, 2.0])

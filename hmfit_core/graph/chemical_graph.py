@@ -274,6 +274,7 @@ class ChemicalGraph:
         active_names = {species.name for species in self.get_active_species()}
 
         forming_reactions: Dict[str, ReactionEdge] = {}
+        has_cycle = False
         for reaction in self._reactions:
             for product in reaction.products.keys():
                 product_name = product.name
@@ -281,7 +282,11 @@ class ChemicalGraph:
                     continue
                 prev = forming_reactions.get(product_name)
                 if prev is not None and prev is not reaction:
-                    raise ValueError(f"Múltiples rutas de formación para {product_name!r}.")
+                    # Thermodynamic cycle (e.g. heteroditopic receptor H + C + A -> HCA by
+                    # two paths). Any route gives the same global beta *iff* the cycle is
+                    # consistent, which is checked below; keep the first route.
+                    has_cycle = True
+                    continue
                 forming_reactions[product_name] = reaction
 
         global_stoich: Dict[str, Dict[str, float]] = {}
@@ -339,6 +344,12 @@ class ChemicalGraph:
 
         for species in self.get_active_species():
             get_global(species.name)
+
+        if has_cycle:
+            # Redundant routes are only acceptable when the cycle closes (sum of log
+            # beta around the cycle == 0); otherwise the model is thermodynamically
+            # impossible and must be rejected rather than silently using one route.
+            self.validate_thermodynamic_cycles()
 
         self._forming_reactions = forming_reactions
         self._cached_global_stoich = global_stoich
@@ -734,7 +745,9 @@ def _build_complex_edge_map(
                 continue
             prev = forming_reactions.get(product_name)
             if prev is not None and prev is not reaction:
-                raise ValueError(f"Múltiples rutas de formación para {product_name!r}.")
+                # Cycle-closing edge: its constant is fixed by the cycle (validated in
+                # resolve_global_pathways) and does not enter the global betas.
+                continue
             forming_reactions[product_name] = reaction
 
     coeff_cache: Dict[str, np.ndarray] = {}

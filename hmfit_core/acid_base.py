@@ -630,14 +630,16 @@ def nmr_acid_base_residuals(
     return residual[np.isfinite(residual)].reshape(-1)
 
 
-def _covariance_and_correlation(opt_result: Any, residuals: np.ndarray, n_params: int) -> tuple[np.ndarray | None, np.ndarray | None]:
+def _covariance_and_correlation(
+    opt_result: Any, residuals: np.ndarray, n_params: int, n_linear: int = 0
+) -> tuple[np.ndarray | None, np.ndarray | None]:
     jac = getattr(opt_result, "jac", None)
     if jac is None or n_params <= 0:
         return None, None
     J = np.asarray(jac, dtype=float)
     if J.ndim != 2 or J.shape[1] != n_params:
         return None, None
-    dof = int(residuals.size) - int(n_params)
+    dof = int(residuals.size) - int(n_params) - int(n_linear)
     if dof <= 0:
         scale = 1.0
     else:
@@ -675,16 +677,17 @@ def _build_fit_result(
     bounds: Any = None,
     fixed_mask: Sequence[bool] | None = None,
     parameter_space: str = "pka",
+    n_linear: int = 0,
 ) -> AcidBaseFitResult:
     pka = system_pka_values(system)
     log_beta = system_log_beta_values(system)
     residuals = np.asarray(residuals, dtype=float).reshape(-1)
     n_params = len(parameter_names)
     chi = float(np.sum(residuals**2))
-    dof = int(residuals.size) - int(n_params)
+    dof = int(residuals.size) - int(n_params) - int(n_linear)
     red = (chi / float(dof)) if dof > 0 else None
-    aic, bic = _information_criteria(chi, int(residuals.size), int(n_params))
-    cov, corr = _covariance_and_correlation(opt_result, residuals, n_params)
+    aic, bic = _information_criteria(chi, int(residuals.size), int(n_params) + int(n_linear))
+    cov, corr = _covariance_and_correlation(opt_result, residuals, n_params, n_linear=n_linear)
     values = np.asarray(getattr(opt_result, "x", []), dtype=float).reshape(-1)
     if values.size != n_params:
         values = np.asarray(pka[:n_params], dtype=float)
@@ -742,6 +745,13 @@ def _default_pka_start(
     return arr
 
 
+def _count_linear_coefficients(pred: Mapping[str, Any], opts: Mapping[str, Any], fixed_key: str) -> int:
+    if opts.get(fixed_key) is not None:
+        return 0
+    coeff = np.asarray(pred.get("coefficients"), dtype=float)
+    return int(np.count_nonzero(np.isfinite(coeff)))
+
+
 def fit_spectroscopy_acid_base(
     dataset: SpectroscopicAcidBaseDataset,
     system_template: AcidBaseSystem,
@@ -758,6 +768,9 @@ def fit_spectroscopy_acid_base(
 
     opt = least_squares(residual, x0, bounds=bounds, xtol=1e-10, ftol=1e-10, gtol=1e-10)
     fitted_system = clone_system_with_pka(system_template, opt.x)
+    n_linear = _count_linear_coefficients(
+        predict_spectroscopy_acid_base(dataset, fitted_system, opts), opts, "species_signals"
+    )
     return _build_fit_result(
         opt,
         fitted_system,
@@ -766,6 +779,7 @@ def fit_spectroscopy_acid_base(
         bounds=bounds,
         fixed_mask=opts.get("fixed_mask"),
         parameter_space="pka",
+        n_linear=n_linear,
     )
 
 
@@ -785,6 +799,9 @@ def fit_nmr_acid_base(
 
     opt = least_squares(residual, x0, bounds=bounds, xtol=1e-10, ftol=1e-10, gtol=1e-10)
     fitted_system = clone_system_with_pka(system_template, opt.x)
+    n_linear = _count_linear_coefficients(
+        predict_nmr_acid_base(dataset, fitted_system, opts), opts, "species_shifts"
+    )
     return _build_fit_result(
         opt,
         fitted_system,
@@ -793,6 +810,7 @@ def fit_nmr_acid_base(
         bounds=bounds,
         fixed_mask=opts.get("fixed_mask"),
         parameter_space="pka",
+        n_linear=n_linear,
     )
 
 

@@ -11,6 +11,9 @@ from scipy.optimize import least_squares
 
 from hmfit_core.acid_base import (
     AcidBaseSystem,
+    predict_nmr_acid_base,
+    predict_spectroscopy_acid_base,
+    update_system_from_parameter_vector,
     NMRAcidBaseDataset,
     SpectroscopicAcidBaseDataset,
     log_beta_to_pka,
@@ -23,9 +26,12 @@ from hmfit_core.potentiometry import PotentiometryExperiment, potentiometry_resi
 from hmfit_core.utils.errors import (
     bootstrap_full_refit,
     bootstrap_linearized_wild,
+    block_wild_multipliers,
+    bootstrap_quality_notes,
     build_identifiability_report,
+    leverage_rescale_factor,
     percent_metrics_from_log10K,
-    wild_multipliers,
+    t_quantile,
 )
 
 _PKA_RE = re.compile(r"^pka(?:[_\-\s]*|\[)?(\d+)\]?$", re.IGNORECASE)
@@ -107,7 +113,7 @@ def _cov_to_corr(cov: np.ndarray) -> np.ndarray:
     denom = np.outer(scale, scale)
     corr = np.zeros_like(cov, dtype=float)
     with np.errstate(divide="ignore", invalid="ignore"):
-        corr = np.divide(cov, denom, where=denom > 0.0)
+        corr = np.divide(cov, denom, out=np.zeros_like(cov, dtype=float), where=denom > 0.0)
     corr = np.nan_to_num(corr, nan=0.0)
     corr = np.clip(corr, -1.0, 1.0)
     for idx in range(corr.shape[0]):
@@ -369,7 +375,10 @@ def compute_errors_acid_base(
         jtj = J_free.T @ J_free
         nobs = int(residuals.size)
         p_free = int(free_idx.size)
-        dof = nobs - p_free
+        n_linear = int(opts.get("n_linear", 0) or 0)
+        # Linear observation coefficients (pure-species signals / limiting shifts) are
+        # eliminated by projection but are fitted parameters and consume dof.
+        dof = nobs - p_free - n_linear
         sse = float(np.sum(residuals**2))
         s2 = sse / float(max(dof, 1))
         cov_free = s2 * np.linalg.pinv(jtj, rcond=float(opts.get("rcond", 1e-12) or 1e-12))
@@ -389,6 +398,7 @@ def compute_errors_acid_base(
             "nobs": nobs,
             "p_free": p_free,
             "dof": dof,
+            "n_linear": n_linear,
             "sse": sse,
             "s2": float(s2),
             "rms": float(np.sqrt(np.mean(residuals**2))),
@@ -417,6 +427,8 @@ def compute_errors_acid_base(
                 wild=str(opts.get("wild") or "rademacher"),
                 rcond=float(opts.get("rcond", 1e-12) or 1e-12),
                 ridge=0.0,
+                groups=opts.get("groups") if str(opts.get("wild_block") or "row") == "row" else None,
+                n_linear=int(opts.get("n_linear", 0) or 0),
             )
             samples = np.tile(theta, (boot["samples"].shape[0], 1))
             samples[:, free_idx] = np.asarray(boot["samples"], dtype=float)
@@ -566,8 +578,9 @@ def _build_acid_base_output(
     corr = np.asarray(raw["correlation_matrix"], dtype=float)
     bootstrap_samples = raw.get("samples")
     include_16_84 = bool(options.get("include_16_84", False))
-    z95 = 1.96
-    z68 = 1.0
+    # Student-t quantiles with the residual degrees of freedom.
+    z95 = t_quantile(raw.get("dof"), 0.975)
+    z68 = t_quantile(raw.get("dof"), 0.8413447460685429)
 
     if method == "analytic" or bootstrap_samples is None or np.asarray(bootstrap_samples).size == 0:
         ci_2p5 = theta_hat - z95 * se
@@ -587,7 +600,7 @@ def _build_acid_base_output(
         ci_16 = np.percentile(samples, 16.0, axis=0) if include_16_84 else None
         ci_84 = np.percentile(samples, 84.0, axis=0) if include_16_84 else None
         se = np.std(samples, axis=0, ddof=1 if samples.shape[0] > 1 else 0)
-        sample_corr = np.corrcoef(samples, rowvar=False) if samples.shape[0] >= 2 else corr
+        sample_corr = np.atleast_2d(np.corrcoef(samples, rowvar=False)) if samples.shape[0] >= 2 else corr
         sample_corr = np.nan_to_num(sample_corr, nan=0.0)
         if sample_corr.ndim == 2:
             for idx in range(sample_corr.shape[0]):
@@ -737,7 +750,8 @@ def _build_acid_base_output(
     }
     summary_lines = [f"Method: {method_labels.get(method, method)}"]
     summary_lines.append(
-        f"nobs={int(raw.get('nobs') or 0)}, p_free={int(raw.get('p_free') or 0)}, dof={int(raw.get('dof') or 0)}"
+        f"nobs={int(raw.get('nobs') or 0)}, p_free={int(raw.get('p_free') or 0)}, "
+        f"linear params={int(raw.get('n_linear') or 0)}, dof={int(raw.get('dof') or 0)}"
     )
     summary_lines.append(
         f"SSE={float(raw.get('sse') or 0.0):.6g}, RMS={float(raw.get('rms') or 0.0):.6g}, s2={float(raw.get('s2') or 0.0):.6g}"
@@ -746,6 +760,10 @@ def _build_acid_base_output(
         summary_lines.append(f"bootstrap_samples={sample_count}")
     if n_success is not None or n_fail is not None:
         summary_lines.append(f"n_success={int(n_success or 0)}, n_fail={int(n_fail or 0)}")
+        for _note in bootstrap_quality_notes(int(n_success or 0), int(n_fail or 0), int(options.get("B", 0) or (int(n_success or 0) + int(n_fail or 0)) or 1)):
+            summary_lines.append(f"WARNING: {_note}")
+    if method == "analytic":
+        summary_lines.append(f"CI from Student-t (dof={int(raw.get('dof') or 0)})")
     if stability_diag:
         summary_lines.append(f"Stability class: {_stability_classification(stability_diag)}")
         diag_summary = str(stability_diag.get("diag_summary") or "").strip()
@@ -965,46 +983,79 @@ def _residual_fn_from_context(context: Mapping[str, Any], observed_override: np.
     raise ValueError(f"Unknown acid-base analysis kind: {analysis_kind}")
 
 
-def _make_data_star_fn(context: Mapping[str, Any], fit_values: np.ndarray):
+def _linear_structure(context: Mapping[str, Any]) -> tuple[int, np.ndarray | None]:
+    """
+    Number of linear observation parameters solved by projection and the titration-point
+    index of every residual element (for block bootstrap), in residual order.
+    """
+    dataset = dict(context.get("dataset") or {})
+    analysis_kind = str(context.get("analysis_kind") or "").strip().lower()
+    theta = np.asarray(context.get("theta_hat") or [], dtype=float).reshape(-1)
+    try:
+        if analysis_kind == "potentiometry":
+            n = int(np.asarray(_residual_fn_from_context(context)(theta)).size)
+            return 0, np.arange(n)
+        system_t = _system_from_context(context)
+        if analysis_kind == "spectroscopy":
+            obj, fit_options = _spectroscopy_objects(context)
+            system, _ = update_system_from_parameter_vector(theta, system_t, fit_options)
+            pred = predict_spectroscopy_acid_base(obj, system, fit_options)
+            pure_given = fit_options.get("species_signals") is not None
+        elif analysis_kind == "nmr":
+            obj, fit_options = _nmr_objects(context)
+            system, _ = update_system_from_parameter_vector(theta, system_t, fit_options)
+            pred = predict_nmr_acid_base(obj, system, fit_options)
+            pure_given = fit_options.get("species_shifts") is not None
+        else:
+            return 0, None
+        resid = np.asarray(pred["residuals"], dtype=float)
+        if resid.ndim == 1:
+            resid = resid.reshape(-1, 1)
+        finite = np.isfinite(resid)
+        groups = np.nonzero(finite)[0]  # row index, C-order == residual vector order
+        n_linear = 0
+        if not pure_given:
+            coeff = np.asarray(pred["coefficients"], dtype=float)
+            n_linear = int(np.count_nonzero(np.isfinite(coeff)))
+        return n_linear, groups
+    except Exception:
+        return 0, None
+
+
+def _make_data_star_fn(context: Mapping[str, Any], fit_values: np.ndarray, *, block: str = "row",
+                       n_params_total: int = 0):
     dataset = dict(context.get("dataset") or {})
     analysis_kind = str(context.get("analysis_kind") or "").strip().lower()
     if analysis_kind == "potentiometry":
         observed_kind = str(dataset.get("observed_kind") or "ph")
         observed = dataset.get("E_mV_observed") if observed_kind == "emf" else dataset.get("pH_observed")
         fitted = dataset.get("E_mV_calculated") if observed_kind == "emf" else dataset.get("pH_calculated")
-        observed_arr = np.asarray(observed, dtype=float).reshape(-1)
-        fitted_arr = np.asarray(fitted, dtype=float).reshape(-1)
-        residuals = observed_arr - fitted_arr
+    elif analysis_kind == "spectroscopy":
+        observed = dataset.get("signal_observed")
+        fitted = dataset.get("signal_calculated")
+    elif analysis_kind == "nmr":
+        observed = dataset.get("shifts_observed")
+        fitted = dataset.get("shifts_calculated")
+    else:
+        raise ValueError("Unknown acid-base analysis kind for bootstrap data generation.")
+    observed_arr = np.asarray(observed, dtype=float)
+    fitted_arr = np.asarray(fitted, dtype=float).reshape(observed_arr.shape)
+    residuals = observed_arr - fitted_arr
+    valid = np.isfinite(residuals)
+    residuals = np.where(valid, residuals, 0.0)
+    # HC1-type correction: fitted (nonlinear + linear) parameters absorb part of the noise.
+    residuals = residuals * leverage_rescale_factor(int(np.count_nonzero(valid)), n_params_total)
 
-        def _fn(rng, wild: str = "rademacher"):
-            multipliers = wild_multipliers(rng, residuals.size, kind=wild)
-            return fitted_arr + residuals * multipliers
+    def _fn(rng, wild: str = "rademacher"):
+        if residuals.ndim <= 1:
+            multipliers = block_wild_multipliers(rng, residuals.shape, kind=wild, block="element")
+        else:
+            # rows = pH points: one multiplier per spectrum / NMR row keeps channel correlation
+            multipliers = block_wild_multipliers(rng, residuals.shape, kind=wild, block=block)
+        star = fitted_arr + residuals * multipliers
+        return np.where(valid, star, observed_arr)
 
-        return _fn
-
-    if analysis_kind == "spectroscopy":
-        observed = np.asarray(dataset.get("signal_observed"), dtype=float)
-        fitted = np.asarray(dataset.get("signal_calculated"), dtype=float)
-        residuals = observed - fitted
-
-        def _fn(rng, wild: str = "rademacher"):
-            multipliers = wild_multipliers(rng, residuals.size, kind=wild).reshape(residuals.shape)
-            return fitted + residuals * multipliers
-
-        return _fn
-
-    if analysis_kind == "nmr":
-        observed = np.asarray(dataset.get("shifts_observed"), dtype=float)
-        fitted = np.asarray(dataset.get("shifts_calculated"), dtype=float)
-        residuals = observed - fitted
-
-        def _fn(rng, wild: str = "rademacher"):
-            multipliers = wild_multipliers(rng, residuals.size, kind=wild).reshape(residuals.shape)
-            return fitted + residuals * multipliers
-
-        return _fn
-
-    raise ValueError("Unknown acid-base analysis kind for bootstrap data generation.")
+    return _fn
 
 
 def _refit_from_context(
@@ -1059,10 +1110,19 @@ def compute_errors_acid_base_from_context(
 
     residual_fn = _residual_fn_from_context(ctx)
     call_options = dict(opts)
+    n_linear, groups = _linear_structure(ctx)
+    call_options.setdefault("n_linear", n_linear)
+    if groups is not None:
+        call_options.setdefault("groups", groups)
     if ctx.get("jacobian") is not None:
         call_options["jacobian"] = np.asarray(ctx.get("jacobian"), dtype=float)
     if method == "bootstrap_full_refit_audit":
-        call_options["make_data_star_fn"] = _make_data_star_fn(ctx, theta_hat)
+        call_options["make_data_star_fn"] = _make_data_star_fn(
+            ctx,
+            theta_hat,
+            block=str(opts.get("wild_block") or "row"),
+            n_params_total=int(np.count_nonzero(~fixed_mask)) + int(n_linear),
+        )
         call_options["refit_from_data"] = lambda data_star, theta0, max_iter=30, tol=1e-8: _refit_from_context(
             ctx,
             np.asarray(data_star, dtype=float),

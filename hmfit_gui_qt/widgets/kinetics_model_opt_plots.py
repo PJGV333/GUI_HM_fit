@@ -628,6 +628,16 @@ class KineticsModelOptPlotsWidget(QWidget):
         self.combo_error_fail_policy.addItem("Stop on first failure", "stop")
         controls_grid.addWidget(self.combo_error_fail_policy, 2, 7)
 
+        controls_grid.addWidget(QLabel("Resample by"), 3, 0)
+        self.combo_error_block = QComboBox(parent)
+        self.combo_error_block.addItem("Time point / spectrum (keeps wavelength correlation)", "row")
+        self.combo_error_block.addItem("Data element (i.i.d. noise)", "element")
+        self.combo_error_block.setToolTip(
+            "Wild bootstrap unit. One multiplier per recorded spectrum propagates "
+            "correlated errors across wavelengths (lamp drift, baseline offsets)."
+        )
+        controls_grid.addWidget(self.combo_error_block, 3, 1, 1, 7)
+
         layout.addLayout(controls_grid)
 
         self.lbl_error_audit_warning = QLabel(
@@ -736,6 +746,7 @@ class KineticsModelOptPlotsWidget(QWidget):
         self.spin_error_b.setEnabled(is_bootstrap)
         self.combo_error_bootstrap.setEnabled(is_bootstrap)
         self.combo_error_wild.setEnabled(is_bootstrap)
+        self.combo_error_block.setEnabled(is_bootstrap)
         self.spin_error_lambda.setEnabled(is_onestep)
         self.lbl_error_max_iter.setVisible(is_full_refit)
         self.spin_error_max_iter.setVisible(is_full_refit)
@@ -777,6 +788,10 @@ class KineticsModelOptPlotsWidget(QWidget):
     def _collect_errors_options(self) -> dict[str, Any]:
         method = str(self.combo_error_method.currentData() or "analytic")
         seed = self._parse_error_seed()
+        if seed is None and method.startswith("bootstrap"):
+            import secrets
+
+            seed = int(secrets.randbelow(2**31 - 1))  # recorded for reproducibility
         wild = str(self.combo_error_wild.currentData() or "rademacher")
         bootstrap_kind = str(self.combo_error_bootstrap.currentData() or "wild")
         lam = float(self.spin_error_lambda.value())
@@ -796,6 +811,7 @@ class KineticsModelOptPlotsWidget(QWidget):
             "max_iter": max_iter,
             "tol": tol,
             "fail_policy": fail_policy,
+            "wild_block": str(self.combo_error_block.currentData() or "row"),
         }
 
     def _on_error_compute_clicked(self) -> None:
@@ -936,8 +952,13 @@ class KineticsModelOptPlotsWidget(QWidget):
         cancel_cb=None,
     ) -> dict[str, Any]:
         from hmfit_core.utils.errors import (
+            block_wild_multipliers,
             bootstrap_full_refit,
             bootstrap_linearized_wild,
+            bootstrap_quality_notes,
+            leverage_rescale_factor,
+            lm_damped_step,
+            t_quantile,
             wild_multipliers,
         )
 
@@ -952,6 +973,7 @@ class KineticsModelOptPlotsWidget(QWidget):
         max_iter = int(options.get("max_iter") or 30)
         tol = float(options.get("tol") or 1e-8)
         fail_policy = str(options.get("fail_policy") or "skip")
+        wild_block = str(options.get("wild_block") or "row")
 
         param_names = list(ctx.get("param_names") or [])
         k_hat_raw = ctx.get("k_hat")
@@ -979,6 +1001,30 @@ class KineticsModelOptPlotsWidget(QWidget):
                     scale[idx] = np.log(10.0) * max(float(k_hat[idx]), 1e-300)
             jac_lin = jac / scale[None, :]
 
+        fixed_ctx = list(ctx.get("fixed_mask") or [])
+        fixed_arr = np.zeros(p, dtype=bool)
+        fixed_arr[: min(len(fixed_ctx), p)] = np.asarray(fixed_ctx[:p], dtype=bool)
+        if jac_lin.size:
+            fixed_arr |= ~np.any(jac_lin != 0.0, axis=0)
+        free_idx = np.where(~fixed_arr)[0]
+        n_linear = int(ctx.get("n_linear") or 0)
+        dof_ctx = ctx.get("dof")
+        # titration/time point index of each residual (datasets concatenated, rows=time)
+        groups = None
+        d_obs_ctx = ctx.get("D_obs")
+        if isinstance(d_obs_ctx, (list, tuple)) and d_obs_ctx:
+            parts, offset = [], 0
+            for arr in d_obs_ctx:
+                shp = np.asarray(arr).shape
+                if len(shp) == 2:
+                    parts.append(np.repeat(np.arange(shp[0]) + offset, shp[1]))
+                    offset += shp[0]
+            if parts:
+                cand = np.concatenate(parts)
+                if cand.size == nobs:
+                    groups = cand
+        lev = leverage_rescale_factor(nobs, int(free_idx.size) + n_linear)
+
         cov = None
         se = None
         corr = None
@@ -1005,33 +1051,41 @@ class KineticsModelOptPlotsWidget(QWidget):
         n_fail = None
 
         if method == "bootstrap_linear":
-            boot = bootstrap_linearized_wild(
-                k_hat,
-                jac_lin.T,
-                residuals,
-                B,
-                seed=seed,
-                wild=wild,
-                rcond=1e-10,
-                ridge=0.0,
-            )
-            samples = boot["samples"]
+            samples = np.tile(k_hat, (B, 1))
+            if free_idx.size:
+                boot = bootstrap_linearized_wild(
+                    k_hat[free_idx],
+                    jac_lin[:, free_idx].T,
+                    residuals,
+                    B,
+                    seed=seed,
+                    wild=wild,
+                    rcond=1e-10,
+                    ridge=0.0,
+                    groups=groups if wild_block == "row" else None,
+                    n_linear=n_linear,
+                )
+                samples[:, free_idx] = boot["samples"]
         elif method == "bootstrap_onestep":
+            # NOTE: this reuses the Jacobian at k_hat, so it is a damped variant of the
+            # linearized bootstrap. The damping is Marquardt-scaled (lam*diag(JtJ)); an
+            # unscaled lam*I made the step ~0 whenever JtJ was small (e.g. k in M^-1 s^-1),
+            # underestimating the uncertainty by orders of magnitude.
             rng = np.random.default_rng(seed)
-            samples = np.zeros((B, p), dtype=float)
-            jt_j = jac_lin.T @ jac_lin + float(lam) * np.eye(p)
+            samples = np.tile(k_hat, (B, 1)).astype(float)
+            J_free_T = jac_lin[:, free_idx].T
+            r_scaled = residuals * lev
             for b in range(B):
                 if bootstrap_kind == "residual":
                     idx = rng.integers(0, nobs, size=nobs)
-                    r_star = residuals[idx]
+                    r_star = r_scaled[idx]
+                elif groups is not None and wild_block == "row":
+                    _, inv = np.unique(groups, return_inverse=True)
+                    r_star = r_scaled * wild_multipliers(rng, int(inv.max()) + 1, kind=wild)[inv]
                 else:
-                    v = wild_multipliers(rng, nobs, kind=wild)
-                    r_star = residuals * v
-                try:
-                    dk = np.linalg.solve(jt_j, jac_lin.T @ r_star)
-                except np.linalg.LinAlgError:
-                    dk = np.linalg.pinv(jt_j) @ (jac_lin.T @ r_star)
-                samples[b, :] = k_hat + dk
+                    r_star = r_scaled * wild_multipliers(rng, nobs, kind=wild)
+                if free_idx.size:
+                    samples[b, free_idx] = k_hat[free_idx] - lm_damped_step(J_free_T, r_star, lam=lam)
         elif method == "bootstrap_full_refit":
             if "refit_fn" not in ctx:
                 raise ValueError("Missing refit function for full refit bootstrap.")
@@ -1055,6 +1109,8 @@ class KineticsModelOptPlotsWidget(QWidget):
                         raise ValueError("D_hat shape does not match D_obs.")
                     r_hat_list.append(obs - hat)
 
+                r_hat_list = [r * lev for r in r_hat_list]
+
                 def make_data_star_fn(rng, wild=wild):
                     data_star = []
                     for r_hat, d_hat in zip(r_hat_list, d_hat_list, strict=True):
@@ -1063,7 +1119,7 @@ class KineticsModelOptPlotsWidget(QWidget):
                             idx = rng.integers(0, flat.size, size=flat.size)
                             r_star = flat[idx].reshape(r_hat.shape)
                         else:
-                            v = wild_multipliers(rng, r_hat.size, kind=wild).reshape(r_hat.shape)
+                            v = block_wild_multipliers(rng, r_hat.shape, kind=wild, block=wild_block)
                             r_star = r_hat * v
                         data_star.append(d_hat + r_star)
                     return data_star
@@ -1075,7 +1131,7 @@ class KineticsModelOptPlotsWidget(QWidget):
                 if D_hat.shape != D_obs.shape:
                     raise ValueError("D_hat shape does not match D_obs.")
 
-                r_hat = D_obs - D_hat
+                r_hat = (D_obs - D_hat) * lev
 
                 def make_data_star_fn(rng, wild=wild):
                     if bootstrap_kind == "residual":
@@ -1083,7 +1139,7 @@ class KineticsModelOptPlotsWidget(QWidget):
                         idx = rng.integers(0, flat.size, size=flat.size)
                         r_star = flat[idx].reshape(r_hat.shape)
                     else:
-                        v = wild_multipliers(rng, r_hat.size, kind=wild).reshape(r_hat.shape)
+                        v = block_wild_multipliers(rng, r_hat.shape, kind=wild, block=wild_block)
                         r_star = r_hat * v
                     return D_hat + r_star
 
@@ -1108,13 +1164,22 @@ class KineticsModelOptPlotsWidget(QWidget):
         if method == "analytic":
             if se is None:
                 se = np.zeros_like(k_hat)
-            z95 = 1.96
-            z68 = 1.0
+            z95 = t_quantile(dof_ctx, 0.975)
+            z68 = t_quantile(dof_ctx, 0.8413447460685429)
             median = k_hat.copy()
             ci_2p5 = k_hat - z95 * se
             ci_97p5 = k_hat + z95 * se
             ci_16 = k_hat - z68 * se if include_16_84 else None
             ci_84 = k_hat + z68 * se if include_16_84 else None
+            # log10-optimised parameters: interval symmetric in log10(k) -> multiplicative in k
+            for idx, name in enumerate(param_names):
+                if name in log_params and k_hat[idx] > 0 and np.isfinite(se[idx]):
+                    se_log = se[idx] / (np.log(10.0) * k_hat[idx])
+                    ci_2p5[idx] = k_hat[idx] * 10.0 ** (-z95 * se_log)
+                    ci_97p5[idx] = k_hat[idx] * 10.0 ** (z95 * se_log)
+                    if include_16_84:
+                        ci_16[idx] = k_hat[idx] * 10.0 ** (-z68 * se_log)
+                        ci_84[idx] = k_hat[idx] * 10.0 ** (z68 * se_log)
             perc_err = 100.0 * se / np.maximum(np.abs(k_hat), 1e-300)
         else:
             if samples is None or samples.size == 0:
@@ -1130,7 +1195,7 @@ class KineticsModelOptPlotsWidget(QWidget):
             if np.any(se > 0):
                 perc_err = 100.0 * se / np.maximum(np.abs(median), 1e-300)
             if corr is None and samples.shape[0] >= 2:
-                corr = np.corrcoef(samples, rowvar=False)
+                corr = np.atleast_2d(np.corrcoef(samples, rowvar=False))
                 corr = np.nan_to_num(corr, nan=0.0)
                 for i in range(corr.shape[0]):
                     corr[i, i] = 1.0
@@ -1148,6 +1213,18 @@ class KineticsModelOptPlotsWidget(QWidget):
             n_success=n_success,
             n_fail=n_fail,
         )
+        extra = [f"n_obs={nobs}, free params={int(free_idx.size)}, linear params (A)={n_linear}, dof={dof_ctx}"]
+        if method == "analytic":
+            extra.append("CI from Student-t; log10-fitted parameters get multiplicative CIs.")
+        else:
+            extra.append(
+                f"resampling unit={'time point (spectrum)' if wild_block == 'row' else 'data element'}, "
+                "residuals rescaled by sqrt(n/(n-p_total))"
+            )
+        if method == "bootstrap_full_refit" and n_success is not None:
+            for note in bootstrap_quality_notes(int(n_success or 0), int(n_fail or 0), B):
+                extra.append(f"WARNING: {note}")
+        summary = summary + "\n" + "\n".join(extra)
 
         return {
             "param_names": param_names,

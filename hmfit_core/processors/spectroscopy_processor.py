@@ -442,6 +442,49 @@ def _build_smoothness_laplacian(n_lambda: int):
     return D2.T @ D2
 
 
+def _exact_soft_penalty_columns(C, YT, mu=1e-2, max_newton=60):
+    """Semismooth-Newton (active set) solver for the soft non-negativity penalty."""
+    C = onp.asarray(C, dtype=float)
+    Y = onp.asarray(YT, dtype=float)
+    G = C.T @ C
+    B = C.T @ Y
+    A = onp.linalg.lstsq(C, Y, rcond=None)[0]
+    neg_cols = onp.where(onp.any(A < 0.0, axis=0))[0]
+    s = G.shape[0]
+    for j in neg_cols:
+        a = A[:, j]
+        active = a < 0.0
+        for _ in range(int(max_newton)):
+            H = G + float(mu) * onp.diag(active.astype(float))
+            try:
+                a_new = onp.linalg.solve(H, B[:, j])
+            except onp.linalg.LinAlgError:
+                a_new = onp.linalg.lstsq(H, B[:, j], rcond=None)[0]
+            new_active = a_new < 0.0
+            a = a_new
+            if onp.array_equal(new_active, active):
+                break
+            active = new_active
+        A[:, j] = a
+    return A
+
+
+def _exact_nnls_columns(C, YT):
+    """Exact NNLS (Lawson-Hanson active set) for every wavelength column."""
+    from scipy.optimize import nnls as _nnls
+
+    C = onp.asarray(C, dtype=float)
+    Y = onp.asarray(YT, dtype=float)
+    # Column scaling improves the conditioning of the active-set solver.
+    norms = onp.linalg.norm(C, axis=0)
+    norms = onp.where(norms > 0, norms, 1.0)
+    Cs = C / norms[None, :]
+    A = onp.zeros((C.shape[1], Y.shape[1]), dtype=float)
+    for j in range(Y.shape[1]):
+        A[:, j] = _nnls(Cs, Y[:, j], maxiter=50 * max(C.shape[1], 1))[0] / norms
+    return A
+
+
 def _solve_absorptivities(
     C,
     YT,
@@ -455,7 +498,14 @@ def _solve_absorptivities(
 ):
     mode_norm = _normalize_mode(eps_solver_mode, {"soft_penalty", "soft_bound", "nnls_hard"}, "soft_penalty")
     if mode_norm == "nnls_hard":
-        return solve_A_nnls_pgd2(C, YT, ridge=0.0, max_iters=max_iters), None
+        return _exact_nnls_columns(C, YT), None
+    if mode_norm == "soft_penalty" and delta_mode == "off" and float(alpha_smooth) <= 0.0:
+        # Exact solution of  min 1/2||C a - y||^2 + 1/2 mu ||min(a,0)||^2  per wavelength.
+        # The former fixed-iteration gradient descent did not converge whenever mu
+        # dominated C^T C (concentrations ~1e-3 M => C^T C ~1e-5): negative entries were
+        # clipped without re-fitting the rest, which biased log K (~+0.04 in a 1:1
+        # benchmark) and artificially shrank its variance.
+        return _exact_soft_penalty_columns(C, YT, mu=float(mu)), None
     lb_mode = "relative" if mode_norm == "soft_bound" else delta_mode
     lower_bound = _compute_lower_bound(C, YT, delta_mode=lb_mode, delta_rel=delta_rel)
     A = solve_A_nnls_pgd(

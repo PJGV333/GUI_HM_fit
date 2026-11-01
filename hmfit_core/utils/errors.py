@@ -470,6 +470,7 @@ def compute_errors_spectro_varpro(
     weights=None,
     group_map=None,
     param_transform=None,
+    count_linear_dof=True,
 ):
     """
     Cálculo robusto (variable projection) para espectroscopía.
@@ -539,7 +540,13 @@ def compute_errors_spectro_varpro(
     W = np.asarray(W_onp, dtype=R.dtype)
     R_w = R * W
     r = R_w.reshape(-1)
-    dof = max(r.size - p, 1)
+    # Linear parameters (pure spectra, rank(C_eff) per wavelength) also consume dof.
+    try:
+        rank_c = int(_onp.linalg.matrix_rank(_as_onp(C_eff), tol=None))
+    except Exception:
+        rank_c = int(C_eff.shape[1])
+    n_linear = int(rank_c * nw)
+    dof = max(r.size - p - (n_linear if count_linear_dof else 0), 1)
     s2  = float((r @ r) / dof)
 
     # Jacobiano proyectado
@@ -579,7 +586,7 @@ def compute_errors_spectro_varpro(
         "A_species": _as_onp(A_species),
         "group_map": _as_onp(G_map),
         "J": _as_onp(J), "yfit": _as_onp((C_eff @ A_group).T),
-        "r": _as_onp(r), "dof": int(dof), "nobs": int(r.size),
+        "r": _as_onp(r), "dof": int(dof), "nobs": int(r.size), "n_linear": int(n_linear),
         "RMS_raw": RMS_raw,
         "stability_diag": diag
     }
@@ -601,6 +608,7 @@ def compute_errors_nmr_varpro(
     ridge=1e-8,
     rcond_cov=None, ridge_cov=0.0, debug=False,
     param_names=None,
+    count_linear_dof=True,
 ):
     """
     NMR version with missing data support and Weighted Covariance (IRLS).
@@ -673,6 +681,8 @@ def compute_errors_nmr_varpro(
     R_blocks = []   # lista de residuales por columna, sólo filas observadas
     J_cols   = []   # lista de J (p × m_j) por columna
     W_blocks = []   # lista de pesos (sqrt) correspondientes a R_blocks
+    n_linear = 0    # coeficientes lineales efectivamente estimados (desplazamientos límite)
+    row_blocks = [] # índice de punto de titulación de cada residual (para bootstrap por bloques)
 
     S = None
     if stoichiometry is not None:
@@ -740,8 +750,10 @@ def compute_errors_nmr_varpro(
         y_w  = y * sq_w
         
         try:
-            delta, _, _, _ = _onp.linalg.lstsq(Xi_w, y_w, rcond=rcond)
+            delta, _, rank_j, _ = _onp.linalg.lstsq(Xi_w, y_w, rcond=rcond)
+            n_linear += int(rank_j)
         except _onp.linalg.LinAlgError:
+            n_linear += int(Xi_w.shape[1])
             if ridge is not None and float(ridge) > 0.0:
                 XtX = Xi_w.T @ Xi_w
                 delta = _onp.linalg.solve(XtX + float(ridge) * _onp.eye(XtX.shape[0]), Xi_w.T @ y_w)
@@ -761,6 +773,7 @@ def compute_errors_nmr_varpro(
         # but apply weights for J and singular value calculation if needed.
         R_blocks.append(yfit - y)
         W_blocks.append(sq_w)
+        row_blocks.append(_onp.where(mj)[0])
 
         # Jacobiano para la señal j: dXi en filas observadas
         if S is not None:
@@ -785,7 +798,10 @@ def compute_errors_nmr_varpro(
     J_w = J_full * w_full[None, :]
 
     nobs = r_raw.size
-    dof = nobs - p_free
+    # Degrees of freedom: the limiting shifts / linear coefficients solved by variable
+    # projection are fitted parameters too and must be subtracted (otherwise s^2 and
+    # every SE are biased low, strongly so for small titrations).
+    dof = nobs - p_free - (int(n_linear) if count_linear_dof else 0)
     dof_capped = max(dof, 1)
     
     # Weighted reduced chi-squared: sum(w * r^2) / dof
@@ -842,7 +858,9 @@ def compute_errors_nmr_varpro(
         "percK": pm["perc_linear"], "SE_K": pm["SE_K"], "SE_log10K": SE_log10K_full,
         "Cov_log10K_free": _as_onp(Cov_free), "rms": float(_onp.sqrt(_onp.mean(r_raw**2))), "covfit": s2,
         "coef": _as_onp(coef), "xi": None, "J": _as_onp(J_full),
-        "dof": dof, "nobs": nobs, "residuals_vec": _as_onp(r_raw), "r": _as_onp(r_raw),
+        "dof": dof, "nobs": nobs, "n_linear": int(n_linear),
+        "row_index": _onp.concatenate(row_blocks) if row_blocks else _onp.zeros(0, dtype=int),
+        "residuals_vec": _as_onp(r_raw), "r": _as_onp(r_raw),
         "stability_diag": stability_diag
     }
 
@@ -875,6 +893,128 @@ def _wild_weights(rng, shape, wild="rademacher"):
 
 class BootstrapCancelled(RuntimeError):
     pass
+
+
+# --- Statistical helpers shared by every module -----------------------------
+
+def t_quantile(dof, prob=0.975):
+    """Student-t quantile for ``dof`` degrees of freedom (normal if dof is huge/invalid)."""
+    try:
+        dof = float(dof)
+    except Exception:
+        dof = float("inf")
+    if not _onp.isfinite(dof) or dof <= 0:
+        dof = float("inf")
+    try:
+        from scipy.stats import t as _t, norm as _norm
+        if _onp.isinf(dof):
+            return float(_norm.ppf(prob))
+        return float(_t.ppf(prob, dof))
+    except Exception:  # pragma: no cover - scipy is a hard dependency
+        return 1.959963984540054 if prob == 0.975 else 1.0
+
+
+def lm_damped_step(J, r, lam=1e-3, rcond=1e-10):
+    """
+    One Levenberg-Marquardt step with *scale-invariant* (Marquardt) damping.
+
+    J : (p, m) Jacobian (rows = parameters), r : (m,) residual vector.
+    Solves (G + lam*diag(G)) dk = -J r with G = J J^T.
+
+    A plain ``lam*I`` damping depends on the units of the parameters and of the
+    signal: when ``diag(G)`` is small (e.g. rate constants in M^-1 s^-1 or weak
+    absorbances) it dominates G and shrinks every bootstrap step towards zero,
+    which silently underestimates the uncertainty by orders of magnitude.
+    """
+    J = _onp.asarray(J, dtype=float)
+    r = _onp.asarray(r, dtype=float).ravel()
+    G = J @ J.T
+    d = _onp.diag(G).copy()
+    d_floor = 1e-15 * (float(_onp.max(d)) if d.size and _onp.max(d) > 0 else 1.0)
+    d = _onp.maximum(d, d_floor)
+    A = G + float(lam) * _onp.diag(d)
+    g = J @ r
+    try:
+        return -_onp.linalg.solve(A, g)
+    except _onp.linalg.LinAlgError:
+        return -_onp.linalg.pinv(A, rcond=rcond) @ g
+
+
+def leverage_rescale_factor(n_obs, n_params_total):
+    """
+    sqrt(n / (n - p_total)): inflates raw residuals before wild/residual resampling
+    so that the bootstrap variance is not biased low by the fitted parameters
+    (nonlinear *and* linear ones absorb part of the noise).  HC1-type correction.
+    """
+    n = int(n_obs)
+    p = int(max(n_params_total, 0))
+    if n <= 0 or n - p <= 0:
+        return 1.0
+    return float(_onp.sqrt(n / float(n - p)))
+
+
+def block_wild_multipliers(rng, shape, kind="rademacher", block="row"):
+    """
+    Wild multipliers for a residual matrix.
+
+    block="row"     -> one multiplier per row (titration point / spectrum / time),
+                       shared across all channels. Preserves correlation between
+                       wavelengths or NMR signals measured in the same sample.
+    block="element" -> independent multiplier per element (assumes i.i.d. noise).
+    """
+    shape = tuple(int(s) for s in (shape if isinstance(shape, (tuple, list)) else (shape,)))
+    if len(shape) <= 1 or str(block or "row").lower().startswith("elem"):
+        return _wild_weights(rng, shape, wild=kind)
+    v = wild_multipliers(rng, shape[0], kind=kind).reshape((shape[0],) + (1,) * (len(shape) - 1))
+    return _onp.broadcast_to(v, shape).astype(float)
+
+
+def bootstrap_quality_notes(n_success, n_fail, B, max_fail_fraction=0.05, min_success=30):
+    """Human readable warnings about the reliability of a bootstrap run."""
+    notes = []
+    B = max(int(B), 1)
+    frac = float(n_fail) / B
+    if n_fail and frac > max_fail_fraction:
+        notes.append(
+            f"{n_fail}/{B} replicates ({100*frac:.1f}%) failed and were discarded; "
+            "failed replicates are usually the extreme ones, so the reported intervals may be too narrow."
+        )
+    if n_success < min_success:
+        notes.append(
+            f"Only {n_success} successful replicates; percentile intervals (2.5/97.5) need "
+            "several hundred replicates to be stable. Treat them as indicative."
+        )
+    return notes
+
+
+def make_wild_data_star_fn(fitted, observed, *, point_axis=0, block="row",
+                           n_params_total=0, mask=None, kind_default="rademacher"):
+    """
+    Build ``make_data_star_fn(rng, wild=...)`` for full-refit bootstraps.
+
+    fitted/observed : arrays of identical shape.
+    point_axis      : axis that indexes titration points / spectra / times.
+    block           : "row" (one multiplier per point, keeps channel correlation) or "element".
+    n_params_total  : nonlinear + linear fitted parameters, for the leverage correction.
+    mask            : optional boolean array; unobserved entries are copied from ``observed``.
+    """
+    fitted = _onp.asarray(fitted, dtype=float)
+    observed = _onp.asarray(observed, dtype=float)
+    if fitted.shape != observed.shape:
+        raise ValueError(f"fitted shape {fitted.shape} does not match observed {observed.shape}.")
+    resid = observed - fitted
+    valid = _onp.isfinite(resid) if mask is None else (_onp.asarray(mask, dtype=bool) & _onp.isfinite(resid))
+    resid = _onp.where(valid, resid, 0.0)
+    resid = resid * leverage_rescale_factor(int(_onp.count_nonzero(valid)), n_params_total)
+    moved = _onp.moveaxis(resid, point_axis, 0) if resid.ndim > 1 else resid
+
+    def _fn(rng, wild=kind_default):
+        v = block_wild_multipliers(rng, moved.shape, kind=wild, block=block)
+        r_star = _onp.moveaxis(moved * v, 0, point_axis) if resid.ndim > 1 else moved * v
+        out = fitted + r_star
+        return _onp.where(valid, out, observed)
+
+    return _fn
 
 
 def bootstrap_full_refit(
@@ -970,7 +1110,7 @@ def bootstrap_full_refit(
 
     corr = None
     if n_success >= 2:
-        corr = _onp.corrcoef(samples, rowvar=False)
+        corr = _onp.atleast_2d(_onp.corrcoef(samples, rowvar=False))
         corr = _onp.nan_to_num(corr, nan=0.0)
         if corr.ndim == 2:
             for i in range(corr.shape[0]):
@@ -987,6 +1127,7 @@ def bootstrap_full_refit(
         "p84": p84,
         "corr": corr,
         "fail_info": fail_info,
+        "quality_notes": bootstrap_quality_notes(n_success, n_fail, B),
         "n_fallback": int(n_fallback),
         "fallback_methods": sorted(fallback_methods),
     }
@@ -1001,9 +1142,18 @@ def bootstrap_linearized_wild(
     wild="rademacher",
     rcond=1e-10,
     ridge=0.0,
+    groups=None,
+    n_linear=0,
+    leverage_correction=True,
 ):
     """
     Fast bootstrap via linearized covariance and wild residuals.
+
+    groups : optional (m,) integer labels (e.g. titration-point / spectrum index of each
+             residual). When given, one wild multiplier is drawn per group so residuals of
+             the same spectrum keep their mutual correlation (block wild bootstrap).
+    n_linear : number of linear (variable-projection) parameters, used together with p
+             for the sqrt(n/(n-p_total)) leverage correction of the residuals.
     Returns dict with samples (B x p).
     """
     k_hat = _onp.asarray(k_hat, dtype=float).ravel()
@@ -1018,10 +1168,23 @@ def bootstrap_linearized_wild(
     rng = _onp.random.default_rng(seed)
     G = J @ J.T
     G_inv = pinv_psd_eigh(G, xp=_onp, rcond=rcond, ridge=ridge)
+    if leverage_correction:
+        r = r * leverage_rescale_factor(r.size, k_hat.size + int(n_linear or 0))
+    inv = None
+    n_groups = 0
+    if groups is not None:
+        groups = _onp.asarray(groups).ravel()
+        if groups.size != r.size:
+            raise ValueError("groups must have one label per residual.")
+        _, inv = _onp.unique(groups, return_inverse=True)
+        n_groups = int(inv.max()) + 1 if inv.size else 0
 
     samples = _onp.zeros((B, k_hat.size), dtype=float)
     for b in range(B):
-        v = _wild_weights(rng, r.size, wild=wild)
+        if inv is not None:
+            v = wild_multipliers(rng, n_groups, kind=wild)[inv]
+        else:
+            v = _wild_weights(rng, r.size, wild=wild)
         eps = r * v
         g = J @ eps
         dk = G_inv @ g
@@ -1047,9 +1210,14 @@ def bootstrap_one_step_spectro(
     weights=None,
     group_map=None,
     param_transform=None,
+    wild_block="row",
+    leverage_correction=True,
 ):
     """
     One-step LM bootstrap (spectroscopy): dataset perturbation + recompute J,r at k_hat + 1 LM step.
+
+    Y is (n_lambda x m_points); with ``wild_block="row"`` one multiplier is drawn per
+    titration point (column of Y) so the spectral correlation of each spectrum is kept.
     """
     k_hat = _onp.asarray(k_hat, dtype=float).ravel()
     B = int(B)
@@ -1074,11 +1242,15 @@ def bootstrap_one_step_spectro(
         raise ValueError(f"yfit shape {yfit.shape} does not match Y {Y_obs.shape}.")
 
     R = yfit - Y_obs
+    if leverage_correction:
+        n_lin = int(_onp.asarray(metrics0.get("A")).size) if metrics0.get("A") is not None else 0
+        R = R * leverage_rescale_factor(R.size, k_hat.size + n_lin)
     rng = _onp.random.default_rng(seed)
     samples = _onp.zeros((B, k_hat.size), dtype=float)
 
     for b in range(B):
-        v = _wild_weights(rng, R.shape, wild=wild)
+        # rows of R.T are titration points
+        v = block_wild_multipliers(rng, R.T.shape, kind=wild, block=wild_block).T
         Y_star = yfit - R * v
 
         metrics_star = compute_errors_spectro_varpro(
@@ -1096,11 +1268,7 @@ def bootstrap_one_step_spectro(
         J = _onp.asarray(metrics_star["J"], dtype=float)
         r_star = _onp.asarray(metrics_star["r"], dtype=float).ravel()
 
-        G = J @ J.T + float(lam) * _onp.eye(J.shape[0])
-        try:
-            dk = -_onp.linalg.solve(G, J @ r_star)
-        except _onp.linalg.LinAlgError:
-            dk = -_onp.linalg.pinv(G, rcond=rcond) @ (J @ r_star)
+        dk = lm_damped_step(J, r_star, lam=lam, rcond=rcond)
         samples[b, :] = k_hat + dk
 
     return {
@@ -1128,9 +1296,14 @@ def bootstrap_one_step_nmr(
     rcond_cov=None,
     ridge=1e-8,
     ridge_cov=0.0,
+    wild_block="row",
+    leverage_correction=True,
 ):
     """
     One-step LM bootstrap (NMR): dataset perturbation + recompute J,r at k_hat + 1 LM step.
+
+    dq is (m_points x n_signals); ``wild_block="row"`` shares the multiplier among all
+    signals of the same titration point.
     """
     k_hat = _onp.asarray(k_hat, dtype=float).ravel()
     B = int(B)
@@ -1153,11 +1326,26 @@ def bootstrap_one_step_nmr(
     free_idx = _onp.where(~fixed_mask)[0]
 
     R = dq_fit - dq_obs
+    R = _onp.where(mask, R, 0.0)
+    if leverage_correction:
+        n_obs = int(_onp.count_nonzero(mask))
+        n_lin = 0
+        try:
+            m0 = compute_errors_nmr_varpro(
+                k_hat, res, dq_obs, D_cols, modelo, nas, stoichiometry=stoichiometry,
+                mask=mask, fixed_mask=fixed_mask, rcond=rcond,
+                rcond_cov=rcond_cov if rcond_cov is not None else rcond,
+                ridge=ridge, ridge_cov=ridge_cov, use_projector=use_projector,
+            )
+            n_lin = int(m0.get("n_linear", 0) or 0)
+        except Exception:
+            n_lin = 0
+        R = R * leverage_rescale_factor(n_obs, free_idx.size + n_lin)
     rng = _onp.random.default_rng(seed)
     samples = _onp.zeros((B, k_hat.size), dtype=float)
 
     for b in range(B):
-        v = _wild_weights(rng, R.shape, wild=wild)
+        v = block_wild_multipliers(rng, R.shape, kind=wild, block=wild_block)
         dq_star = dq_fit - R * v
         dq_star[~mask] = dq_obs[~mask]
 
@@ -1186,11 +1374,7 @@ def bootstrap_one_step_nmr(
         r_star = _onp.asarray(metrics_star["r"], dtype=float).ravel()
         J = J_full[free_idx, :]
 
-        G = J @ J.T + float(lam) * _onp.eye(J.shape[0])
-        try:
-            dk = -_onp.linalg.solve(G, J @ r_star)
-        except _onp.linalg.LinAlgError:
-            dk = -_onp.linalg.pinv(G, rcond=rcond) @ (J @ r_star)
+        dk = lm_damped_step(J, r_star, lam=lam, rcond=rcond)
 
         k1 = k_hat.copy()
         k1[free_idx] = k1[free_idx] + dk

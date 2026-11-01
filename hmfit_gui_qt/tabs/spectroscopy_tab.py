@@ -1717,11 +1717,11 @@ class SpectroscopyTab(QWidget):
             theta0 = np.asarray(theta0, dtype=float).ravel()
             p0_full = theta0.copy()
             fixed_mask_raw = ctx.get("fixed_mask")
-            fixed_mask = (
-                np.asarray(fixed_mask_raw, dtype=bool)
-                if fixed_mask_raw is not None
-                else np.zeros(p0_full.size, dtype=bool)
-            )
+            fixed_mask = np.zeros(p0_full.size, dtype=bool)
+            if fixed_mask_raw is not None:
+                _fm = np.asarray(fixed_mask_raw, dtype=bool).ravel()
+                if _fm.size == p0_full.size:  # empty/mismatched mask == nothing fixed
+                    fixed_mask = _fm.copy()
             bnds = _build_bounds_list(bounds_raw)
             if len(bnds) < p0_full.size:
                 bnds.extend([(-np.inf, np.inf)] * (p0_full.size - len(bnds)))

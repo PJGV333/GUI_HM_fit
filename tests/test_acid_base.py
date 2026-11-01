@@ -775,7 +775,7 @@ def test_initial_pka_input_lives_in_optimization_table(tmp_path, monkeypatch):
     assert tab.basic_pka_group.isHidden() is True
     assert tab._parameter_value("pKa1") == "6.25"
     assert cfg["pka_initial"] == "6.25"
-    assert cfg["pka_bounds"] == pytest.approx([[1.0, 12.0]])
+    assert np.allclose(cfg["pka_bounds"], [[1.0, 12.0]])
     assert cfg["pka_fit_mask"] == [False]
 
 

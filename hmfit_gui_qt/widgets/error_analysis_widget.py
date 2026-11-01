@@ -64,6 +64,13 @@ class ErrorAnalysisWidget(QWidget):
         self.combo_error_method.addItem("Bootstrap (linearized + wild)", "bootstrap_linear")
         self.combo_error_method.addItem("Bootstrap (one-step LM)", "bootstrap_onestep")
         self.combo_error_method.addItem("Bootstrap (full refit, audit)", "bootstrap_full_refit_audit")
+        self.combo_error_method.setToolTip(
+            "Analytical: linearized covariance (fast; reliable when the model is well identified).\n"
+            "Linearized + wild: same linearization, robust to heteroscedastic noise.\n"
+            "One-step LM: re-linearizes on each bootstrap replicate.\n"
+            "Full refit: refits every replicate; the reference method for non-linear / "
+            "poorly identified models (slow)."
+        )
         self.combo_error_method.currentIndexChanged.connect(self._on_error_method_changed)
         controls_grid.addWidget(self.combo_error_method, 0, 1, 1, 7)
 
@@ -114,6 +121,18 @@ class ErrorAnalysisWidget(QWidget):
         self.combo_error_fail_policy.addItem("Skip failed replicates", "skip")
         self.combo_error_fail_policy.addItem("Stop on first failure", "stop")
         controls_grid.addWidget(self.combo_error_fail_policy, 2, 5, 1, 3)
+
+        self.lbl_error_block = QLabel("Resample by", self)
+        controls_grid.addWidget(self.lbl_error_block, 3, 0)
+        self.combo_error_block = QComboBox(self)
+        self.combo_error_block.addItem("Titration point (keeps channel correlation)", "row")
+        self.combo_error_block.addItem("Data element (i.i.d. noise)", "element")
+        self.combo_error_block.setToolTip(
+            "Wild bootstrap unit. 'Titration point' draws one multiplier per spectrum / "
+            "NMR row, so correlated errors across wavelengths or signals (baseline drift, "
+            "dilution, pipetting) are propagated. Recommended default."
+        )
+        controls_grid.addWidget(self.combo_error_block, 3, 1, 1, 7)
 
         layout.addLayout(controls_grid)
 
@@ -272,6 +291,7 @@ class ErrorAnalysisWidget(QWidget):
             self.spin_error_max_iter,
             self.spin_error_tol,
             self.combo_error_fail_policy,
+            self.combo_error_block,
             self.chk_error_ci_16_84,
             self.chk_error_show_corr,
         ]
@@ -289,6 +309,7 @@ class ErrorAnalysisWidget(QWidget):
         self.spin_error_b.setEnabled(is_bootstrap and self._errors_worker is None and bool(self._errors_context))
         self.combo_error_wild.setEnabled(is_bootstrap and self._errors_worker is None and bool(self._errors_context))
         self.spin_error_lambda.setEnabled(is_onestep and self._errors_worker is None and bool(self._errors_context))
+        self.combo_error_block.setEnabled(is_bootstrap and self._errors_worker is None and bool(self._errors_context))
         self.lbl_error_max_iter.setVisible(is_full_refit)
         self.spin_error_max_iter.setVisible(is_full_refit)
         self.lbl_error_tol.setVisible(is_full_refit)
@@ -325,9 +346,17 @@ class ErrorAnalysisWidget(QWidget):
             raise ValueError("Seed must be an integer.") from exc
 
     def _collect_errors_options(self) -> dict[str, Any]:
+        seed = self._parse_error_seed()
+        method = str(self.combo_error_method.currentData() or "analytic")
+        if seed is None and method.startswith("bootstrap"):
+            # Always record the seed so every bootstrap result can be reproduced.
+            import secrets
+
+            seed = int(secrets.randbelow(2**31 - 1))
         return {
-            "method": str(self.combo_error_method.currentData() or "analytic"),
-            "seed": self._parse_error_seed(),
+            "method": method,
+            "seed": seed,
+            "wild_block": str(self.combo_error_block.currentData() or "row"),
             "wild": str(self.combo_error_wild.currentData() or "rademacher"),
             "lam": float(self.spin_error_lambda.value()),
             "B": int(self.spin_error_b.value()),

@@ -109,7 +109,10 @@ def test_nmr_errors_dof_logic():
     assert np.isfinite(err_res_masked["covfit"]), "s2 with mask should be finite"
     assert err_res_masked["SE_log10K"][1] == 0, "Fixed parameter SE should be 0"
     assert err_res_masked["SE_log10K"][0] > 0, f"Free parameter SE should be > 0, got {err_res_masked['SE_log10K'][0]}"
-    assert err_res_masked["dof"] == (m * nP - 1), f"dof should be {m*nP - 1}, got {err_res_masked['dof']}"
+    # dof = n_obs - free nonlinear params - linear coefficients (limiting shifts) solved by VarPro
+    expected_dof = m * nP - 1 - int(err_res_masked["n_linear"])
+    assert err_res_masked["n_linear"] > 0
+    assert err_res_masked["dof"] == expected_dof, f"dof should be {expected_dof}, got {err_res_masked['dof']}"
     assert err_res_masked["percK"][0] > 0, "Percent error should be non-zero"
 
     # Test with p_free = 0 (all fixed)

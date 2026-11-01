@@ -691,8 +691,9 @@ class ModelOptPlotsWidget(QWidget):
             bootstrap_one_step_spectro,
             compute_errors_nmr_varpro,
             compute_errors_spectro_varpro,
+            make_wild_data_star_fn,
             percent_error_log10K,
-            wild_multipliers,
+            t_quantile,
         )
         from hmfit_core.processors.nmr_processor import build_D_cols
 
@@ -706,6 +707,7 @@ class ModelOptPlotsWidget(QWidget):
         max_iter = int(opts.get("max_iter", 30) or 30)
         tol = float(opts.get("tol", 1e-8) or 1e-8)
         fail_policy = str(opts.get("fail_policy") or "skip")
+        wild_block = str(opts.get("wild_block") or "row")
 
         technique = str(ctx.get("technique") or "")
         k_hat_raw = ctx.get("k_hat")
@@ -739,11 +741,13 @@ class ModelOptPlotsWidget(QWidget):
             else [f"K{i+1}" for i in range(k_hat.size)]
         )
         fixed_mask_raw = ctx.get("fixed_mask")
-        fixed_mask = (
-            np.asarray(fixed_mask_raw, dtype=bool)
-            if fixed_mask_raw is not None
-            else np.zeros(k_hat.size, dtype=bool)
-        )
+        fixed_mask = np.zeros(k_hat.size, dtype=bool)
+        if fixed_mask_raw is not None:
+            fm = np.asarray(fixed_mask_raw, dtype=bool).ravel()
+            # An empty / mismatched mask means "nothing fixed" (it used to make every
+            # parameter look fixed and silently return SE = 0).
+            if fm.size == k_hat.size:
+                fixed_mask = fm
         stoich_raw = ctx.get("stoichiometry_map")
         stoichiometry = None
         if stoich_raw is not None:
@@ -814,6 +818,12 @@ class ModelOptPlotsWidget(QWidget):
                         wild=wild,
                         rcond=1e-10,
                         ridge=0.0,
+                        groups=(
+                            np.repeat(np.arange(Y.shape[1]), Y.shape[0])
+                            if wild_block == "row"
+                            else None
+                        ),
+                        n_linear=int(base_metrics.get("n_linear", 0) or 0),
                     )
                     samples = np.tile(k_hat, (B, 1))
                     samples[:, free_idx] = boot["samples"]
@@ -833,6 +843,7 @@ class ModelOptPlotsWidget(QWidget):
                     weights=weights,
                     group_map=group_map,
                     param_transform=solver_param_transform,
+                    wild_block=wild_block,
                 )
                 samples = boot["samples"]
             elif method == "bootstrap_full_refit_audit":
@@ -844,11 +855,16 @@ class ModelOptPlotsWidget(QWidget):
                     raise ValueError(
                         f"y_fit shape {y_fit_hat.shape} does not match Y {Y.shape}."
                     )
-                r_hat = Y - y_fit_hat
-
-                def make_data_star_fn(rng, wild=wild):
-                    v = wild_multipliers(rng, r_hat.size, kind=wild).reshape(r_hat.shape)
-                    return y_fit_hat + r_hat * v
+                # Y is (n_lambda x n_points): titration points live on axis 1.
+                make_data_star_fn = make_wild_data_star_fn(
+                    y_fit_hat,
+                    Y,
+                    point_axis=1,
+                    block=wild_block,
+                    n_params_total=int(np.count_nonzero(~fixed_mask))
+                    + int(base_metrics.get("n_linear", 0) or 0),
+                    kind_default=wild,
+                )
 
                 refit_fn = ctx.get("refit_from_data")
                 if not callable(refit_fn):
@@ -930,6 +946,8 @@ class ModelOptPlotsWidget(QWidget):
                         wild=wild,
                         rcond=1e-10,
                         ridge=0.0,
+                        groups=(base_metrics.get("row_index") if wild_block == "row" else None),
+                        n_linear=int(base_metrics.get("n_linear", 0) or 0),
                     )
                     samples = np.tile(k_hat, (B, 1))
                     samples[:, free_idx] = boot["samples"]
@@ -954,6 +972,7 @@ class ModelOptPlotsWidget(QWidget):
                     rcond_cov=1e-10,
                     ridge=1e-8,
                     ridge_cov=0.0,
+                    wild_block=wild_block,
                 )
                 samples = boot["samples"]
             elif method == "bootstrap_full_refit_audit":
@@ -965,13 +984,16 @@ class ModelOptPlotsWidget(QWidget):
 
                 mask_full = np.asarray(mask, dtype=bool)
                 mask_full &= np.isfinite(dq_fit)
-                r_hat = dq - dq_fit
-
-                def make_data_star_fn(rng, wild=wild):
-                    v = wild_multipliers(rng, r_hat.size, kind=wild).reshape(r_hat.shape)
-                    dq_star = dq_fit + r_hat * v
-                    dq_star[~mask_full] = dq[~mask_full]
-                    return dq_star
+                make_data_star_fn = make_wild_data_star_fn(
+                    dq_fit,
+                    dq,
+                    point_axis=0,
+                    block=wild_block,
+                    n_params_total=int(np.count_nonzero(~fixed_mask))
+                    + int(base_metrics.get("n_linear", 0) or 0),
+                    mask=mask_full,
+                    kind_default=wild,
+                )
 
                 refit_fn = ctx.get("refit_from_data")
                 if not callable(refit_fn):
@@ -1005,8 +1027,11 @@ class ModelOptPlotsWidget(QWidget):
             perc_raw = base_metrics.get("percK")
             se_log10 = np.asarray(se_raw if se_raw is not None else [], dtype=float).ravel()
             perc_err = np.asarray(perc_raw if perc_raw is not None else [], dtype=float).ravel()
-            z95 = 1.96
-            z68 = 1.0
+            # Student-t quantiles with the residual dof (z=1.96 is too narrow for
+            # small titrations).
+            dof_ci = base_metrics.get("dof")
+            z95 = t_quantile(dof_ci, 0.975)
+            z68 = t_quantile(dof_ci, 0.8413447460685429)
             median = k_hat.copy()
             ci_2p5 = k_hat - z95 * se_log10
             ci_97p5 = k_hat + z95 * se_log10
@@ -1102,6 +1127,20 @@ class ModelOptPlotsWidget(QWidget):
             n_fallback=n_fallback,
             fallback_methods=fallback_methods,
         )
+        extra_lines = []
+        if base_metrics.get("n_linear") is not None:
+            extra_lines.append(
+                f"n_obs={int(base_metrics.get('nobs') or 0)}, linear params (VarPro)={int(base_metrics.get('n_linear') or 0)}"
+            )
+        if method != "analytic":
+            extra_lines.append(f"resampling unit={'titration point' if wild_block == 'row' else 'data element'}")
+        if method == "analytic":
+            extra_lines.append(f"CI from Student-t (dof={base_metrics.get('dof')})")
+        if boot_summary is not None:
+            for note in boot_summary.get("quality_notes") or []:
+                extra_lines.append(f"WARNING: {note}")
+        if extra_lines:
+            summary = summary + "\n" + "\n".join(extra_lines)
 
         rms_val = base_metrics.get("RMS")
         if rms_val is None:
@@ -1155,7 +1194,7 @@ class ModelOptPlotsWidget(QWidget):
 
         d = np.sqrt(np.clip(np.diag(cov_full), 1e-30, None))
         denom = np.outer(d, d)
-        corr = np.divide(cov_full, denom, where=denom > 0)
+        corr = np.divide(cov_full, denom, out=np.zeros_like(cov_full, dtype=float), where=denom > 0)
         corr = np.clip(corr, -1.0, 1.0)
         for i in range(p_total):
             corr[i, i] = 1.0
@@ -1164,7 +1203,7 @@ class ModelOptPlotsWidget(QWidget):
     def _corr_from_samples(self, samples: np.ndarray) -> np.ndarray:
         if samples.shape[0] < 2:
             return np.eye(samples.shape[1], dtype=float)
-        corr = np.corrcoef(samples, rowvar=False)
+        corr = np.atleast_2d(np.corrcoef(samples, rowvar=False))
         corr = np.nan_to_num(corr, nan=0.0)
         for i in range(corr.shape[0]):
             corr[i, i] = 1.0

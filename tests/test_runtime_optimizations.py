@@ -107,6 +107,8 @@ def test_spectro_callback_path_avoids_duplicate_objective(monkeypatch):
         modelo=np.array([[1.0]], dtype=float),
         non_abs_species=[],
         model_settings="Free",
+        solver_param_transform=None,
+        solver_model_settings="Free",
         start_k=np.array([1.0], dtype=float),
         processed_bounds=[(0.0, 2.0)],
         seed=None,
