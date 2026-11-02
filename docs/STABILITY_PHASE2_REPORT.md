@@ -26,6 +26,7 @@ La rama `fix/stable-phase2-statistical-validation` parte de `f36d6c8`. El inform
 | Rama de finalización, correcciones parciales | 232 | 227 | 4 | 1 | 56.31 s |
 | Modo absoluto y nuevos tests, suite completa | 255 | 250 | 4 | 1 | 37.20 s |
 | Arnés piloto provisional, suite completa | 260 | 255 | 4 | 1 | 42.79 s |
+| Resolución separable y piloto, suite completa | 261 | 256 | 4 | 1 | 49.78 s |
 
 En las dos pasadas del estado de trabajo, los identificadores de los cuatro fallos coinciden exactamente con los de la línea base:
 
@@ -65,6 +66,10 @@ Se integró `fix/uncertainty-reliability` en la rama de finalización mediante u
 [Benchmark preliminar, no campaña] `validation/benchmark_weighted.py` ejecuta el Newton denso en procesos independientes con `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1`; resultados reales en `validation/results/summary/weighted_benchmark.csv`. Para 12 puntos: 3×100, 0.00377 s y 81 820 KiB RSS; 5×300, 0.0632 s y 188 380 KiB; 8×500, 0.719 s y 594 120 KiB. La norma infinita del gradiente fue inferior a 1.9×10⁻¹⁴ en esos tres casos. 10×1000 se omitió por el límite de 4000 coeficientes; su Hessiana densa sola requeriría 800 000 000 bytes. Son mediciones únicas con ruido sintético, no benchmarks estadísticos; el solver no expone iteraciones y no se ejecutó una referencia independiente a esas dimensiones.
 
 [Infraestructura parcial] El paquete `validation/` ya contiene un ejecutor reproducible, checkpoints por réplica con checksum, reanudación y comprobación de commit, huella de código, configuración y versiones; se probaron ejecución serial/paralela, corrupción y cambio de fuente. **Solo admite UV-Vis 1:1 con ruido i.i.d. y error analítico**, por lo que no satisface aún la cobertura de técnicas ni de métodos de la campaña solicitada. Véase `validation/README.md`. No iniciar dos coordinadores sobre el mismo directorio: aún no hay bloqueo entre coordinadores. El archivo de configuración `validation/configs/uvvis_11_pilot.json` define 20 conjuntos exploratorios; no se ha completado todavía una campaña confirmatoria.
+
+[Piloto exploratorio UV-Vis 1:1] Con `validation/configs/uvvis_11_pilot.json`, código `dc88860ed0d5256d14785210785b6b5cafe87753`, 8 puntos y ruido normal σ=0.0002, se ejecutaron 20 conjuntos independientes; 20 ajustes convergieron según el procesador. La cobertura del IC t95 para log K verdadero fue **19/20 = 0.95** (error Monte Carlo 0.0487; Wilson 95 % [0.7639, 0.9911]), sesgo 0.00962, RMSE 0.01415, SD 0.01065 y SE medio 0.01625 (SE/SD 1.525). Tiempo sumado de trabajadores 3.19 s; esto no es tiempo de pared. Los resultados están condicionados al éxito; el piloto no demuestra calibración ni sustenta recomendaciones. Se comprobó la reanudación sin duplicados y la igualdad SHA-256 del CSV antes y después de reanudar. Resumen en `validation/results/summary/uvvis_11_pilot_dc88860.json` y datos completos del pequeño piloto y manifiesto en `validation/results/pilot/uvvis_11_dc88860/`; los checkpoints de ejecución permanecen fuera del repositorio. Para reproducir, usar el código del commit indicado y ejecutar el comando del README.
+
+[Escalabilidad parcial] En el modo absoluto, cuando `alpha_smooth=0`, el problema es separable por longitud de onda y ya se resuelve por columnas en lugar de construir una Hessiana global. Una prueba sintética con 3 especies y 1400 longitudes de onda (4200 coeficientes) recuperó los coeficientes de referencia; el caso con suavizado sigue usando la Hessiana densa y conserva el límite de 4000. No se han implementado ni comparado aún solvers dispersos.
 
 ## 5. Trabajo pendiente y dictamen
 

@@ -1,0 +1,48 @@
+{
+  "classification": "exploratory pilot, not confirmatory",
+  "manifest": {
+    "commit": "dc88860ed0d5256d14785210785b6b5cafe87753",
+    "completed": 20,
+    "config": {
+      "method": "analytic",
+      "noise": 0.0002,
+      "points": 8,
+      "replicates": 20,
+      "scenario": "uvvis_11_iid",
+      "seed": 20261102,
+      "workers": 2
+    },
+    "config_sha256": "46cc878170853c3eaa0ab271ac5b5e178629a7c55b5ecbe51d7e74bde50549ee",
+    "source_sha256": "3008a1727e8bd3018bf486f7cdb2dabc3f0ce44d23f0e6d02d2ae374e0438c13",
+    "versions": {
+      "backend": "numpy",
+      "numpy": "2.4.2",
+      "pyside6": "6.10.2",
+      "python": "3.14.8",
+      "scipy": "1.17.1"
+    }
+  },
+  "metrics": {
+    "attempted": 20,
+    "bias": 0.009615385225449403,
+    "bias_mc_se": 0.0023818028183616334,
+    "converged": 20,
+    "coverage95": 0.95,
+    "coverage_mc_se": 0.04873397172404484,
+    "coverage_wilson_high": 0.9911185511992047,
+    "coverage_wilson_low": 0.763868806553258,
+    "covered": 19,
+    "failure_fraction": 0.0,
+    "failures": 0,
+    "mean_interval_width": 0.0641910506265746,
+    "mean_se": 0.016246883993808504,
+    "median_interval_width": 0.06369373642263021,
+    "rmse": 0.014150701102042387,
+    "sd": 0.010651746021714394,
+    "se_over_sd": 1.525278950576553,
+    "warning": "pilot only; metrics conditional on successful fits"
+  },
+  "original_generated_results_sha256": "a65ad0c5046271900b2537fdff32eea09d12be359e415545163de216e162bc7a",
+  "results_line_endings": "LF; normalized from original generated CRLF without changing CSV data",
+  "results_sha256": "ca0eabcffac9b7913136825684cbc5270f659034880a6e343e475506a6f1817d"
+}
