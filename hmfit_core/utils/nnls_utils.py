@@ -152,10 +152,9 @@ def solve_A_nnls_pgd(
     (sin proyección dura; permite A<0 pero lo penaliza).
     C: (m,s), Y: (m,nw) -> A: (s,nw)
     lower_bound: límite inferior suave opcional (p.ej. -δ).
-    weights_row: pesos (m,nw) que varían por punto: el término de datos pasa a
-    ser ½Σ_ij w_ij² (CA−Y)_ij² y el gradiente se evalúa en el sistema ponderado.
-    Con pesos constantes por λ el problema sin ponderar es equivalente (scale
-    invariance) y se mantiene la ruta original.
+    weights_row: multiplicadores del residuo (m,nw): el término de datos es
+    ½Σ_ij w_ij² (CA−Y)_ij². ridge, mu y alpha son penalizaciones absolutas;
+    multiplicadores constantes distintos de uno cambian su importancia relativa.
     """
     C = np.asarray(C)
     Y = np.asarray(Y)
@@ -171,11 +170,13 @@ def solve_A_nnls_pgd(
                 Wm = np.broadcast_to(Wm.reshape(C.shape[0], 1), (C.shape[0], Y.shape[1]))
         elif Wm.shape != (C.shape[0], Y.shape[1]):
             Wm = np.broadcast_to(Wm, (C.shape[0], Y.shape[1]))
-        if bool(np.any(Wm != Wm[0:1, :])):
+        # Absolute penalty semantics: a constant multiplier other than one
+        # still changes the data/penalty balance, even without row variation.
+        if bool(np.any(Wm != 1.0)):
             return _solve_weighted_penalty_newton(
                 C, Y, Wm, ridge, mu, lower_bound, alpha_smooth, smooth_matrix, max_iters
             )
-        Wm = None  # constant columns: original unweighted path is equivalent
+        Wm = None  # unit multipliers preserve the legacy unweighted path
 
     # Paso estable: 1/(||C||² + ridge + mu + alpha*||L||)
     svals = np.linalg.svd(C, compute_uv=False)

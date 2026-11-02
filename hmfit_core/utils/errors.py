@@ -1328,6 +1328,7 @@ def bootstrap_full_refit(
     samples_list = []
     n_fail = 0
     fail_info = []
+    failure_reasons = {}
     n_fallback = 0
     fallback_methods = set()
 
@@ -1337,8 +1338,12 @@ def bootstrap_full_refit(
         data_star = make_data_star_fn(rng, wild=wild)
         theta0 = theta_hat.copy()
         theta_star, ok, info = refit_fn(data_star, theta0, max_iter=max_iter, tol=tol)
+        theta_star = _onp.asarray(theta_star, dtype=float).ravel()
+        if ok and (theta_star.size != theta_hat.size or not _onp.all(_onp.isfinite(theta_star))):
+            ok = False
+            info = {"failure_reason": "nonfinite_result", "error": "Invalid refit parameters"}
         if ok:
-            samples_list.append(_onp.asarray(theta_star, dtype=float).ravel())
+            samples_list.append(theta_star)
             if isinstance(info, dict):
                 used = info.get("optimizer_used")
                 requested = info.get("optimizer_requested")
@@ -1349,6 +1354,8 @@ def bootstrap_full_refit(
                         fallback_methods.add(str(used))
         else:
             n_fail += 1
+            reason = str(info.get("failure_reason") or "unspecified") if isinstance(info, dict) else "unspecified"
+            failure_reasons[reason] = failure_reasons.get(reason, 0) + 1
             if info is not None and len(fail_info) < 3:
                 fail_info.append(info)
             if fail_policy == "stop":
@@ -1392,8 +1399,10 @@ def bootstrap_full_refit(
 
     return {
         "samples": samples,
+        "n_attempted": int(n_success + n_fail),
         "n_success": int(n_success),
         "n_fail": int(n_fail),
+        "failure_reasons": failure_reasons,
         "median": median,
         "p2_5": p2_5,
         "p97_5": p97_5,
@@ -1612,21 +1621,17 @@ def bootstrap_one_step_nmr(
         fixed_mask = _onp.asarray(fixed_mask, dtype=bool)
     free_idx = _onp.where(~fixed_mask)[0]
 
+    metrics0 = compute_errors_nmr_varpro(
+        k_hat, res, dq_obs, D_cols, modelo, nas, stoichiometry=stoichiometry,
+        mask=mask, fixed_mask=fixed_mask, rcond=rcond,
+        rcond_cov=rcond_cov if rcond_cov is not None else rcond,
+        ridge=ridge, ridge_cov=ridge_cov, use_projector=use_projector,
+    )
     R = dq_fit - dq_obs
     R = _onp.where(mask, R, 0.0)
     if leverage_correction:
         n_obs = int(_onp.count_nonzero(mask))
-        n_lin = 0
-        try:
-            m0 = compute_errors_nmr_varpro(
-                k_hat, res, dq_obs, D_cols, modelo, nas, stoichiometry=stoichiometry,
-                mask=mask, fixed_mask=fixed_mask, rcond=rcond,
-                rcond_cov=rcond_cov if rcond_cov is not None else rcond,
-                ridge=ridge, ridge_cov=ridge_cov, use_projector=use_projector,
-            )
-            n_lin = int(m0.get("n_linear", 0) or 0)
-        except Exception:
-            n_lin = 0
+        n_lin = int(metrics0.get("n_linear", 0) or 0)
         R = R * hc1_rescale_factor(n_obs, free_idx.size + n_lin)
     rng = _onp.random.default_rng(seed)
     samples = _onp.zeros((B, k_hat.size), dtype=float)
@@ -1668,8 +1673,8 @@ def bootstrap_one_step_nmr(
         samples[b, :] = k1
 
     if free_idx.size:
-        J_last = _onp.asarray(metrics_star["J"], dtype=float)[free_idx, :]
-        nonid_free = nonidentifiable_parameters(J_last)
+        J_original = _onp.asarray(metrics0["J"], dtype=float)[free_idx, :]
+        nonid_free = nonidentifiable_parameters(J_original)
         samples[:, free_idx[nonid_free]] = _onp.nan
     return {
         "samples": samples,

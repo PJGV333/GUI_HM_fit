@@ -337,7 +337,7 @@ def _all_fixed_result(parameter_names: Sequence[str], theta_hat: np.ndarray, res
         "residuals": residuals,
         "jacobian": np.zeros((residuals.size, p), dtype=float),
         "covariance_matrix": np.zeros((p, p), dtype=float),
-        "correlation_matrix": np.eye(p, dtype=float),
+        "correlation_matrix": np.full((p, p), np.nan, dtype=float),
         "se": np.zeros(p, dtype=float),
         "nobs": int(residuals.size),
         "p_free": 0,

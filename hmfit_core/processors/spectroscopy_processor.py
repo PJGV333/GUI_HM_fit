@@ -683,7 +683,9 @@ def _solve_absorptivities(
         lower_bound=lower_bound,
         alpha_smooth=float(alpha_smooth),
         smooth_matrix=smooth_matrix,
-        weights_row=W_arg,
+        # Preserve the legacy wavelength-only regularized estimator until an
+        # explicit absolute-weight mode is selected; per-point weights are new.
+        weights_row=W_arg if per_point else None,
     )
     return A, lower_bound
 

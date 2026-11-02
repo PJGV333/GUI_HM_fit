@@ -1642,6 +1642,14 @@ class SpectroscopyTab(QWidget):
         max_iter: int = 30,
         tol: float = 1e-8,
     ):
+        from hmfit_core.api import FitCancelled
+        from hmfit_core.utils.errors import BootstrapCancelled
+
+        class RefitFailure(Exception):
+            def __init__(self, reason, message):
+                super().__init__(message)
+                self.reason = reason
+
         try:
             ctx = self._last_fit_context or {}
             if not ctx:
@@ -1744,9 +1752,18 @@ class SpectroscopyTab(QWidget):
                 return k_full
 
             def f_m(theta_free: np.ndarray) -> float:
+                k_curr_full = pack(theta_free)
+                if not np.all(np.isfinite(k_curr_full)):
+                    raise RefitFailure("nonfinite_result", "Non-finite parameters")
                 try:
-                    k_curr_full = pack(theta_free)
-                    C = res.concentraciones(k_curr_full)[0]
+                    C = np.asarray(res.concentraciones(k_curr_full)[0], dtype=float)
+                except (BootstrapCancelled, FitCancelled):
+                    raise
+                except Exception as exc:
+                    raise RefitFailure("chemical_solver_failed", str(exc)) from exc
+                if not np.all(np.isfinite(C)) or np.any(C < -1e-12):
+                    raise RefitFailure("chemical_solver_failed", "Invalid concentrations")
+                try:
                     fit = _solve_spectral_model(
                         C,
                         Y_star.T,
@@ -1761,13 +1778,14 @@ class SpectroscopyTab(QWidget):
                         weights_row=weights_row,
                     )
                     r = fit["yfit"] - np.asarray(Y_star.T, dtype=float)
-                    r_w = r * weights_row
-                    rms = float(np.sqrt(np.mean(np.square(r_w))))
-                    if np.isnan(rms) or np.isinf(rms):
-                        return 1e50
-                    return rms
-                except Exception:
-                    return 1e50
+                    rms = float(np.sqrt(np.mean(np.square(r * weights_row))))
+                except (BootstrapCancelled, FitCancelled):
+                    raise
+                except Exception as exc:
+                    raise RefitFailure("linear_solver_failed", str(exc)) from exc
+                if not np.isfinite(rms):
+                    raise RefitFailure("nonfinite_result", "Non-finite objective")
+                return rms
 
             n_iter = 0
             success = True
@@ -1849,13 +1867,15 @@ class SpectroscopyTab(QWidget):
                     x = np.asarray(x, dtype=float).ravel()
                     if x.size != free_idx.size:
                         return False
-                    return bool(np.all(np.isfinite(x)))
+                    return bool(getattr(res, "success", False) and np.all(np.isfinite(x)))
 
                 opt_res = None
                 opt_err = None
                 opt_method = optimizer
                 try:
                     opt_res = _run_optimizer(optimizer)
+                except (RefitFailure, BootstrapCancelled, FitCancelled):
+                    raise
                 except Exception as exc:
                     opt_err = str(exc)
 
@@ -1866,12 +1886,15 @@ class SpectroscopyTab(QWidget):
                             opt_res = _run_optimizer(fallback_method)
                             opt_method = fallback_method
                             opt_err = None
+                        except (RefitFailure, BootstrapCancelled, FitCancelled):
+                            raise
                         except Exception as exc:
                             opt_err = str(exc)
 
                 if not _valid_opt_res(opt_res):
                     return np.asarray(theta0, dtype=float), False, {
-                        "error": opt_err or "Optimization failed.",
+                        "error": opt_err or "Optimization failed or did not converge.",
+                        "failure_reason": "optimization_failed",
                         "optimizer": optimizer,
                     }
 
@@ -1879,9 +1902,14 @@ class SpectroscopyTab(QWidget):
                 success = bool(getattr(opt_res, "success", True))
                 n_iter = int(getattr(opt_res, "nit", 0) or 0)
 
-            final_rms = f_m(theta_star[free_idx] if free_idx.size else np.array([]))
             theta_star = np.asarray(theta_star, dtype=float).ravel()
-            ok = bool(np.isfinite(final_rms) and np.all(np.isfinite(theta_star)))
+            if not np.all(np.isfinite(theta_star)):
+                raise RefitFailure("nonfinite_result", "Non-finite fitted parameters")
+            for value, (lower, upper) in zip(theta_star, bnds):
+                if (lower is not None and value < lower - 1e-10) or (upper is not None and value > upper + 1e-10):
+                    raise RefitFailure("bounds_violated", "Fitted parameter outside bounds")
+            final_rms = f_m(theta_star[free_idx] if free_idx.size else np.array([]))
+            ok = bool(success and np.isfinite(final_rms))
             info = {
                 "n_iter": n_iter,
                 "final_rms": final_rms,
@@ -1891,8 +1919,12 @@ class SpectroscopyTab(QWidget):
                 "fallback_used": bool(free_idx.size and opt_method != optimizer),
             }
             return theta_star, ok, info
+        except (BootstrapCancelled, FitCancelled):
+            raise
+        except RefitFailure as exc:
+            return np.asarray(theta0, dtype=float), False, {"error": str(exc), "failure_reason": exc.reason}
         except Exception as exc:
-            return np.asarray(theta0, dtype=float), False, {"error": str(exc)}
+            return np.asarray(theta0, dtype=float), False, {"error": str(exc), "failure_reason": "refit_error"}
 
     def _on_save_results_clicked(self) -> None:
         if not self._last_result or not bool(self._last_result.get("success", True)):
