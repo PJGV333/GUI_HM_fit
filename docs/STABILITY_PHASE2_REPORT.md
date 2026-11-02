@@ -49,6 +49,6 @@ Ejecutar únicamente `pytest tests/` no reproduce esa línea base porque excluye
 - Implementar y contrastar las opciones explícitas para ε ≥ 0 y las correcciones HC2/HC3.
 - Ejecutar la campaña con los tamaños, escenarios y criterios de aceptación fijados antes de iniciarla; analizar por separado los casos con error correlacionado no modelado.
 - Elaborar las tablas con errores Monte Carlo, el resumen CSV, las recomendaciones respaldadas por datos, los tiempos y el dictamen final.
-- Realizar los commits por etapa y, solo tras cumplir los criterios, verificar el estado limpio y publicar la rama autorizada.
+- Realizar los commits por etapa; reservar la declaración de fase terminada para cuando se cumplan todos los criterios. Un eventual push del checkpoint WIP no equivale a la publicación de una fase validada.
 
 **Dictamen provisional: no apto para declarar terminada la Fase 2 ni para extraer conclusiones de cobertura.** Cualquier commit que incluya este informe es un checkpoint de trabajo parcial, no una certificación de la fase.
