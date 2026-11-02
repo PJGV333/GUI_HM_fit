@@ -25,6 +25,7 @@ La rama `fix/stable-phase2-statistical-validation` parte de `f36d6c8`. El inform
 | Rama de finalización, baseline tras integración | 225 | 220 | 4 | 1 | 42.44 s |
 | Rama de finalización, correcciones parciales | 232 | 227 | 4 | 1 | 56.31 s |
 | Modo absoluto y nuevos tests, suite completa | 255 | 250 | 4 | 1 | 37.20 s |
+| Arnés piloto provisional, suite completa | 260 | 255 | 4 | 1 | 42.79 s |
 
 En las dos pasadas del estado de trabajo, los identificadores de los cuatro fallos coinciden exactamente con los de la línea base:
 
@@ -62,6 +63,8 @@ Se integró `fix/uncertainty-reliability` en la rama de finalización mediante u
 [Implementado y probado con casos sintéticos, no validado por campaña] Se añadió la opción explícita `weight_regularization_mode="absolute"`; `"legacy"` continúa como valor por defecto para preservar los proyectos existentes. En modo absoluto se minimiza el residuo ponderado más penalizaciones absolutas `mu` y `alpha`; el objetivo perfilado del optimizador y el full-refit usan los mismos términos. Se compararon 16 combinaciones de pesos uniformes, por λ, por punto y cero, con/sin cotas y suavizado, frente a SciPy y condiciones KKT; también se probó el caso por λ con suavizado y la propagación a la API/refit. La opción absoluta **no admite NNLS duro con suavizado** y falla explícitamente; la covarianza analítica existente no incorpora las penalizaciones. La ruta `legacy` conserva la incompatibilidad histórica descrita arriba y no debe confundirse con la función objetivo absoluta. No se han validado todos los casos de rango deficiente ni el backend JAX.
 
 [Benchmark preliminar, no campaña] `validation/benchmark_weighted.py` ejecuta el Newton denso en procesos independientes con `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1`; resultados reales en `validation/results/summary/weighted_benchmark.csv`. Para 12 puntos: 3×100, 0.00377 s y 81 820 KiB RSS; 5×300, 0.0632 s y 188 380 KiB; 8×500, 0.719 s y 594 120 KiB. La norma infinita del gradiente fue inferior a 1.9×10⁻¹⁴ en esos tres casos. 10×1000 se omitió por el límite de 4000 coeficientes; su Hessiana densa sola requeriría 800 000 000 bytes. Son mediciones únicas con ruido sintético, no benchmarks estadísticos; el solver no expone iteraciones y no se ejecutó una referencia independiente a esas dimensiones.
+
+[Infraestructura parcial] El paquete `validation/` ya contiene un ejecutor reproducible, checkpoints por réplica con checksum, reanudación y comprobación de commit, huella de código, configuración y versiones; se probaron ejecución serial/paralela, corrupción y cambio de fuente. **Solo admite UV-Vis 1:1 con ruido i.i.d. y error analítico**, por lo que no satisface aún la cobertura de técnicas ni de métodos de la campaña solicitada. Véase `validation/README.md`. No iniciar dos coordinadores sobre el mismo directorio: aún no hay bloqueo entre coordinadores. El archivo de configuración `validation/configs/uvvis_11_pilot.json` define 20 conjuntos exploratorios; no se ha completado todavía una campaña confirmatoria.
 
 ## 5. Trabajo pendiente y dictamen
 

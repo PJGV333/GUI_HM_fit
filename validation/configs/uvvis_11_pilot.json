@@ -1,0 +1,9 @@
+{
+  "scenario": "uvvis_11_iid",
+  "replicates": 20,
+  "seed": 20261102,
+  "points": 8,
+  "noise": 0.0002,
+  "method": "analytic",
+  "workers": 2
+}
