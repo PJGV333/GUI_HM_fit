@@ -26,7 +26,7 @@ import re
 import logging
 warnings.filterwarnings("ignore")
 from ..utils.errors import compute_errors_spectro_varpro, pinv_cs, percent_error_log10K, sensitivities_wrt_logK
-from ..utils.nnls_utils import solve_A_nnls_pgd, solve_A_nnls_pgd2
+from ..utils.nnls_utils import WeightedLinearSolveError, solve_A_nnls_pgd, solve_A_nnls_pgd2
 from ..utils.noncoop_utils import noncoop_derived_from_logK1
 from ..utils.solver_param_transform import (
     SolverParamTransformWrapper,
@@ -408,7 +408,7 @@ def compute_spectral_weights(Y, mode="none", eps=1e-12, power=1.0, normalize=Tru
     return w, meta
 
 
-def _compute_lower_bound(C, YT, delta_mode="off", delta_rel=0.01):
+def _compute_lower_bound(C, YT, delta_mode="off", delta_rel=0.01, weights_row=None):
     mode_norm = _normalize_mode(delta_mode, {"off", "relative"}, "off")
     if mode_norm == "off":
         return None
@@ -416,7 +416,16 @@ def _compute_lower_bound(C, YT, delta_mode="off", delta_rel=0.01):
     if not onp.isfinite(rel) or rel <= 0.0:
         return None
     try:
-        A0 = onp.linalg.pinv(onp.asarray(C, dtype=float)) @ onp.asarray(YT, dtype=float)
+        W, per_point = _resolve_weights_matrix(weights_row, C.shape[0], YT.shape[1])
+        if per_point:
+            A0 = onp.zeros((onp.asarray(C).shape[1], YT.shape[1]), dtype=float)
+            for j in range(YT.shape[1]):
+                Cs, idx, _ = _weighted_column_system(onp.asarray(C, dtype=float), W[:, j])
+                if Cs is None or idx is None:
+                    continue
+                A0[:, j] = onp.linalg.lstsq(Cs, YT[idx, j] * W[idx, j], rcond=None)[0]
+        else:
+            A0 = onp.linalg.pinv(onp.asarray(C, dtype=float)) @ onp.asarray(YT, dtype=float)
     except Exception:
         return None
     if A0.size == 0:
@@ -502,46 +511,140 @@ def absorptivity_constraint_report(
     }
 
 
-def _exact_soft_penalty_columns(C, YT, mu=1e-2, max_newton=60):
-    """Semismooth-Newton (active set) solver for the soft non-negativity penalty."""
+def _resolve_weights_matrix(weights_row, m, nw):
+    """
+    Normalize ``weights_row`` (element-wise residual weights) to an (m, nw)
+    matrix plus a ``per_point`` flag.
+
+    Accepted shapes: (nw,), (m, nw), or (1, nw)/(m, 1) broadcasts. ``per_point``
+    is True only when at least one wavelength column varies along the points;
+    that is the case where the linear estimator must be re-weighted per column
+    (constant per-wavelength weights do not change the argmin of any of the
+    column problems: a positive scalar column scaling cancels).
+    """
+    if weights_row is None:
+        return None, False
+    W = np.asarray(weights_row, dtype=float)
+    W = np.nan_to_num(np.abs(W), nan=0.0, posinf=0.0, neginf=0.0)
+    if W.ndim == 1:
+        if W.size == nw:
+            W = np.broadcast_to(W.reshape(1, nw), (m, nw))
+        elif W.size == m:
+            W = np.broadcast_to(W.reshape(m, 1), (m, nw))
+        else:
+            raise ValueError(f"weights_row size {W.size} incompatible with ({m}, {nw}).")
+    elif W.shape == (1, nw):
+        W = np.broadcast_to(W, (m, nw))
+    elif W.shape != (m, nw):
+        try:
+            W = np.broadcast_to(W, (m, nw))
+        except ValueError:
+            raise ValueError(f"weights_row shape {W.shape} incompatible with ({m}, {nw}).")
+    return W, bool(np.any(W != W[0:1, :]))
+
+
+def _weighted_column_system(C, W_col):
+    """Row-scaled system for one wavelength: rows scaled by the residual
+    multiplier W_col (the data term is sum_i (W_i r_i)^2)."""
+    valid = W_col > 0.0
+    idx = np.flatnonzero(valid)
+    if idx.size == 0:
+        return None, None, idx
+    Cs = C[idx] * W_col[idx, None]
+    return Cs, idx, idx
+
+
+def _exact_soft_penalty_columns(C, YT, mu=1e-2, max_newton=60, weights_row=None):
+    """Semismooth-Newton (active set) solver for the soft non-negativity penalty.
+
+    With per-point weights W (m x nw, varying along the points) each wavelength
+    column is solved on the row-scaled system (rows scaled by the residual
+    multiplier w_ij); the penalty constant is scaled per column as
+    mu_j = mu * mean_{w>0}(w_ij^2) so
+    its strength relative to the weighted data term matches the unweighted
+    problem. For weights constant along a column this reproduces the
+    unweighted absorptivities exactly (positive column scaling cancels).
+    """
     C = onp.asarray(C, dtype=float)
     Y = onp.asarray(YT, dtype=float)
-    G = C.T @ C
-    B = C.T @ Y
-    A = onp.linalg.lstsq(C, Y, rcond=None)[0]
-    neg_cols = onp.where(onp.any(A < 0.0, axis=0))[0]
-    s = G.shape[0]
-    for j in neg_cols:
-        a = A[:, j]
-        active = a < 0.0
-        for _ in range(int(max_newton)):
-            H = G + float(mu) * onp.diag(active.astype(float))
-            try:
-                a_new = onp.linalg.solve(H, B[:, j])
-            except onp.linalg.LinAlgError:
-                a_new = onp.linalg.lstsq(H, B[:, j], rcond=None)[0]
-            new_active = a_new < 0.0
-            a = a_new
-            if onp.array_equal(new_active, active):
-                break
-            active = new_active
+    W, per_point = _resolve_weights_matrix(weights_row, C.shape[0], Y.shape[1])
+    if not per_point:
+        G = C.T @ C
+        B = C.T @ Y
+        A = onp.linalg.lstsq(C, Y, rcond=None)[0]
+        neg_cols = onp.where(onp.any(A < 0.0, axis=0))[0]
+        for j in neg_cols:
+            a = A[:, j]
+            active = a < 0.0
+            for _ in range(int(max_newton)):
+                H = G + float(mu) * onp.diag(active.astype(float))
+                try:
+                    a_new = onp.linalg.solve(H, B[:, j])
+                except onp.linalg.LinAlgError:
+                    a_new = onp.linalg.lstsq(H, B[:, j], rcond=None)[0]
+                new_active = a_new < 0.0
+                a = a_new
+                if onp.array_equal(new_active, active):
+                    break
+                active = new_active
+            A[:, j] = a
+        return A
+    # Per-point weights: exact weighted column problems.
+    s = C.shape[1]
+    A = onp.zeros((s, Y.shape[1]), dtype=float)
+    for j in range(Y.shape[1]):
+        Cs, idx, _ = _weighted_column_system(C, W[:, j])
+        if Cs is None or idx is None:
+            continue
+        ys = Y[idx, j] * W[idx, j]
+        Gj = Cs.T @ Cs
+        bj = Cs.T @ ys
+        mu_j = float(mu) * float(onp.mean(W[idx, j] ** 2))
+        a = onp.linalg.lstsq(Cs, ys, rcond=None)[0]
+        if onp.any(a < 0.0):
+            active = a < 0.0
+            for _ in range(int(max_newton)):
+                H = Gj + mu_j * onp.diag(active.astype(float))
+                try:
+                    a_new = onp.linalg.solve(H, bj)
+                except onp.linalg.LinAlgError:
+                    a_new = onp.linalg.lstsq(H, bj, rcond=None)[0]
+                new_active = a_new < 0.0
+                a = a_new
+                if onp.array_equal(new_active, active):
+                    break
+                active = new_active
         A[:, j] = a
     return A
 
 
-def _exact_nnls_columns(C, YT):
-    """Exact NNLS (Lawson-Hanson active set) for every wavelength column."""
+def _exact_nnls_columns(C, YT, weights_row=None):
+    """Exact NNLS (Lawson-Hanson active set) for every wavelength column.
+
+    Per-point weights scale each column system's rows by the residual
+    multiplier w_ij; NNLS is invariant under positive scaling of the whole
+    system, so weights constant along a column leave the solution unchanged.
+    """
     from scipy.optimize import nnls as _nnls
 
     C = onp.asarray(C, dtype=float)
     Y = onp.asarray(YT, dtype=float)
-    # Column scaling improves the conditioning of the active-set solver.
-    norms = onp.linalg.norm(C, axis=0)
-    norms = onp.where(norms > 0, norms, 1.0)
-    Cs = C / norms[None, :]
+    W, per_point = _resolve_weights_matrix(weights_row, C.shape[0], Y.shape[1])
     A = onp.zeros((C.shape[1], Y.shape[1]), dtype=float)
     for j in range(Y.shape[1]):
-        A[:, j] = _nnls(Cs, Y[:, j], maxiter=50 * max(C.shape[1], 1))[0] / norms
+        if per_point:
+            Cs, idx, _ = _weighted_column_system(C, W[:, j])
+            if Cs is None or idx is None:
+                continue
+            ys = Y[idx, j] * W[idx, j]
+        else:
+            Cs = C
+            ys = Y[:, j]
+        # Column scaling improves the conditioning of the active-set solver.
+        norms = onp.linalg.norm(Cs, axis=0)
+        norms = onp.where(norms > 0, norms, 1.0)
+        Csc = Cs / norms[None, :]
+        A[:, j] = _nnls(Csc, ys, maxiter=50 * max(Cs.shape[1], 1))[0] / norms
     return A
 
 
@@ -555,19 +658,22 @@ def _solve_absorptivities(
     alpha_smooth=0.0,
     smooth_matrix=None,
     max_iters=300,
+    weights_row=None,
 ):
     mode_norm = _normalize_mode(eps_solver_mode, {"soft_penalty", "soft_bound", "nnls_hard"}, "soft_penalty")
+    W, per_point = _resolve_weights_matrix(weights_row, C.shape[0] if hasattr(C, "shape") else len(C), YT.shape[1])
+    W_arg = W if per_point else weights_row
     if mode_norm == "nnls_hard":
-        return _exact_nnls_columns(C, YT), None
+        return _exact_nnls_columns(C, YT, weights_row=W_arg), None
     if mode_norm == "soft_penalty" and delta_mode == "off" and float(alpha_smooth) <= 0.0:
         # Exact solution of  min 1/2||C a - y||^2 + 1/2 mu ||min(a,0)||^2  per wavelength.
         # The former fixed-iteration gradient descent did not converge whenever mu
         # dominated C^T C (concentrations ~1e-3 M => C^T C ~1e-5): negative entries were
         # clipped without re-fitting the rest, which biased log K (~+0.04 in a 1:1
         # benchmark) and artificially shrank its variance.
-        return _exact_soft_penalty_columns(C, YT, mu=float(mu)), None
+        return _exact_soft_penalty_columns(C, YT, mu=float(mu), weights_row=W_arg), None
     lb_mode = "relative" if mode_norm == "soft_bound" else delta_mode
-    lower_bound = _compute_lower_bound(C, YT, delta_mode=lb_mode, delta_rel=delta_rel)
+    lower_bound = _compute_lower_bound(C, YT, delta_mode=lb_mode, delta_rel=delta_rel, weights_row=W_arg)
     A = solve_A_nnls_pgd(
         C,
         YT,
@@ -577,6 +683,7 @@ def _solve_absorptivities(
         lower_bound=lower_bound,
         alpha_smooth=float(alpha_smooth),
         smooth_matrix=smooth_matrix,
+        weights_row=W_arg,
     )
     return A, lower_bound
 
@@ -744,6 +851,7 @@ def _solve_spectral_model(
     alpha_smooth=0.0,
     smooth_matrix=None,
     max_iters=300,
+    weights_row=None,
 ):
     C_eff, G_map = _apply_abs_group_map(C_abs, group_map=group_map)
     E_group, lower_bound = _solve_absorptivities(
@@ -756,6 +864,7 @@ def _solve_spectral_model(
         alpha_smooth=alpha_smooth,
         smooth_matrix=smooth_matrix,
         max_iters=max_iters,
+        weights_row=weights_row,
     )
     E_group = onp.asarray(E_group, dtype=float)
     A_species = G_map @ E_group
@@ -1124,11 +1233,14 @@ def _evaluate_spectro_objective(
                 alpha_smooth=alpha_smooth,
                 smooth_matrix=smooth_matrix,
                 max_iters=300,
+                weights_row=weights_row,
             )
             r = fit["yfit"] - y_transposed
             r_w = r * weights_row
             rms = float(np.sqrt(np.mean(np.square(r_w))))
             val = rms if onp.isfinite(rms) else 1e50
+    except WeightedLinearSolveError:
+        raise
     except Exception:
         objective_state["error_count"] += 1
         val = 1e50
@@ -1350,6 +1462,8 @@ def _run_spectro_single_start(
                 bounds=processed_bounds,
                 callback=callback_log,
             )
+    except WeightedLinearSolveError:
+        raise
     except Exception as exc:
         if _is_fit_cancelled(exc):
             raise
@@ -1445,10 +1559,13 @@ def process_spectroscopy_data(
     preset_k=None,
     multi_start_parallel: bool = False,
     multi_start_max_workers: int | None = None,
+    weights_matrix=None,
 ):
     """
     Main processing function.
     Returns dict with results and optional base64-encoded graphs.
+    weights_matrix contains nonnegative statistical weights per observation;
+    existing wavelength weights remain residual multipliers.
     """
     log_lines = []
     t_total_start = time.perf_counter()
@@ -1670,6 +1787,35 @@ def process_spectroscopy_data(
     Y_raw = np.asarray(Y_used_matrix_raw.T)
     weights_lambda = np.asarray(weights_per_lambda, dtype=float)
     weights_row = weights_lambda[None, :]
+    # Phase 2: optional per-point weight matrix (n_points x n_lambda), in the
+    # same orientation as the residual matrix used by the fit (rows = titration
+    # points, columns = wavelengths). Multiplies the per-wavelength profile and
+    # drives the weighted column estimator so the linear projection minimizes
+    # exactly the same weighted residual as the objective.
+    if weights_matrix is not None:
+        Wm = np.asarray(weights_matrix, dtype=float)
+        expected_shape = (int(Y_used_matrix_corr.shape[0]), int(Y_used_matrix_corr.shape[1]))
+        if Wm.shape == (1, expected_shape[1]):
+            Wm = np.broadcast_to(Wm, expected_shape).copy()
+        elif Wm.shape == (expected_shape[0], 1):
+            Wm = np.broadcast_to(Wm, expected_shape).copy()
+        if Wm.shape != expected_shape:
+            raise ValueError(
+                f"weights_matrix shape {Wm.shape} does not match data matrix {expected_shape} "
+                "(rows = titration points, columns = wavelengths)."
+            )
+        if not np.all(np.isfinite(Wm)) or np.any(Wm < 0):
+            raise ValueError("weights_matrix must contain finite nonnegative statistical weights.")
+        weights_row = weights_lambda[None, :] * np.sqrt(Wm)
+        log_progress(
+            "Per-point weights matrix active: shape %s, min=%.3g, max=%.3g, zeros=%d"
+            % (
+                tuple(Wm.shape),
+                float(Wm.min()) if Wm.size else 0.0,
+                float(Wm.max()) if Wm.size else 0.0,
+                int(np.count_nonzero(Wm == 0.0)),
+            )
+        )
     n_lambda = int(Y.shape[0])
     smooth_matrix = None
     if alpha_smooth > 0.0:
@@ -1867,6 +2013,7 @@ def process_spectroscopy_data(
             alpha_smooth=alpha_smooth,
             smooth_matrix=smooth_matrix,
             max_iters=300,
+            weights_row=weights_row,
         )
         lb_preview = preview_fit.get("lower_bound")
     except Exception:
@@ -1898,6 +2045,7 @@ def process_spectroscopy_data(
             alpha_smooth=alpha_smooth,
             smooth_matrix=smooth_matrix,
             max_iters=300,
+            weights_row=weights_row,
         )
         r = fit["yfit"] - onp.asarray(Y.T, dtype=float)
         r_w = r * weights_row
@@ -2042,6 +2190,8 @@ def process_spectroscopy_data(
                         ms_idx = futures[fut]
                         try:
                             run_result = fut.result()
+                        except WeightedLinearSolveError:
+                            raise
                         except Exception as run_exc:
                             run_result = {
                                 "ok": False,
@@ -2049,6 +2199,8 @@ def process_spectroscopy_data(
                                 "objective_evaluations": 0,
                             }
                         _consume_run(ms_idx, run_result)
+        except WeightedLinearSolveError:
+            raise
         except Exception as parallel_exc:
             if _is_fit_cancelled(parallel_exc):
                 raise
@@ -2077,7 +2229,7 @@ def process_spectroscopy_data(
         k=k, res=res, Y=Y, modelo=modelo, nas=nas,
         rcond=1e-10, use_projector=True,
         param_names=k_names,
-        weights=weights_per_lambda,
+        weights=weights_row,
         group_map=abs_group_map,
         param_transform=solver_param_transform_arr,
         fixed_mask=fixed_from_bounds if len(fixed_from_bounds) == len(k) else None,
@@ -2108,6 +2260,7 @@ def process_spectroscopy_data(
         alpha_smooth=alpha_smooth,
         smooth_matrix=smooth_matrix,
         max_iters=300,
+        weights_row=weights_row,
     )
     A_solver = final_fit["E_group"]
     A_species_solver = final_fit["A_species"]
@@ -2435,7 +2588,8 @@ def process_spectroscopy_data(
         "yfit": np.asarray(yfit).tolist() if yfit is not None else [],
         "baseline_vals": onp.asarray(baseline_vals, dtype=float).tolist(),
         "baseline_meta": baseline_meta,
-        "weights": onp.asarray(weights_per_lambda, dtype=float).tolist(),
+        "weights": (onp.asarray(weights_row, dtype=float).tolist() if weights_matrix is not None
+                    else onp.asarray(weights_per_lambda, dtype=float).tolist()),
         "weighting_meta": weighting_meta,
         "eps_solver_mode": eps_solver_mode,
         "eps_constraint_active": int(constraint_report["n_active"]),

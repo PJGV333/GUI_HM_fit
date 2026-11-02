@@ -1691,13 +1691,18 @@ class SpectroscopyTab(QWidget):
             bounds_raw = list(bounds_raw) if bounds_raw is not None else []
             weights_raw = ctx.get("weights")
             if weights_raw is None:
-                weights = np.ones(Y_star.shape[0], dtype=float)
+                weights_row = np.ones((1, Y_star.shape[0]), dtype=float)
             else:
-                weights = np.asarray(weights_raw, dtype=float).ravel()
-                if weights.size != Y_star.shape[0]:
-                    weights = np.ones(Y_star.shape[0], dtype=float)
-            weights = np.nan_to_num(np.abs(weights), nan=1.0, posinf=1.0, neginf=1.0)
-            weights_row = weights.reshape(1, -1)
+                weights = np.asarray(weights_raw, dtype=float)
+                if weights.size == 0:
+                    weights_row = np.ones((1, Y_star.shape[0]), dtype=float)
+                elif weights.shape == (Y_star.shape[0],):
+                    weights_row = weights.reshape(1, -1)
+                elif weights.shape == Y_star.T.shape:
+                    weights_row = weights
+                else:
+                    raise ValueError("Weights shape does not match the spectra being refitted.")
+            weights_row = np.nan_to_num(np.abs(weights_row), nan=1.0, posinf=1.0, neginf=1.0)
             smooth_matrix = None
             if alpha_smooth > 0.0 and Y_star.shape[0] >= 3:
                 smooth_matrix = _build_smoothness_laplacian(int(Y_star.shape[0]))
@@ -1753,6 +1758,7 @@ class SpectroscopyTab(QWidget):
                         alpha_smooth=float(alpha_smooth),
                         smooth_matrix=smooth_matrix,
                         max_iters=300,
+                        weights_row=weights_row,
                     )
                     r = fit["yfit"] - np.asarray(Y_star.T, dtype=float)
                     r_w = r * weights_row

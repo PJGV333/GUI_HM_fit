@@ -65,6 +65,7 @@ def run_spectroscopy(config: Mapping[str, Any] | Any, progress_cb: ProgressCallb
         weighting_eps=cfg.get("weighting_eps", 1e-12),
         weighting_power=cfg.get("weighting_power", 1.0),
         weighting_normalize=bool(cfg.get("weighting_normalize", True)),
+        weights_matrix=cfg.get("weights_matrix"),
         eps_solver_mode=str(cfg.get("eps_solver_mode") or "soft_penalty"),
         eps_mu=cfg.get("mu", 1e-2),
         delta_mode=str(cfg.get("delta_mode") or "off"),

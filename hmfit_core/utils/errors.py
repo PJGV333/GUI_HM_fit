@@ -405,6 +405,80 @@ except Exception:
     pass
 
 
+def _weighted_column_lstsq(C, YT, W, rcond=1e-10):
+    """
+    Per-wavelength weighted least-squares projection.
+
+    C  : (m, s)    concentration/design matrix (rows = titration points)
+    YT : (m, nw)   observed data matrix (columns = wavelengths)
+    W  : (m, nw)   residual weights (the data term is sum_i W[i,j]^2 (C a - y_j)^2)
+
+    W holds residual multipliers (the data term is sum_i (W[i,j] r_ij)^2), so
+    each column system has its rows scaled by W[:, j] and a plain
+    least-squares problem is solved; this is the exact weighted solution and
+    reduces to the unweighted projection when the column of W is constant
+    (positive scaling cancels in the argmin). Zero-weight rows drop out of the
+    column problem entirely.
+
+    Returns (A, n_linear_per_lambda):
+      A (s, nw) coefficients; n_linear_per_lambda[j] = rank of the effective
+      design for wavelength j (used for the residual degrees of freedom).
+    """
+    C = _onp.asarray(C, dtype=float)
+    YT = _onp.asarray(YT, dtype=float)
+    W = _onp.asarray(W, dtype=float)
+    m, nw = YT.shape
+    s = C.shape[1]
+    A = _onp.zeros((s, nw), dtype=float)
+    n_lin = _onp.zeros(nw, dtype=int)
+    for j in range(nw):
+        f = W[:, j]
+        valid = f > 0.0
+        if not _onp.any(valid):
+            continue
+        Cs = C[valid] * f[valid, None]
+        ys = YT[valid, j] * f[valid]
+        A[:, j] = _onp.linalg.lstsq(Cs, ys, rcond=rcond)[0]
+        n_lin[j] = int(_onp.linalg.matrix_rank(Cs, tol=None))
+    return np.asarray(A), n_lin
+
+
+def _jac_varpro_weighted(C, A, dC_all, W, rcond=1e-10):
+    """
+    Variable-projection Jacobian consistent with per-wavelength weighted columns.
+
+    Same sign/shape convention as ``_jac_varpro`` (J is (p, m*nw) over the
+    row-major flattening of the residual matrix, J = +(I - P_j) applied to the
+    scaled column derivative). W holds residual multipliers; for each
+    wavelength j (with f = W[:, j]):
+        r_j = f * (C a_j - y_j)   (the exact weighted residual),
+        J_j = (I - P_j) diag(f) dC a_j,   P_j = projector of col(diag(f) C),
+    so J_j = d r_j / d theta up to sign. For constant f this equals the
+    unweighted projector result multiplied by f, i.e. identical to the flat
+    ``_jac_varpro(...) * W.ravel()`` convention.
+    """
+    C = _onp.asarray(C, dtype=float)
+    A = _onp.asarray(A, dtype=float)
+    dC_all = _onp.asarray(dC_all, dtype=float)
+    W = _onp.asarray(W, dtype=float)
+    m, nw = W.shape
+    p = dC_all.shape[2]
+    J = _onp.zeros((p, m * nw), dtype=float)
+    for j in range(nw):
+        f = W[:, j]
+        valid = f > 0.0
+        if not _onp.any(valid):
+            continue
+        idx = _onp.flatnonzero(valid)
+        V = _onp.einsum("isp,s->ip", dC_all[idx], A[:, j])  # (nv, p)
+        V = V * f[idx, None]
+        Cs = C[idx] * f[idx, None]
+        P = Cs @ _onp.linalg.pinv(Cs, rcond=rcond)
+        Vp = V - P @ V
+        J[:, idx * nw + j] = Vp.T
+    return np.asarray(J)
+
+
 def _build_dC_all(Co, Ms, nas, param_idx):
     """
     Co      : (m × nspec) todas las especies
@@ -521,11 +595,9 @@ def compute_errors_spectro_varpro(
     G_map = np.asarray(G_map_onp, dtype=float)
     C_eff = np.asarray(_as_onp(C) @ G_map_onp, dtype=float)
 
-    # Ajuste lineal y residuo
-    A_group = _pinv_backend(C_eff, rcond=rcond) @ Y.T      # (n_group × nw)
-    A_species = G_map @ A_group                            # (n_abs × nw)
-    R   = (C_eff @ A_group - Y.T)                          # (m × nw)
-    m_obs, nw = int(R.shape[0]), int(R.shape[1])
+    # Ajuste lineal y residuo (se resuelve abajo, una vez conocidos los pesos;
+    # aquí solo se necesitan las formas para construir la matriz de pesos).
+    m_obs, nw = int(Y.shape[1]), int(Y.shape[0])   # Y: (nw × m) -> R: (m × nw)
 
     # Pesos espectrales (por lambda) o por punto.
     W_onp = _onp.ones((m_obs, nw), dtype=float)
@@ -541,21 +613,42 @@ def compute_errors_spectro_varpro(
                 W_onp = _onp.broadcast_to(w_in, (m_obs, nw)).copy()
             except ValueError:
                 W_onp = _onp.ones((m_obs, nw), dtype=float)
-    W = np.asarray(W_onp, dtype=R.dtype)
+    W = np.asarray(W_onp, dtype=float)
+    # Phase 2: when the weights vary along the titration points (per-point
+    # matrix m x nw), the linear projection must be the weighted one: for each
+    # wavelength the rows are scaled by the residual multiplier W (the square
+    # root of the corresponding statistical weight) and solved column by column.
+    # With weights constant per wavelength, weighted and unweighted projections
+    # coincide (positive column scaling
+    # cancels in the argmin), so the fast global-pinv path is kept.
+    per_point_weights = bool(np.any(W != W[0:1, :]))
+    if per_point_weights:
+        A_group, n_lin_per_lambda = _weighted_column_lstsq(
+            np.asarray(C_eff, dtype=float), np.asarray(Y, dtype=float).T, W, rcond=rcond
+        )
+    else:
+        A_group = _pinv_backend(C_eff, rcond=rcond) @ Y.T      # (n_group × nw)
+        n_lin_per_lambda = None
+    A_species = G_map @ A_group                            # (n_abs × nw)
+    R   = (C_eff @ A_group - Y.T)                          # (m × nw)
     R_w = R * W
     r = R_w.reshape(-1)
     # Linear parameters (pure spectra, rank(C_eff) per wavelength) also consume dof.
-    try:
-        rank_c = int(_onp.linalg.matrix_rank(_as_onp(C_eff), tol=None))
-    except Exception:
-        rank_c = int(C_eff.shape[1])
     # Only observations with positive weight are data; a wavelength with zero weight
     # everywhere contributes neither observations nor fitted linear coefficients.
-    W_onp_arr = _onp.asarray(W_onp, dtype=float)
-    used = W_onp_arr > 0.0
-    n_obs_used = int(_onp.count_nonzero(used))
-    n_wl_used = int(_onp.count_nonzero(_onp.any(used, axis=0)))
-    n_linear = int(rank_c * n_wl_used)
+    used = W > 0.0
+    n_obs_used = int(np.count_nonzero(used))
+    n_wl_used = int(np.count_nonzero(np.any(used, axis=0)))
+    if per_point_weights:
+        # Per-wavelength rank of the effective design restricted to the rows
+        # with positive weight (row scaling does not change rank).
+        n_linear = int(np.sum(np.asarray(n_lin_per_lambda)))
+    else:
+        try:
+            rank_c = int(_onp.linalg.matrix_rank(_as_onp(C_eff), tol=None))
+        except Exception:
+            rank_c = int(C_eff.shape[1])
+        n_linear = int(rank_c * n_wl_used)
 
     fixed = _onp.zeros(p, dtype=bool)
     if fixed_mask is not None:
@@ -571,9 +664,12 @@ def compute_errors_spectro_varpro(
     if param_transform_onp is not None:
         dC_all = np.tensordot(dC_all, np.asarray(param_transform_onp, dtype=float), axes=(2, 0))
     dC_eff = np.transpose(np.tensordot(dC_all, G_map, axes=(1, 0)), (0, 2, 1))
-    J_raw = _jac_varpro(C_eff, A_group, dC_eff, use_projector=use_projector, rcond=rcond)
-    W_flat = W.reshape(-1)
-    J = J_raw * W_flat[None, :]
+    if per_point_weights:
+        J = _jac_varpro_weighted(C_eff, A_group, dC_eff, W, rcond=rcond)
+    else:
+        J_raw = _jac_varpro(C_eff, A_group, dC_eff, use_projector=use_projector, rcond=rcond)
+        W_flat = W.reshape(-1)
+        J = J_raw * W_flat[None, :]
 
     # Covariance of the free parameters (fixed ones: exactly zero, by definition)
     J_onp = _as_onp(J)

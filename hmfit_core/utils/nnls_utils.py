@@ -1,3 +1,5 @@
+import numpy as onp
+
 from .np_backend import xp as np, jacrev, jit, lax, USE_JAX
 # from jax import lax # Removed direct import
 
@@ -58,6 +60,82 @@ def _penalty_smooth_step(C, Y, A, ridge, mu, alpha_smooth, smooth_matrix, step):
     return A - step * grad
 
 
+class WeightedLinearSolveError(RuntimeError):
+    """A weighted linear optimization could not produce a reliable solution."""
+
+
+def _solve_weighted_penalty_newton(C, Y, W, ridge, mu, lower_bound,
+                                   alpha_smooth, smooth_matrix, max_iters):
+    """Projected semismooth Newton for the weighted, penalized linear problem.
+
+    The data Hessian, the active negative-coefficient penalty and the smoothness
+    Hessian are assembled explicitly. A projected line search handles both the
+    lower bound and changes in the penalty active set. Never return a result
+    without checking projected first-order optimality.
+    """
+    C, Y, W = (onp.asarray(x, dtype=float) for x in (C, Y, W))
+    s, nw = C.shape[1], Y.shape[1]
+    size = s * nw
+    if size > 4000:
+        raise WeightedLinearSolveError("weighted Newton system exceeds the supported size")
+    W2 = W * W
+    H0 = onp.zeros((size, size), dtype=float)
+    for j in range(nw):
+        indices = onp.arange(s) * nw + j
+        H0[onp.ix_(indices, indices)] = C.T @ (W2[:, j, None] * C)
+    H0.flat[::size + 1] += float(ridge)
+    L = None
+    if alpha_smooth > 0 and smooth_matrix is not None:
+        L = onp.asarray(smooth_matrix, dtype=float)
+        if L.shape != (nw, nw):
+            raise ValueError("smooth_matrix shape does not match the data")
+        H0 += float(alpha_smooth) * onp.kron(onp.eye(s), L)
+    b = (C.T @ (W2 * Y)).ravel()
+    lower = onp.full(size, -onp.inf)
+    if lower_bound is not None:
+        lb = onp.asarray(lower_bound, dtype=float)
+        if lb.ndim == 1 and lb.size == s:
+            lb = lb[:, None]
+        lower = onp.broadcast_to(lb, (s, nw)).ravel()
+    x = onp.maximum(onp.zeros(size), lower)
+
+    def objective(z):
+        A = z.reshape(s, nw)
+        return (0.5 * onp.sum((W * (C @ A - Y)) ** 2)
+                + 0.5 * float(ridge) * onp.dot(z, z)
+                + 0.5 * float(mu) * onp.dot(onp.minimum(z, 0), onp.minimum(z, 0))
+                + (0.5 * float(alpha_smooth) * onp.sum((A @ L) * A)
+                   if L is not None else 0.0))
+
+    for _ in range(int(max_iters)):
+        grad = H0 @ x - b + float(mu) * onp.minimum(x, 0)
+        active = (x <= lower + 1e-12) & (grad > 0)
+        projected_grad = onp.where(active, 0.0, grad)
+        if onp.max(onp.abs(projected_grad), initial=0.0) <= 1e-10 * max(1.0, onp.max(onp.abs(b), initial=0.0)):
+            return np.asarray(x.reshape(s, nw))
+        free = onp.flatnonzero(~active)
+        H = H0[onp.ix_(free, free)].copy()
+        H.flat[::len(free) + 1] += float(mu) * (x[free] < 0)
+        scale = max(float(onp.max(onp.abs(onp.diag(H)), initial=0.0)), 1e-20)
+        direction = onp.zeros(size)
+        try:
+            direction[free] = onp.linalg.solve(H + onp.eye(len(free)) * scale * 1e-12,
+                                               -grad[free])
+        except onp.linalg.LinAlgError as exc:
+            raise WeightedLinearSolveError("weighted Newton system is singular") from exc
+        value = objective(x)
+        step = 1.0
+        for _ in range(50):
+            candidate = onp.maximum(x + step * direction, lower)
+            if objective(candidate) <= value + 1e-4 * onp.dot(grad, candidate - x):
+                x = candidate
+                break
+            step *= 0.5
+        else:
+            raise WeightedLinearSolveError("weighted Newton line search failed")
+    raise WeightedLinearSolveError("weighted Newton did not converge")
+
+
 def solve_A_nnls_pgd(
     C,
     Y,
@@ -67,15 +145,37 @@ def solve_A_nnls_pgd(
     lower_bound=None,
     alpha_smooth=0.0,
     smooth_matrix=None,
+    weights_row=None,
 ):
     """
     Minimiza ½||CA−Y||² + ½·ridge||A||² + ½·mu||min(A,0)||²
     (sin proyección dura; permite A<0 pero lo penaliza).
     C: (m,s), Y: (m,nw) -> A: (s,nw)
     lower_bound: límite inferior suave opcional (p.ej. -δ).
+    weights_row: pesos (m,nw) que varían por punto: el término de datos pasa a
+    ser ½Σ_ij w_ij² (CA−Y)_ij² y el gradiente se evalúa en el sistema ponderado.
+    Con pesos constantes por λ el problema sin ponderar es equivalente (scale
+    invariance) y se mantiene la ruta original.
     """
     C = np.asarray(C)
     Y = np.asarray(Y)
+
+    Wm = None
+    if weights_row is not None:
+        Wm = np.asarray(weights_row, dtype=C.dtype)
+        Wm = np.nan_to_num(np.abs(Wm), nan=0.0, posinf=0.0, neginf=0.0)
+        if Wm.ndim == 1:
+            if Wm.size == Y.shape[1]:
+                Wm = np.broadcast_to(Wm.reshape(1, Y.shape[1]), (C.shape[0], Y.shape[1]))
+            elif Wm.size == C.shape[0]:
+                Wm = np.broadcast_to(Wm.reshape(C.shape[0], 1), (C.shape[0], Y.shape[1]))
+        elif Wm.shape != (C.shape[0], Y.shape[1]):
+            Wm = np.broadcast_to(Wm, (C.shape[0], Y.shape[1]))
+        if bool(np.any(Wm != Wm[0:1, :])):
+            return _solve_weighted_penalty_newton(
+                C, Y, Wm, ridge, mu, lower_bound, alpha_smooth, smooth_matrix, max_iters
+            )
+        Wm = None  # constant columns: original unweighted path is equivalent
 
     # Paso estable: 1/(||C||² + ridge + mu + alpha*||L||)
     svals = np.linalg.svd(C, compute_uv=False)
