@@ -121,6 +121,18 @@ def test_nmr_one_step_identifiability_uses_original_jacobian(monkeypatch):
     assert np.isnan(result["samples"]).all()
 
 
+def test_absolute_unregularized_wavelengths_do_not_build_dense_global_system():
+    from hmfit_core.processors.spectroscopy_processor import _solve_absorptivities
+    rng = np.random.default_rng(44)
+    C = rng.uniform(0.5, 1.5, size=(6, 3))
+    truth = rng.uniform(1.0, 2.0, size=(3, 1400))
+    Y = C @ truth
+    W = np.tile(np.linspace(0.5, 1.5, Y.shape[1]), (Y.shape[0], 1))
+    A, _ = _solve_absorptivities(C, Y, mu=0.01, weights_row=W,
+                                  weight_regularization_mode="absolute")
+    np.testing.assert_allclose(A, truth, rtol=1e-7, atol=1e-7)
+
+
 def test_absolute_weighted_smoothing_matches_independent_optimum():
     from scipy.optimize import minimize
     from hmfit_core.processors.spectroscopy_processor import _solve_absorptivities

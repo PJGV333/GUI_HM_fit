@@ -674,8 +674,20 @@ def _solve_absorptivities(
         lb_mode = "relative" if mode_norm == "soft_bound" else delta_mode
         lower_bound = _compute_lower_bound(C, YT, delta_mode=lb_mode, delta_rel=delta_rel, weights_row=W_arg)
         multipliers = onp.ones_like(YT, dtype=float) if W is None else W
-        A = _solve_weighted_penalty_newton(C, YT, multipliers, 0.0, float(mu), lower_bound,
-                                           float(alpha_smooth), smooth_matrix, max_iters)
+        if float(alpha_smooth) == 0.0:
+            # Without spectral coupling, solve each column independently. This
+            # avoids allocating a (species*wavelengths)^2 dense Hessian.
+            columns = []
+            for j in range(YT.shape[1]):
+                a = _solve_weighted_penalty_newton(
+                    C, YT[:, j:j + 1], multipliers[:, j:j + 1], 0.0, float(mu),
+                    lower_bound, 0.0, None, max_iters,
+                )
+                columns.append(onp.asarray(a, dtype=float))
+            A = onp.concatenate(columns, axis=1)
+        else:
+            A = _solve_weighted_penalty_newton(C, YT, multipliers, 0.0, float(mu), lower_bound,
+                                               float(alpha_smooth), smooth_matrix, max_iters)
         return A, lower_bound
     if weight_regularization_mode == "absolute" and mode_norm == "nnls_hard" and float(alpha_smooth) > 0.0:
         raise NotImplementedError("absolute mode does not support NNLS with smoothing")
