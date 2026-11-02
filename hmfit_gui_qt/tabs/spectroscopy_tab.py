@@ -1625,6 +1625,7 @@ class SpectroscopyTab(QWidget):
             "bounds": (self._last_config or {}).get("bounds", []),
             "fixed_mask": (self._last_config or {}).get("fixed_mask", []),
             "eps_solver_mode": (self._last_config or {}).get("eps_solver_mode", "soft_penalty"),
+            "weight_regularization_mode": export_data.get("weight_regularization_mode", "legacy"),
             "mu": (self._last_config or {}).get("mu", 1e-2),
             "delta_mode": (self._last_config or {}).get("delta_mode", "off"),
             "delta_rel": (self._last_config or {}).get("delta_rel", 0.01),
@@ -1662,6 +1663,7 @@ class SpectroscopyTab(QWidget):
                 _build_bounds_list,
                 _build_smoothness_laplacian,
                 _solve_spectral_model,
+                _spectral_profile_objective,
             )
             from hmfit_core.solvers import NewtonRaphson, LevenbergMarquardt
             from hmfit_core.utils.solver_param_transform import (
@@ -1776,9 +1778,12 @@ class SpectroscopyTab(QWidget):
                         smooth_matrix=smooth_matrix,
                         max_iters=300,
                         weights_row=weights_row,
+                        weight_regularization_mode=ctx.get("weight_regularization_mode", "legacy"),
                     )
-                    r = fit["yfit"] - np.asarray(Y_star.T, dtype=float)
-                    rms = float(np.sqrt(np.mean(np.square(r * weights_row))))
+                    rms = _spectral_profile_objective(
+                        fit, Y_star.T, weights_row, eps_mu, alpha_smooth, smooth_matrix,
+                        ctx.get("weight_regularization_mode", "legacy"),
+                    )
                 except (BootstrapCancelled, FitCancelled):
                     raise
                 except Exception as exc:

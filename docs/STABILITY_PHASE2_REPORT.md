@@ -24,6 +24,7 @@ La rama `fix/stable-phase2-statistical-validation` parte de `f36d6c8`. El inform
 | Estado actual, pasada 2 | 225 | 220 | 4 | 1 | 72.71 s |
 | Rama de finalización, baseline tras integración | 225 | 220 | 4 | 1 | 42.44 s |
 | Rama de finalización, correcciones parciales | 232 | 227 | 4 | 1 | 56.31 s |
+| Modo absoluto y nuevos tests, suite completa | 255 | 250 | 4 | 1 | 37.20 s |
 
 En las dos pasadas del estado de trabajo, los identificadores de los cuatro fallos coinciden exactamente con los de la línea base:
 
@@ -55,6 +56,12 @@ Se integró `fix/uncertainty-reliability` en la rama de finalización mediante u
 [Defectos comprobados, corregidos] El bootstrap one-step de RMN usa ahora el Jacobiano del ajuste original para clasificar identificabilidad, no el de la última réplica. Para parámetros ácido-base todos fijos, la correlación se expresa como no definida (`NaN`), manteniendo SE cero. Ambos cambios tienen regresiones específicas.
 
 [Límite de ejecución] La suite se ejecutó con 227 aprobadas antes de añadir dos pruebas adicionales de clasificación de fallos; las nueve pruebas focalizadas de `tests/test_phase2_completion_critical.py` pasaron después. Los dos intentos posteriores de la suite completa agotaron los límites de 180 s y 300 s sin producir salida. Una prueba acotada mostró que Python arrancó pero la importación de `pytest` no terminó dentro del límite; no se ha determinado la causa. Por ello no se considera verificada la suite completa del último estado. No se detuvieron procesos ajenos.
+
+[Diagnóstico posterior de pytest] En el checkpoint `85b901a`, Python y la importación de `pytest` volvieron a funcionar: `pytest 9.0.2`, importación medida con `-X importtime` ≈81 ms; `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest --version` y una prueba aislada también funcionaron. `pip check` no encontró dependencias rotas. En la medición de recuperación había 51 GiB de memoria disponible y `vmstat` no mostraba espera apreciable de I/O en la muestra; estos datos no demuestran la causa de los bloqueos anteriores. No se modificaron ni terminaron procesos ajenos. Con `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 QT_QPA_PLATFORM=offscreen`, la suite completa del checkpoint terminó en 35.41 s: **229 aprobadas, 4 fallos preexistentes y 1 omitida**. JAX no está instalado.
+
+[Implementado y probado con casos sintéticos, no validado por campaña] Se añadió la opción explícita `weight_regularization_mode="absolute"`; `"legacy"` continúa como valor por defecto para preservar los proyectos existentes. En modo absoluto se minimiza el residuo ponderado más penalizaciones absolutas `mu` y `alpha`; el objetivo perfilado del optimizador y el full-refit usan los mismos términos. Se compararon 16 combinaciones de pesos uniformes, por λ, por punto y cero, con/sin cotas y suavizado, frente a SciPy y condiciones KKT; también se probó el caso por λ con suavizado y la propagación a la API/refit. La opción absoluta **no admite NNLS duro con suavizado** y falla explícitamente; la covarianza analítica existente no incorpora las penalizaciones. La ruta `legacy` conserva la incompatibilidad histórica descrita arriba y no debe confundirse con la función objetivo absoluta. No se han validado todos los casos de rango deficiente ni el backend JAX.
+
+[Benchmark preliminar, no campaña] `validation/benchmark_weighted.py` ejecuta el Newton denso en procesos independientes con `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1`; resultados reales en `validation/results/summary/weighted_benchmark.csv`. Para 12 puntos: 3×100, 0.00377 s y 81 820 KiB RSS; 5×300, 0.0632 s y 188 380 KiB; 8×500, 0.719 s y 594 120 KiB. La norma infinita del gradiente fue inferior a 1.9×10⁻¹⁴ en esos tres casos. 10×1000 se omitió por el límite de 4000 coeficientes; su Hessiana densa sola requeriría 800 000 000 bytes. Son mediciones únicas con ruido sintético, no benchmarks estadísticos; el solver no expone iteraciones y no se ejecutó una referencia independiente a esas dimensiones.
 
 ## 5. Trabajo pendiente y dictamen
 

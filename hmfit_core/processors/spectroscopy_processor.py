@@ -26,7 +26,7 @@ import re
 import logging
 warnings.filterwarnings("ignore")
 from ..utils.errors import compute_errors_spectro_varpro, pinv_cs, percent_error_log10K, sensitivities_wrt_logK
-from ..utils.nnls_utils import WeightedLinearSolveError, solve_A_nnls_pgd, solve_A_nnls_pgd2
+from ..utils.nnls_utils import WeightedLinearSolveError, _solve_weighted_penalty_newton, solve_A_nnls_pgd, solve_A_nnls_pgd2
 from ..utils.noncoop_utils import noncoop_derived_from_logK1
 from ..utils.solver_param_transform import (
     SolverParamTransformWrapper,
@@ -659,10 +659,26 @@ def _solve_absorptivities(
     smooth_matrix=None,
     max_iters=300,
     weights_row=None,
+    weight_regularization_mode="legacy",
 ):
     mode_norm = _normalize_mode(eps_solver_mode, {"soft_penalty", "soft_bound", "nnls_hard"}, "soft_penalty")
+    if weight_regularization_mode not in {"legacy", "absolute"}:
+        raise ValueError("weight_regularization_mode must be 'legacy' or 'absolute'")
+    if weight_regularization_mode == "absolute" and (
+        not onp.isfinite(mu) or float(mu) < 0 or not onp.isfinite(alpha_smooth) or float(alpha_smooth) < 0
+    ):
+        raise ValueError("absolute mode requires finite, nonnegative mu and alpha_smooth")
     W, per_point = _resolve_weights_matrix(weights_row, C.shape[0] if hasattr(C, "shape") else len(C), YT.shape[1])
     W_arg = W if per_point else weights_row
+    if weight_regularization_mode == "absolute" and mode_norm != "nnls_hard":
+        lb_mode = "relative" if mode_norm == "soft_bound" else delta_mode
+        lower_bound = _compute_lower_bound(C, YT, delta_mode=lb_mode, delta_rel=delta_rel, weights_row=W_arg)
+        multipliers = onp.ones_like(YT, dtype=float) if W is None else W
+        A = _solve_weighted_penalty_newton(C, YT, multipliers, 0.0, float(mu), lower_bound,
+                                           float(alpha_smooth), smooth_matrix, max_iters)
+        return A, lower_bound
+    if weight_regularization_mode == "absolute" and mode_norm == "nnls_hard" and float(alpha_smooth) > 0.0:
+        raise NotImplementedError("absolute mode does not support NNLS with smoothing")
     if mode_norm == "nnls_hard":
         return _exact_nnls_columns(C, YT, weights_row=W_arg), None
     if mode_norm == "soft_penalty" and delta_mode == "off" and float(alpha_smooth) <= 0.0:
@@ -854,6 +870,7 @@ def _solve_spectral_model(
     smooth_matrix=None,
     max_iters=300,
     weights_row=None,
+    weight_regularization_mode="legacy",
 ):
     C_eff, G_map = _apply_abs_group_map(C_abs, group_map=group_map)
     E_group, lower_bound = _solve_absorptivities(
@@ -867,6 +884,7 @@ def _solve_spectral_model(
         smooth_matrix=smooth_matrix,
         max_iters=max_iters,
         weights_row=weights_row,
+        weight_regularization_mode=weight_regularization_mode,
     )
     E_group = onp.asarray(E_group, dtype=float)
     A_species = G_map @ E_group
@@ -879,6 +897,18 @@ def _solve_spectral_model(
         "yfit": yfit,
         "lower_bound": lower_bound,
     }
+
+def _spectral_profile_objective(fit, YT, weights_row, mu, alpha_smooth, smooth_matrix, mode):
+    """RMS-equivalent profiled objective; legacy mode preserves the old fit."""
+    residual = (onp.asarray(fit["yfit"]) - onp.asarray(YT)) * onp.asarray(weights_row)
+    total = float(onp.sum(residual ** 2))
+    if mode == "absolute":
+        A = onp.asarray(fit["E_group"], dtype=float)
+        total += float(mu) * float(onp.sum(onp.minimum(A, 0.0) ** 2))
+        if float(alpha_smooth) > 0.0 and smooth_matrix is not None:
+            total += float(alpha_smooth) * float(onp.sum((A @ onp.asarray(smooth_matrix)) * A))
+    return float(onp.sqrt(max(total, 0.0) / residual.size))
+
 
 def _resolve_render_profile(render_quality: str):
     q = str(render_quality or "preview").strip().lower()
@@ -1204,6 +1234,7 @@ def _evaluate_spectro_objective(
     smooth_matrix,
     abs_group_map=None,
     objective_state: dict,
+    weight_regularization_mode="legacy",
 ):
     expected_nk = getattr(solver, "n_constants", None)
     k_arr = _normalize_param_length(k_vec, expected_nk)
@@ -1236,10 +1267,10 @@ def _evaluate_spectro_objective(
                 smooth_matrix=smooth_matrix,
                 max_iters=300,
                 weights_row=weights_row,
+                weight_regularization_mode=weight_regularization_mode,
             )
-            r = fit["yfit"] - y_transposed
-            r_w = r * weights_row
-            rms = float(np.sqrt(np.mean(np.square(r_w))))
+            rms = _spectral_profile_objective(fit, y_transposed, weights_row, eps_mu,
+                                               alpha_smooth, smooth_matrix, weight_regularization_mode)
             val = rms if onp.isfinite(rms) else 1e50
     except WeightedLinearSolveError:
         raise
@@ -1356,6 +1387,7 @@ def _run_spectro_single_start(
     alpha_smooth,
     smooth_matrix,
     abs_group_map=None,
+    weight_regularization_mode="legacy",
 ):
     solver = _build_equilibrium_solver(
         algorithm,
@@ -1385,6 +1417,7 @@ def _run_spectro_single_start(
             smooth_matrix=smooth_matrix,
             abs_group_map=abs_group_map,
             objective_state=state,
+            weight_regularization_mode=weight_regularization_mode,
         )
 
     def callback_log(xk, convergence=None):
@@ -1562,6 +1595,7 @@ def process_spectroscopy_data(
     multi_start_parallel: bool = False,
     multi_start_max_workers: int | None = None,
     weights_matrix=None,
+    weight_regularization_mode="legacy",
 ):
     """
     Main processing function.
@@ -1590,6 +1624,9 @@ def process_spectroscopy_data(
     log_progress("Iniciando procesamiento...")
     t_parse_start = time.perf_counter()
 
+    weight_regularization_mode = str(weight_regularization_mode).strip().lower()
+    if weight_regularization_mode not in {"legacy", "absolute"}:
+        raise ValueError("weight_regularization_mode must be 'legacy' or 'absolute'")
     baseline_mode = _normalize_mode(baseline_mode, {"off", "range", "auto"}, "off")
     weighting_mode = _normalize_mode(weighting_mode, {"none", "std", "max"}, "none")
     eps_solver_mode = _normalize_mode(eps_solver_mode, {"soft_penalty", "soft_bound", "nnls_hard"}, "soft_penalty")
@@ -1626,6 +1663,11 @@ def process_spectroscopy_data(
         alpha_smooth = float(alpha_smooth)
     except (TypeError, ValueError):
         alpha_smooth = 0.0
+    if weight_regularization_mode == "absolute":
+        if not onp.isfinite(eps_mu) or eps_mu < 0 or not onp.isfinite(alpha_smooth) or alpha_smooth < 0:
+            raise ValueError("absolute mode requires finite, nonnegative mu and alpha_smooth")
+        if eps_solver_mode == "nnls_hard" and alpha_smooth > 0:
+            raise ValueError("absolute mode does not support NNLS with smoothing")
     render_quality = str(render_quality or "preview").strip().lower()
     if render_quality not in {"preview", "full", "draft"}:
         render_quality = "preview"
@@ -2016,6 +2058,7 @@ def process_spectroscopy_data(
             smooth_matrix=smooth_matrix,
             max_iters=300,
             weights_row=weights_row,
+            weight_regularization_mode=weight_regularization_mode,
         )
         lb_preview = preview_fit.get("lower_bound")
     except Exception:
@@ -2048,10 +2091,11 @@ def process_spectroscopy_data(
             smooth_matrix=smooth_matrix,
             max_iters=300,
             weights_row=weights_row,
+            weight_regularization_mode=weight_regularization_mode,
         )
         r = fit["yfit"] - onp.asarray(Y.T, dtype=float)
-        r_w = r * weights_row
-        rms = np.sqrt(np.mean(np.square(r_w)))
+        rms = _spectral_profile_objective(fit, Y.T, weights_row, eps_mu,
+                                           alpha_smooth, smooth_matrix, weight_regularization_mode)
         return rms, r
 
     # Best-so-far tracking
@@ -2136,6 +2180,7 @@ def process_spectroscopy_data(
         "processed_bounds": list(processed_bounds),
         "y_transposed": y_transposed,
         "weights_row": onp.asarray(weights_row, dtype=float),
+        "weight_regularization_mode": weight_regularization_mode,
         "eps_solver_mode": eps_solver_mode,
         "eps_mu": float(eps_mu),
         "delta_mode": delta_mode,
@@ -2263,6 +2308,7 @@ def process_spectroscopy_data(
         smooth_matrix=smooth_matrix,
         max_iters=300,
         weights_row=weights_row,
+        weight_regularization_mode=weight_regularization_mode,
     )
     A_solver = final_fit["E_group"]
     A_species_solver = final_fit["A_species"]
@@ -2593,6 +2639,7 @@ def process_spectroscopy_data(
         "weights": (onp.asarray(weights_row, dtype=float).tolist() if weights_matrix is not None
                     else onp.asarray(weights_per_lambda, dtype=float).tolist()),
         "weighting_meta": weighting_meta,
+        "weight_regularization_mode": weight_regularization_mode,
         "eps_solver_mode": eps_solver_mode,
         "eps_constraint_active": int(constraint_report["n_active"]),
         "eps_constraint_total": int(constraint_report["n_total"]),
