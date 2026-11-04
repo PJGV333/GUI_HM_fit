@@ -356,3 +356,18 @@ válida para el estimador *restringido*, ni siquiera en forma perfilada.
 ejecución con supervisor reanudable (~60–90 s/réplica); sus números se añaden
 al terminar. Hasta entonces las cifras de full-refit confirmatorio NO se
 reportan.
+
+### 10.7 NMR 1:2: hueco de producción documentado (no simulado)
+
+Al extender la Etapa G a asociación 1:2 (especies H, G, HG, HG2) a través de
+`process_nmr_data`, el ajuste **no optimiza** log K: con datos sintéticos sin
+ruido generados con el propio solver NewtonRaphson del repositorio, las
+constantes devuelven exactamente su valor inicial (eco) con
+`optimizer="least_squares"`; con Powell K2 empuja al límite de la caja con SE
+pequeña y K1 se queda a media señal; una llamada con modelo 4-especies y una
+sola constante revienta internamente (`Para 'Free' se esperan 2 constantes,
+llegaron 1` en `nr_conc._prepare_K_numeric`). Fijado como prueba xfail
+(`tests/test_nmr_12_gap.py`) para que el hueco quede visible. Mientras no se
+investigue y corrija ese camino, la validación Monte Carlo de NMR queda
+limitada a 1:1 (y dentro de 1:1, parámetros fijos/datos faltantes requieren
+verificación previa). No se forzó ningún parche para "mejorar" resultados.

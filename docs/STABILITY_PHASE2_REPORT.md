@@ -142,6 +142,7 @@ restringido sigue sin calibrar.
   estaban implementadas y quedan cuantificadas por la matriz pareada; no hay
   defecto que justifique cambiar los predeterminados.
 - Ejecutar la campaña con los tamaños, escenarios y criterios de aceptación fijados antes de iniciarla; analizar por separado los casos con error correlacionado no modelado.
+- Investigar y corregir el hueco de producción NMR 1:2 (ajuste sin optimización real de log K; eco de valores iniciales / K2 al límite / error interno con longitudes mixtas). Fijado en `tests/test_nmr_12_gap.py` (xfail); MC de NMR limitado a 1:1 hasta cerrarlo.
 - Elaborar las tablas con errores Monte Carlo, el resumen CSV, las recomendaciones respaldadas por datos, los tiempos y el dictamen final.
 - Realizar los commits por etapa; reservar la declaración de fase terminada para cuando se cumplan todos los criterios. Un eventual push del checkpoint WIP no equivale a la publicación de una fase validada.
 
