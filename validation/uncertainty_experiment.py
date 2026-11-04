@@ -144,8 +144,14 @@ def main() -> None:
                       f"({row['_fit_s'] + row['_unc_s']:.1f}s)", flush=True)
     rows = [json.loads(l) for l in rows_path.read_text().splitlines()]
     summ = summarize(rows, scen)
+    prov = provenance()
+    import hashlib
+    (out / "manifest.json").write_text(json.dumps(
+        {"config_sha256": hashlib.sha256(Path(args.config).read_bytes()).hexdigest(),
+         "scen": scen, "provenance": prov, "n_rows": len(rows)},
+        sort_keys=True, indent=1) + "\n")
     (out / "summary.json").write_text(json.dumps(
-        {"scen": scen, "summary": summ, "provenance": provenance()},
+        {"scen": scen, "summary": summ, "provenance": prov},
         sort_keys=True, indent=1) + "\n")
     print(json.dumps(summ, sort_keys=True, indent=1))
 
