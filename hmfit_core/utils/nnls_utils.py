@@ -77,7 +77,13 @@ def _solve_weighted_penalty_newton(C, Y, W, ridge, mu, lower_bound,
     s, nw = C.shape[1], Y.shape[1]
     size = s * nw
     if size > 4000:
-        raise WeightedLinearSolveError("weighted Newton system exceeds the supported size")
+        # Above the dense guard use the structure-exploiting sparse twin of
+        # this routine (identical active-set/line-search algebra, scipy.sparse
+        # assembly + SuperLU). Equivalence vs the dense path is validated in
+        # validation/sparse_weighted_probe.py (coefficients agree to ~1e-11)
+        # and pinned by tests/test_weighted_solver_sparse.py.
+        return _solve_weighted_penalty_newton_sparse(
+            C, Y, W, ridge, mu, lower_bound, alpha_smooth, smooth_matrix, max_iters)
     W2 = W * W
     H0 = onp.zeros((size, size), dtype=float)
     for j in range(nw):
@@ -123,6 +129,97 @@ def _solve_weighted_penalty_newton(C, Y, W, ridge, mu, lower_bound,
                                                -grad[free])
         except onp.linalg.LinAlgError as exc:
             raise WeightedLinearSolveError("weighted Newton system is singular") from exc
+        value = objective(x)
+        step = 1.0
+        for _ in range(50):
+            candidate = onp.maximum(x + step * direction, lower)
+            if objective(candidate) <= value + 1e-4 * onp.dot(grad, candidate - x):
+                x = candidate
+                break
+            step *= 0.5
+        else:
+            raise WeightedLinearSolveError("weighted Newton line search failed")
+    raise WeightedLinearSolveError("weighted Newton did not converge")
+
+
+def _solve_weighted_penalty_newton_sparse(C, Y, W, ridge, mu, lower_bound,
+                                          alpha_smooth, smooth_matrix, max_iters):
+    """Sparse twin of ``_solve_weighted_penalty_newton`` (same variable layout
+    ``index = species * nw + wavelength``, same semismooth-Newton active set,
+    projected line search, tolerances and failure semantics), but the Hessian
+    is assembled in scipy.sparse CRS and factored with SuperLU on the free set.
+    Used automatically above the dense size guard; validated coefficient-for-
+    coefficient against the dense path (max-abs ~1e-11) in
+    validation/sparse_weighted_probe.py.
+    """
+    import scipy.sparse as sp
+    import scipy.sparse.linalg as spla
+
+    s, nw = C.shape[1], Y.shape[1]
+    size = s * nw
+    W2 = W * W
+    rows, cols, vals = [], [], []
+    for j in range(nw):
+        Bj = C.T @ (W2[:, j, None] * C)
+        idx = onp.arange(s) * nw + j
+        ii = idx[:, None].repeat(s, axis=1).ravel()
+        jj = idx[None, :].repeat(s, axis=0).ravel()
+        rows.append(ii)
+        cols.append(jj)
+        vals.append(Bj.ravel())
+    if ridge:
+        rows.append(onp.arange(size))
+        cols.append(onp.arange(size))
+        vals.append(onp.full(size, float(ridge)))
+    L = None
+    if alpha_smooth > 0 and smooth_matrix is not None:
+        L = onp.asarray(smooth_matrix, dtype=float)
+        if L.shape != (nw, nw):
+            raise ValueError("smooth_matrix shape does not match the data")
+        K = sp.kron(sp.identity(s, format="csr"), sp.csr_matrix(L), format="csr")
+        K = (K * float(alpha_smooth)).tocoo()
+        rows.append(K.row)
+        cols.append(K.col)
+        vals.append(K.data)
+    H0 = sp.csr_matrix((onp.concatenate(vals),
+                        (onp.concatenate(rows), onp.concatenate(cols))),
+                       shape=(size, size))
+    H0.sum_duplicates()
+    b = (C.T @ (W2 * Y)).ravel()
+    lower = onp.full(size, -onp.inf)
+    if lower_bound is not None:
+        lb = onp.asarray(lower_bound, dtype=float)
+        if lb.ndim == 1 and lb.size == s:
+            lb = lb[:, None]
+        lower = onp.broadcast_to(lb, (s, nw)).ravel()
+    x = onp.maximum(onp.zeros(size), lower)
+
+    def objective(z):
+        A = z.reshape(s, nw)
+        return (0.5 * onp.sum((W * (C @ A - Y)) ** 2)
+                + 0.5 * float(ridge) * onp.dot(z, z)
+                + 0.5 * float(mu) * onp.dot(onp.minimum(z, 0), onp.minimum(z, 0))
+                + (0.5 * float(alpha_smooth) * onp.sum((A @ L) * A)
+                   if L is not None else 0.0))
+
+    for _ in range(int(max_iters)):
+        grad = H0.dot(x) - b + float(mu) * onp.minimum(x, 0)
+        active = (x <= lower + 1e-12) & (grad > 0)
+        projected_grad = onp.where(active, 0.0, grad)
+        if onp.max(onp.abs(projected_grad), initial=0.0) <= 1e-10 * max(1.0, onp.max(onp.abs(b), initial=0.0)):
+            return np.asarray(x.reshape(s, nw))
+        free = onp.flatnonzero(~active)
+        Hf = H0[onp.ix_(free, free)].tocsc().astype(float)
+        Hf = Hf + sp.diags(float(mu) * (x[free] < 0).astype(float))
+        scale = max(float(onp.max(onp.abs(Hf.diagonal()), initial=0.0)), 1e-20)
+        Hf = Hf + sp.diags(onp.full(len(free), scale * 1e-12))
+        direction = onp.zeros(size)
+        try:
+            direction[free] = spla.spsolve(Hf.tocsc(), -grad[free])
+        except Exception as exc:
+            raise WeightedLinearSolveError("weighted Newton system is singular") from exc
+        if not onp.all(onp.isfinite(direction)):
+            raise WeightedLinearSolveError("weighted Newton system is singular")
         value = objective(x)
         step = 1.0
         for _ in range(50):

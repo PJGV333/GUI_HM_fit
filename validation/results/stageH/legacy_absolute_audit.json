@@ -1,0 +1,27 @@
+[
+ {
+  "case": "unit_weights",
+  "max_abs_diff": 2.855839564830376e-09
+ },
+ {
+  "case": "uniform_w3_mu_times_w2",
+  "max_abs_diff": 2.855838676651956e-09
+ },
+ {
+  "case": "uniform_w3_same_mu",
+  "max_abs_diff": 0.0022667798579828445
+ },
+ {
+  "case": "per_lambda_same_mu",
+  "max_abs_diff": 0.00039434179260235136
+ },
+ {
+  "case": "per_point_same_mu",
+  "max_abs_diff": 0.00014144277256984
+ },
+ {
+  "case": "nnls_hard_smoothing",
+  "legacy_runs": true,
+  "absolute_raises_NotImplemented": true
+ }
+]

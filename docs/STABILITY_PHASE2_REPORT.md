@@ -146,3 +146,47 @@ restringido sigue sin calibrar.
 - Realizar los commits por etapa; reservar la declaración de fase terminada para cuando se cumplan todos los criterios. Un eventual push del checkpoint WIP no equivale a la publicación de una fase validada.
 
 **Dictamen provisional: no apto para declarar terminada la Fase 2 ni para extraer conclusiones de cobertura.** Cualquier commit que incluya este informe es un checkpoint de trabajo parcial, no una certificación de la fase.
+
+## 8. Etapa H: solver disperso con suavizado y auditoría legacy/absolute
+
+**Solver disperso (`hmfit_core/utils/nnls_utils._solve_weighted_penalty_newton_sparse`).**
+Gemelo exacto del Newton semisuave denso (mismo layout de variables, mismo
+conjunto activo, misma búsqueda de paso proyectada, mismas tolerancias) con
+ensamblado CRS de `scipy.sparse` y SuperLU sobre el conjunto libre. Por
+encima del guard denso de 4000 coeficientes la ruta densa fallaba
+explícitamente; ahora se despacha automáticamente a la ruta dispersa.
+Equivalencia verificada contra la referencia densa en la capa de validación
+(`validation/sparse_weighted_probe.py`, datos en
+`validation/results/stageH/sparse_scale_cases.json`) y fijada por pruebas
+(`tests/test_weighted_solver_sparse.py`):
+
+| coeficientes | diff máx. coef. | gap objetivo | residuo KKT (disperso) | densa | dispersa |
+|---:|---:|---:|---:|---:|---:|
+| 600 | 1.2·10⁻¹² | 1.1·10⁻¹⁹ | 1.4·10⁻²⁰ | 0.034 s | 0.010 s |
+| 2400 | 7.2·10⁻¹¹ | 0 | 2.3·10⁻²⁰ | 0.944 s | 0.142 s |
+| 4200 | — (densa no soportada) | — | 1.4·10⁻²⁰ | error explícito antes | 0.61 s |
+
+End-to-end por el procesador (absolute + suavizado + pesos por punto,
+4200 coeficientes): 0.07 s, finito y óptimo de primer orden. Casos pequeños
+(< guard) conservan la ruta densa bit a bit; no hay cambio numérico para
+tamaños previously supportados. La sustitución de la densa por debajo del
+guard queda deliberamente descartada hasta reunir más evidencia.
+
+**Auditoría `legacy` frente a `absolute` (`validation/legacy_absolute_audit.py`,
+`validation/results/stageH/legacy_absolute_audit.json`).** Convenciones:
+`legacy` minimiza el objetivo histórico con penalizaciones `mu`/`alpha`
+*relativas* y **ignora las escalas uniformes de pesos** (el argmin de un
+escalar positivo por columna cancela); `absolute` minimiza
+½Σw²(CA−Y)² + ½μ‖min(A,0)‖² + ½α⟨A,LA⟩ con penalizaciones absolutas.
+Identidades verificadas numéricamente (dif ≤ 2.9·10⁻⁹ = tolerancia PGD):
+(a) sin pesos, `legacy(μ)` ≡ `absolute(μ)`; (b) con peso uniforme w,
+`legacy(μ)` ≡ `absolute(μ·w²)` (y α·w²). Diferencias esperadas con el mismo
+μ: peso uniforme w=3 → 2.3·10⁻³ en coeficientes; pesos por λ → 3.9·10⁻⁴;
+pesos por punto → 1.4·10⁻⁴. Con pesos no uniformes **no existe** una
+reescala única que convierta un modo en el otro: son estimadores distintos.
+Asimetría API documentada y conservada: `nnls_hard` + suavizado funciona en
+`legacy` (PGD) y lanza `NotImplementedError` en `absolute`.
+Implicación para reproducir resultados antiguos: proyectos con pesos
+uniformes que pasen a `absolute` deben usar μ_abs = μ·w̄² y α_abs = α·w̄²
+para conservar la solución; con pesos variables, cambiar de modo cambia el
+estimador y debe revalidarse.
