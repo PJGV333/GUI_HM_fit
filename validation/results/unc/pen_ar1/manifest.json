@@ -1,0 +1,26 @@
+{
+ "config_sha256": "e394bae8b7b7f39197410d1686d67a9eca90648bc016efae0c458bbfc400a1f6",
+ "n_rows": 40,
+ "provenance": {
+  "commit": "9406e377660daf02b36f8c5b2234ccc4edf975d7",
+  "numpy": "2.4.2",
+  "python": "3.14.8",
+  "scipy": "1.17.1"
+ },
+ "scen": {
+  "B_refit": 100,
+  "B_wild": 1000,
+  "base_seed": 20261105,
+  "design": "v2",
+  "estimator": 0.01,
+  "g_max": 0.002,
+  "n_rep": 40,
+  "name": "unc_pen_ar1",
+  "noise": 0.0002,
+  "noise_model": "ar1",
+  "noise_rho": 0.6,
+  "points": 8,
+  "refit_span": 0.3,
+  "truth": 3.0
+ }
+}

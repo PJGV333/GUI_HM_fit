@@ -56,3 +56,18 @@ into `docs/figures/uvvis_bias/`. Mechanism evidence (expected profiled RSS vs
 theta): `python -m validation.mechanism_profile`; analytic-SE calibration:
 `python -m validation.se_calibration`. Interpretation and conclusions:
 `docs/UVVIS_BIAS_INVESTIGATION.md`.
+
+## Uncertainty-method comparison (`validation/uncertainty_experiment.py`)
+
+Runs the full Stage F zoo (analytic, HC1, linearized wild per element / per
+spectrum, one-step wild per spectrum / per wavelength, and three full-refit
+bootstraps) on every replicate of a scenario, with percentile **and** basic
+(reversed-percentile) intervals. The production-backed campaign adapter
+(`run_campaign.py`) additionally accepts `estimator`: `soft_penalty` (default),
+`ols` (production path with mu=0) or `nnls` (hard NNLS). Noise models `iid`,
+`hetero` (per-point ramp) and `ar1` (per-spectrum AR(1)) are available in
+`bias_experiment.dataset`. Frozen intermediate designs:
+`validation/configs/unc/`; curated results land in
+`validation/results/unc/`. Method definitions, design freeze and acceptance
+criteria: `docs/STATISTICAL_VALIDATION.md`; numeric tables:
+`docs/MONTE_CARLO_RESULTS.md`.

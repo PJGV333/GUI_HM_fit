@@ -1,0 +1,1 @@
+{"B_refit": 0, "B_wild": 1000, "base_seed": 20261110, "design": "confirm-v1", "estimator": "ols", "g_max": 0.002, "n_rep": 500, "name": "conf_ols_iid", "noise": 0.0002, "points": 8, "truth": 3.0}

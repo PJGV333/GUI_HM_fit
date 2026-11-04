@@ -92,7 +92,39 @@ Resultados decisivos, todos reproducibles desde los artefactos commitados:
 - Nueve pruebas de regresión en `tests/test_uvvis_bias_reference.py` fijan: recuperación sin ruido (tres proyectores y producción), química cerrada vs NewtonRaphson, argmin exacto = Powell archivado, referencia independiente, identidad del Jacobiano, regímenes de μ y reproducibilidad de estimaciones archivadas del piloto.
 - Matriz de 21 escenarios pareados (20–40 réplicas) con configuraciones en `validation/configs/bias/` y resúmenes en `validation/results/bias/`; figuras regenerables con `validation.make_bias_figures`.
 
-## 6. Trabajo pendiente y dictamen
+## 6. Comparación de incertidumbre (Etapas E–F, intermedia completada)
+
+Extensión del arnés (`validation/uncertainty_experiment.py`,
+`validation/uncertainty_methods.py`): matriz pareada estimador × método sobre
+el mismo ajuste; 9 métodos (analítica, HC1, wild lineizado elemental/espectral,
+one-step espectral/longitud de onda, full-refit wild elemental/espectral y
+remuestreo); modelos de ruido iid, AR(1) ρ=0.6 y heterocedástico; campañas
+reanudables con JSONL, manifiesto (sha256 de config, commit, versiones).
+
+Campaña intermedia v2 completada: 280 réplicas y ~108 000 re-ajustes
+bootstrap, tasa de fallo 0 %. Hallazgos con datos en
+`docs/MONTE_CARLO_RESULTS.md` y `validation/results/unc/`:
+
+- El sesgo positivo del estimador restringido persiste bajo los tres
+  regímenes de ruido (+0.0075 a +0.0125, ≥6σ); el OLS sigue insesgado.
+- iid/OLS: analítica y wild elemental calibran (SE/SD ≈ 0.92; cov95
+  0.92–0.93; cov68 0.58–0.62 algo bajos). HC1 sobre-cubre apenas (0.98).
+- El full-refit es el único que reproduce escala y sesgo del estimador
+  restringido, pero sus percentiles crudos cubren 0.05–0.10: un IC
+  defendible exige corrección explícita de sesgo (pendiente de implementación
+  y validación).
+- AR(1): los métodos elementales sub-cubren gravemente (0.58–0.73); el
+  wild por espectro es la defensa mínima y aun así no calibra con 8 puntos.
+- Hetero: el wild elemental conserva la estructura de varianza (0.90–0.96);
+  agrupar por espectro la destruye (0.69–0.73).
+- Las colas de la distribución de error (m=8) dominan la SD MC del OLS y
+  limitan la interpretación de SE/SD.
+
+Campañas confirmatorias en ejecución (iid n=500; full-refit n=150, B=250).
+Mientras no concluyan y no exista intervalo con sesgo corregido validado, la
+cobertura del estimador restringido sigue sin calibrar.
+
+## 7. Trabajo pendiente y dictamen
 
 - Completar y validar el estimador ponderado para cotas suaves y suavizado, sin alterar los resultados por defecto.
 - Crear y verificar el arnés `validation/` para todas las técnicas y métodos solicitados, incluidos checkpoints y manifiesto reproducible.

@@ -79,9 +79,31 @@ varianza por observación).
 
 ## 3. Resultados
 
-(Se rellenan al completarse cada campaña; véase `docs/MONTE_CARLO_RESULTS.md`
-para las tablas completas y `validation/results/unc/*/summary.json` para los
-datos crudos curados.)
+Campaña intermedia v2 **completada** (60+60+40×4 = 280 réplicas, ~108 000
+re-ajustes bootstrap, tasa de fallo 0 %). Tablas completas, figuras y
+lectura detallada en `docs/MONTE_CARLO_RESULTS.md`; datos crudos en
+`validation/results/unc/*/`. Síntesis contra los precriterios:
+
+- iid/OLS: `analytic`, `hc1` y `lin_wild_el` cumplen cobertura 95 % y 68 %.
+- iid/pen: sesgo +0.0075 ± 0.0011 (significativo); ningún método cumple
+  cobertura 68 %; full-refit acierta la escala (SE/SD 0.82–0.90) y el
+  sesgo bootstrap (+0.0053), pero su percentil cubre 0.08 y el "basic"
+  0.75–0.77. Ningún método calibrado para el estimador restringido.
+- AR(1)/OLS: ningún método alcanza cov95 ≥ 0.90 (mejor hc1 0.90; los
+  elementales sub-cubren hasta 0.575). Los wild por espectro mejoran pero
+  con m=8 no calibran.
+- hetero/OLS: `analytic`, `hc1`, `lin_wild_el` cumplen; los métodos
+  agrupados por espectro fallen (0.725).
+- pen con ruido correlatado/hetero: sesgo crece a ≈+0.012; los métodos
+  anchos sobre-cubren (cov95 = 1.0) y el full-refit percentil colapsa.
+- Colas: la SD MC de OLS en m=8 está dominada por colas (retirar la
+  peor réplica la reduce un 50 %); SE/SD debe leerse junto a la
+  distribución de errores.
+
+Las campañas confirmatorias (iid n=500 wild/one-step; full-refit n=150,
+B=250; semillas 20261110/11) están en ejecución; sus resultados se añaden
+al mismo documento. Ninguna afirmación de calibración es definitiva hasta
+completarlas.
 
 ## 4. Límites del estudio
 
