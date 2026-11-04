@@ -128,25 +128,34 @@ Campañas confirmatorias i.i.d. completadas (n=500, B=1000; análisis en
 calibrado (cov95 0.950 ± 0.010, cov68 0.678). HC2/HC3 y perfilado χ² añadidos
 al zoo y evaluados (§10.3, §10.5): ninguno repara la inferencia del estimador
 restringido; BCa sólo es válido sin frontera. Full-refit confirmatorio
-(n=150, B=250) en ejecución con supervisor reanudable. Mientras no concluya y
-no exista intervalo con sesgo corregido validado, la cobertura del estimador
-restringido sigue sin calibrar.
+completado (§10.6 MC: el percentil colapsa a 0.07–0.11
+y el básico recupera 0.75 con frontera activa; sin restricción la analítica
+i.i.d. —0.95— supera al remuestreo completo —0.81—). Mientras no exista
+intervalo con sesgo corregido que alcance [0.90,0.97] en el caso restringido, la
+cobertura de ese estimador sigue sin calibrar.
 
 ## 7. Trabajo pendiente y dictamen
 
-- Completar y validar el estimador ponderado para cotas suaves y suavizado, sin alterar los resultados por defecto.
-- Crear y verificar el arnés `validation/` para todas las técnicas y métodos solicitados, incluidos checkpoints y manifiesto reproducible.
+- ~~Completar y validar el estimador ponderado para cotas suaves y suavizado, sin alterar los resultados por defecto.~~ (Etapas G–H: validación emparejada del camino ponderado y solver disperso con guard documentado; ruta densa inalterada bajo el guard.)
+- ~~Crear y verificar el arnés `validation/` para todas las técnicas y métodos solicitados, incluidos checkpoints y manifiesto reproducible.~~ (`uncertainty_experiment.py` + zoo completo; configs congelados y manifiestos con hash.)
 - ~~HC2/HC3 implementados y contrastados en la capa de validación (MC §10.3:
   equivalen a una reescala del analítico, HC2≡HC3 por palanca ~10⁻⁶, ciegos a
   AR(1)).~~ Las opciones explícitas ε ≥ 0 (soft-penalty/NNLS frente a OLS) ya
   estaban implementadas y quedan cuantificadas por la matriz pareada; no hay
   defecto que justifique cambiar los predeterminados.
-- Ejecutar la campaña con los tamaños, escenarios y criterios de aceptación fijados antes de iniciarla; analizar por separado los casos con error correlacionado no modelado.
+- ~~Ejecutar la campaña con los tamaños, escenarios y criterios de aceptación fijados antes de iniciarla; analizar por separado los casos con error correlacionado no modelado.~~ (confirm-v1: i.i.d. n=500, AR(1) n=150, full-refit n=150; hetero a escala intermedia.)
 - Investigar y corregir el hueco de producción NMR 1:2 (ajuste sin optimización real de log K; eco de valores iniciales / K2 al límite / error interno con longitudes mixtas). Fijado en `tests/test_nmr_12_gap.py` (xfail); MC de NMR limitado a 1:1 hasta cerrarlo.
-- Elaborar las tablas con errores Monte Carlo, el resumen CSV, las recomendaciones respaldadas por datos, los tiempos y el dictamen final.
-- Realizar los commits por etapa; reservar la declaración de fase terminada para cuando se cumplan todos los criterios. Un eventual push del checkpoint WIP no equivale a la publicación de una fase validada.
+- ~~Elaborar las tablas con errores Monte Carlo, el resumen CSV, las recomendaciones respaldados por datos, los tiempos y el dictamen final.~~ (`results/unc/summary_table.csv`, 201 filas; tablas con IC MC en MC §10.)
+- ~~Realizar los commits por etapa; reservar la declaración de fase terminada para cuando se cumplan todos los criterios.~~
 
-**Dictamen provisional: no apto para declarar terminada la Fase 2 ni para extraer conclusiones de cobertura.** Cualquier commit que incluya este informe es un checkpoint de trabajo parcial, no una certificación de la fase.
+**Dictamen provisional: B — no apto para declarar terminada la Fase 2.** Los
+objetivos obligatorios (B) matriz de sesgo emparejada y (E) validación por
+técnica están ejecutados con datos reales; el único objetivo en curso es la
+corrección del hueco de producción NMR 1:2 (xfail fijado). El criterio de
+cobertura [0.90, 0.97] del estimador restringido no lo alcanza ningún método
+del zoo (mejor 0.75 con bootstrap básico), limitación documentada. Cualquier
+commit que incluya este informe es un checkpoint de trabajo parcial, no una
+certificación de la fase.
 
 ## 8. Etapa H: solver disperso con suavizado y auditoría legacy/absolute
 

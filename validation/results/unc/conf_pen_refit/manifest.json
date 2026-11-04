@@ -1,0 +1,24 @@
+{
+ "config_sha256": "262ae719e6d2e8ed5c12828eb46ddf178ae383d1d406db33f6addcc5beee5718",
+ "n_rows": 150,
+ "provenance": {
+  "commit": "9adecd902d2aaabe1d0c3152ad20646ebafb3368",
+  "numpy": "2.4.2",
+  "python": "3.14.8",
+  "scipy": "1.17.1"
+ },
+ "scen": {
+  "B_refit": 250,
+  "B_wild": 1000,
+  "base_seed": 20261111,
+  "design": "confirm-v1",
+  "estimator": 0.01,
+  "g_max": 0.002,
+  "n_rep": 150,
+  "name": "conf_pen_refit",
+  "noise": 0.0002,
+  "points": 8,
+  "refit_span": 0.3,
+  "truth": 3.0
+ }
+}

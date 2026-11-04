@@ -350,12 +350,33 @@ distribución real del estimador (cov68 0.33 ≪ 0.68). Confirma la advertencia
 de la Etapa D: la covarianza/umbral del problema *sin* restricción no es
 válida para el estimador *restringido*, ni siquiera en forma perfilada.
 
-### 10.6 Estado de la confirmatoria full-refit
+### 10.6 Confirmatoria full-refit (n=150, B_refit=250, semillas 20261111)
 
-`conf_pen_refit` y `conf_ols_refit` (n=150, B=1000×3 métodos) siguen en
-ejecución con supervisor reanudable (~60–90 s/réplica); sus números se añaden
-al terminar. Hasta entonces las cifras de full-refit confirmatorio NO se
-reportan.
+Configs congelados `conf_pen_refit.json` / `conf_ols_refit.json`; métodos de
+re-ajuste completo (250 re-ajustes completos por réplica) más wild linealizado
+B=1000 en el mismo escenario.
+
+| método full-refit | restringido percentil / básico | OLS percentil / básico |
+|---|---|---|
+| wild elemental | 0.11 / 0.75 | 0.81 / 0.81 |
+| wild por espectro | 0.07 / 0.73 | 0.63 / 0.63 |
+| remuestreo observaciones | 0.08 / 0.75 | 0.81 / 0.82 |
+
+- Sesgo en estas semillas: **+0.00817 ± 0.00072** (11σ), SD 0.00884. El
+  interval **percentil**, centrado en θ̂ ya sesgado, duplica el sesgo y colapsa
+  a 0.07–0.11; el **básico** (que lo resta) recupera 0.73–0.75, el mejor
+  full-refit con la restricción activa, aún lejos del 95 % nominal. Confirma a
+  escala confirmatoria la jerarquía observada con B=40–250 (§10.4).
+- OLS (sesgo −0.002 ± 0.0015): el full-refit (0.81–0.82) cubre **menos** que la
+  analítica VarPro i.i.d. (0.95, §10.1): con m=8 el re-ajuste añade ruido de
+  remuestreo sin aportar información; cuando el modelo de ruido es correcto la
+  analítica domina. Por espectros (bloques que rompen el i.i.d.) cae a 0.63,
+  coherente con §4.1.
+- **Conclusión Etapa F:** ningún interval muestread por re-ajuste completo
+  alcanza cobertura nominal con la frontera activa (mejor 0.75, básico); sin
+  restricción la analítica i.i.d. sigue siendo la mejor calibrada. La
+  recomendación práctica de corrección de sesgo por validación externa sigue en
+  pie.
 
 ### 10.6-bis Confirmatoria AR(1) (n=150, B=500, semillas 20261220–21)
 

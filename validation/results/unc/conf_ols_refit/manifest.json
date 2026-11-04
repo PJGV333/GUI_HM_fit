@@ -1,0 +1,24 @@
+{
+ "config_sha256": "e8ed8f8fb817fcf2e8fc925e26b7f6d7b17ae686a07b690c551682e9923c2503",
+ "n_rows": 150,
+ "provenance": {
+  "commit": "9adecd902d2aaabe1d0c3152ad20646ebafb3368",
+  "numpy": "2.4.2",
+  "python": "3.14.8",
+  "scipy": "1.17.1"
+ },
+ "scen": {
+  "B_refit": 250,
+  "B_wild": 1000,
+  "base_seed": 20261111,
+  "design": "confirm-v1",
+  "estimator": "ols",
+  "g_max": 0.002,
+  "n_rep": 150,
+  "name": "conf_ols_refit",
+  "noise": 0.0002,
+  "points": 8,
+  "refit_span": 0.3,
+  "truth": 3.0
+ }
+}

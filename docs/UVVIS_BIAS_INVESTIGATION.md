@@ -3,8 +3,9 @@
 > **Estado: ETAPAS A–D COMPLETADAS.** Este documento responde a las preguntas del
 > informe de misión sobre el sesgo sistemático observado en el piloto exploratorio
 > (`validation/results/pilot/uvvis_11_dc88860/`). Las etapas E–H (campañas
-> confirmatorias, comparación de bootstrap, otras técnicas, rendimiento) siguen
-> abiertas y se listan al final.
+> confirmatorias, comparación de bootstrap, otras técnicas, rendimiento) están
+> ejecutadas y documentadas; el único frente abierto es la corrección del hueco
+> de producción NMR 1:2, listado al final.
 
 ## 0. Resumen ejecutivo
 
@@ -293,12 +294,13 @@ preexistentes, 1 omitida** (idénticas IDs que la base).
 
 - Pilotos diagnósticos: 20–40 réplicas por escenario; los IC Monte Carlo de cada
   métrica se incluyen en los JSON crudos (sesgo ± ~0.002–0.003 en el piloto).
-- Han concluido la campaña intermedia (60/40 réplicas) y la confirmatoria
-  i.i.d. con diseño congelado (n=500, B=1000), además de la comparación de
-  bootstrap (§10 de `docs/MONTE_CARLO_RESULTS.md`): sesgo medido +0.00829 ±
-  0.00038 (22σ) con 487/500 réplicas sobre el verdadero, coherente con el
-  piloto de 20 (+0.0096 ± 0.0024). La confirmatoria full-refit (n=150) sigue
-  en curso.
+- Han concluido la campaña intermedia (60/40 réplicas), la confirmatoria
+  i.i.d. con diseño congelado (n=500, B=1000) y la full-refit confirmatoria
+  (n=150, B_refit=250); ver §10 de `docs/MONTE_CARLO_RESULTS.md`: sesgo medido
+  +0.00829 ± 0.00038 (22σ) con 487/500 réplicas sobre el verdadero, coherente
+  con el piloto de 20 (+0.0096 ± 0.0024); full-refit: percentil 0.07–0.11,
+  básico 0.73–0.75 con frontera activa (§10.6). El diseño confirmatorio i.i.d.
+  es el de `validation/configs/unc/conf_*.json`.
 - Los 21 escenarios de la matriz están completados y sus datos crudos
   commitados; el zoo de métodos de incertidumbre (analítico, HC1, HC2/HC3,
   wild lineizado, one-step, full-refit percentíl/básico/BCa, perfilado) quedó
