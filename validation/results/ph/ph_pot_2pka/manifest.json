@@ -1,0 +1,26 @@
+{
+ "config_sha256": "0d9172554b685f98830d34d13cfecd6962fd29d894ab8379a79a3bc82f2bb26e",
+ "n_rows": 40,
+ "provenance": {
+  "commit": "36a2e3f645a81e982d9c43878c2b26a84b0f9f66",
+  "numpy": "2.4.2",
+  "python": "3.14.8",
+  "scipy": "1.17.1"
+ },
+ "scen": {
+  "base_seed": 20261121,
+  "kind": "potentiometry",
+  "n_points": 60,
+  "n_rep": 40,
+  "name": "ph_pot_2pka",
+  "noise": 0.002,
+  "pka0": [
+   4.3,
+   7.2
+  ],
+  "pka_true": [
+   4.0,
+   7.5
+  ]
+ }
+}

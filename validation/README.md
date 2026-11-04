@@ -71,3 +71,21 @@ bootstraps) on every replicate of a scenario, with percentile **and** basic
 `validation/results/unc/`. Method definitions, design freeze and acceptance
 criteria: `docs/STATISTICAL_VALIDATION.md`; numeric tables:
 `docs/MONTE_CARLO_RESULTS.md`.
+
+## Stage G technique campaigns (`nmr_experiment.py`, `ph_experiment.py`, `kinetics_experiment.py`)
+
+Monte Carlo harnesses over the production paths for the other techniques:
+
+- `nmr_experiment.py` — 1H NMR 1:1 shifts through `process_nmr_data`
+  (configs `validation/configs/nmr/`, results `validation/results/nmr/`).
+- `ph_experiment.py` — acid-base equilibria: NMR shift titrations and pH
+  potentiometry through `run_acid_base` + production analytic errors
+  (`validation/configs/ph/`, `validation/results/ph/`).
+- `kinetics_experiment.py` — first order, consecutive, reversible and
+  second-order mechanisms through `hmfit.kinetics.fit_global`
+  (`validation/configs/kin/`, `validation/results/kin/`).
+
+All three are resumable (per-replicate JSONL), record a manifest (config
+sha256, commit, versions) and use frozen `SeedSequence([base_seed, r])`
+seeds. Findings (including the structural non-identifiability of reversible
+A<->B with free spectra): `docs/MONTE_CARLO_RESULTS.md` sections 7-9.

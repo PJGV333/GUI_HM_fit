@@ -195,3 +195,60 @@ sesgo de curvatura de mínimos cuadrados no lineales, no con activación de
 restricciones. Datos: `validation/results/nmr/`, configs
 `validation/configs/nmr/`. Pendiente para G: 1:2, múltiples señales,
 parámetros fijos, datos faltantes, ácido-base, potenciometría y cinética.
+
+## 8. Etapa G (inicial): ácido-base y potenciometría (n=40 c/u)
+
+Arnés `validation/ph_experiment.py` sobre `run_acid_base` + errores
+analíticos de producción; generadores espejo de
+`tests/phase1_cases.acid_base_nmr_case` y `.potentiometry_case`. Semillas
+20261120–22. Cobertura con SE analítica y t-Student con dof declarado por
+producción (20 y 58).
+
+| escenario | pKa verdaderos | parámetro | sesgo medio | sesgo mediana | SE/SD | cov95 | cov68 |
+|---|---|---|---:|---:|---:|---:|---:|
+| NMR shifts 2 pKa | 4.0 / 7.5 | pKa1 | −0.870 ± 0.367 | +0.165 | 1.03 | 0.775 | 0.60 |
+| NMR shifts 2 pKa | 4.0 / 7.5 | pKa2 | +0.871 ± 0.367 | −0.164 | 1.03 | 0.775 | 0.625 |
+| NMR shifts pKa cercanos | 4.0 / 4.4 | pKa1 | −0.007 ± 0.004 | −0.009 | 1.08 | 0.950 | 0.70 |
+| NMR shifts pKa cercanos | 4.0 / 4.4 | pKa2 | +0.003 ± 0.003 | +0.000 | 1.03 | 0.950 | 0.675 |
+| Potenciometría 2 pKa | 4.0 / 7.5 | pKa1 | −0.013 ± 0.004 | −0.009 | 1.03 | 0.975 | 0.60 |
+| Potenciometría 2 pKa | 4.0 / 7.5 | pKa2 | +0.013 ± 0.004 | +0.008 | 1.03 | 1.000 | 0.60 |
+
+Lectura: la calibración analítica de la ruta ácido-base es correcta en
+escala (SE/SD 1.03–1.08 en todos los escenarios). El escenario NMR con
+pKa muy separados muestra un **problema de diseño/condicionamiento**, no
+de error típico: la SD total (2.3 unidades) está dominada por saltos de
+rama en una fracción de réplicas (sesgo de mediana solo ±0.16 frente a
+sesgo medio ±0.87; tasa de intercambio de etiquetas 0 — no es confusión
+de etiquetas sino escapadas del mínimo). Con pKa próximos el mismo
+estimador calibra perfecto (cov95 0.95). La potenciometría calibra bien
+en ambos pKa (cov95 0.975/1.0, sesgos ≤0.013). Confirmar con más
+réplicas y con múltiples puntos iniciales antes de cualquier
+recomendación; datos en `validation/results/ph/`.
+
+## 9. Etapa G (inicial): cinética (n=40 c/u, semillas 20261130–33)
+
+Arnés `validation/kinetics_experiment.py` sobre `hmfit.kinetics`
+(`fit_global`, absorbtividades por longitud de onda linealizadas con VarPro,
+dof de producción). Esquemas: primer orden A→B; consecutivas A→B→C;
+reversible A⇌B; segunda orden A+B→C.
+
+| escenario | parámetro | verdadero | sesgo relativo ± IC (MC) | SD | fallos |
+|---|---|---:|---:|---:|---:|
+| 1st order | k1 | 1.2 | +0.14 % ± 0.20 % | 0.0148 | 0 |
+| consecutive | k1 | 1.2 | +1.22 % ± 0.82 % | 0.0624 | 0 |
+| consecutive | k2 | 0.4 | −0.13 % ± 1.4 % | 0.0358 | 0 |
+| reversible | k1 | 1.2 | −25 % ± 8.8 % | 0.671 | 0 |
+| reversible | k2 | 0.4 | +74 % ± 27 % | 0.677 | 0 |
+| 2nd order | k1 | 5000 | −0.025 % ± 0.023 % | 7.35 | 0 |
+
+Hallazgo central (reversible): con absorbtividades libres por longitud de
+onda, un relajamiento mono-exponencial identifica con precisión la **tasa de
+relajación** k1+k2 = 1.595 ± 0.029 (verdadero 1.600) pero **no** separa
+k1 de k2: las réplicas se reparten sobre la curva k1+k2≈cte (p. ej.
+[1.566, 0.0004], [1×10⁻⁵, 1.600], [0.997, 0.605]). No es un fallo del
+optimizador (0 fallos, el invariante se recupera): es **no-identificabilidad
+estructural** del diseño (los amplitudes espectrales libres absorben la
+relación de equilibrio). Para A⇌B hay que fijar un k o conocer un espectro
+puro. Primer orden, consecutivas y segunda orden: sesgos ≤1.2 % (k1 de
+consecutivas, 1.5σ), estimator insesgado a este nivel de ruido. Datos:
+`validation/results/kin/`.

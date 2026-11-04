@@ -1,0 +1,28 @@
+{
+ "config_sha256": "47602217f9bb142e7e705bfcac1eb8aa68bc23f802f82d2e7bbcec6d2ce315bc",
+ "n_rows": 40,
+ "provenance": {
+  "commit": "36a2e3f645a81e982d9c43878c2b26a84b0f9f66",
+  "numpy": "2.4.2",
+  "python": "3.14.8",
+  "scipy": "1.17.1"
+ },
+ "scen": {
+  "base_seed": 20261122,
+  "kind": "nmr",
+  "n_points": 25,
+  "n_rep": 40,
+  "name": "ph_nmr_close",
+  "noise": 0.003,
+  "ph_hi": 10.0,
+  "ph_lo": 2.0,
+  "pka0": [
+   3.8,
+   4.6
+  ],
+  "pka_true": [
+   4.0,
+   4.4
+  ]
+ }
+}

@@ -1,0 +1,1 @@
+{"kind":"potentiometry","name":"ph_pot_2pka","base_seed":20261121,"n_rep":40,"pka_true":[4.0,7.5],"pka0":[4.3,7.2],"noise":0.002,"n_points":60}

@@ -1,0 +1,1 @@
+{"kind":"nmr","name":"ph_nmr_2pka","base_seed":20261120,"n_rep":40,"pka_true":[4.0,7.5],"pka0":[4.3,7.2],"noise":0.003,"n_points":25,"ph_lo":2.0,"ph_hi":10.0}
