@@ -27,14 +27,19 @@ está, véase `docs/UVVIS_BIAS_INVESTIGATION.md`) el intervalo percentil hereda
 el sesgo del bootstrap —que a su vez lo estima: `boot_bias`— mientras el basic
 lo compensa en primera orden. Reportamos ambos explícitamente.
 
-HC2/HC3 por observación ( correcciones por palanca individual) **no** se
-aplican: en VarPro restringido no existe una definición canónica de la matriz
-sombrero del estimador proyectado, y trasplantar fórmulas de regresión lineal
-sin derivación es exactamente lo que la misión prohíbe. La corrección global
-HC1 sí está justificada (factor exacto de grados de libertad del término
-lineal). Bajo ruido i.i.d. homoscedástico, HC0/HC1/HC2/HC3 son asintóticamente
-equivalentes; la distinción relevante aquí es global-vs-por-observación y queda
-documentada como límite del estudio.
+**Ampliación v3 del zoo (precriterios idénticos, campañas dedicadas).**
+`hc2`/`hc3`: sandwich de residuos Ω=diag(r²/(1−h)ᵖ) con h la palanca de la
+*proyección lineal* (fila i: ‖C_i‖²/Σ‖C‖², aquí h≈2·10⁻⁶ ⇒ HC2≡HC3) y factor
+finito MacKinlay–White n/dof sobre Ω, con el Jacobiano proyectado; es la
+definición derivable en VarPro, no un trasplante de la palanca de regresión
+completa. `profile`: intervalo ΔRSS sobre la MISMA objetivo perfilada
+(restaurada), umbral s²·t² con los dof de la ruta analítica. Intervalos
+`bca` sobre las muestras de full-refit (z₀ percentíl + aceleración jackknife
+por punto). Hallazgos numéricos en `docs/MONTE_CARLO_RESULTS.md` §10.3–10.5.
+La advertencia original se mantiene en espíritu: bajo i.i.d. homoscedástico
+HC0/HC1/HC2/HC3 son asintóticamente equivalentes y aquí la familia HC2/HC3 no
+aporta nada medible; la distinción relevante global-vs-por-observación queda
+confirmada empíricamente.
 
 ## 2. Diseños congelados
 
@@ -77,6 +82,20 @@ heterocedasticidad se espera lo mismo de los métodos que asumen residuo
 exchangeable (`refit_resample`) frente a wild (que conserva la estructura de
 varianza por observación).
 
+### 2.3 Confirmatoria v1 (congelada 2026-11-03 antes de analizar)
+
+- i.i.d.: `conf_pen_iid.json`, `conf_ols_iid.json` — 500 réplicas,
+  B_wild=B_one-step=1000, B_refit=0 (los de refit van aparte), base_seed
+  20261110 (ambos, pareados), mismos escenarios y semillas congeladas.
+- AR(1) ρ=0.6: `conf_pen_ar1.json`, `conf_ols_ar1.json` — 150 réplicas,
+  B_wild=500, base_seed 20261220/20261221.
+- Full-refit: `conf_pen_refit.json`, `conf_ols_refit.json` — 150 réplicas,
+  B_refit=250, B_wild=1000, base_seed 20261111 (en ejecución al redactar).
+- HC2/HC3: `hc_ols_{iid,ar1,hetero}.json` — 60 réplicas OLS, B=0, semillas
+  20261210–12. Perfilado: `prof_pen_{iid,ar1}.json` — 120/60 réplicas,
+  semillas 20261128–29. BCa: `bca_*` — 40–60 réplicas, B_refit=300,
+  semillas 20261124–27.
+
 ## 3. Resultados
 
 Campaña intermedia v2 **completada** (60+60+40×4 = 280 réplicas, ~108 000
@@ -100,10 +119,13 @@ lectura detallada en `docs/MONTE_CARLO_RESULTS.md`; datos crudos en
   peor réplica la reduce un 50 %); SE/SD debe leerse junto a la
   distribución de errores.
 
-Las campañas confirmatorias (iid n=500 wild/one-step; full-refit n=150,
-B=250; semillas 20261110/11) están en ejecución; sus resultados se añaden
-al mismo documento. Ninguna afirmación de calibración es definitiva hasta
-completarlas.
+Confirmatoria v1: i.i.d. (n=500, B=1000) y AR(1) (n=150, B=500) **completadas**;
+sus tablas están en `docs/MONTE_CARLO_RESULTS.md` §10 y §10.6-bis y
+constituyen ya evidencia de calibración para OLS/i.i.d. con analítico
+(0.950 ± 0.010) y de colapso elemental bajo AR(1). Las confirmatorias
+full-refit (n=150, B=250; base_seed 20261111) siguen en ejecución con
+supervisor reanudable; ninguna afirmación sobre intervalos de full-refit
+confirmatorios es definitiva hasta completarlas.
 
 ## 4. Límites del estudio
 
