@@ -33,3 +33,26 @@ bias, RMSE, Monte Carlo SD, mean reported SE, SE/SD, interval widths, coverage,
 coverage Monte Carlo standard error and a Wilson interval. It does not yet report
 Monte Carlo errors for every metric. Raw data stay outside the repository; do not
 commit large run directories. Unsupported confirmatory cells remain incomplete.
+
+## Paired-estimator bias experiments (`validation/bias_experiment.py`)
+
+Reproducible Monte-Carlo comparison of the three absorptivity projectors (free
+OLS, production soft penalty at given mu, hard NNLS) on identical datasets, with
+an independent closed-form equilibrium reference and exact scalar argmin
+(grid + bounded golden-section), so optimizer noise cannot contaminate paired
+differences. Checkpointed per replicate (JSONL) and resumable.
+
+```sh
+QT_QPA_PLATFORM=offscreen OPENBLAS_NUM_THREADS=1 .venv/bin/python \
+  -m validation.bias_experiment validation/configs/bias/pilot40.json "$TMPDIR/bias-pilot40"
+```
+
+Scenario definitions live in `validation/configs/bias/` (21 diagnostic cells:
+noise levels, mu sweep, design sizes, K values, absorptivity regimes). Curated
+summaries and the pilot paired rows are committed under
+`validation/results/bias/` (small; full raw campaign directories remain out of
+repo). Figures are regenerable with `python -m validation.make_bias_figures`
+into `docs/figures/uvvis_bias/`. Mechanism evidence (expected profiled RSS vs
+theta): `python -m validation.mechanism_profile`; analytic-SE calibration:
+`python -m validation.se_calibration`. Interpretation and conclusions:
+`docs/UVVIS_BIAS_INVESTIGATION.md`.

@@ -1,0 +1,47 @@
+{
+ "provenance": {
+  "note": "seeds = SeedSequence([base_seed,r]).generate_state; argmin = grid401 + bounded golden, tol 1e-9; drivers: scratch bias_lab/exp1.py equivalent of validation.bias_experiment"
+ },
+ "scen": {
+  "base_seed": 333,
+  "g_max": 0.01,
+  "mus": [
+   0.01
+  ],
+  "n_rep": 40,
+  "name": "gmax10",
+  "noise": 0.0002,
+  "points": 8,
+  "truth": 3.0
+ },
+ "summary": {
+  "nnls": {
+   "bias": 0.0002137217636901667,
+   "mean": 3.00021372176369,
+   "rmse": 0.000316407599249401,
+   "sd": 0.00023478894716160443
+  },
+  "ols": {
+   "bias": 2.8871435225674702e-05,
+   "mean": 3.0000288714352257,
+   "rmse": 0.00034524792983374957,
+   "sd": 0.0003462092339955621
+  },
+  "paired_nnls_minus_ols": {
+   "frac_pos": 0.825,
+   "mean": 0.00018485032846454752,
+   "sd": 0.00019392160383497318
+  },
+  "paired_pen0.01_minus_ols": {
+   "frac_pos": 0.825,
+   "mean": 0.0001848381367408114,
+   "sd": 0.00019391804645475894
+  },
+  "pen0.01": {
+   "bias": 0.00021370957196653606,
+   "mean": 3.0002137095719665,
+   "rmse": 0.000316398207038134,
+   "sd": 0.00023478736788486873
+  }
+ }
+}

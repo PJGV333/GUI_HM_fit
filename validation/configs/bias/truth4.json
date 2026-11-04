@@ -1,0 +1,1 @@
+{"base_seed": 555, "g_max": 0.002, "mus": [0.01], "n_rep": 40, "name": "truth4", "noise": 0.0002, "points": 8, "scan_hi": 5.0, "scan_lo": 3.0, "truth": 4.0, "workers": 1}

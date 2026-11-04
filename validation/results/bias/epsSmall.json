@@ -1,0 +1,54 @@
+{
+ "provenance": {
+  "note": "seeds = SeedSequence([base_seed,r]).generate_state; argmin = grid401 + bounded golden, tol 1e-9; drivers: scratch bias_lab/exp1.py equivalent of validation.bias_experiment"
+ },
+ "scen": {
+  "amp": 20.0,
+  "base_seed": 333,
+  "g_max": 0.002,
+  "mus": [
+   0.01
+  ],
+  "n_rep": 40,
+  "name": "epsSmall",
+  "noise": 0.0002,
+  "points": 8,
+  "truth": 3.0
+ },
+ "summary": {
+  "negfrac": {
+   "bias": -2.6564516129032256,
+   "mean": 0.3435483870967742,
+   "rmse": 2.6572381445019446,
+   "sd": 0.06547173905871721
+  },
+  "nnls": {
+   "bias": 0.09761345445582847,
+   "mean": 3.0976134544558285,
+   "rmse": 0.11357989867265901,
+   "sd": 0.058808746006550006
+  },
+  "ols": {
+   "bias": -0.022312331515602857,
+   "mean": 2.977687668484397,
+   "rmse": 0.4525448833055672,
+   "sd": 0.4577526274829853
+  },
+  "paired_nnls_minus_ols": {
+   "frac_pos": 0.6,
+   "mean": 0.11992578597143204,
+   "sd": 0.45446998340746747
+  },
+  "paired_pen0.01_minus_ols": {
+   "frac_pos": 0.6,
+   "mean": 0.11990552075389871,
+   "sd": 0.4544691730759914
+  },
+  "pen0.01": {
+   "bias": 0.09759318923829552,
+   "mean": 3.0975931892382955,
+   "rmse": 0.11355954364819613,
+   "sd": 0.05880292481723475
+  }
+ }
+}

@@ -1,6 +1,11 @@
 # HM fit — Fase 2: validación estadística de incertidumbres
 
-> **Estado: INCOMPLETO.** Este documento recoge trabajo en curso, no es el dictamen solicitado para la Fase 2. No se ha ejecutado la campaña de cobertura y no hay recomendaciones cuantitativas ni validación estadística de los métodos.
+> **Estado: PARCIALMENTE VALIDADA (dictamen provisional B).** La investigación del
+> sesgo UV-Vis (Etapas A–D) está completada y documentada en
+> `docs/UVVIS_BIAS_INVESTIGATION.md`: causa establecida, sin defecto de
+> implementación en el núcleo. Permanecen abiertas la ampliación del arnés
+> (Etapas E–G), la comparación de métodos de incertidumbre (Etapa F), las
+> campañas intermedia/confirmatoria y la Etapa H de rendimiento.
 
 ## 1. Base y entorno
 
@@ -27,6 +32,7 @@ La rama `fix/stable-phase2-statistical-validation` parte de `f36d6c8`. El inform
 | Modo absoluto y nuevos tests, suite completa | 255 | 250 | 4 | 1 | 37.20 s |
 | Arnés piloto provisional, suite completa | 260 | 255 | 4 | 1 | 42.79 s |
 | Resolución separable y piloto, suite completa | 261 | 256 | 4 | 1 | 49.78 s |
+| Investigación de sesgo A–D (nueve pruebas nuevas), suite completa | 270 | 265 | 4 | 1 | 39.38 s |
 
 En las dos pasadas del estado de trabajo, los identificadores de los cuatro fallos coinciden exactamente con los de la línea base:
 
@@ -71,7 +77,20 @@ Se integró `fix/uncertainty-reliability` en la rama de finalización mediante u
 
 [Escalabilidad parcial] En el modo absoluto, cuando `alpha_smooth=0`, el problema es separable por longitud de onda y ya se resuelve por columnas en lugar de construir una Hessiana global. Una prueba sintética con 3 especies y 1400 longitudes de onda (4200 coeficientes) recuperó los coeficientes de referencia; el caso con suavizado sigue usando la Hessiana densa y conserva el límite de 4000. No se han implementado ni comparado aún solvers dispersos.
 
-## 5. Trabajo pendiente y dictamen
+## 5. Investigación del sesgo UV-Vis (Etapas A–D, completadas)
+
+Documento completo con tablas, figuras y datos: `docs/UVVIS_BIAS_INVESTIGATION.md`.
+Resultados decisivos, todos reproducibles desde los artefactos commitados:
+
+- Reproducción bit a bit del piloto en `dc88860` y en HEAD (20/20 filas idénticas); la diferencia de `source_sha256` se explicó por finales de línea CRLF/LF del checkout original.
+- Ruido cero: el procesador recupera log K = 3 con desviación −2.5·10⁻¹⁴; argmin exacto de la objetivo perfilada idéntico a 10 dígitos para OLS, penalización suave y NNLS. Sin defecto generador–ajuste.
+- Comparación pareada (mismos datos para los tres proyectores, argmin escalar exacto, referencia independiente de equilibrio cerrado): el estimador sin restricciones es insesgado (−0.0003 ± 0.0044); el penalizado/NNLS tiene sesgo +0.0096 ± 0.0024 y 20/20 réplicas sobre el verdadero. NNLS y penalización μ=10⁻² coinciden a 10⁻⁶; la saturación ocurre desde μ≈10⁻⁴ (CᵀC~10⁻⁵).
+- Mecanismo: E[RSS_pen(θ) − RSS_ols(θ)] del recorte de coeficientes negativos crece ~5400× al alejarse θ por debajo del verdadero; el mínimo de E[RSS_pen] queda por encima del valor verdadero y el de E[RSS_ols] en él. La asimetría no persiste sin restricciones.
+- Error estándar: el Jacobiano implementado es la derivada proyectada de VarPro y coincide con su identidad a 6.5·10⁻⁶; el SE describe el estimador no restringido (SE/SD = 0.83; tiende a 1.02 con σ→0), mientras el ajuste usa el restringido (SD 0.0107 ⇒ SE/SD = 1.53). La cobertura 19/20 del piloto procede de intervalos ~3× más anchos que la dispersión real del estimador. No se modificó el núcleo: no hay defecto que corregir; hay acoplamiento estimador↔covarianza por documentar y cuantificar con bootstrap.
+- Nueve pruebas de regresión en `tests/test_uvvis_bias_reference.py` fijan: recuperación sin ruido (tres proyectores y producción), química cerrada vs NewtonRaphson, argmin exacto = Powell archivado, referencia independiente, identidad del Jacobiano, regímenes de μ y reproducibilidad de estimaciones archivadas del piloto.
+- Matriz de 21 escenarios pareados (20–40 réplicas) con configuraciones en `validation/configs/bias/` y resúmenes en `validation/results/bias/`; figuras regenerables con `validation.make_bias_figures`.
+
+## 6. Trabajo pendiente y dictamen
 
 - Completar y validar el estimador ponderado para cotas suaves y suavizado, sin alterar los resultados por defecto.
 - Crear y verificar el arnés `validation/` para todas las técnicas y métodos solicitados, incluidos checkpoints y manifiesto reproducible.

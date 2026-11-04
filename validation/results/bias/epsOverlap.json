@@ -1,0 +1,56 @@
+{
+ "provenance": {
+  "note": "seeds = SeedSequence([base_seed,r]).generate_state; argmin = grid401 + bounded golden, tol 1e-9; drivers: scratch bias_lab/exp1.py equivalent of validation.bias_experiment"
+ },
+ "scen": {
+  "base_seed": 333,
+  "c0_hi": 345.0,
+  "c0_lo": 300.0,
+  "g_max": 0.002,
+  "mus": [
+   0.01
+  ],
+  "n_rep": 40,
+  "name": "epsOverlap",
+  "noise": 0.0002,
+  "points": 8,
+  "sig": 40.0,
+  "truth": 3.0
+ },
+ "summary": {
+  "negfrac": {
+   "bias": -2.8373655913978495,
+   "mean": 0.16263440860215053,
+   "rmse": 2.837449316980094,
+   "sd": 0.02207509752182699
+  },
+  "nnls": {
+   "bias": 0.0014761062091013244,
+   "mean": 3.0014761062091013,
+   "rmse": 0.02018750863206626,
+   "sd": 0.020389957689854427
+  },
+  "ols": {
+   "bias": 0.0010342408978849527,
+   "mean": 3.001034240897885,
+   "rmse": 0.020240322343262278,
+   "sd": 0.02047139328176571
+  },
+  "paired_nnls_minus_ols": {
+   "frac_pos": 1.0,
+   "mean": 0.0004418653112162607,
+   "sd": 0.00031047026682515927
+  },
+  "paired_pen0.01_minus_ols": {
+   "frac_pos": 1.0,
+   "mean": 0.0004412550321816533,
+   "sd": 0.0003105139710126178
+  },
+  "pen0.01": {
+   "bias": 0.0014754959300669057,
+   "mean": 3.001475495930067,
+   "rmse": 0.0201875199456754,
+   "sd": 0.020390014482141682
+  }
+ }
+}

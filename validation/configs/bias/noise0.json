@@ -1,0 +1,1 @@
+{"base_seed": 777, "g_max": 0.002, "mus": [0.01], "n_rep": 3, "name": "noise0", "noise": 0.0, "points": 8, "truth": 3.0, "workers": 1}

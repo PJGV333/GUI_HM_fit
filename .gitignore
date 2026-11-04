@@ -32,3 +32,6 @@ ENV/
 *.png
 !docs/assets/*.png
 nmr_configT4.json
+
+# Investigation figures (regenerable via validation.make_bias_figures)
+!docs/figures/**/*.png
