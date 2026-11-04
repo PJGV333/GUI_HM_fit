@@ -1,1 +1,1 @@
-{"name": "unc_pen_hetero", "base_seed": 20261106, "n_rep": 40, "points": 8, "noise": 2e-4, "truth": 3.0, "g_max": 2e-3, "estimator": 0.01, "B_wild": 1000, "B_refit": 50, "noise_model": "hetero", "noise_ramp": 2.0}
+{"B_refit": 100, "B_wild": 1000, "base_seed": 20261106, "design": "v2", "estimator": 0.01, "g_max": 0.002, "n_rep": 40, "name": "unc_pen_hetero", "noise": 0.0002, "noise_model": "hetero", "noise_ramp": 2.0, "points": 8, "refit_span": 0.3, "truth": 3.0}

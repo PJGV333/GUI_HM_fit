@@ -1,1 +1,1 @@
-{"name": "unc_ols_int60", "base_seed": 20261104, "n_rep": 60, "points": 8, "noise": 2e-4, "truth": 3.0, "g_max": 2e-3, "estimator": "ols", "B_wild": 1000, "B_refit": 50}
+{"B_refit": 100, "B_wild": 1000, "base_seed": 20261104, "design": "v2", "estimator": "ols", "g_max": 0.002, "n_rep": 60, "name": "unc_ols_int60", "noise": 0.0002, "points": 8, "refit_span": 0.3, "truth": 3.0}

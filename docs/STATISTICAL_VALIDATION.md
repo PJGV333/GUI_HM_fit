@@ -47,10 +47,21 @@ esperada en [0.90, 0.97] (error MC ±1/√n a n≥60), cobertura 68 % en
 
 - `validation/configs/unc/unc_pen_int60.json`: escenario piloto (8 puntos,
   σ=2·10⁻⁴, log K=3, G 0–2 mM, H=1 mM), estimador penalización suave μ=10⁻²,
-  60 réplicas, B=1000 (wild/one-step), B=50 (full-refit), base_seed 20261104
-  (semillas nuevas, distintas de la fase exploratoria).
+  60 réplicas, B=1000 (wild/one-step), B=100 (full-refit), ventana de refit
+  ±0.3, base_seed 20261104 (semillas nuevas, distintas de la fase exploratoria).
 - `validation/configs/unc/unc_ols_int60.json`: idéntico, estimador OLS sin
   restricción (mismas semillas).
+
+**Enmienda de diseño v2 (documentada antes de cualquier veredicto de
+cobertura).** El diseño v1 usaba ventana de re-ajuste ±0.05 en torno a θ̂. Los
+pilotos diagnósticos mostraron que la distribución de remuestreo del estimador
+OLS tiene colas que alcanzan ±0.2 en este régimen: la ventana recortaba la
+cola del bootstrap y subestimaba su dispersión (SE de refit ≈ 0.62 × SD MC
+para OLS, con cobertura 0.6–0.7). Los resultados v1 se archivaron fuera del
+repositorio y no se mezclan; el diseño v2 amplía la ventana a ±0.3 y sube
+B_refit de 50 a 100 para estabilizar los percentiles. Los datos de los tres
+métodos de linealización y analíticos no dependen de la ventana y son
+idénticos entre v1 y v2.
 
 ### 2.2 Modelos de ruido no i.i.d.
 
