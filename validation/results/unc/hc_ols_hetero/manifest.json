@@ -1,0 +1,26 @@
+{
+ "config_sha256": "61cffd2ee8d3308711de674ec01746faa191ebaef86e382e4fcd4117ab1db492",
+ "n_rows": 60,
+ "provenance": {
+  "commit": "e51e2a0e34a07b744a2c46d3dd1cb70aca73c278",
+  "numpy": "2.4.2",
+  "python": "3.14.8",
+  "scipy": "1.17.1"
+ },
+ "scen": {
+  "B_refit": 0,
+  "B_wild": 10,
+  "base_seed": 20261127,
+  "design": "hc-v1",
+  "estimator": "ols",
+  "g_max": 0.002,
+  "n_rep": 60,
+  "name": "hc_ols_hetero",
+  "noise": 0.0002,
+  "noise_model": "hetero",
+  "noise_ramp": 2.0,
+  "points": 8,
+  "refit_span": 0.3,
+  "truth": 3.0
+ }
+}

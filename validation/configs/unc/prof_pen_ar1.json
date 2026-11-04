@@ -1,0 +1,1 @@
+{"B_refit": 0, "B_wild": 10, "base_seed": 20261129, "design": "prof-v1", "estimator": 0.01, "g_max": 0.002, "noise": 0.0002, "noise_model": "ar1", "noise_rho": 0.6, "n_rep": 60, "name": "prof_pen_ar1", "points": 8, "refit_span": 0.3, "truth": 3.0}

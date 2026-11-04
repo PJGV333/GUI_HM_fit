@@ -19,7 +19,8 @@ ROOT = Path(__file__).resolve().parents[1]
 RES = ROOT / "validation" / "results" / "unc"
 FIGS = ROOT / "docs" / "figures" / "uncertainty"
 
-METHODS = ("analytic", "hc1", "lin_wild_el", "lin_wild_spec",
+METHODS = ("analytic", "hc1", "hc2", "hc3", "profile",
+           "lin_wild_el", "lin_wild_spec",
            "onestep_spec", "onestep_wl",
            "refit_wild_el", "refit_wild_spec", "refit_resample")
 

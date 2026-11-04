@@ -122,3 +122,29 @@ def test_bca_shifts_interval_against_positive_bias():
     _add_bca(entry, samples, theta, jack, 400, truth=3.0)
     lo_pct = float(np.quantile(samples, 0.025))
     assert entry["ci_low_bca"] < lo_pct
+
+
+def test_hc2_hc3_sandwich_ordering_and_finiteness():
+    """HC3 inflates at least as much as HC2 (same residuals, squared leverage
+    correction); both must be finite and same order as the analytic SE."""
+    d, theta = _fit("ols")
+    res = replicate_uncertainty(d, theta, "ols", 3.0, B_wild=50, seed=3)
+    a, h2, h3 = res["analytic"]["se"], res["hc2"]["se"], res["hc3"]["se"]
+    assert all(np.isfinite(v) and v > 0 for v in (a, h2, h3))
+    assert h3 >= h2 > 0
+    assert 0.3 < h2 / a < 4.0
+    # identical center and Student-t width convention
+    assert res["hc2"]["ci_low"] < theta < res["hc2"]["ci_high"]
+
+
+def test_profile_ci_brackets_theta_and_is_finite():
+    """The profile interval must bracket the fitted theta_hat with finite,
+    positive width on both the constrained and unconstrained projectors."""
+    for est in (1e-2, "ols"):
+        d, theta = _fit(est)
+        res = replicate_uncertainty(d, theta, est, 3.0, B_wild=20, seed=4)
+        p = res["profile"]
+        assert p["n_valid"] == 1
+        assert p["ci_low"] < theta < p["ci_high"]
+        assert 0 < p["width95"] < 1.0
+        assert abs(p["width95"] - (p["ci_high"] - p["ci_low"])) < 1e-12

@@ -34,7 +34,8 @@ from validation.bias_experiment import (
     seed_for,
 )
 
-METHOD_KEYS = ("analytic", "hc1", "lin_wild_el", "lin_wild_spec",
+METHOD_KEYS = ("analytic", "hc1", "hc2", "hc3", "profile",
+               "lin_wild_el", "lin_wild_spec",
                "onestep_spec", "onestep_wl",
                "refit_wild_el", "refit_wild_spec", "refit_resample")
 

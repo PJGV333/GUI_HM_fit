@@ -70,6 +70,45 @@ def _metrics(d, theta):
                                          weights=np.ones_like(d["y"]))
 
 
+def _profile_ci(d, estimator, theta_hat, s2, dof, q):
+    """Profile interval on the SAME profiled objective used to fit.
+
+    Solves rms_prof(theta)^2 - rms_prof(theta_hat)^2 = s2*q^2/nres on both
+    sides by expansion + bisection (the profile is unimodal near the fit).
+    Returns (lo, hi, ok).
+    """
+    f = _objective(d, estimator)
+    nres = int(np.asarray(d["y"]).size)
+    f0 = float(f(theta_hat))
+    delta = float(s2) * float(q) ** 2 / float(nres)
+
+    def g(th: float) -> float:
+        return float(f(th)) ** 2 - f0 ** 2 - delta
+
+    def side(sign: float):
+        step, hi = 0.02, theta_hat + sign * 0.02
+        k = 0
+        while g(hi) < 0.0 and k < 40:
+            step *= 1.5
+            hi = theta_hat + sign * step
+            k += 1
+        if g(hi) >= 0.0:
+            a, b = theta_hat, hi
+            for _ in range(50):
+                mid = 0.5 * (a + b)
+                if g(mid) <= 0.0:
+                    a = mid
+                else:
+                    b = mid
+            return 0.5 * (a + b)
+        return None
+
+    up, dn = side(+1.0), side(-1.0)
+    if up is None or dn is None:
+        return None, None, False
+    return dn, up, True
+
+
 def _pct_ci(samples, truth, center=None):
     s = np.asarray(samples, dtype=float)
     s = s[np.isfinite(s)]
@@ -108,10 +147,51 @@ def replicate_uncertainty(d, theta, estimator, truth, *,
     nlin = int(m.get("n_linear", 0) or 0)
     fac = float(hc1_rescale_factor(int(m["nobs"]), 1 + nlin))
     se1 = se * fac
-    out["hc1"] = {"se": se1, "ci_low": theta - q * se1, "ci_high": theta + q * se1,
-                  "covered95": bool(theta - q * se1 <= truth <= theta + q * se1),
-                  "covered68": bool(theta - q68 * se1 <= truth <= theta + q68 * se1),
-                  "width95": 2 * q * se1, "n_valid": 1, "hc1_factor": fac}
+    out["hc1"] = {
+        "se": se1, "ci_low": theta - q * se1, "ci_high": theta + q * se1,
+        "covered95": bool(theta - q * se1 <= truth <= theta + q * se1),
+        "covered68": bool(theta - q68 * se1 <= truth <= theta + q68 * se1),
+        "width95": 2 * q * se1, "n_valid": 1, "hc1_factor": fac}
+
+    # ---- profile-likelihood interval on the SAME (constrained) objective.
+    # {theta: RSS_prof(theta) <= RSS_prof(theta_hat) + s^2 t^2}, with the
+    # s^2 and dof conventions of the analytic VarPro path. Unlike Wald-style
+    # intervals this follows the shape of the profiled objective and can be
+    # asymmetric; whether its coverage is nominal for the CONSTRAINED
+    # estimator is exactly what the Monte Carlo measures.
+    lo_p, hi_p, ok_p = _profile_ci(d, estimator, theta, float(m["s2"]), dof, q)
+    lo_p68, hi_p68, _ = _profile_ci(d, estimator, theta, float(m["s2"]), dof, q68)
+    out["profile"] = {"se": (hi_p - lo_p) / (2.0 * q) if ok_p else None,
+                      "ci_low": lo_p, "ci_high": hi_p,
+                      "covered95": bool(lo_p <= truth <= hi_p) if ok_p else None,
+                      "covered68": bool(lo_p68 <= truth <= hi_p68) if ok_p else None,
+                      "width95": (hi_p - lo_p) if ok_p else None, "n_valid": int(ok_p)}
+
+    # ---- HC2 / HC3: per-observation leverage-weighted sandwich.
+    # For the (projected) VarPro Jacobian wrt log K, replace the scalar s^2
+    # of HC1 by Omega_ee = r_e^2 / (1-h_e) (HC2) or /(1-h_e)^2 (HC3), where
+    # h_e is the hat diagonal of the weighted linear projection at that
+    # observation: with the harness unit weights h_(i,j) = sum_l C_il^2.
+    # These describe the UNCONSTRAINED projected estimator, like analytic/HC1.
+    Jrow = np.asarray(m["J"], dtype=float)[np.asarray(m["free_idx"], dtype=int)[0], :]
+    JtJ = float(Jrow @ Jrow)
+    rpre = np.asarray(m["r"], dtype=float).ravel()
+    Cmat = np.asarray(d["c"], dtype=float)
+    lev_row = np.einsum("ij,ij->i", Cmat, Cmat)
+    hvec = np.broadcast_to(lev_row[:, None],
+                           (d["y"].shape[0], d["y"].shape[1])).reshape(-1)
+    hvec = np.clip(hvec, 0.0, 1.0 - 1e-6)
+    for hc_name, pw in (("hc2", 1.0), ("hc3", 2.0)):
+        omega = (rpre * rpre) / np.power(1.0 - hvec, pw)
+        # MacKinlay-White finite-sample factor n/(n-p) = nobs/dof, matching
+        # the s^2 convention used by the analytic VarPro covariance.
+        omega = omega * (float(m["nobs"]) / float(m["dof"]))
+        se_hc = float(np.sqrt(max(float(Jrow @ (omega * Jrow)), 0.0)) / JtJ)
+        out[hc_name] = {"se": se_hc, "ci_low": theta - q * se_hc,
+                        "ci_high": theta + q * se_hc,
+                        "covered95": bool(theta - q * se_hc <= truth <= theta + q * se_hc),
+                        "covered68": bool(theta - q68 * se_hc <= truth <= theta + q68 * se_hc),
+                        "width95": 2 * q * se_hc, "n_valid": 1}
 
     J = np.asarray(m["J"], dtype=float)[np.asarray(m["free_idx"], dtype=int), :]
     r = np.asarray(m["r"], dtype=float).ravel()      # layout (m, nw) row-major

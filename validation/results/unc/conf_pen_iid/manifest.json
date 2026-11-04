@@ -1,0 +1,23 @@
+{
+ "config_sha256": "1256f923136fbebf3eec6f6e56da475b7fa9b64077e0c6aece8f77982cb25fc4",
+ "n_rows": 500,
+ "provenance": {
+  "commit": "e51e2a0e34a07b744a2c46d3dd1cb70aca73c278",
+  "numpy": "2.4.2",
+  "python": "3.14.8",
+  "scipy": "1.17.1"
+ },
+ "scen": {
+  "B_refit": 0,
+  "B_wild": 1000,
+  "base_seed": 20261110,
+  "design": "confirm-v1",
+  "estimator": 0.01,
+  "g_max": 0.002,
+  "n_rep": 500,
+  "name": "conf_pen_iid",
+  "noise": 0.0002,
+  "points": 8,
+  "truth": 3.0
+ }
+}
