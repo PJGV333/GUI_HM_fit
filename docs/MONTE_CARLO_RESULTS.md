@@ -171,3 +171,27 @@ full-refit (n=150, B=250).
 
 Estas consecuencias se confirmarán en la etapa confirmatoria antes de
 cambiar ningún valor por defecto.
+
+## 7. Etapa G (inicial): NMR 1:1 por la ruta de producción
+
+Arnés nuevo `validation/nmr_experiment.py` (mismo estilo: JSONL reanudable,
+manifiesto, generador idéntico en ecuaciones a `tests/phase1_cases.nmr_case`
+— seños por fracción unida del huésped, dos señales, ruido ppm — ajuste vía
+`process_nmr_data` de producción con Powell, NewtonRaphson, log K inicial
+2.5, cotas [0, 6]). Cobertura evaluada con la SE analítica de producción y
+t de Student con dof 21 (2·12 observaciones linealizadas − 1 log K − 2
+desplazamientos; convención asumida declarada, no extraída del manifiesto).
+
+| escenario | ruido (ppm) | sesgo ± IC (MC) | SD MC | SE media | SE/SD | cov95 | cov68 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `nmr_11_iid` (n=40) | 2·10⁻³ | +0.0020 ± 0.0014 | 0.00880 | 0.00760 | 0.86 | 0.925 | 0.575 |
+| `nmr_11_hi` (n=40) | 5·10⁻³ | +0.0080 ± 0.0029 | 0.01808 | 0.01952 | 1.08 | 0.975 | 0.700 |
+
+Lectura inicial (n=40, indicativa): en NMR 1:1 sin restricciones espectrales,
+la incertidumbre analítica de producción calibra razonablemente (SE/SD
+0.86–1.08, cov95 0.93–0.98). Queda un sesgo pequeño positivo que crece con
+el ruido (+0.002 → +0.008, ≈0.4 SD en el régimen ruidoso): coherente con el
+sesgo de curvatura de mínimos cuadrados no lineales, no con activación de
+restricciones. Datos: `validation/results/nmr/`, configs
+`validation/configs/nmr/`. Pendiente para G: 1:2, múltiples señales,
+parámetros fijos, datos faltantes, ácido-base, potenciometría y cinética.

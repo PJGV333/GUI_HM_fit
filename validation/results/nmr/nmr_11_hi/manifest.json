@@ -1,0 +1,22 @@
+{
+ "config_sha256": "86829042fdd57416d75836afad7d7445d55d2ab124b56d8204ec68bb08bd6eb5",
+ "n_rows": 40,
+ "provenance": {
+  "commit": "cde8e6ff869c79ac60f192d407b2d9fa91d24f27",
+  "numpy": "2.4.2",
+  "python": "3.14.8",
+  "scipy": "1.17.1"
+ },
+ "scen": {
+  "base_seed": 20261113,
+  "bounds_hi": 6.0,
+  "bounds_lo": 0.0,
+  "g_max": 0.005,
+  "k0": 2.5,
+  "n_points": 12,
+  "n_rep": 40,
+  "name": "nmr_11_hi",
+  "noise": 0.005,
+  "truth": 3.0
+ }
+}
