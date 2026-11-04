@@ -19,6 +19,9 @@ from scipy.stats import t
 def run_one(config: dict, replicate: int, seed: int) -> dict:
     if config["scenario"] != "uvvis_11_iid" or config["method"] != "analytic":
         raise ValueError("Only uvvis_11_iid / analytic is implemented")
+    estimator = str(config.get("estimator", "soft_penalty"))
+    if estimator not in ("soft_penalty", "ols", "nnls"):
+        raise ValueError(f"unknown estimator {estimator!r}")
     from hmfit_core import run_spectroscopy
     from hmfit_core.solvers import NewtonRaphson
     from hmfit_core.utils.errors import compute_errors_spectro_varpro
@@ -27,7 +30,8 @@ def run_one(config: dict, replicate: int, seed: int) -> dict:
     model = [[1, 0], [0, 1], [1, 1]]
     truth = 3.0
     row = {"scenario": config["scenario"], "replicate": replicate, "seed": seed,
-           "method": "analytic", "parameter": "log10K", "truth": truth,
+           "method": "analytic", "estimator": estimator,
+           "parameter": "log10K", "truth": truth,
            "estimate": None, "se": None, "ci_low": None, "ci_high": None,
            "dof": None, "success": False, "error": "", "bootstrap_failed": None,
            "nfev": None, "seconds": None}
@@ -39,6 +43,13 @@ def run_one(config: dict, replicate: int, seed: int) -> dict:
                              noise=float(config["noise"]), seed=seed)
             cfg = _spectro_cfg(path, model, [2.5], [(0.0, 6.0)])
             cfg["render_graphs"] = False
+            # "ols" uses the production soft-penalty path with mu=0 (no penalty
+            # term): equivalence with the unconstrained projector is locked by
+            # tests/test_uvvis_bias_reference.py.
+            if estimator == "nnls":
+                cfg["eps_solver_mode"] = "nnls_hard"
+            elif estimator == "ols":
+                cfg["mu"] = 0.0
             with contextlib.redirect_stdout(io.StringIO()):
                 output = run_spectroscopy(cfg)
             if not output.get("success") or not output["optimizer_result"]["success"]:

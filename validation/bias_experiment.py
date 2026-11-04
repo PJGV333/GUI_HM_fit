@@ -104,8 +104,27 @@ def dataset(seed: int, scen: dict) -> dict:
         eps[2] = 0.0
     y = C @ eps
     noise = float(scen.get("noise", 2e-4))
+    model = scen.get("noise_model", "iid")
     if noise > 0:
-        y = y + np.random.default_rng(seed).normal(0.0, noise, y.shape)
+        rng = np.random.default_rng(seed)
+        if model == "iid":
+            y = y + rng.normal(0.0, noise, y.shape)
+        elif model == "hetero":
+            # per-point scale ramp: sigma_i = noise * (1 + ramp * i/(m-1))
+            ramp = float(scen.get("noise_ramp", 2.0))
+            scale = 1.0 + ramp * np.linspace(0.0, 1.0, n_points)
+            y = y + rng.normal(0.0, 1.0, y.shape) * (noise * scale)[:, None]
+        elif model == "ar1":
+            # AR(1) correlation across wavelengths within each spectrum
+            rho = float(scen.get("noise_rho", 0.6))
+            e = rng.normal(0.0, 1.0, y.shape)
+            z = np.empty_like(e)
+            z[:, 0] = e[:, 0]
+            for j in range(1, n_wl):
+                z[:, j] = rho * z[:, j - 1] + np.sqrt(1.0 - rho * rho) * e[:, j]
+            y = y + noise * z
+        else:
+            raise ValueError(f"unknown noise_model {model!r}")
     return {"c": c, "M": M, "wl": wl, "eps": eps, "y": y, "C": C}
 
 
