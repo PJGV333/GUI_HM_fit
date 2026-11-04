@@ -1,0 +1,24 @@
+{
+ "config_sha256": "0132a417a1dc5922914ced30759a555a7964f8872e2309f2c89203b722692b3f",
+ "n_rows": 60,
+ "provenance": {
+  "commit": "150efc746caa7138ad00d6e8dc35c3f60142670d",
+  "numpy": "2.4.2",
+  "python": "3.14.8",
+  "scipy": "1.17.1"
+ },
+ "scen": {
+  "B_refit": 250,
+  "B_wild": 50,
+  "base_seed": 20261114,
+  "design": "bca-v1",
+  "estimator": 0.01,
+  "g_max": 0.002,
+  "n_rep": 60,
+  "name": "bca_pen_iid",
+  "noise": 0.0002,
+  "points": 8,
+  "refit_span": 0.3,
+  "truth": 3.0
+ }
+}

@@ -321,7 +321,7 @@ sobre los m=8 espectros.
 
 | escenario | método base | cov95 perc | cov95 básico | cov95 BCa | ancho perc | ancho BCa |
 |---|---|---:|---:|---:|---:|---:|
-| pen i.i.d. | wild el. | 0.15 | **0.62** | 0.30 | 0.024 | 0.011 |
+| pen i.i.d. | wild el. | 0.10 | **0.70** | 0.23 | 0.026 | 0.017 |
 | pen AR1 | wild espec. | 0.30 | **0.62** | 0.28 | 0.027 | 0.015 |
 | pen hetero | wild espec. | 0.17 | **0.53** | 0.23 | 0.029 | 0.018 |
 | ols i.i.d. | wild el. | 0.88 | 0.93 | **0.93** | 0.049 | 0.049 |
@@ -356,6 +356,31 @@ válida para el estimador *restringido*, ni siquiera en forma perfilada.
 ejecución con supervisor reanudable (~60–90 s/réplica); sus números se añaden
 al terminar. Hasta entonces las cifras de full-refit confirmatorio NO se
 reportan.
+
+### 10.6-bis Confirmatoria AR(1) (n=150, B=500, semillas 20261220–21)
+
+Diseño de la misma familia confirm-v1 con `noise_model=ar1, rho=0.6`
+(`validation/configs/unc/conf_*_ar1.json`, datos en `results/unc/conf_*_ar1`):
+
+| método | pen: ratio | pen: cov95 | pen: cov68 | ols: ratio | ols: cov95 | ols: cov68 |
+|---|---:|---:|---:|---:|---:|---:|
+| analítico VarPro | 1.509 | 0.973 ± 0.013 | 0.680 | **0.644** | **0.793 ± 0.033** | **0.493** |
+| HC1 | 1.915 | 1.000 | 0.713 | 0.818 | 0.907 ± 0.024 | 0.553 |
+| wild el. linealizado | 1.519 | 0.960 ± 0.016 | 0.673 | 0.633 | 0.760 ± 0.035 | 0.487 |
+| wild espectro | 2.350 | 0.947 ± 0.018 | 0.840 | 0.882 | 0.833 ± 0.030 | 0.673 |
+| one-step espectro | 2.337 | 0.933 ± 0.020 | 0.827 | 0.882 | 0.827 ± 0.031 | 0.653 |
+| one-step wild | 2.345 | 0.947 ± 0.018 | 0.833 | 0.884 | 0.827 ± 0.031 | 0.647 |
+
+A n=150 queda confirmado con EM pequeña: bajo AR(1) no modelado el error
+analítico y el wild elemental colapsan (cobertura 95 real 0.76–0.79, 68 real
+0.49 — es decir, el SE subestima ~1.6×); el remuestreo en bloque por espectro
+recupera la escala (ratio 0.88) pero aun no calibra (0.83) con m=8. El sesgo
+del restringido persiste (+0.01056 ± 0.00089, 12σ). Las defensas elementales
+de la Etapa D/F son inútiles para correlación intra-espectro; se necesita o
+modelar AR(1) explícitamente o más puntos.
+
+Nota BCa (n=60, i.i.d., pen): percentíl 0.10 / básico 0.70 / BCa 0.23 —
+refuerza §10.4: BCa perjudica bajo restricción activa.
 
 ### 10.7 NMR 1:2: hueco de producción documentado (no simulado)
 
