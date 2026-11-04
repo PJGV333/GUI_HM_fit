@@ -298,7 +298,7 @@ aquí debe leerarse como validez sin la amplitud y el 68 % junto.
 Implementación: Ω=diag(r²/(1−h)ᵖ) con h la palanca de la proyección lineal
 (fila i: ‖C_i‖²/Σ‖C‖²; aquí h≈2·10⁻⁶ ⇒ **HC2≡HC3 numéricamente**), factor
 finito MacKinlay–White n/dof sobre Ω y sandwich con el Jacobiano proyectado.
-Campañas n=60 (OLS, B=0, semillas 20261210–12; `validation/results/unc/hc_*`):
+Campañas n=60 (OLS, B_refit=0, base_seed 20261125–27; `validation/results/unc/hc_*`):
 
 | ruido | analítico ratio/cov95 | HC1 | HC2≡HC3 |
 |---|---:|---:|---:|
@@ -314,7 +314,7 @@ estimadores de covarianza robustos HC2/HC3 de la regresión lineal con palanca
 relevante; transplantar la fórmula lineal aquí es un callejón. Para
 correlación el instrumento válido es el remuestreo en bloque (§3).
 
-### 10.4 Bootstrap full-refit: percentíl, básico y BCa (n=40, B=300, semillas 20261124–27)
+### 10.4 Bootstrap full-refit: percentíl, básico y BCa (n=40–60, B_refit=250, base_seed 20261114–17)
 
 `validation/results/unc/bca_*`; BCa con z₀ percentíl y aceleración jackknife
 sobre los m=8 espectros.

@@ -91,10 +91,10 @@ varianza por observación).
   B_wild=500, base_seed 20261220/20261221.
 - Full-refit: `conf_pen_refit.json`, `conf_ols_refit.json` — 150 réplicas,
   B_refit=250, B_wild=1000, base_seed 20261111 (en ejecución al redactar).
-- HC2/HC3: `hc_ols_{iid,ar1,hetero}.json` — 60 réplicas OLS, B=0, semillas
-  20261210–12. Perfilado: `prof_pen_{iid,ar1}.json` — 120/60 réplicas,
-  semillas 20261128–29. BCa: `bca_*` — 40–60 réplicas, B_refit=300,
-  semillas 20261124–27.
+- HC2/HC3: `hc_ols_{iid,ar1,hetero}.json` — 60 réplicas OLS, B_refit=0,
+  B_wild=10, base_seed 20261125–27. Perfilado: `prof_pen_{iid,ar1}.json` —
+  120/60 réplicas, base_seed 20261128–29. BCa: `bca_*` — 40–60 réplicas,
+  B_refit=250, B_wild=50, base_seed 20261114–17.
 
 ## 3. Resultados
 
