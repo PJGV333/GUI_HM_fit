@@ -403,17 +403,41 @@ modelar AR(1) explícitamente o más puntos.
 Nota BCa (n=60, i.i.d., pen): percentíl 0.10 / básico 0.70 / BCa 0.23 —
 refuerza §10.4: BCa perjudica bajo restricción activa.
 
-### 10.7 NMR 1:2: hueco de producción documentado (no simulado)
+### 10.7 NMR 1:2: el "hueco de producción" se resolvió en convención + identidad (diagnóstico, no parche cosmético)
 
-Al extender la Etapa G a asociación 1:2 (especies H, G, HG, HG2) a través de
-`process_nmr_data`, el ajuste **no optimiza** log K: con datos sintéticos sin
-ruido generados con el propio solver NewtonRaphson del repositorio, las
-constantes devuelven exactamente su valor inicial (eco) con
-`optimizer="least_squares"`; con Powell K2 empuja al límite de la caja con SE
-pequeña y K1 se queda a media señal; una llamada con modelo 4-especies y una
-sola constante revienta internamente (`Para 'Free' se esperan 2 constantes,
-llegaron 1` en `nr_conc._prepare_K_numeric`). Fijado como prueba xfail
-(`tests/test_nmr_12_gap.py`) para que el hueco quede visible. Mientras no se
-investigue y corrija ese camino, la validación Monte Carlo de NMR queda
-limitada a 1:1 (y dentro de 1:1, parámetros fijos/datos faltantes requieren
-verificación previa). No se forzó ningún parche para "mejorar" resultados.
+La afirmación inicial (§10.7 anterior: "el ajuste no optimiza log K, eco de
+iniciales") se investigó a fondo y **quedó sustituida** por tres hechos
+medidos sobre HEAD:
+
+1. **Convención del generador.** El proyector de corrimientos
+   (`project_coeffs_block_onp_frac`) pondera por núcleos equivalentes: en la
+   señal del núcleo G, HG2 entra con peso 2 y el denominador es la concentración
+   total de G. El generador sintético del repro original dividía C_HG2 por
+   [G]_tot con peso 1 y excluyó G de `non_absorbent_species` (`nas=[1]`), lo
+   que además expulsaba a G libre del diseño y cambiaba el denominador a
+   "G ligado". Con datos **consistentes con la convención** (dos núcleos,
+   `nas=[]`, `stoichiometry_map` de 4 filas), `process_nmr_data` recupera
+   ambas constantes: K1 3.043 ± 0.017 y K2 4.484 ± 0.013 (verdad 3.0/4.5,
+   σ=2·10⁻³, 24 puntos, semilla 11).
+2. **Identificabilidad de K2.** En regímenes donde 2·K2·[H]·[G] ≪ 1 (HG2
+   <1 % del G total) la dirección de K2 es plana: el ajuste devuelve K2 al
+   límite de la caja con SE analítica de miles (3.9·10³), es decir, la propia
+   SE autodiagnostica el régimen no identificable. No es un defecto del
+   optimizador sino del diseño experimental.
+3. **Defecto real acotado y corregido: eco silencioso con optimizador
+   inválido.** `optimizer="least_squares"` no existe en
+   `scipy.optimize.minimize`; la bandera `param_opt_failed` del bucle IRLS se
+   establecía pero **nunca se consultaba**, y el pipeline devolvía las
+   constantes iniciales con `success=True` (SE incluida). Corregido en
+   `nmr_processor.process_nmr_data`: si todas las ejecuciones fallan, se
+   devuelve `success=False` con mensaje explícito en vez del eco. Fijado por
+   `tests/test_nmr_12_gap.py` (ahora 4 pruebas reales, sin xfail: recuperación
+   1:2, autodiagnóstico de K2 plano, error explícito por longitud de K, y
+   fallo honesto de optimizador inválido).
+
+Consecuencia: la MC de NMR publicada (§5, 1:1 con `powell`) sigue válida; su
+generador coincide con el modelo de ajuste (peso huésped/H). Queda documentado como convención: para datos de dos
+núcleos no excluir especies padre de señal en `nas` y ponderar el
+`stoichiometry_map` por núcleos por especie. La limitación "MC de NMR solo
+1:1" se levanta: el camino 1:2 de `Free` está verificado; la extensión MC
+1:2 queda como trabajo futuro opcional, no como hueco.

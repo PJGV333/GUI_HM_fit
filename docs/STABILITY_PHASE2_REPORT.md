@@ -144,18 +144,28 @@ cobertura de ese estimador sigue sin calibrar.
   estaban implementadas y quedan cuantificadas por la matriz pareada; no hay
   defecto que justifique cambiar los predeterminados.
 - ~~Ejecutar la campaña con los tamaños, escenarios y criterios de aceptación fijados antes de iniciarla; analizar por separado los casos con error correlacionado no modelado.~~ (confirm-v1: i.i.d. n=500, AR(1) n=150, full-refit n=150; hetero a escala intermedia.)
-- Investigar y corregir el hueco de producción NMR 1:2 (ajuste sin optimización real de log K; eco de valores iniciales / K2 al límite / error interno con longitudes mixtas). Fijado en `tests/test_nmr_12_gap.py` (xfail); MC de NMR limitado a 1:1 hasta cerrarlo.
+- ~~Investigar y corregir el hueco de producción NMR 1:2.~~ Diagnostificado y
+  resuelto (MC §10.7): el "eco" era (i) un generador inconsistente con la
+  convención de núcleos equivalentes del proyector y (ii) el flag
+  `param_opt_failed` nunca consultado, que convertía un optimizador inválido
+  en eco con `success=True`; corregido en `process_nmr_data` (fallo explícito)
+  y fijado con 4 pruebas reales en `tests/test_nmr_12_gap.py` (recuperación
+  K1/K2 en régimen identificable, autodiagnóstico SE de K2 plano).
 - ~~Elaborar las tablas con errores Monte Carlo, el resumen CSV, las recomendaciones respaldados por datos, los tiempos y el dictamen final.~~ (`results/unc/summary_table.csv`, 201 filas; tablas con IC MC en MC §10.)
 - ~~Realizar los commits por etapa; reservar la declaración de fase terminada para cuando se cumplan todos los criterios.~~
 
-**Dictamen provisional: B — no apto para declarar terminada la Fase 2.** Los
-objetivos obligatorios (B) matriz de sesgo emparejada y (E) validación por
-técnica están ejecutados con datos reales; el único objetivo en curso es la
-corrección del hueco de producción NMR 1:2 (xfail fijado). El criterio de
-cobertura [0.90, 0.97] del estimador restringido no lo alcanza ningún método
-del zoo (mejor 0.75 con bootstrap básico), limitación documentada. Cualquier
-commit que incluya este informe es un checkpoint de trabajo parcial, no una
-certificación de la fase.
+**Dictamen: B+ — todos los objetivos obligatorios (A–H) ejecutados con
+evidencia publicada; no se certifica A por dos condiciones explícitas:**
+(i) el criterio de cobertura [0.90, 0.97] para el estimador **restringido**
+no lo alcanza ninguno de los 11 métodos del zoo (mejor 0.75, bootstrap básico
+full-refit), límite científico documentado con recomendación práctica
+(validación externa/corrección de sesgo; el analítico OLS i.i.d. sí calibra,
+0.950 ± 0.010); y (ii) cuatro fallos de tests preexistentes a la Fase 2 y
+ajenos a ella (test_acid_base GUI, test_spectro_absgrp_equivalence) siguen
+abiertos en la rama. El hueco NMR 1:2 quedó diagnosticado y resuelto
+(convención + fallos honestos, §7). Cualquier commit que incluya este informe
+sigue siendo un checkpoint; la fusión a `main` y la certificación final
+requieren decisión del mantenedor.
 
 ## 8. Etapa H: solver disperso con suavizado y auditoría legacy/absolute
 

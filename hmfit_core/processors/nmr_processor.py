@@ -687,6 +687,7 @@ def process_nmr_data(
     cycle_count = 0
     k_opt_full = p0_full.copy()
     old_best_rms = np.inf
+    param_opt_failed = False
     while cycle_count < MAX_IRLS_CYCLES:
         cycle_count += 1
         _raise_if_cancelled()
@@ -921,6 +922,19 @@ def process_nmr_data(
         old_best_rms = current_best_rms
     stage_times["optimization_s"] = time.perf_counter() - t_opt_start
     log_progress(f"Objective evaluations (NMR f_m): {int(objective_eval_count_total)}")
+    if param_opt_failed:
+        # Never report the initial guess as if it were a fitted result: an
+        # optimizer/runtime failure here used to echo k0 with success=True.
+        log_progress("All optimization runs failed; aborting instead of returning initial values.")
+        return sanitize_for_json({
+            "success": False,
+            "error": ("optimization failed for all runs (invalid optimizer or bounds?); "
+                      "the returned result does NOT fall back to the initial values"),
+            "results_text": "Optimization failed: no run produced a finite objective value.",
+            "objective_evaluations": int(objective_eval_count_total),
+            "constants": [],
+            "timings": dict(stage_times),
+        })
     # 6. Calculate Results & Statistics
     t_post_start = time.perf_counter()
     try:

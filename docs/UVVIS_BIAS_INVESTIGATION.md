@@ -4,8 +4,8 @@
 > informe de misión sobre el sesgo sistemático observado en el piloto exploratorio
 > (`validation/results/pilot/uvvis_11_dc88860/`). Las etapas E–H (campañas
 > confirmatorias, comparación de bootstrap, otras técnicas, rendimiento) están
-> ejecutadas y documentadas; el único frente abierto es la corrección del hueco
-> de producción NMR 1:2, listado al final.
+> ejecutadas y documentadas; el frente NMR 1:2 quedó diagnosticado y resuelto
+> (MC §10.7).
 
 ## 0. Resumen ejecutivo
 
