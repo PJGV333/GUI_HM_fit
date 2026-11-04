@@ -40,8 +40,8 @@ def main() -> None:
         t = s["theta"]
         lines.append(f"log K: sesgo {t['bias']:+.5f} ± {t['mc_se_bias']:.5f} (MC), "
                      f"SD {t['sd']:.5f}, RMSE {t['rmse']:.5f}\n")
-        lines.append("| método | SE medio | SE/SD | cov95 | cov68 | anchura95 | cov95 basic | sesgo boot |")
-        lines.append("|---|---:|---:|---:|---:|---:|---:|---:|")
+        lines.append("| método | SE medio | SE/SD | cov95 | cov68 | anchura95 | cov95 basic | cov95 bca | sesgo boot |")
+        lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
         for k in METHODS:
             m = s.get(k)
             if not m:
@@ -49,7 +49,7 @@ def main() -> None:
             lines.append(f"| {k} | {f(m.get('mean_se'))} | {f(m.get('se_over_mc_sd'),3)} | "
                          f"{f(m.get('cov95'),3)} | {f(m.get('cov68'),3)} | "
                          f"{f(m.get('mean_width95'))} | {f(m.get('cov95_basic'),3)} | "
-                         f"{f(m.get('mean_boot_bias'))} |")
+                         f"{f(m.get('cov95_bca'),3)} | {f(m.get('mean_boot_bias'))} |")
         # figure: coverage vs width scatter
         pts = [(s[k]["mean_width95"], s[k]["cov95"], k) for k in METHODS
                if s.get(k) and s[k].get("cov95") is not None and s[k].get("mean_width95")]

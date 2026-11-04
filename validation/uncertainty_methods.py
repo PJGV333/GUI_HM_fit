@@ -136,6 +136,17 @@ def replicate_uncertainty(d, theta, estimator, truth, *,
     if B_refit > 0:
         yfit_h = np.asarray(m["yfit"], dtype=float).T          # (m, nw) harness layout
         R_h = (yfit_h - d["y"]).reshape(-1)                    # aligned with r
+        # jackknife over titration points (shared by BCa for all refit variants)
+        jack = []
+        for i in range(n_pts):
+            d_j = dict(d)
+            d_j["c"] = np.delete(np.asarray(d["c"]), i, axis=0)
+            d_j["y"] = np.delete(np.asarray(d["y"]), i, axis=0)
+            try:
+                jack.append(refit_theta(d_j, estimator,
+                                        lo=theta - refit_span, hi=theta + refit_span))
+            except Exception:
+                pass
         for name, kind in (("refit_wild_el", "wild_el"), ("refit_wild_spec", "wild_spec"),
                            ("refit_resample", "resample_el")):
             samples = []
@@ -159,8 +170,44 @@ def replicate_uncertainty(d, theta, estimator, truth, *,
             out[name] = _pct_ci(samples, truth, center=theta)
             out[name]["n_fail"] = int(fails)
             out[name]["B"] = int(B_refit)
+            _add_bca(out[name], samples, theta, jack, int(B_refit), truth)
     out["_seconds"] = {"total": time.perf_counter() - t0}
     return out
+
+
+def _add_bca(entry, samples, theta, jack, B, truth):
+    """Bias-corrected and acceleration-corrected (BCa) percentile CI.
+
+    z0 from the bootstrap CDF at theta_hat; acceleration from the
+    leave-one-titration-point jackknife. Unlike raw percentiles this is
+    invariant to bias in the centering, which matters for the constrained
+    (positively biased) estimator.
+    """
+    s_arr = np.asarray(samples, dtype=float)
+    if s_arr.size <= 10 or len(jack) < 3:
+        return
+    from scipy.stats import norm
+    prop = float((s_arr < theta).mean())
+    prop = min(max(prop, 1.0 / (B + 1.0)), 1.0 - 1.0 / (B + 1.0))
+    z0 = float(norm.ppf(prop))
+    u = float(np.mean(jack)) - np.asarray(jack, dtype=float)
+    den = (u ** 2).sum()
+    a_acc = float((u ** 3).sum() / (6.0 * den ** 1.5)) if den > 0 else 0.0
+
+    def _lvl(z: float) -> float:
+        den = 1.0 - a_acc * (z0 + z)
+        if den <= 1e-9:
+            den = 1e-9
+        val = z0 + (z0 + z) / den
+        return min(max(float(norm.cdf(val)), 1e-4), 1.0 - 1e-4)
+
+    ql = _lvl(float(norm.ppf(0.025)))
+    qh = _lvl(float(norm.ppf(0.975)))
+    lo_bca, hi_bca = float(np.quantile(s_arr, ql)), float(np.quantile(s_arr, qh))
+    entry["ci_low_bca"] = lo_bca
+    entry["ci_high_bca"] = hi_bca
+    entry["covered95_bca"] = bool(lo_bca <= truth <= hi_bca)
+    entry["width95_bca"] = hi_bca - lo_bca
 
 
 def _onestep(d, theta, block, B, seed, truth):

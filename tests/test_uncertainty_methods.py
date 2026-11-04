@@ -86,3 +86,39 @@ def test_basic_ci_is_reflection_of_percentile():
 def test_empty_samples_ci_is_none():
     m = _pct_ci([np.nan, np.nan], 3.0, center=3.0)
     assert m["n_valid"] == 0 and m["ci_low"] is None
+
+
+def test_bca_reduces_to_percentile_when_symmetric():
+    """With no bias (z0=0) and no acceleration (symmetric jackknife), the
+    BCa level adjustment must return the plain 2.5/97.5 percentiles."""
+    from validation.uncertainty_methods import _add_bca
+    from scipy.stats import norm
+    import numpy as np
+
+    # deterministic symmetric bootstrap distribution: exactly half below 3.0
+    levels = (np.arange(400) + 0.5) / 400.0
+    samples = list(np.sort(3.0 + 0.01 * norm.ppf(levels)))
+    theta = 3.0
+    jack = [3.0 + dx for dx in (-0.002, -0.001, 0.0, 0.001, 0.002)]
+    entry = {}
+    _add_bca(entry, samples, theta, jack, 400, truth=3.0)
+    lo = float(np.quantile(samples, 0.025))
+    hi = float(np.quantile(samples, 0.975))
+    assert abs(entry["ci_low_bca"] - lo) < 1e-9
+    assert abs(entry["ci_high_bca"] - hi) < 1e-9
+
+
+def test_bca_shifts_interval_against_positive_bias():
+    """A bootstrap distribution centered above theta_hat with a right-skewed
+    jackknife should push the BCa interval downward relative to percentiles."""
+    from validation.uncertainty_methods import _add_bca
+    import numpy as np
+
+    rng = np.random.default_rng(1)
+    samples = list(rng.normal(3.01, 0.01, 400))   # boot centered above theta
+    theta = 3.005
+    jack = [3.012, 3.011, 3.010, 3.009, 3.020]    # right-skewed
+    entry = {}
+    _add_bca(entry, samples, theta, jack, 400, truth=3.0)
+    lo_pct = float(np.quantile(samples, 0.025))
+    assert entry["ci_low_bca"] < lo_pct

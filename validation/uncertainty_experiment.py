@@ -100,6 +100,14 @@ def summarize(rows: list[dict], scen: dict) -> dict:
             m["mean_width95_basic"] = float(wb.mean())
         if bb.size:
             m["mean_boot_bias"] = float(bb.mean())
+        covbc = np.array([bool(r[k]["covered95_bca"]) for r in rows
+                          if r[k].get("covered95_bca") is not None])
+        wbc = np.array([r[k]["width95_bca"] for r in rows
+                        if r[k].get("width95_bca") is not None])
+        if covbc.size:
+            m["cov95_bca"] = float(covbc.mean())
+        if wbc.size:
+            m["mean_width95_bca"] = float(wbc.mean())
         if "n_fail" in rows[0][k]:
             fails = np.array([r[k]["n_fail"] for r in rows])
             B = np.array([r[k]["B"] for r in rows])

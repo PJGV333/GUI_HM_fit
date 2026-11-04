@@ -1,0 +1,1 @@
+{"B_refit": 250, "B_wild": 50, "base_seed": 20261116, "design": "bca-v1", "estimator": 0.01, "g_max": 0.002, "n_rep": 40, "name": "bca_pen_hetero", "noise": 0.0002, "noise_model": "hetero", "noise_ramp": 2.0, "points": 8, "refit_span": 0.3, "truth": 3.0}
