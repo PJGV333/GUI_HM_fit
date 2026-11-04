@@ -77,6 +77,8 @@ Se integró `fix/uncertainty-reliability` en la rama de finalización mediante u
 
 [Escalabilidad parcial] En el modo absoluto, cuando `alpha_smooth=0`, el problema es separable por longitud de onda y ya se resuelve por columnas en lugar de construir una Hessiana global. Una prueba sintética con 3 especies y 1400 longitudes de onda (4200 coeficientes) recuperó los coeficientes de referencia; el caso con suavizado sigue usando la Hessiana densa y conserva el límite de 4000. No se han implementado ni comparado aún solvers dispersos.
 
+[Auditoría `legacy` vs `absolute`, sonda puntual] `validation/legacy_vs_absolute_probe.py` (resultado commitado en `validation/results/legacy_absolute_probe.json`) ajusta un dataset del piloto con tres ponderaciones (unidad, rampa por longitud de onda, rampa por punto) bajo ambas convenciones mediante la objetivo perfilada de producción. En este régimen (μ=10⁻², sin suavizado) la diferencia de log K entre convenciones es ≤1.5·10⁻⁸ y las objetivo cruzadas coinciden a 10⁻⁸: la divergencia de convenciones (la ruta `legacy` reescala μ respecto a los pesos; `absolute` añade la penalización explícitamente a la objetivo) es numéricamente irrelevante cuando los coeficientes penalmente activos son pocos y pequeños. La auditoría completa (regímenes de penalización fuerte, cotas activas, pesos extremos, suavizado `absolute` con solver disperso) sigue pendiente; una sonda de un dataset no la sustituye.
+
 ## 5. Investigación del sesgo UV-Vis (Etapas A–D, completadas)
 
 Documento completo con tablas, figuras y datos: `docs/UVVIS_BIAS_INVESTIGATION.md`.
