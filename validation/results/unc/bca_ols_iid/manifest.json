@@ -1,0 +1,24 @@
+{
+ "config_sha256": "f8a0dc00245823020cb8d1110f922c9d1e8378aeccf72628c3ddb1e1d2092dc6",
+ "n_rows": 40,
+ "provenance": {
+  "commit": "e51e2a0e34a07b744a2c46d3dd1cb70aca73c278",
+  "numpy": "2.4.2",
+  "python": "3.14.8",
+  "scipy": "1.17.1"
+ },
+ "scen": {
+  "B_refit": 250,
+  "B_wild": 50,
+  "base_seed": 20261117,
+  "design": "bca-v1",
+  "estimator": "ols",
+  "g_max": 0.002,
+  "n_rep": 40,
+  "name": "bca_ols_iid",
+  "noise": 0.0002,
+  "points": 8,
+  "refit_span": 0.3,
+  "truth": 3.0
+ }
+}

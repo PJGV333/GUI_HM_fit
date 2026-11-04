@@ -1,0 +1,24 @@
+{
+ "config_sha256": "d6c1739b98bc5a5945ca544950058e2df906d19bf21953a46a26d27dc5883a03",
+ "n_rows": 120,
+ "provenance": {
+  "commit": "1234de21dedf3e19340cdf48e0bea3c1f247dad1",
+  "numpy": "2.4.2",
+  "python": "3.14.8",
+  "scipy": "1.17.1"
+ },
+ "scen": {
+  "B_refit": 0,
+  "B_wild": 10,
+  "base_seed": 20261128,
+  "design": "prof-v1",
+  "estimator": 0.01,
+  "g_max": 0.002,
+  "n_rep": 120,
+  "name": "prof_pen_iid",
+  "noise": 0.0002,
+  "points": 8,
+  "refit_span": 0.3,
+  "truth": 3.0
+ }
+}

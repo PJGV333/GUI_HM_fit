@@ -7,7 +7,9 @@ synthetic generator. It uses a two-sided Student-t interval based on the
 production VarPro residual degrees of freedom. The fit uses the existing default
 soft-penalty absorptivity estimator; analytic uncertainty remains unconstrained,
 so its coverage is a research question rather than a guaranteed property.
-Other techniques, noise models and bootstrap methods are rejected, not simulated.
+Noise models, estimators and the full uncertainty zoo live in
+`uncertainty_experiment.py` (next sections); `run_campaign.py` is kept as the
+frozen production-path pilot adapter for manifest compatibility.
 
 For a bounded exploratory pilot (never label its coverage confirmatory):
 
@@ -59,10 +61,13 @@ theta): `python -m validation.mechanism_profile`; analytic-SE calibration:
 
 ## Uncertainty-method comparison (`validation/uncertainty_experiment.py`)
 
-Runs the full Stage F zoo (analytic, HC1, linearized wild per element / per
+Runs the full Stage F zoo (analytic, HC1, HC2/HC3 residual sandwich with
+linear-projection leverage and MacKinlay-White factor, chi-square profile
+interval on the same profiled objective, linearized wild per element / per
 spectrum, one-step wild per spectrum / per wavelength, and three full-refit
-bootstraps) on every replicate of a scenario, with percentile **and** basic
-(reversed-percentile) intervals. The production-backed campaign adapter
+bootstraps) on every replicate of a scenario, with percentile, **basic**
+(reversed-percentile) and **BCa** (percentile z0 + jackknife acceleration over
+points) intervals. The production-backed campaign adapter
 (`run_campaign.py`) additionally accepts `estimator`: `soft_penalty` (default),
 `ols` (production path with mu=0) or `nnls` (hard NNLS). Noise models `iid`,
 `hetero` (per-point ramp) and `ar1` (per-spectrum AR(1)) are available in

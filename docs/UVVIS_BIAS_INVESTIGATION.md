@@ -293,12 +293,16 @@ preexistentes, 1 omitida** (idénticas IDs que la base).
 
 - Pilotos diagnósticos: 20–40 réplicas por escenario; los IC Monte Carlo de cada
   métrica se incluyen en los JSON crudos (sesgo ± ~0.002–0.003 en el piloto).
-- No se han ejecutado aún las campañas intermedia (100–200) ni confirmatoria
-  (≥500) con diseño congelado, ni la comparación de bootstrap; las conclusiones
-  de esta investigación son mechanistic-solid pero de tamaño piloto.
-- Los 21 escenarios de la matriz están completados (40 réplicas, o 20 para el
-  piloto) y sus datos crudos commitados; el análisis de bootstrap y las campañas
-  intermedia/confirmatoria siguen pendientes (§7).
+- Han concluido la campaña intermedia (60/40 réplicas) y la confirmatoria
+  i.i.d. con diseño congelado (n=500, B=1000), además de la comparación de
+  bootstrap (§10 de `docs/MONTE_CARLO_RESULTS.md`): sesgo medido +0.00829 ±
+  0.00038 (22σ) con 487/500 réplicas sobre el verdadero, coherente con el
+  piloto de 20 (+0.0096 ± 0.0024). La confirmatoria full-refit (n=150) sigue
+  en curso.
+- Los 21 escenarios de la matriz están completados y sus datos crudos
+  commitados; el zoo de métodos de incertidumbre (analítico, HC1, HC2/HC3,
+  wild lineizado, one-step, full-refit percentíl/básico/BCa, perfilado) quedó
+  evaluado en campañas dedicadas (`validation/results/unc/`).
 
 ## 8. Reproducibilidad
 

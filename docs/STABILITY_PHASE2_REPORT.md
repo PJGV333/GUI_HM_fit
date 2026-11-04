@@ -122,15 +122,25 @@ bootstrap, tasa de fallo 0 %. Hallazgos con datos en
 - Las colas de la distribución de error (m=8) dominan la SD MC del OLS y
   limitan la interpretación de SE/SD.
 
-Campañas confirmatorias en ejecución (iid n=500; full-refit n=150, B=250).
-Mientras no concluyan y no exista intervalo con sesgo corregido validado, la
-cobertura del estimador restringido sigue sin calibrar.
+Campañas confirmatorias i.i.d. completadas (n=500, B=1000; análisis en
+`docs/MONTE_CARLO_RESULTS.md` §10): sesgo del restringido +0.00829 ± 0.00038
+(22σ) con 487/500 réplicas por encima del valor verdadero; OLS analítico
+calibrado (cov95 0.950 ± 0.010, cov68 0.678). HC2/HC3 y perfilado χ² añadidos
+al zoo y evaluados (§10.3, §10.5): ninguno repara la inferencia del estimador
+restringido; BCa sólo es válido sin frontera. Full-refit confirmatorio
+(n=150, B=250) en ejecución con supervisor reanudable. Mientras no concluya y
+no exista intervalo con sesgo corregido validado, la cobertura del estimador
+restringido sigue sin calibrar.
 
 ## 7. Trabajo pendiente y dictamen
 
 - Completar y validar el estimador ponderado para cotas suaves y suavizado, sin alterar los resultados por defecto.
 - Crear y verificar el arnés `validation/` para todas las técnicas y métodos solicitados, incluidos checkpoints y manifiesto reproducible.
-- Implementar y contrastar las opciones explícitas para ε ≥ 0 y las correcciones HC2/HC3.
+- ~~HC2/HC3 implementados y contrastados en la capa de validación (MC §10.3:
+  equivalen a una reescala del analítico, HC2≡HC3 por palanca ~10⁻⁶, ciegos a
+  AR(1)).~~ Las opciones explícitas ε ≥ 0 (soft-penalty/NNLS frente a OLS) ya
+  estaban implementadas y quedan cuantificadas por la matriz pareada; no hay
+  defecto que justifique cambiar los predeterminados.
 - Ejecutar la campaña con los tamaños, escenarios y criterios de aceptación fijados antes de iniciarla; analizar por separado los casos con error correlacionado no modelado.
 - Elaborar las tablas con errores Monte Carlo, el resumen CSV, las recomendaciones respaldadas por datos, los tiempos y el dictamen final.
 - Realizar los commits por etapa; reservar la declaración de fase terminada para cuando se cumplan todos los criterios. Un eventual push del checkpoint WIP no equivale a la publicación de una fase validada.

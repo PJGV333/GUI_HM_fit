@@ -252,3 +252,107 @@ relación de equilibrio). Para A⇌B hay que fijar un k o conocer un espectro
 puro. Primer orden, consecutivas y segunda orden: sesgos ≤1.2 % (k1 de
 consecutivas, 1.5σ), estimator insesgado a este nivel de ruido. Datos:
 `validation/results/kin/`.
+
+## 10. Campañas confirmatorias (n=500, B=1000) y zoo de intervalos extendido
+
+Diseño **congelado antes del análisis** (`validation/configs/unc/conf_*.json`,
+semillas fijas por réplica `SeedSequence([base_seed, r])`, manifiestos con
+commit y hashes): `conf_pen_iid` (soft-penalty μ=10⁻²) y `conf_ols_iid`,
+n=500, σ=2·10⁻⁴, m=8, log K=3, g_max=2·10⁻³; bootstrap linealizado wild por
+elemento y por espectro B=1000; one-step (espectro y wild) B=1000; full-refit
+(el, espectro, remuestreo) B=1000 — este último en curso al redactar (§10.5).
+Datos: `validation/results/unc/conf_*`.
+
+### 10.1 Estimador y signo (el test del signo que motivó la investigación)
+
+| estimador | n | sesgo ± EM(MC) | SD | RMSE | frac(θ̂ > 3) |
+|---|---:|---:|---:|---:|---:|
+| soft-penalty μ=10⁻² | 500 | **+0.00829 ± 0.00038** (22σ) | 0.00860 | 0.01194 | **487/500 = 0.974 ± 0.007** |
+| OLS sin restricción | 500 | −0.00072 ± 0.00072 (1σ) | 0.01617 | 0.01617 | 240/500 = 0.480 ± 0.022 |
+
+Con n=500 el sesgo del estimador restringido es inequívoco (22σ) y
+unidireccional (97.4 % por encima); el no restringido es compatible con cero
+sesgo y simétrico. El fenómeno pertenece al estimador, no al generador.
+
+### 10.2 Cobertura confirmatoria i.i.d. (B=1000 por método)
+
+| método | pen: SE/SD | pen: cov95 | pen: cov68 | ols: SE/SD | ols: cov95 | ols: cov68 |
+|---|---:|---:|---:|---:|---:|---:|
+| analítico VarPro | 1.900 | 0.994 ± 0.003 | 0.792 | 1.014 | **0.950 ± 0.010** | 0.678 |
+| HC1 | 2.411 | 1.000 | 0.862 | 1.287 | 0.988 ± 0.005 | 0.794 |
+| wild el. (linealizado) | 1.926 | 0.984 ± 0.006 | 0.802 | 1.021 | 0.942 ± 0.010 | 0.680 |
+| wild espectro (linealizado) | 1.706 | 0.880 ± 0.015 | 0.736 | 0.807 | 0.826 ± 0.017 | 0.588 |
+| one-step espectro | 1.706 | 0.882 ± 0.014 | 0.736 | 0.807 | 0.818 ± 0.017 | 0.576 |
+| one-step wild | 1.705 | 0.876 ± 0.015 | 0.734 | 0.806 | 0.828 ± 0.017 | 0.594 |
+
+Lectura: para **OLS i.i.d.** el SE analítico VarPro está calibrado a n=500
+(95 %: 0.950 ± 0.010; 68 %: 0.678) y el wild por elemento lo reproduce
+(0.942). HC1 infla 1.29 → sobre-cubre. Los métodos en bloque destruyen la
+calibración i.i.d. (0.83). Para el **restringido** el analítico/wild-el van
+1.9× inflados: cov95 0.994 es un artefacto de amplitud (ancho 0.064 frente a
+SD 0.0086) y cov68 0.79 delata la mala calibración. Ninguna cobertura del 95 %
+aquí debe leerarse como validez sin la amplitud y el 68 % junto.
+
+### 10.3 HC2/HC3 en el contexto VarPro (`validation/uncertainty_methods.py`)
+
+Implementación: Ω=diag(r²/(1−h)ᵖ) con h la palanca de la proyección lineal
+(fila i: ‖C_i‖²/Σ‖C‖²; aquí h≈2·10⁻⁶ ⇒ **HC2≡HC3 numéricamente**), factor
+finito MacKinlay–White n/dof sobre Ω y sandwich con el Jacobiano proyectado.
+Campañas n=60 (OLS, B=0, semillas 20261210–12; `validation/results/unc/hc_*`):
+
+| ruido | analítico ratio/cov95 | HC1 | HC2≡HC3 |
+|---|---:|---:|---:|
+| iid | 0.902 / 0.917 | 1.145 / 0.983 | 0.896 / 0.883 |
+| AR(1) ρ=0.6 | 0.636 / 0.783 | 0.807 / 0.883 | 0.640 / 0.800 |
+| hetero | 0.901 / 0.933 | 1.144 / 0.967 | 0.908 / 0.917 |
+
+Conclusión: la familia HC2/HC3 de residuos **no aporta nada** en este problema
+— la palanca de la proyección es despreciable, el sandwich diagonal equivale a
+un ajuste de escala del analítico y sigue ciego a correlación (AR1 ratio
+0.64). Las correcciones HC2/HC3 *de residuos* (MacKinlay–White) no son los
+estimadores de covarianza robustos HC2/HC3 de la regresión lineal con palanca
+relevante; transplantar la fórmula lineal aquí es un callejón. Para
+correlación el instrumento válido es el remuestreo en bloque (§3).
+
+### 10.4 Bootstrap full-refit: percentíl, básico y BCa (n=40, B=300, semillas 20261124–27)
+
+`validation/results/unc/bca_*`; BCa con z₀ percentíl y aceleración jackknife
+sobre los m=8 espectros.
+
+| escenario | método base | cov95 perc | cov95 básico | cov95 BCa | ancho perc | ancho BCa |
+|---|---|---:|---:|---:|---:|---:|
+| pen i.i.d. | wild el. | 0.15 | **0.62** | 0.30 | 0.024 | 0.011 |
+| pen AR1 | wild espec. | 0.30 | **0.62** | 0.28 | 0.027 | 0.015 |
+| pen hetero | wild espec. | 0.17 | **0.53** | 0.23 | 0.029 | 0.018 |
+| ols i.i.d. | wild el. | 0.88 | 0.93 | **0.93** | 0.049 | 0.049 |
+
+BCa sólo iguala al intervalos básico cuando no hay frontera (OLS); con
+restricción activa empeora todo (aceleración jackknife inestable sobre 8
+puntos + distribución bootstrap asimétrica sesgada arriba). Ningún intervalo
+estándar de refit alcanza 95 % con el estimador restringido en m=8: el mejor
+es el básico (≈0.55–0.62), lejos del nominal.
+
+### 10.5 Intervalos por perfilado sobre la MISMA objetivo restringida
+
+Método `profile`: {θ : rms_prof(θ)² − rms_prof(θ̂)² ≤ s²·t²_{0.975}}, umbral
+χ²₁/σ̂² de rigor, resolución por expansión+bisección a ambos lados (asimétrico
+por construcción). Campañas n=120 (iid) y n=60 (AR1), `results/unc/prof_*`:
+
+| escenario | analítico cov95 | perfil cov95 ± EM | perfil cov68 | ancho perfil |
+|---|---:|---:|---:|---:|
+| pen iid | 0.975 ± 0.014 | **0.725 ± 0.041** | 0.333 | 0.029 |
+| pen AR1 | 0.967 ± 0.023 | 0.633 ± 0.062 | 0.383 | 0.027 |
+
+El perfilado ΔRSS calibrado ingenuamente **infracubre gravemente** para el
+estimador restringido: cerca de la frontera de actividad de la penalización el
+perfil se aplana y el umbral χ²₁ queda anticonservador respecto a la
+distribución real del estimador (cov68 0.33 ≪ 0.68). Confirma la advertencia
+de la Etapa D: la covarianza/umbral del problema *sin* restricción no es
+válida para el estimador *restringido*, ni siquiera en forma perfilada.
+
+### 10.6 Estado de la confirmatoria full-refit
+
+`conf_pen_refit` y `conf_ols_refit` (n=150, B=1000×3 métodos) siguen en
+ejecución con supervisor reanudable (~60–90 s/réplica); sus números se añaden
+al terminar. Hasta entonces las cifras de full-refit confirmatorio NO se
+reportan.
