@@ -498,14 +498,12 @@ class KineticsTab(QWidget):
             raise ValueError("Validate a mechanism first.")
 
         params0, bounds, param_names, log_params, fixed_mask = self._read_params_from_table()
-        method = self.model_opt_plots.combo_algorithm.currentText().strip().lower()
+        method = str(self.model_opt_plots.combo_algorithm.currentData() or "trust-region")
         backend = self.model_opt_plots.combo_backend.currentText().strip().lower()
         nnls = self.model_opt_plots.chk_nnls.isChecked()
         if backend == "jax" and nnls:
             raise ValueError("NNLS is not supported with JAX backend.")
         runs, seeds = self.model_opt_plots.get_multi_start()
-        if method == "multistart" and runs <= 1:
-            runs = 10
         config = {
             "model": self._model,
             "datasets": list(datasets),
@@ -532,6 +530,17 @@ class KineticsTab(QWidget):
         param_names = list(state.param_names)
         if not param_names:
             raise ValueError("No parameters defined.")
+
+        from hmfit_gui_qt.widgets.param_validation import parameter_issues, raise_if_issues
+
+        # The core rejects these too (NaN, inverted bounds, initial value outside the
+        # bounds); report every row at once from the typed text, naming parameter and field.
+        validate = getattr(self.model_opt_plots, "validate_parameter_table", None)
+        issues: list[str] = list(validate()) if callable(validate) else []
+        if not issues:
+            for name, value, bounds, fixed in zip(state.param_names, state.values, state.bounds, state.fixed_mask, strict=True):
+                issues += parameter_issues(str(name), value, bounds[0], bounds[1], fixed=bool(fixed), require_inside=True)
+        raise_if_issues(issues)
 
         values = []
         lower = []
@@ -734,7 +743,7 @@ class KineticsTab(QWidget):
         config = {
             "mechanism_text": self.model_opt_plots.mechanism_text(),
             "params": params,
-            "algorithm": self.model_opt_plots.combo_algorithm.currentText(),
+            "algorithm": str(self.model_opt_plots.combo_algorithm.currentData() or "trust-region"),
             "backend": self.model_opt_plots.combo_backend.currentText(),
             "nnls": self.model_opt_plots.chk_nnls.isChecked(),
             "multi_start_runs": runs,
@@ -809,11 +818,13 @@ class KineticsTab(QWidget):
             )
             self.model_opt_plots.set_params_state(state)
 
-        algo = str(config.get("algorithm") or "")
-        if algo:
-            ix = self.model_opt_plots.combo_algorithm.findText(algo)
-            if ix >= 0:
-                self.model_opt_plots.combo_algorithm.setCurrentIndex(ix)
+        algo = str(config.get("algorithm") or "").strip().lower()
+        # Legacy projects: "least_squares", "trust-region" and "multistart" all ran the
+        # same bounded trust-region method; "multistart" additionally forced 10 starts.
+        legacy_multistart = algo == "multistart"
+        ix = self.model_opt_plots.combo_algorithm.findData("trust-region")
+        if ix >= 0:
+            self.model_opt_plots.combo_algorithm.setCurrentIndex(ix)
 
         backend = str(config.get("backend") or "")
         if backend:
@@ -834,6 +845,8 @@ class KineticsTab(QWidget):
 
         runs = config.get("multi_start_runs")
         seeds = config.get("multi_start_seeds")
+        if legacy_multistart and not seeds and int(runs or 1) <= 1:
+            runs = 10
         self.model_opt_plots.set_multi_start(runs, seeds)
 
         y0 = config.get("y0") if isinstance(config.get("y0"), dict) else None
@@ -1233,7 +1246,7 @@ def _run_kinetics_fit(
     param_names = list(config["param_names"] or [])
     log_params = set(config.get("log_params") or [])
     fixed_mask = list(config.get("fixed_mask") or [])
-    method = str(config.get("method") or "least_squares")
+    method = str(config.get("method") or "trust-region")
     backend = str(config.get("backend") or "scipy")
     nnls = bool(config.get("nnls", False))
     show_stability_diagnostics = bool(config.get("show_stability_diagnostics", False))
@@ -1246,10 +1259,9 @@ def _run_kinetics_fit(
     if nnls and backend == "jax":
         raise ValueError("NNLS is not supported with JAX backend.")
 
-    if method == "trust-region":
-        ls_method = "trf"
-    else:
-        ls_method = "trf"
+    # Bounded trust-region reflective is the only algorithm the kinetics tab runs; legacy
+    # method names ("least_squares", "multistart") map to it (they always did).
+    ls_method = "trf"
 
     objective = GlobalKineticsObjective(
         model,
