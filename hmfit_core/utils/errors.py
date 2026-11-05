@@ -1176,6 +1176,84 @@ def sample_correlation(samples):
     return corr
 
 
+def correlation_from_covariance(cov, undefined=None):
+    """
+    Correlation matrix from a covariance matrix under the HM fit convention: rows and
+    columns whose variance is zero (fixed parameters) or non-finite (non-identifiable),
+    or that are flagged in ``undefined``, are NaN; the diagonal of the rest is 1.
+    """
+    C = _onp.atleast_2d(_onp.asarray(cov, dtype=float))
+    p = C.shape[0]
+    var = _onp.diag(C).copy() if p else _onp.zeros(0)
+    ok = _onp.isfinite(var) & (var > 0)
+    if undefined is not None:
+        ok &= ~_onp.asarray(undefined, dtype=bool).reshape(-1)
+    corr = _onp.full((p, p), _onp.nan)
+    idx = _onp.where(ok)[0]
+    if idx.size:
+        sd = _onp.sqrt(var[idx])
+        sub = C[_onp.ix_(idx, idx)] / _onp.outer(sd, sd)
+        corr[_onp.ix_(idx, idx)] = _onp.clip(sub, -1.0, 1.0)
+        corr[idx, idx] = 1.0
+    return corr
+
+
+def enforce_uncertainty_convention(estimate, se, ci_lo, ci_hi, corr, *, fixed_mask=None,
+                                   nonidentifiable=None, dof=None, extra_ci=()):
+    """
+    Apply the reporting convention shared by every technique and error method:
+
+    * fixed parameter: SE = 0, every interval bound = estimate, correlations NaN;
+    * non-identifiable parameter: SE and intervals NaN, correlations NaN;
+    * dof <= 0: SE and intervals of every free parameter NaN, all correlations NaN.
+
+    Returns new arrays ``(se, ci_lo, ci_hi, corr, extra_ci, notes)``; ``extra_ci`` are
+    additional interval arrays (e.g. 16/84 %) treated like ``ci_lo``/``ci_hi``.
+    """
+    est = _onp.asarray(estimate, dtype=float).reshape(-1)
+    p = est.size
+    se = _onp.array(se, dtype=float).reshape(-1)
+    lo = _onp.array(ci_lo, dtype=float).reshape(-1)
+    hi = _onp.array(ci_hi, dtype=float).reshape(-1)
+    extra = [None if a is None else _onp.array(a, dtype=float).reshape(-1) for a in extra_ci]
+    corr = _onp.array(corr, dtype=float) if corr is not None else _onp.full((p, p), _onp.nan)
+    corr = _onp.atleast_2d(corr)
+    if corr.shape != (p, p):
+        corr = _onp.full((p, p), _onp.nan)
+    fixed = _onp.zeros(p, dtype=bool) if fixed_mask is None else _onp.asarray(fixed_mask, dtype=bool).reshape(-1)
+    if fixed.size != p:
+        fixed = _onp.zeros(p, dtype=bool)
+    nonid = _onp.zeros(p, dtype=bool) if nonidentifiable is None else _onp.asarray(nonidentifiable, dtype=bool).reshape(-1)
+    if nonid.size != p:
+        nonid = _onp.zeros(p, dtype=bool)
+    nonid &= ~fixed
+    notes = []
+    undefined = nonid.copy()
+    try:
+        dof_bad = dof is not None and float(dof) <= 0
+    except (TypeError, ValueError):
+        dof_bad = False
+    if dof_bad:
+        undefined |= ~fixed
+        notes.append(
+            f"Insufficient degrees of freedom (dof={dof}): uncertainties and correlations are undefined (NaN)."
+        )
+    for arr in [se, lo, hi] + [a for a in extra if a is not None]:
+        arr[undefined] = _onp.nan
+    se[fixed] = 0.0
+    for arr in [lo, hi] + [a for a in extra if a is not None]:
+        arr[fixed] = est[fixed]
+    bad = fixed | undefined
+    corr[bad, :] = _onp.nan
+    corr[:, bad] = _onp.nan
+    if dof_bad:
+        corr[:, :] = _onp.nan
+    good = _onp.where(~bad)[0]
+    if not dof_bad:
+        corr[good, good] = 1.0
+    return se, lo, hi, corr, extra, notes
+
+
 def hc1_rescale_factor(n_obs, n_params_total):
     """
     Global HC1-type degrees-of-freedom correction sqrt(n / (n - p_total)).
