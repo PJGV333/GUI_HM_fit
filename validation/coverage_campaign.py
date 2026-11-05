@@ -735,8 +735,15 @@ def summarize(out: Path, csv: Path | None = None) -> list[dict[str, Any]]:
     for path in sorted(out.glob("*.jsonl")):
         if path.name == "manifest.jsonl":
             continue
-        rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-        rows_all += summarize_rows(rows, path.stem)
+        rows = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                try:
+                    rows.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue  # torn last line of a run in progress
+        if rows:
+            rows_all += summarize_rows(rows, path.stem)
     if csv is not None:
         pd.DataFrame(rows_all).to_csv(csv, index=False, float_format="%.6g")
     return rows_all
