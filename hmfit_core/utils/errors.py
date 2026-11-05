@@ -1254,6 +1254,45 @@ def enforce_uncertainty_convention(estimate, se, ci_lo, ci_hi, corr, *, fixed_ma
     return se, lo, hi, corr, extra, notes
 
 
+PARAM_STATUS_NOTES = {
+    "fixed": "fixed parameter (not estimated; SE = 0)",
+    "nonidentifiable": "not identifiable from these data (uncertainty undefined)",
+    "dof": "insufficient degrees of freedom (dof <= 0; uncertainty undefined)",
+    "failed": "the error analysis could not compute this value",
+}
+
+
+def parameter_status_codes(se, *, fixed_mask=None, nonidentifiable=None, dof=None):
+    """
+    Per-parameter reason code for the reported uncertainty: "" (defined), "fixed",
+    "nonidentifiable", "dof" (dof <= 0) or "failed" (undefined for any other reason).
+    Used by the GUI to explain undefined values and by exports for the "Note" column.
+    """
+    se = _onp.asarray(se, dtype=float).reshape(-1)
+    p = se.size
+    fixed = _onp.zeros(p, bool) if fixed_mask is None else _onp.asarray(fixed_mask, bool).reshape(-1)
+    nonid = _onp.zeros(p, bool) if nonidentifiable is None else _onp.asarray(nonidentifiable, bool).reshape(-1)
+    fixed = fixed if fixed.size == p else _onp.zeros(p, bool)
+    nonid = nonid if nonid.size == p else _onp.zeros(p, bool)
+    try:
+        dof_bad = dof is not None and float(dof) <= 0
+    except (TypeError, ValueError):
+        dof_bad = False
+    codes = []
+    for i in range(p):
+        if fixed[i]:
+            codes.append("fixed")
+        elif nonid[i]:
+            codes.append("nonidentifiable")
+        elif dof_bad:
+            codes.append("dof")
+        elif not _onp.isfinite(se[i]):
+            codes.append("failed")
+        else:
+            codes.append("")
+    return codes
+
+
 def hc1_rescale_factor(n_obs, n_params_total):
     """
     Global HC1-type degrees-of-freedom correction sqrt(n / (n - p_total)).

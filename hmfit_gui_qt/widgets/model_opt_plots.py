@@ -1173,7 +1173,7 @@ class ModelOptPlotsWidget(QWidget):
         if extra_lines:
             summary = summary + "\n" + "\n".join(extra_lines)
 
-        from hmfit_core.utils.errors import enforce_uncertainty_convention
+        from hmfit_core.utils.errors import enforce_uncertainty_convention, parameter_status_codes
 
         # One convention for every method: fixed -> SE 0; non-identifiable or dof <= 0
         # -> NaN SE/intervals; any correlation involving them -> NaN.
@@ -1227,6 +1227,12 @@ class ModelOptPlotsWidget(QWidget):
             "rms": rms_val,
             "s2": s2_val,
             "dof": dof_val,
+            "param_status": parameter_status_codes(
+                se_log10,
+                fixed_mask=fixed_mask,
+                nonidentifiable=base_metrics.get("nonidentifiable"),
+                dof=dof_val,
+            ),
         }
 
     def _corr_from_cov(self, metrics: dict[str, Any], p_total: int) -> np.ndarray:
@@ -1837,6 +1843,23 @@ class ModelOptPlotsWidget(QWidget):
         fixed_it = self.params_table.item(row, 4)
         if fixed_it is not None:
             self._on_params_item_changed(fixed_it)
+
+    def validate_parameter_table(self) -> None:
+        """Raise ValueError with readable, per-parameter messages for invalid entries
+        (non-numeric or NaN values/bounds, lower bound > upper bound)."""
+        from hmfit_gui_qt.widgets.param_validation import parameter_issues, raise_if_issues
+
+        issues: list[str] = []
+        for row in range(self.params_table.rowCount()):
+            texts = [
+                self.params_table.item(row, col).text() if self.params_table.item(row, col) is not None else ""
+                for col in range(4)
+            ]
+            fixed_item = self.params_table.item(row, 4)
+            fixed = fixed_item is not None and fixed_item.checkState() == Qt.CheckState.Checked
+            name = texts[0].strip() or f"K{row + 1}"
+            issues += parameter_issues(name, texts[1], texts[2], texts[3], fixed=fixed)
+        raise_if_issues(issues)
 
     def get_optimization(self) -> tuple[list[float], list[tuple[float | None, float | None]], list[bool]]:
         initial_k: list[float] = []

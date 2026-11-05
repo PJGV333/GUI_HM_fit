@@ -845,6 +845,9 @@ def _build_acid_base_output(
         "percent_error": np.asarray([], dtype=float),
     }
 
+    from hmfit_core.utils.errors import PARAM_STATUS_NOTES, parameter_status_codes
+
+    param_status = parameter_status_codes(se, fixed_mask=fixed_mask, nonidentifiable=nonid_mask, dof=dof_raw)
     fixed_labels = ["Yes" if bool(value) else "" for value in fixed_mask]
     primary_rows: list[list[Any]] = []
     for idx, name in enumerate(param_names):
@@ -990,7 +993,7 @@ def _build_acid_base_output(
 
     export_frames: dict[str, Any] = {
         "Parameters": pd.DataFrame(
-            primary_rows,
+            [row + [PARAM_STATUS_NOTES.get(code, "")] for row, code in zip(primary_rows, param_status)],
             columns=[
                 "Parameter",
                 "Estimate",
@@ -1001,6 +1004,7 @@ def _build_acid_base_output(
                 "CI 84",
                 "%err(linear)",
                 "Fixed",
+                "Note",
             ],
         ),
         "pKa": pka_df,
@@ -1041,6 +1045,7 @@ def _build_acid_base_output(
             "Fixed",
         ],
         "results_rows": primary_rows,
+        "param_status": param_status,
         "extra_tables": [
             {
                 "name": "pKa",
