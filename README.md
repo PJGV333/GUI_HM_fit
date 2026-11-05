@@ -199,11 +199,14 @@ See [build_all.md](build_all.md) for the GitHub Actions release flow and local p
 
 ## Requirements
 
-- Python 3.9+
-- PySide6
-- NumPy, SciPy, Pandas
-- Matplotlib
-- OpenPyXL
+- Python 3.11–3.14 (tested in CI on 3.11 and 3.14). The pinned scientific stack
+  (NumPy 2.4, SciPy 1.17, pandas 3.0) requires Python ≥ 3.11; 3.9/3.10 are not supported.
+- PySide6, NumPy, SciPy, pandas, Matplotlib, OpenPyXL, Pillow — version ranges in
+  `requirements_qt.txt`; exact tested versions in `constraints.txt`:
+
+  ```sh
+  python -m pip install -r requirements_qt.txt -c constraints.txt
+  ```
 
 ## License
 
