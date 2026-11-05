@@ -1039,8 +1039,9 @@ class KineticsModelOptPlotsWidget(QWidget):
             if cov is None and jac_lin.size:
                 s2 = ctx.get("sigma2")
                 if s2 is None:
-                    dof = max(nobs - p, 1)
-                    s2 = np.sum(residuals**2) / float(dof)
+                    dof_fb = nobs - int(free_idx.size) - n_linear
+                    # dof <= 0: the residual variance is undefined (no silent clamp to 1).
+                    s2 = np.sum(residuals**2) / float(dof_fb) if dof_fb > 0 else np.nan
                 cov = float(s2) * np.linalg.pinv(jac_lin.T @ jac_lin)
             if cov is not None:
                 cov = np.asarray(cov, dtype=float)
@@ -1172,7 +1173,8 @@ class KineticsModelOptPlotsWidget(QWidget):
 
         if method == "analytic":
             if se is None:
-                se = np.zeros_like(k_hat)
+                # No covariance available: undefined, not "fixed" (SE = 0 means fixed only).
+                se = np.full_like(k_hat, np.nan)
             z95 = t_quantile(dof_ctx, 0.975)
             z68 = t_quantile(dof_ctx, 0.8413447460685429)
             median = k_hat.copy()
@@ -1209,6 +1211,25 @@ class KineticsModelOptPlotsWidget(QWidget):
                 for i in range(corr.shape[0]):
                     corr[i, i] = 1.0
 
+        from hmfit_core.utils.errors import enforce_uncertainty_convention
+
+        nonid_mask = np.zeros(p, dtype=bool)
+        if jac_lin.size and free_idx.size:
+            nonid_mask[free_idx] = nonidentifiable_parameters(np.asarray(jac_lin, dtype=float)[:, free_idx].T)
+        dof_eff = dof_ctx if dof_ctx is not None else nobs - int(free_idx.size) - n_linear
+        se, ci_2p5, ci_97p5, corr, (ci_16, ci_84), conv_notes = enforce_uncertainty_convention(
+            k_hat,
+            se,
+            ci_2p5,
+            ci_97p5,
+            corr,
+            fixed_mask=fixed_arr,
+            nonidentifiable=nonid_mask,
+            dof=dof_eff,
+            extra_ci=(ci_16, ci_84),
+        )
+        perc_err = np.where(np.isnan(se), np.nan, np.where(se == 0.0, 0.0, np.asarray(perc_err, dtype=float)))
+
         summary = self._build_errors_summary(
             method=method,
             B=B,
@@ -1239,6 +1260,7 @@ class KineticsModelOptPlotsWidget(QWidget):
         if method == "bootstrap_full_refit" and n_success is not None:
             for note in bootstrap_quality_notes(int(n_success or 0), int(n_fail or 0), B):
                 extra.append(f"WARNING: {note}")
+        extra.extend(f"WARNING: {note}" for note in conv_notes)
         summary = summary + "\n" + "\n".join(extra)
 
         return {
