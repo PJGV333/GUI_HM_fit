@@ -35,3 +35,8 @@ nmr_configT4.json
 
 # Investigation figures (regenerable via validation.make_bias_figures)
 !docs/figures/**/*.png
+
+# Runtime crash log written by hmfit_gui_qt/__main__.py
+hmfit_crash.log
+# Unreferenced local NMR config (hmfit_confignmrT2.json stays tracked: default input of tools/run_nmr_from_json.py)
+nmr_configT3.json
