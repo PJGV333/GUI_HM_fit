@@ -1,8 +1,2 @@
-PySide6
-matplotlib
-numpy
-scipy
-pandas
-openpyxl
-Pillow
-pytest
+-r requirements_qt.txt
+-r requirements-dev.txt

@@ -1,0 +1,3 @@
+# Test-only dependencies (CI installs these with -c constraints.txt).
+pytest>=8,<10
+odfpy>=1.4,<1.5
