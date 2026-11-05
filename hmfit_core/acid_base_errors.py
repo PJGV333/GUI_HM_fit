@@ -660,6 +660,10 @@ def _expand_with_fixed_constants(
     expanded["covariance_matrix"] = _mat(raw["covariance_matrix"], 0.0)
     corr = _mat(raw["correlation_matrix"], np.nan)
     expanded["correlation_matrix"] = corr
+    if raw.get("nonidentifiable") is not None:
+        nonid = np.zeros(n_all, dtype=bool)
+        nonid[keep] = np.asarray(raw["nonidentifiable"], dtype=bool).reshape(-1)[src[keep]]
+        expanded["nonidentifiable"] = nonid
     samples = raw.get("samples")
     if samples is not None and np.asarray(samples).size:
         samples = np.asarray(samples, dtype=float)
@@ -720,6 +724,29 @@ def _build_acid_base_output(
         n_success = boot_summary.get("n_success")
         n_fail = boot_summary.get("n_fail")
 
+    from hmfit_core.utils.errors import enforce_uncertainty_convention
+
+    nonid_mask = np.asarray(
+        raw.get("nonidentifiable") if raw.get("nonidentifiable") is not None else np.zeros(theta_hat.size, bool),
+        dtype=bool,
+    ).reshape(-1)
+    if nonid_mask.size != theta_hat.size:
+        nonid_mask = np.zeros(theta_hat.size, dtype=bool)
+    nonid_mask &= ~fixed_mask
+    dof_raw = raw.get("dof")
+    dof_undefined = dof_raw is not None and int(dof_raw) <= 0
+    se, ci_2p5, ci_97p5, sample_corr, (ci_16, ci_84), convention_notes = enforce_uncertainty_convention(
+        theta_hat,
+        se,
+        ci_2p5,
+        ci_97p5,
+        sample_corr,
+        fixed_mask=fixed_mask,
+        nonidentifiable=nonid_mask,
+        dof=dof_raw,
+        extra_ci=(ci_16, ci_84),
+    )
+
     const_info = _acid_base_constant_info(param_names, context)
     const_idx = const_info["indices"]
     const_labels = const_info["labels"]
@@ -744,10 +771,19 @@ def _build_acid_base_output(
         samples_constants = samples[:, const_idx]
         if primary_space == "log_beta":
             samples_log_beta = samples_constants
-            samples_pka = np.asarray([log_beta_to_pka(row.tolist()) for row in samples_log_beta], dtype=float)
+            samples_pka = np.asarray(
+                [log_beta_to_pka(row.tolist()) if np.all(np.isfinite(row)) else np.full(row.size, np.nan)
+                 for row in samples_log_beta],
+                dtype=float,
+            )
         else:
             samples_pka = samples_constants
-            samples_log_beta = np.asarray([pka_to_log_beta(row.tolist()) for row in samples_pka], dtype=float)
+            # Undefined (NaN) constants propagate as undefined derived constants.
+            samples_log_beta = np.asarray(
+                [pka_to_log_beta(row.tolist()) if np.all(np.isfinite(row)) else np.full(row.size, np.nan)
+                 for row in samples_pka],
+                dtype=float,
+            )
         pka_ci_2p5 = np.percentile(samples_pka, 2.5, axis=0)
         pka_ci_97p5 = np.percentile(samples_pka, 97.5, axis=0)
         pka_ci_16 = np.percentile(samples_pka, 16.0, axis=0) if include_16_84 else None
@@ -767,6 +803,36 @@ def _build_acid_base_output(
         log_beta_ci_97p5 = log_beta_estimate + z95 * se_log_beta
         log_beta_ci_16 = log_beta_estimate - z68 * se_log_beta if include_16_84 else None
         log_beta_ci_84 = log_beta_estimate + z68 * se_log_beta if include_16_84 else None
+
+    if const_idx:
+        const_fixed = fixed_mask[const_idx]
+        const_nonid = nonid_mask[const_idx]
+        # Derived constants mix every acid-base constant: undefined as soon as one of
+        # them is non-identifiable or dof <= 0; fixed only if all of them are fixed.
+        derived_undefined = bool(dof_undefined or np.any(const_nonid))
+        primary_undefined = (~const_fixed) & (const_nonid | dof_undefined)
+        derived_mask = np.full(const_fixed.size, derived_undefined) & ~np.full(const_fixed.size, bool(np.all(const_fixed)))
+        if primary_space == "log_beta":
+            lb_bad, pka_bad = primary_undefined, derived_mask
+        else:
+            pka_bad, lb_bad = primary_undefined, derived_mask
+        for arrs, bad in (
+            ((se_pka, pka_ci_2p5, pka_ci_97p5, pka_ci_16, pka_ci_84), pka_bad),
+            ((se_log_beta, log_beta_ci_2p5, log_beta_ci_97p5, log_beta_ci_16, log_beta_ci_84), lb_bad),
+        ):
+            for arr in arrs:
+                if arr is not None and np.size(arr) == bad.size:
+                    np.asarray(arr)[bad] = np.nan
+        primary = (
+            (log_beta_estimate, se_log_beta, (log_beta_ci_2p5, log_beta_ci_97p5, log_beta_ci_16, log_beta_ci_84))
+            if primary_space == "log_beta"
+            else (pka_estimate, se_pka, (pka_ci_2p5, pka_ci_97p5, pka_ci_16, pka_ci_84))
+        )
+        if np.size(primary[1]) == const_fixed.size:
+            np.asarray(primary[1])[const_fixed] = 0.0
+            for arr in primary[2]:
+                if arr is not None and np.size(arr) == const_fixed.size:
+                    np.asarray(arr)[const_fixed] = np.asarray(primary[0])[const_fixed]
 
     linear_beta = _linear_metrics_from_log_beta(log_beta_estimate, se_log_beta) if log_beta_estimate.size else {
         "linear_value": np.asarray([], dtype=float),
@@ -852,7 +918,7 @@ def _build_acid_base_output(
         nobs=int(raw.get("nobs") or 0),
         p_free=int(raw.get("p_free") or 0),
     )
-    for _note in raw.get("notes") or []:
+    for _note in list(raw.get("notes") or []) + list(convention_notes):
         if _note not in notes:
             notes.append(str(_note))
 
