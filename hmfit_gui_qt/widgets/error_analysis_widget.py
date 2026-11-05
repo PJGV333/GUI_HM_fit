@@ -5,6 +5,42 @@ from typing import Any, Callable
 import numpy as np
 
 from PySide6.QtCore import Qt, Signal
+
+UNDEFINED_MARK = "\u2014"  # em dash: shown instead of "nan"; exports keep numeric NaN
+
+
+def status_reason_text(tr, code: str) -> str:
+    """Tooltip text explaining why a reported uncertainty is 0 or undefined."""
+    reasons = {
+        "fixed": tr("Fixed parameter: it was not estimated, so it has no uncertainty (SE = 0)."),
+        "nonidentifiable": tr(
+            "Undefined: this parameter is not identifiable from these data "
+            "(the data carry no information about it)."
+        ),
+        "dof": tr("Undefined: insufficient degrees of freedom (dof \u2264 0). Add data points or fix parameters."),
+        "failed": tr("Undefined: the error analysis could not compute this value."),
+    }
+    return reasons.get(str(code or ""), "")
+
+
+CORR_UNDEFINED_TOOLTIP = (
+    "Undefined: the correlation involves a fixed or non-identifiable parameter, "
+    "or the degrees of freedom are insufficient."
+)
+
+
+def _parameter_space_label(param_names: list[str]) -> str | None:
+    """Label of the reported quantity when every parameter shares it."""
+    names = [str(n).strip().lower() for n in param_names]
+    if not names:
+        return None
+    if all(n.startswith("pka") for n in names):
+        return "pKa"
+    if all(n.startswith("log_beta") or n.startswith("logbeta") for n in names):
+        return "log \u03b2"
+    if all(n.startswith("k") and n[1:].isdigit() for n in names):
+        return "log10K"
+    return None
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -217,15 +253,16 @@ class ErrorAnalysisWidget(QWidget):
     def _set_default_results_headers(self) -> None:
         columns = [
             "Parameter",
-            "Estimate log10K",
+            "Estimate",
             "Median",
             "CI 2.5",
             "CI 97.5",
             "CI 16",
             "CI 84",
-            "SE(log10K)",
+            "SE",
             "%err(K)",
         ]
+        columns = self._label_columns(columns)
         self.table_error_results.setColumnCount(len(columns))
         self.table_error_results.setHorizontalHeaderLabels(columns)
         header = self.table_error_results.horizontalHeader()
@@ -233,6 +270,31 @@ class ErrorAnalysisWidget(QWidget):
         for col in range(1, len(columns)):
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
         self._results_ci_columns = (5, 6)
+
+    def _status_reason(self, code: str) -> str:
+        return status_reason_text(self.tr, code)
+
+    def _label_columns(self, columns: list[str]) -> list[str]:
+        """Show the real parameter (pKa, log beta, log10K) in Estimate/SE headers."""
+        label = getattr(self, "_param_label", None)
+        out = []
+        for name in columns:
+            key = str(name).strip()
+            if label and key in {"Estimate", "Estimate log10K"}:
+                out.append(self.tr("Estimate ({0})").replace("{0}", label))
+            elif label and key in {"SE", "SE(log10K)"}:
+                out.append(self.tr("SE ({0})").replace("{0}", label))
+            elif key == "Estimate log10K":
+                out.append(self.tr("Estimate"))
+            elif key == "SE(log10K)":
+                out.append(self.tr("SE"))
+            else:
+                out.append(key)
+        return out
+
+    def _row_reason(self, row: int) -> str:
+        status = list(getattr(self, "_param_status", None) or [])
+        return self._status_reason(status[row]) if 0 <= row < len(status) else ""
 
     def set_supported_methods(self, supported_methods: set[str] | list[str], *, default: str = "analytic") -> None:
         supported = {str(method) for method in supported_methods}
@@ -263,8 +325,12 @@ class ErrorAnalysisWidget(QWidget):
     def set_errors_context(self, context: dict[str, Any] | None, *, auto_compute: bool = False) -> None:
         self._errors_context = context
         self._errors_last_output = None
+        self._param_status = []
+        names = (context or {}).get("parameter_names") or (context or {}).get("param_names") or []
+        self._param_label = _parameter_space_label([str(v) for v in names])
         self.btn_error_export.setEnabled(False)
         self._clear_errors_tables()
+        self._set_default_results_headers()
         self._refresh_idle_state()
         if context and auto_compute:
             self.combo_error_method.setCurrentIndex(0)
@@ -472,6 +538,8 @@ class ErrorAnalysisWidget(QWidget):
         self._refresh_idle_state()
 
     def _apply_errors_output(self, output: dict[str, Any]) -> None:
+        self._param_status = list(output.get("param_status") or [])
+        self._param_label = _parameter_space_label([str(v) for v in (output.get("param_names") or [])])
         if output.get("results_columns") and output.get("results_rows") is not None:
             columns = [str(value) for value in (output.get("results_columns") or [])]
             rows = list(output.get("results_rows") or [])
@@ -495,7 +563,7 @@ class ErrorAnalysisWidget(QWidget):
     def _populate_results_table(self, columns: list[str], rows: list[Any]) -> None:
         self.table_error_results.clear()
         self.table_error_results.setColumnCount(len(columns))
-        self.table_error_results.setHorizontalHeaderLabels(columns)
+        self.table_error_results.setHorizontalHeaderLabels(self._label_columns(columns))
         self.table_error_results.setRowCount(len(rows))
         ci16_col = None
         ci84_col = None
@@ -513,9 +581,13 @@ class ErrorAnalysisWidget(QWidget):
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
         for row_idx, row in enumerate(rows):
             values = list(row) if isinstance(row, (list, tuple)) else [row]
+            reason = self._row_reason(row_idx)
             for col_idx, value in enumerate(values[: len(columns)]):
                 align_left = col_idx == 0
-                self._set_table_cell(self.table_error_results, row_idx, col_idx, value, align_left=align_left)
+                self._set_table_cell(
+                    self.table_error_results, row_idx, col_idx, value, align_left=align_left,
+                    tooltip=reason if (col_idx == 0 or self._is_undefined(value)) else None,
+                )
         self._apply_errors_ci_visibility()
 
     def _populate_legacy_results(self, output: dict[str, Any]) -> None:
@@ -531,7 +603,8 @@ class ErrorAnalysisWidget(QWidget):
         perc_err = np.asarray(output.get("perc_err") or [], dtype=float)
         self.table_error_results.setRowCount(len(param_names))
         for row, name in enumerate(param_names):
-            self._set_table_cell(self.table_error_results, row, 0, str(name), align_left=True)
+            self._set_table_cell(self.table_error_results, row, 0, str(name), align_left=True,
+                                 tooltip=self._row_reason(row) or None)
             self._set_table_cell(self.table_error_results, row, 1, self._fmt_num(k_hat, row))
             self._set_table_cell(self.table_error_results, row, 2, self._fmt_num(median, row))
             self._set_table_cell(self.table_error_results, row, 3, self._fmt_num(ci_2p5, row))
@@ -540,6 +613,12 @@ class ErrorAnalysisWidget(QWidget):
             self._set_table_cell(self.table_error_results, row, 6, self._fmt_num(ci_84, row))
             self._set_table_cell(self.table_error_results, row, 7, self._fmt_num(se_log10, row))
             self._set_table_cell(self.table_error_results, row, 8, self._fmt_num(perc_err, row))
+            reason = self._row_reason(row)
+            if reason:
+                for col in range(1, 9):
+                    item = self.table_error_results.item(row, col)
+                    if item is not None and item.text() == UNDEFINED_MARK:
+                        item.setToolTip(reason)
         self._apply_errors_ci_visibility()
 
     def _render_extra_tables(self, extra_tables: list[dict[str, Any]]) -> None:
@@ -581,11 +660,16 @@ class ErrorAnalysisWidget(QWidget):
         value: Any,
         *,
         align_left: bool = False,
+        tooltip: str | None = None,
     ) -> None:
         text = str(value) if value is not None else ""
         if isinstance(value, (float, np.floating)):
-            text = "" if not np.isfinite(float(value)) else f"{float(value):.6g}"
+            text = UNDEFINED_MARK if not np.isfinite(float(value)) else f"{float(value):.6g}"
+        elif text.strip().lower() == "nan":
+            text = UNDEFINED_MARK
         item = QTableWidgetItem(text)
+        if tooltip:
+            item.setToolTip(tooltip)
         if align_left:
             item.setTextAlignment(int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter))
         else:
@@ -600,8 +684,14 @@ class ErrorAnalysisWidget(QWidget):
         except Exception:
             return ""
         if not np.isfinite(val):
-            return ""
+            return UNDEFINED_MARK
         return f"{val:.6g}"
+
+    @staticmethod
+    def _is_undefined(value: Any) -> bool:
+        if isinstance(value, (float, np.floating)):
+            return not np.isfinite(float(value))
+        return str(value).strip().lower() == "nan"
 
     def _populate_corr_table(self, corr: np.ndarray, param_names: list[str]) -> None:
         if corr.size == 0:
@@ -617,8 +707,13 @@ class ErrorAnalysisWidget(QWidget):
         for i in range(p):
             for j in range(p):
                 val = corr[i, j]
-                text = "" if not np.isfinite(val) else f"{val:.3f}"
-                self._set_table_cell(self.table_error_corr, i, j, text)
+                if np.isfinite(val):
+                    self._set_table_cell(self.table_error_corr, i, j, f"{val:.3f}")
+                else:
+                    self._set_table_cell(
+                        self.table_error_corr, i, j, UNDEFINED_MARK,
+                        tooltip=self.tr(CORR_UNDEFINED_TOOLTIP),
+                    )
 
     def _clear_corr_table(self) -> None:
         self.table_error_corr.clear()
@@ -660,14 +755,15 @@ class ErrorAnalysisWidget(QWidget):
                     df = pd.DataFrame(
                         {
                             "Parameter": param_names,
-                            "Estimate log10K": output.get("k_hat"),
+                            "Estimate": output.get("k_hat"),
                             "Median": output.get("median"),
                             "CI 2.5": output.get("ci_2p5"),
                             "CI 97.5": output.get("ci_97p5"),
                             "CI 16": output.get("ci_16"),
                             "CI 84": output.get("ci_84"),
-                            "SE(log10K)": output.get("se_log10"),
+                            "SE": output.get("se_log10"),
                             "%err(K)": output.get("perc_err"),
+                            "Note": self._export_notes(output, len(param_names)),
                         }
                     )
                     df.to_excel(writer, sheet_name="Results", index=False)
@@ -686,6 +782,13 @@ class ErrorAnalysisWidget(QWidget):
                     )
         except Exception as exc:
             QMessageBox.critical(self, "Export error", str(exc))
+
+    def _export_notes(self, output: dict[str, Any], n: int) -> list[str]:
+        """Plain-text reason per parameter; numeric NaN is kept in the value columns."""
+        from hmfit_core.utils.errors import PARAM_STATUS_NOTES
+
+        status = list(output.get("param_status") or [])
+        return [PARAM_STATUS_NOTES.get(status[i], "") if i < len(status) else "" for i in range(n)]
 
     def _to_frame(self, data: Any):
         import pandas as pd

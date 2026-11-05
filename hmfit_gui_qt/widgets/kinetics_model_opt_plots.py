@@ -152,8 +152,17 @@ class KineticsModelOptPlotsWidget(QWidget):
 
         opt_form = QFormLayout()
         self.combo_algorithm = QComboBox(opt_tab)
-        self.combo_algorithm.addItems(["least_squares", "trust-region", "multistart"])
-        opt_form.addRow("Algorithm", self.combo_algorithm)
+        # Only the algorithm that actually runs is offered: every former entry
+        # ("least_squares", "trust-region", "multistart") executed SciPy's bounded
+        # trust-region reflective method, and multi-start is the checkbox below.
+        self.combo_algorithm.addItem(self.tr("Trust-region reflective (bounded)"), "trust-region")
+        self.combo_algorithm.setToolTip(
+            self.tr(
+                "Bounded trust-region reflective least squares (SciPy 'trf'). "
+                "Use the Multi-start option to try several starting points."
+            )
+        )
+        opt_form.addRow(self.tr("Algorithm"), self.combo_algorithm)
 
         self.combo_backend = QComboBox(opt_tab)
         self.combo_backend.addItems(["SciPy", "JAX"])
@@ -412,6 +421,21 @@ class KineticsModelOptPlotsWidget(QWidget):
         self.params_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for col in range(1, self.params_table.columnCount()):
             self.params_table.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+
+    def validate_parameter_table(self) -> list[str]:
+        """Readable problems with the typed parameter table (raw text, before coercion)."""
+        from hmfit_gui_qt.widgets.param_validation import parameter_issues
+
+        issues: list[str] = []
+        for row in range(self.params_table.rowCount()):
+            cells = [self.params_table.item(row, col) for col in range(5)]
+            name = cells[0].text().strip() if cells[0] is not None else ""
+            if not name:
+                continue
+            texts = [c.text() if c is not None else "" for c in cells[1:4]]
+            fixed = bool(cells[4] and cells[4].checkState() == Qt.CheckState.Checked)
+            issues += parameter_issues(name, texts[0], texts[1], texts[2], fixed=fixed, require_inside=True)
+        return issues
 
     def get_params_state(self) -> KineticsParamState:
         param_names: list[str] = []
@@ -1211,7 +1235,7 @@ class KineticsModelOptPlotsWidget(QWidget):
                 for i in range(corr.shape[0]):
                     corr[i, i] = 1.0
 
-        from hmfit_core.utils.errors import enforce_uncertainty_convention
+        from hmfit_core.utils.errors import enforce_uncertainty_convention, parameter_status_codes
 
         nonid_mask = np.zeros(p, dtype=bool)
         if jac_lin.size and free_idx.size:
@@ -1284,6 +1308,7 @@ class KineticsModelOptPlotsWidget(QWidget):
             "tol": tol,
             "n_success": n_success,
             "n_fail": n_fail,
+            "param_status": parameter_status_codes(se, fixed_mask=fixed_arr, nonidentifiable=nonid_mask, dof=dof_eff),
         }
 
     def _build_errors_summary(
@@ -1341,9 +1366,13 @@ class KineticsModelOptPlotsWidget(QWidget):
         perc_err = np.asarray(perc_err_raw if perc_err_raw is not None else [], dtype=float)
         corr = output.get("corr")
 
+        from hmfit_gui_qt.widgets.error_analysis_widget import UNDEFINED_MARK, status_reason_text
+
+        status = list(output.get("param_status") or [])
         self.table_error_results.setRowCount(len(param_names))
         for row, name in enumerate(param_names):
-            self._set_error_cell(row, 0, str(name), align_left=True)
+            reason = status_reason_text(self.tr, status[row]) if row < len(status) else ""
+            self._set_error_cell(row, 0, str(name), align_left=True, tooltip=reason or None)
             self._set_error_cell(row, 1, self._fmt_num(k_hat, row))
             self._set_error_cell(row, 2, self._fmt_num(median, row))
             self._set_error_cell(row, 3, self._fmt_num(ci_2p5, row))
@@ -1352,6 +1381,11 @@ class KineticsModelOptPlotsWidget(QWidget):
             self._set_error_cell(row, 6, self._fmt_num(ci_84, row))
             self._set_error_cell(row, 7, self._fmt_num(se, row))
             self._set_error_cell(row, 8, self._fmt_num(perc_err, row))
+            if reason:
+                for col in range(1, 9):
+                    item = self.table_error_results.item(row, col)
+                    if item is not None and item.text() == UNDEFINED_MARK:
+                        item.setToolTip(reason)
 
         if corr is not None and self.chk_error_show_corr.isChecked():
             self._populate_corr_table(np.asarray(corr, dtype=float), param_names)
@@ -1364,8 +1398,11 @@ class KineticsModelOptPlotsWidget(QWidget):
         self._errors_last_output = output
         self.btn_error_export.setEnabled(True)
 
-    def _set_error_cell(self, row: int, col: int, text: str, *, align_left: bool = False) -> None:
+    def _set_error_cell(self, row: int, col: int, text: str, *, align_left: bool = False,
+                        tooltip: str | None = None) -> None:
         item = QTableWidgetItem(text)
+        if tooltip:
+            item.setToolTip(tooltip)
         if align_left:
             item.setTextAlignment(int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter))
         else:
@@ -1380,10 +1417,14 @@ class KineticsModelOptPlotsWidget(QWidget):
         except Exception:
             return ""
         if not np.isfinite(val):
-            return ""
+            from hmfit_gui_qt.widgets.error_analysis_widget import UNDEFINED_MARK
+
+            return UNDEFINED_MARK
         return f"{val:.6g}"
 
     def _populate_corr_table(self, corr: np.ndarray, param_names: list[str]) -> None:
+        from hmfit_gui_qt.widgets.error_analysis_widget import CORR_UNDEFINED_TOOLTIP, UNDEFINED_MARK
+
         if corr.size == 0:
             self._clear_corr_table()
             return
@@ -1396,8 +1437,10 @@ class KineticsModelOptPlotsWidget(QWidget):
         for i in range(p):
             for j in range(p):
                 val = corr[i, j]
-                txt = "" if not np.isfinite(val) else f"{val:.3f}"
+                txt = UNDEFINED_MARK if not np.isfinite(val) else f"{val:.3f}"
                 item = QTableWidgetItem(txt)
+                if not np.isfinite(val):
+                    item.setToolTip(self.tr(CORR_UNDEFINED_TOOLTIP))
                 item.setTextAlignment(int(Qt.AlignmentFlag.AlignCenter))
                 self.table_error_corr.setItem(i, j, item)
 
@@ -1423,6 +1466,8 @@ class KineticsModelOptPlotsWidget(QWidget):
         try:
             import pandas as pd
 
+            from hmfit_core.utils.errors import PARAM_STATUS_NOTES
+
             output = self._errors_last_output
             param_names = list(output.get("param_names") or [])
             df = pd.DataFrame(
@@ -1436,6 +1481,11 @@ class KineticsModelOptPlotsWidget(QWidget):
                     "CI 84": output.get("ci_84"),
                     "SE": output.get("se"),
                     "%err": output.get("perc_err"),
+                    # numeric NaN is kept above; the reason goes here
+                    "Note": [
+                        PARAM_STATUS_NOTES.get(code, "")
+                        for code in (list(output.get("param_status") or []) + [""] * len(param_names))[: len(param_names)]
+                    ],
                 }
             )
             method_raw = str(output.get("method") or "")
