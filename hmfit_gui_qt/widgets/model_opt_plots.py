@@ -1173,6 +1173,28 @@ class ModelOptPlotsWidget(QWidget):
         if extra_lines:
             summary = summary + "\n" + "\n".join(extra_lines)
 
+        from hmfit_core.utils.errors import enforce_uncertainty_convention
+
+        # One convention for every method: fixed -> SE 0; non-identifiable or dof <= 0
+        # -> NaN SE/intervals; any correlation involving them -> NaN.
+        se_log10, ci_2p5, ci_97p5, corr, (ci_16, ci_84), conv_notes = enforce_uncertainty_convention(
+            k_hat,
+            se_log10,
+            ci_2p5,
+            ci_97p5,
+            corr,
+            fixed_mask=fixed_mask,
+            nonidentifiable=base_metrics.get("nonidentifiable"),
+            dof=base_metrics.get("dof"),
+            extra_ci=(ci_16, ci_84),
+        )
+        perc_err = np.asarray(perc_err, dtype=float).reshape(-1)
+        if perc_err.size == se_log10.size:
+            perc_err = np.where(np.isnan(se_log10), np.nan, np.where(se_log10 == 0.0, 0.0, perc_err))
+        for _note in conv_notes:
+            if _note not in summary:
+                summary = summary + "\nWARNING: " + _note
+
         rms_val = base_metrics.get("RMS")
         if rms_val is None:
             rms_val = base_metrics.get("rms")
@@ -1208,37 +1230,31 @@ class ModelOptPlotsWidget(QWidget):
         }
 
     def _corr_from_cov(self, metrics: dict[str, Any], p_total: int) -> np.ndarray:
-        cov_full = np.zeros((p_total, p_total), dtype=float)
-        if "Cov_log10K" in metrics:
-            cov = np.asarray(metrics["Cov_log10K"], dtype=float)
-            cov_full = cov
-        elif "Cov_log10K_free" in metrics:
-            cov_free_raw = metrics.get("Cov_log10K_free")
-            cov_free = np.asarray(cov_free_raw if cov_free_raw is not None else [], dtype=float)
-            free_idx = np.arange(p_total)
-            if "SE_log10K" in metrics:
-                se_log10 = np.asarray(metrics["SE_log10K"], dtype=float).ravel()
-                free_idx = np.where(se_log10 > 0)[0]
-            if cov_free.size > 0:
-                cov_full = np.zeros((p_total, p_total), dtype=float)
-                cov_full[np.ix_(free_idx, free_idx)] = cov_free
+        """Correlation from the analytic covariance; undefined entries (fixed or
+        non-identifiable parameters) are NaN, never 0 or 1."""
+        from hmfit_core.utils.errors import correlation_from_covariance
 
-        d = np.sqrt(np.clip(np.diag(cov_full), 1e-30, None))
-        denom = np.outer(d, d)
-        corr = np.divide(cov_full, denom, out=np.zeros_like(cov_full, dtype=float), where=denom > 0)
-        corr = np.clip(corr, -1.0, 1.0)
-        for i in range(p_total):
-            corr[i, i] = 1.0
-        return corr
+        cov_full = np.full((p_total, p_total), np.nan, dtype=float)
+        if "Cov_log10K" in metrics:
+            cov_full = np.asarray(metrics["Cov_log10K"], dtype=float)
+        elif "Cov_log10K_free" in metrics:
+            cov_free = np.asarray(metrics.get("Cov_log10K_free") if metrics.get("Cov_log10K_free") is not None else [], dtype=float)
+            free_idx = metrics.get("free_idx")
+            if free_idx is None:
+                fixed = np.asarray(metrics.get("fixed_mask") if metrics.get("fixed_mask") is not None else np.zeros(p_total, bool), dtype=bool)
+                free_idx = np.where(~fixed)[0]
+            free_idx = np.asarray(free_idx, dtype=int).reshape(-1)
+            cov_full = np.zeros((p_total, p_total), dtype=float)
+            if cov_free.size and cov_free.shape == (free_idx.size, free_idx.size):
+                cov_full[np.ix_(free_idx, free_idx)] = cov_free
+        return correlation_from_covariance(cov_full, metrics.get("nonidentifiable"))
 
     def _corr_from_samples(self, samples: np.ndarray) -> np.ndarray:
-        if samples.shape[0] < 2:
-            return np.eye(samples.shape[1], dtype=float)
-        corr = np.atleast_2d(np.corrcoef(samples, rowvar=False))
-        corr = np.nan_to_num(corr, nan=0.0)
-        for i in range(corr.shape[0]):
-            corr[i, i] = 1.0
-        return corr
+        """Sample correlation; constant (fixed) or non-finite (non-identifiable) columns
+        give NaN correlations instead of 0/1."""
+        from hmfit_core.utils.errors import sample_correlation
+
+        return sample_correlation(samples)
 
     def _build_errors_summary(
         self,
