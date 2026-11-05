@@ -17,7 +17,9 @@ class KineticReactionEdge(ReactionEdge):
     k_backward: Optional[float] = None
 
     def __post_init__(self) -> None:
-        super().__post_init__()
+        # Explicit base call: zero-argument super() inside a slots=True dataclass
+        # raises TypeError on Python < 3.14 (the class object is replaced).
+        ReactionEdge.__post_init__(self)
 
         if self.k_forward is not None:
             self.k_forward = float(self.k_forward)
