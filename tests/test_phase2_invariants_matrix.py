@@ -174,7 +174,7 @@ def _acid_base_case(kind, config, tmp):
     from hmfit_core.run_acid_base import run_acid_base
 
     rng = np.random.default_rng(7)
-    pka = [4.0, 8.0]
+    pka = [8.0, 4.0]  # HM fit convention: pKa1 (most basic site) > pKa2
     mask = {"mixed": [True, False], "all_fixed": [False, False]}.get(config, [True, True])
     path = os.path.join(tmp, f"{kind}_{config}.csv")
     if kind == "potentiometry":
