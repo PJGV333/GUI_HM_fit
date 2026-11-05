@@ -602,6 +602,80 @@ def _summarize_constant_table(
     return pd.DataFrame(data)
 
 
+def _expand_with_fixed_constants(
+    raw: dict[str, Any], context: Mapping[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Insert acid-base constants that were held fixed *outside* the parameter vector.
+
+    Potentiometry removes fixed pKa from the optimised vector entirely (the residual
+    function only sees the fitted subset). Uncertainties are therefore computed on that
+    subset, and the fixed constants are re-inserted here so every technique reports the
+    same table: fixed entries carry SE = 0, zero covariance, undefined (NaN)
+    correlations, a degenerate interval at the value and ``Fixed = Yes``.
+    """
+    fixed_constants = list(context.get("fixed_constants") or [])
+    if not fixed_constants:
+        return raw, dict(context)
+    theta = np.asarray(raw["theta_hat"], dtype=float).reshape(-1)
+    names = [str(name) for name in raw["param_names"]]
+    n_fit = theta.size
+    fixed_mask_fit = _normalize_fixed_mask(context.get("fixed_mask"), n_fit)
+    n_const = int(context.get("n_acid_base_constants") or 0)
+    fixed_by_index = {int(item["index"]): item for item in fixed_constants}
+    fitted_pos = {name: pos for pos, name in enumerate(names)}
+    order: list[tuple[str, int | None, float]] = []  # (name, source position or None, value)
+    for idx in range(n_const):
+        if idx in fixed_by_index:
+            item = fixed_by_index[idx]
+            order.append((str(item["name"]), None, float(item["value"])))
+        else:
+            name = f"pKa{idx + 1}"
+            if name not in fitted_pos:
+                raise ValueError(f"Constant {name} is neither fitted nor listed as fixed.")
+            order.append((name, fitted_pos[name], float(theta[fitted_pos[name]])))
+    used = {pos for _, pos, _ in order if pos is not None}
+    for pos, name in enumerate(names):
+        if pos not in used:
+            order.append((name, pos, float(theta[pos])))
+    src = np.asarray([-1 if pos is None else pos for _, pos, _ in order], dtype=int)
+    keep = src >= 0
+    n_all = src.size
+
+    def _vec(values, fill):
+        values = np.asarray(values, dtype=float).reshape(-1)
+        out = np.full(n_all, fill, dtype=float)
+        out[keep] = values[src[keep]]
+        return out
+
+    def _mat(values, fill_fixed):
+        values = np.asarray(values, dtype=float)
+        out = np.full((n_all, n_all), fill_fixed, dtype=float)
+        out[np.ix_(keep, keep)] = values[np.ix_(src[keep], src[keep])]
+        return out
+
+    expanded = dict(raw)
+    expanded["theta_hat"] = np.asarray([value for _, _, value in order], dtype=float)
+    expanded["param_names"] = [name for name, _, _ in order]
+    expanded["se"] = _vec(raw["se"], 0.0)
+    expanded["covariance_matrix"] = _mat(raw["covariance_matrix"], 0.0)
+    corr = _mat(raw["correlation_matrix"], np.nan)
+    expanded["correlation_matrix"] = corr
+    samples = raw.get("samples")
+    if samples is not None and np.asarray(samples).size:
+        samples = np.asarray(samples, dtype=float)
+        full = np.tile(expanded["theta_hat"], (samples.shape[0], 1))
+        full[:, keep] = samples[:, src[keep]]
+        expanded["samples"] = full
+    ctx = dict(context)
+    mask = np.ones(n_all, dtype=bool)
+    mask[keep] = fixed_mask_fit[src[keep]]
+    ctx["fixed_mask"] = mask.tolist()
+    ctx["constant_parameter_indices"] = list(range(n_const))
+    ctx["theta_hat"] = expanded["theta_hat"].tolist()
+    ctx["parameter_names"] = expanded["param_names"]
+    return expanded, ctx
+
+
 def _build_acid_base_output(
     raw: dict[str, Any],
     context: Mapping[str, Any],
@@ -1199,6 +1273,7 @@ def compute_errors_acid_base_from_context(
         progress_cb=progress_cb,
         cancel_cb=cancel_cb,
     )
+    raw, ctx = _expand_with_fixed_constants(raw, ctx)
     return _build_acid_base_output(raw, ctx, method, opts)
 
 

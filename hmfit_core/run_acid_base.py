@@ -368,11 +368,24 @@ def _build_errors_context(
     fit_options: Mapping[str, Any],
 ) -> dict[str, Any]:
     theta_hat = np.asarray(result.theta_hat, dtype=float).reshape(-1)
+    parameter_names = list(result.parameter_names or [row["parameter"] for row in _fit_result_tables(result)[0]])
+    fitted_pka = np.asarray(result.fitted_pka, dtype=float).reshape(-1)
+    # Constants held fixed outside the optimised vector (potentiometry drops fixed pKa
+    # from parameter_names): report them as fixed instead of omitting them.
+    fixed_constants = []
+    if str(result.parameter_space or "pka") == "pka":
+        present = {str(name) for name in parameter_names}
+        fixed_constants = [
+            {"index": idx, "name": f"pKa{idx + 1}", "value": float(fitted_pka[idx])}
+            for idx in range(fitted_pka.size)
+            if f"pKa{idx + 1}" not in present
+        ]
     return {
         "analysis_type": "acid_base",
+        "fixed_constants": fixed_constants,
         "analysis_kind": str(analysis_kind),
         "theta_hat": theta_hat.tolist(),
-        "parameter_names": list(result.parameter_names or [row["parameter"] for row in _fit_result_tables(result)[0]]),
+        "parameter_names": parameter_names,
         "fixed_mask": (
             [bool(v) for v in result.fixed_mask]
             if result.fixed_mask is not None and len(result.fixed_mask) > 0
@@ -386,7 +399,9 @@ def _build_errors_context(
         ),
         "residuals": np.asarray(result.residuals, dtype=float).tolist(),
         "primary_constant_space": str(result.parameter_space or "pka"),
-        "constant_parameter_indices": list(range(len(result.fitted_pka))),
+        "constant_parameter_indices": (
+            None if fixed_constants else list(range(len(result.fitted_pka)))
+        ),
         "n_acid_base_constants": len(result.fitted_pka),
         "dataset": _to_serializable(dataset),
         "model": {
