@@ -1177,6 +1177,7 @@ class SpectroscopyTab(QWidget):
             QMessageBox.warning(self, "Busy", "A fit is already running. Cancel it first.")
             return
         try:
+            self.model_opt_plots.validate_parameter_table()
             config = self._collect_config()
         except Exception as exc:
             self.log.append_text(f"ERROR: {exc}")

@@ -889,6 +889,7 @@ class NMRTab(QWidget):
             QMessageBox.warning(self, "Busy", "A fit is already running. Cancel it first.")
             return
         try:
+            self.model_opt_plots.validate_parameter_table()
             config = self._collect_config()
             self._preflight_nmr_shapes(config)
             self._inject_stoichiometry_map(config, debug=True)

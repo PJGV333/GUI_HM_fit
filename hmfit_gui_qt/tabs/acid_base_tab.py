@@ -1454,6 +1454,24 @@ class AcidBaseTab(QWidget):
                 values.append(float(raw))
         return values
 
+    def _validate_pka_table(self) -> None:
+        """Readable messages for the pKa table (instead of float() conversion errors)."""
+        from hmfit_gui_qt.widgets.param_validation import parameter_issues, raise_if_issues
+
+        if not hasattr(self, "table_basic_pka"):
+            return
+        issues: list[str] = []
+        for row in range(self.table_basic_pka.rowCount()):
+            name = _table_text(self.table_basic_pka, row, 0, f"pKa{row + 1}")
+            texts = [
+                self.table_basic_pka.item(row, col).text() if self.table_basic_pka.item(row, col) is not None else ""
+                for col in (1, 2, 3)
+            ]
+            fit_widget = self.table_basic_pka.cellWidget(row, 4)
+            fixed = isinstance(fit_widget, QCheckBox) and not fit_widget.isChecked()
+            issues += parameter_issues(name, texts[0], texts[1], texts[2], fixed=fixed)
+        raise_if_issues(issues)
+
     def _basic_pka_rows(self) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
         for row in range(self.table_basic_pka.rowCount()):
@@ -3464,6 +3482,7 @@ class AcidBaseTab(QWidget):
             QMessageBox.warning(self, "Busy", "A fit is already running. Cancel it first.")
             return
         try:
+            self._validate_pka_table()
             config = self._collect_config()
         except Exception as exc:
             self.log.append_text(f"ERROR: {exc}")
