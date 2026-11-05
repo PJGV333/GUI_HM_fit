@@ -1,0 +1,114 @@
+name: tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  QT_QPA_PLATFORM: offscreen
+  OPENBLAS_NUM_THREADS: "1"
+  OMP_NUM_THREADS: "1"
+  MKL_NUM_THREADS: "1"
+  PYTHONHASHSEED: "0"
+
+jobs:
+  linux:
+    name: linux / py${{ matrix.python }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # Minimum = oldest Python supported by the pinned stack (NumPy 2.4,
+        # SciPy 1.17, pandas 3.0 require >= 3.11); maximum = newest supported
+        # by PySide6 6.10.
+        python: ["3.11", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: |
+            requirements_qt.txt
+            requirements-dev.txt
+            constraints.txt
+
+      - name: System libraries for headless Qt
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libegl1 libgl1 libxkbcommon0 libxkbcommon-x11-0 \
+            libdbus-1-3 libfontconfig1 libglib2.0-0
+
+      - name: Install Python dependencies (constrained)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements_qt.txt -r requirements-dev.txt -c constraints.txt
+          python -m pip freeze
+
+      - name: Qt offscreen sanity check
+        run: python -c "from PySide6.QtWidgets import QApplication; app = QApplication([]); print('Qt OK', app.platformName())"
+
+      - name: Test suite (excludes slow; includes campaign_smoke)
+        run: python -m pytest -q -rfEsx --junitxml=pytest-linux-${{ matrix.python }}.xml
+
+      - name: Summary
+        if: always()
+        run: |
+          python --version >> "$GITHUB_STEP_SUMMARY"
+          python tools/ci/junit_summary.py pytest-linux-${{ matrix.python }}.xml "linux py${{ matrix.python }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pytest-linux-${{ matrix.python }}
+          path: pytest-linux-${{ matrix.python }}.xml
+
+  windows:
+    name: windows / py${{ matrix.python }} (non-GUI)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: |
+            requirements_qt.txt
+            requirements-dev.txt
+            constraints.txt
+
+      - name: Install Python dependencies (constrained)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements_qt.txt -r requirements-dev.txt -c constraints.txt
+
+      - name: Test suite (non-GUI, excludes slow)
+        run: python -m pytest -q -rfEsx -m "not gui and not slow" --junitxml=pytest-windows-${{ matrix.python }}.xml
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: python tools/ci/junit_summary.py pytest-windows-${{ matrix.python }}.xml "windows py${{ matrix.python }} (not gui)" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pytest-windows-${{ matrix.python }}
+          path: pytest-windows-${{ matrix.python }}.xml
