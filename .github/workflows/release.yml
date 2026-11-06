@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   meta:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.meta.outputs.version }}
       tag: ${{ steps.meta.outputs.tag }}
@@ -33,9 +33,9 @@ jobs:
       release_name: ${{ steps.meta.outputs.release_name }}
       asset_prefix: ${{ steps.meta.outputs.asset_prefix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -95,16 +95,16 @@ jobs:
           fi
 
   tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       QT_QPA_PLATFORM: offscreen
       OPENBLAS_NUM_THREADS: "1"
       OMP_NUM_THREADS: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -130,9 +130,9 @@ jobs:
     needs: [meta, tests]
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -178,7 +178,7 @@ jobs:
             --dest "dist/release/${{ needs.meta.outputs.asset_prefix }}-linux-x86_64.flatpak"
 
       - name: Upload Linux artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hmfit-linux-release
           path: dist/release/*
@@ -188,9 +188,9 @@ jobs:
     needs: [meta, tests]
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -216,7 +216,7 @@ jobs:
           Copy-Item dist\installer\hmfit_setup.exe "dist\release\${{ needs.meta.outputs.asset_prefix }}-windows-x64-setup.exe"
 
       - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hmfit-windows-release
           path: dist/release/*
@@ -227,11 +227,11 @@ jobs:
       - meta
       - build-linux
       - build-windows
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: release_artifacts
 
