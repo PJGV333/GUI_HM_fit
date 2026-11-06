@@ -1,0 +1,5910 @@
+{
+ "rows": [
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 0,
+   "start": "old_default",
+   "estimate": [
+    8.900965190314931,
+    4.501478074923021
+   ],
+   "chi_square": 0.0003556226829481081,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 0,
+   "start": "old_doc_example",
+   "estimate": [
+    8.900965188880166,
+    4.5014780738551785
+   ],
+   "chi_square": 0.0003556226829481028,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 0,
+   "start": "new_default",
+   "estimate": [
+    8.90096519192546,
+    4.5014780755434405
+   ],
+   "chi_square": 0.00035562268294809065,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 0,
+   "start": "truth_order",
+   "estimate": [
+    8.900965198300495,
+    4.501478071772885
+   ],
+   "chi_square": 0.0003556226829480906,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 1,
+   "start": "old_default",
+   "estimate": [
+    8.897624206158595,
+    4.494789649942488
+   ],
+   "chi_square": 0.0003161852220456512,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 1,
+   "start": "old_doc_example",
+   "estimate": [
+    8.897624199254624,
+    4.494789646125934
+   ],
+   "chi_square": 0.00031618522204567175,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 1,
+   "start": "new_default",
+   "estimate": [
+    8.897624201129275,
+    4.494789646059395
+   ],
+   "chi_square": 0.00031618522204567413,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 1,
+   "start": "truth_order",
+   "estimate": [
+    8.897624200548524,
+    4.49478965049212
+   ],
+   "chi_square": 0.00031618522204564795,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 2,
+   "start": "old_default",
+   "estimate": [
+    8.88562188616928,
+    4.503239506751202
+   ],
+   "chi_square": 0.00036180709057797374,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 2,
+   "start": "old_doc_example",
+   "estimate": [
+    8.885621886432013,
+    4.503239506862338
+   ],
+   "chi_square": 0.0003618070905779781,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 2,
+   "start": "new_default",
+   "estimate": [
+    8.885621887965291,
+    4.5032395078344845
+   ],
+   "chi_square": 0.0003618070905779944,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 2,
+   "start": "truth_order",
+   "estimate": [
+    8.885621887205126,
+    4.503239508345388
+   ],
+   "chi_square": 0.0003618070905779808,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 3,
+   "start": "old_default",
+   "estimate": [
+    8.897735292228171,
+    4.507740657320129
+   ],
+   "chi_square": 0.0005265533119445024,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 3,
+   "start": "old_doc_example",
+   "estimate": [
+    8.897735294155273,
+    4.507740657189739
+   ],
+   "chi_square": 0.0005265533119445387,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 3,
+   "start": "new_default",
+   "estimate": [
+    8.897735293648703,
+    4.50774065603188
+   ],
+   "chi_square": 0.0005265533119445554,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 3,
+   "start": "truth_order",
+   "estimate": [
+    8.897735300477779,
+    4.507740658360023
+   ],
+   "chi_square": 0.000526553311944539,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 4,
+   "start": "old_default",
+   "estimate": [
+    8.899364978712558,
+    4.48719907525982
+   ],
+   "chi_square": 0.0003954856530232995,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 4,
+   "start": "old_doc_example",
+   "estimate": [
+    8.899364977547211,
+    4.48719907402992
+   ],
+   "chi_square": 0.00039548565302332405,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 4,
+   "start": "new_default",
+   "estimate": [
+    8.899364971852647,
+    4.487199072873851
+   ],
+   "chi_square": 0.0003954856530232156,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 4,
+   "start": "truth_order",
+   "estimate": [
+    8.899364979057601,
+    4.48719907626233
+   ],
+   "chi_square": 0.0003954856530232938,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 5,
+   "start": "old_default",
+   "estimate": [
+    8.912070176635575,
+    4.504396080430018
+   ],
+   "chi_square": 0.0002889602051368626,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 5,
+   "start": "old_doc_example",
+   "estimate": [
+    8.912070177120999,
+    4.50439608137135
+   ],
+   "chi_square": 0.000288960205136832,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 5,
+   "start": "new_default",
+   "estimate": [
+    8.91207017508317,
+    4.504396083250196
+   ],
+   "chi_square": 0.0002889602051368355,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 5,
+   "start": "truth_order",
+   "estimate": [
+    8.912070175171989,
+    4.504396078658667
+   ],
+   "chi_square": 0.0002889602051368805,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 6,
+   "start": "old_default",
+   "estimate": [
+    8.896210765354045,
+    4.4966584779741225
+   ],
+   "chi_square": 0.00030928231297307386,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 6,
+   "start": "old_doc_example",
+   "estimate": [
+    8.8962107656063,
+    4.496658477526063
+   ],
+   "chi_square": 0.0003092823129730331,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 6,
+   "start": "new_default",
+   "estimate": [
+    8.896210764468291,
+    4.496658477008861
+   ],
+   "chi_square": 0.00030928231297306405,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 6,
+   "start": "truth_order",
+   "estimate": [
+    8.896210764497278,
+    4.496658479509
+   ],
+   "chi_square": 0.00030928231297304713,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 7,
+   "start": "old_default",
+   "estimate": [
+    8.881273392263259,
+    4.498061085691285
+   ],
+   "chi_square": 0.0003634886464029534,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 7,
+   "start": "old_doc_example",
+   "estimate": [
+    8.881273390998965,
+    4.498061083018392
+   ],
+   "chi_square": 0.00036348864640289847,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 7,
+   "start": "new_default",
+   "estimate": [
+    8.881273393305543,
+    4.498061085558556
+   ],
+   "chi_square": 0.000363488646402924,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 7,
+   "start": "truth_order",
+   "estimate": [
+    8.881273390807813,
+    4.498061084790951
+   ],
+   "chi_square": 0.0003634886464029464,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 8,
+   "start": "old_default",
+   "estimate": [
+    8.906652007785302,
+    4.502474162971394
+   ],
+   "chi_square": 0.00045902536424090437,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 8,
+   "start": "old_doc_example",
+   "estimate": [
+    8.90665200988119,
+    4.502474165818741
+   ],
+   "chi_square": 0.00045902536424088046,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 8,
+   "start": "new_default",
+   "estimate": [
+    8.906652007400407,
+    4.502474163165658
+   ],
+   "chi_square": 0.0004590253642408912,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 8,
+   "start": "truth_order",
+   "estimate": [
+    8.906652010961341,
+    4.502474166125397
+   ],
+   "chi_square": 0.00045902536424088735,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 9,
+   "start": "old_default",
+   "estimate": [
+    8.88921099314717,
+    4.499864483793489
+   ],
+   "chi_square": 0.00022545770877665242,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 9,
+   "start": "old_doc_example",
+   "estimate": [
+    8.889210995801685,
+    4.499864479716308
+   ],
+   "chi_square": 0.00022545770877663768,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 9,
+   "start": "new_default",
+   "estimate": [
+    8.889210996472174,
+    4.499864480012993
+   ],
+   "chi_square": 0.00022545770877666795,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 9,
+   "start": "truth_order",
+   "estimate": [
+    8.889210995801278,
+    4.499864479312414
+   ],
+   "chi_square": 0.00022545770877664868,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 10,
+   "start": "old_default",
+   "estimate": [
+    8.900367604020058,
+    4.508673834455127
+   ],
+   "chi_square": 0.00029671182701575174,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 10,
+   "start": "old_doc_example",
+   "estimate": [
+    8.900367602215765,
+    4.508673834274175
+   ],
+   "chi_square": 0.00029671182701575315,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 10,
+   "start": "new_default",
+   "estimate": [
+    8.900367605670711,
+    4.508673837466173
+   ],
+   "chi_square": 0.0002967118270157247,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 10,
+   "start": "truth_order",
+   "estimate": [
+    8.90036760497289,
+    4.508673837089335
+   ],
+   "chi_square": 0.00029671182701572143,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 11,
+   "start": "old_default",
+   "estimate": [
+    8.887818820742137,
+    4.495896607315835
+   ],
+   "chi_square": 0.00043025563866499035,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 11,
+   "start": "old_doc_example",
+   "estimate": [
+    8.887818821253763,
+    4.495896604163768
+   ],
+   "chi_square": 0.00043025563866499317,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 11,
+   "start": "new_default",
+   "estimate": [
+    8.887818820698234,
+    4.495896607398814
+   ],
+   "chi_square": 0.0004302556386649657,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 11,
+   "start": "truth_order",
+   "estimate": [
+    8.887818821023401,
+    4.4958966075362685
+   ],
+   "chi_square": 0.0004302556386649871,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 12,
+   "start": "old_default",
+   "estimate": [
+    8.906311531146978,
+    4.505390754111723
+   ],
+   "chi_square": 0.0005288026080110487,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 12,
+   "start": "old_doc_example",
+   "estimate": [
+    8.906311532269827,
+    4.50539075649611
+   ],
+   "chi_square": 0.0005288026080111796,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 12,
+   "start": "new_default",
+   "estimate": [
+    8.906311530568807,
+    4.505390754619935
+   ],
+   "chi_square": 0.0005288026080111012,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 12,
+   "start": "truth_order",
+   "estimate": [
+    8.906311528770221,
+    4.505390754397347
+   ],
+   "chi_square": 0.0005288026080111114,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 13,
+   "start": "old_default",
+   "estimate": [
+    8.897926799312815,
+    4.506779116046246
+   ],
+   "chi_square": 0.000374540750240953,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 13,
+   "start": "old_doc_example",
+   "estimate": [
+    8.89792679686258,
+    4.506779115232018
+   ],
+   "chi_square": 0.00037454075024100493,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 13,
+   "start": "new_default",
+   "estimate": [
+    8.897926796873064,
+    4.506779112576636
+   ],
+   "chi_square": 0.0003745407502410087,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 13,
+   "start": "truth_order",
+   "estimate": [
+    8.897926798523839,
+    4.506779118979464
+   ],
+   "chi_square": 0.0003745407502409828,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 14,
+   "start": "old_default",
+   "estimate": [
+    8.899942126096766,
+    4.5059527969192406
+   ],
+   "chi_square": 0.000331604885842325,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 14,
+   "start": "old_doc_example",
+   "estimate": [
+    8.899942130446174,
+    4.505952798326723
+   ],
+   "chi_square": 0.00033160488584233226,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 14,
+   "start": "new_default",
+   "estimate": [
+    8.899942125883815,
+    4.505952796756466
+   ],
+   "chi_square": 0.0003316048858423528,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 14,
+   "start": "truth_order",
+   "estimate": [
+    8.899942127325877,
+    4.505952798855642
+   ],
+   "chi_square": 0.0003316048858423317,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 15,
+   "start": "old_default",
+   "estimate": [
+    8.912386442321857,
+    4.501515671782313
+   ],
+   "chi_square": 0.00031489568699669373,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 15,
+   "start": "old_doc_example",
+   "estimate": [
+    8.912386441748428,
+    4.5015156701651335
+   ],
+   "chi_square": 0.00031489568699671276,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 15,
+   "start": "new_default",
+   "estimate": [
+    8.912386437406754,
+    4.50151566692451
+   ],
+   "chi_square": 0.00031489568699668,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 15,
+   "start": "truth_order",
+   "estimate": [
+    8.912386442574022,
+    4.501515672059568
+   ],
+   "chi_square": 0.0003148956869966798,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 16,
+   "start": "old_default",
+   "estimate": [
+    8.908980083488157,
+    4.5005686305700365
+   ],
+   "chi_square": 0.00044800058770489543,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 16,
+   "start": "old_doc_example",
+   "estimate": [
+    8.908980085104547,
+    4.500568629024736
+   ],
+   "chi_square": 0.00044800058770492785,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 16,
+   "start": "new_default",
+   "estimate": [
+    8.908980083014454,
+    4.500568629432445
+   ],
+   "chi_square": 0.0004480005877049257,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 16,
+   "start": "truth_order",
+   "estimate": [
+    8.908980083713857,
+    4.500568629783547
+   ],
+   "chi_square": 0.00044800058770490085,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 17,
+   "start": "old_default",
+   "estimate": [
+    8.892498487230682,
+    4.4914215013176175
+   ],
+   "chi_square": 0.0004898032254988931,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 17,
+   "start": "old_doc_example",
+   "estimate": [
+    8.892498504765602,
+    4.491421510983834
+   ],
+   "chi_square": 0.0004898032254988824,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 17,
+   "start": "new_default",
+   "estimate": [
+    8.892498487774374,
+    4.491421502259929
+   ],
+   "chi_square": 0.0004898032254988804,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 17,
+   "start": "truth_order",
+   "estimate": [
+    8.892498489286107,
+    4.491421504675166
+   ],
+   "chi_square": 0.0004898032254989257,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 18,
+   "start": "old_default",
+   "estimate": [
+    8.906649682006437,
+    4.516302664286938
+   ],
+   "chi_square": 0.00042306437956922253,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 18,
+   "start": "old_doc_example",
+   "estimate": [
+    8.906649683178653,
+    4.516302663509753
+   ],
+   "chi_square": 0.00042306437956912257,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 18,
+   "start": "new_default",
+   "estimate": [
+    8.906649684254102,
+    4.5163026630809
+   ],
+   "chi_square": 0.00042306437956911834,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 18,
+   "start": "truth_order",
+   "estimate": [
+    8.906649685365476,
+    4.516302664548558
+   ],
+   "chi_square": 0.0004230643795691732,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 19,
+   "start": "old_default",
+   "estimate": [
+    8.898711512530973,
+    4.496651442795496
+   ],
+   "chi_square": 0.0003313554993797894,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 19,
+   "start": "old_doc_example",
+   "estimate": [
+    8.898711519861783,
+    4.496651448218072
+   ],
+   "chi_square": 0.00033135549937970054,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 19,
+   "start": "new_default",
+   "estimate": [
+    8.898711509269372,
+    4.4966514424912525
+   ],
+   "chi_square": 0.0003313554993797583,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "seed": 19,
+   "start": "truth_order",
+   "estimate": [
+    8.89871150668983,
+    4.496651440497066
+   ],
+   "chi_square": 0.0003313554993797279,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 0,
+   "start": "old_default",
+   "estimate": [
+    8.001245263859849,
+    4.006103418976435
+   ],
+   "chi_square": 0.00034428008876933707,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 0,
+   "start": "old_doc_example",
+   "estimate": [
+    8.001245262591107,
+    4.0061034168373
+   ],
+   "chi_square": 0.00034428008876936987,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 0,
+   "start": "new_default",
+   "estimate": [
+    8.001245262165726,
+    4.006103416318993
+   ],
+   "chi_square": 0.0003442800887693243,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 0,
+   "start": "truth_order",
+   "estimate": [
+    8.001245262764932,
+    4.00610341967716
+   ],
+   "chi_square": 0.00034428008876935626,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 1,
+   "start": "old_default",
+   "estimate": [
+    8.010504234300535,
+    3.9989968912068132
+   ],
+   "chi_square": 0.00030402787207029874,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 1,
+   "start": "old_doc_example",
+   "estimate": [
+    8.010504234922818,
+    3.998996888585138
+   ],
+   "chi_square": 0.00030402787207027505,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 1,
+   "start": "new_default",
+   "estimate": [
+    8.01050423439347,
+    3.9989968892825978
+   ],
+   "chi_square": 0.0003040278720703286,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 1,
+   "start": "truth_order",
+   "estimate": [
+    8.010504234010199,
+    3.998996888144294
+   ],
+   "chi_square": 0.0003040278720703133,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 2,
+   "start": "old_default",
+   "estimate": [
+    7.99687078132353,
+    4.006474794993579
+   ],
+   "chi_square": 0.0003980443411691336,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 2,
+   "start": "old_doc_example",
+   "estimate": [
+    7.996870786949344,
+    4.006474795853753
+   ],
+   "chi_square": 0.00039804434116914324,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 2,
+   "start": "new_default",
+   "estimate": [
+    7.996870784181827,
+    4.006474794413115
+   ],
+   "chi_square": 0.0003980443411691528,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 2,
+   "start": "truth_order",
+   "estimate": [
+    7.996870788837845,
+    4.00647479921033
+   ],
+   "chi_square": 0.00039804434116912297,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 3,
+   "start": "old_default",
+   "estimate": [
+    8.001814547801995,
+    4.005406190766742
+   ],
+   "chi_square": 0.0005302399245918927,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 3,
+   "start": "old_doc_example",
+   "estimate": [
+    8.001814543687445,
+    4.005406187823128
+   ],
+   "chi_square": 0.0005302399245919088,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 3,
+   "start": "new_default",
+   "estimate": [
+    8.001814547179542,
+    4.005406192155355
+   ],
+   "chi_square": 0.0005302399245919095,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 3,
+   "start": "truth_order",
+   "estimate": [
+    8.001814548126942,
+    4.005406196058457
+   ],
+   "chi_square": 0.0005302399245918057,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 4,
+   "start": "old_default",
+   "estimate": [
+    8.007184787884635,
+    3.992434010051765
+   ],
+   "chi_square": 0.00041371447668011766,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 4,
+   "start": "old_doc_example",
+   "estimate": [
+    8.007184789041624,
+    3.9924340098733353
+   ],
+   "chi_square": 0.0004137144766801771,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 4,
+   "start": "new_default",
+   "estimate": [
+    8.007184783310109,
+    3.992434006312653
+   ],
+   "chi_square": 0.00041371447668021367,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 4,
+   "start": "truth_order",
+   "estimate": [
+    8.007184786307336,
+    3.9924340086847945
+   ],
+   "chi_square": 0.00041371447668014585,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 5,
+   "start": "old_default",
+   "estimate": [
+    8.004875542345598,
+    3.9981186701381137
+   ],
+   "chi_square": 0.0003192505691466056,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 5,
+   "start": "old_doc_example",
+   "estimate": [
+    8.004875542200812,
+    3.998118668265887
+   ],
+   "chi_square": 0.0003192505691466827,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 5,
+   "start": "new_default",
+   "estimate": [
+    8.00487554109176,
+    3.9981186692381794
+   ],
+   "chi_square": 0.0003192505691466483,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 5,
+   "start": "truth_order",
+   "estimate": [
+    8.00487554000438,
+    3.9981186673917772
+   ],
+   "chi_square": 0.00031925056914665757,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 6,
+   "start": "old_default",
+   "estimate": [
+    7.9954614497705405,
+    3.991275884832473
+   ],
+   "chi_square": 0.0003006031513059146,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 6,
+   "start": "old_doc_example",
+   "estimate": [
+    7.9954614465594345,
+    3.9912758765514704
+   ],
+   "chi_square": 0.00030060315130593754,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 6,
+   "start": "new_default",
+   "estimate": [
+    7.995461448316407,
+    3.991275879103881
+   ],
+   "chi_square": 0.00030060315130595847,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 6,
+   "start": "truth_order",
+   "estimate": [
+    7.995461444839375,
+    3.991275874787414
+   ],
+   "chi_square": 0.0003006031513059692,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 7,
+   "start": "old_default",
+   "estimate": [
+    7.993214483997215,
+    3.9962584091184707
+   ],
+   "chi_square": 0.0004009700730875368,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 7,
+   "start": "old_doc_example",
+   "estimate": [
+    7.993214484282589,
+    3.996258407024623
+   ],
+   "chi_square": 0.0004009700730874604,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 7,
+   "start": "new_default",
+   "estimate": [
+    7.99321448410979,
+    3.996258406890374
+   ],
+   "chi_square": 0.00040097007308754725,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 7,
+   "start": "truth_order",
+   "estimate": [
+    7.9932144801001375,
+    3.9962584022891914
+   ],
+   "chi_square": 0.00040097007308746246,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 8,
+   "start": "old_default",
+   "estimate": [
+    7.998983313865057,
+    4.001345084809302
+   ],
+   "chi_square": 0.0004677129267019761,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 8,
+   "start": "old_doc_example",
+   "estimate": [
+    7.99898331799257,
+    4.001345085865159
+   ],
+   "chi_square": 0.0004677129267019183,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 8,
+   "start": "new_default",
+   "estimate": [
+    7.9989833127662004,
+    4.00134508206225
+   ],
+   "chi_square": 0.0004677129267019294,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 8,
+   "start": "truth_order",
+   "estimate": [
+    7.998983315472407,
+    4.001345082578262
+   ],
+   "chi_square": 0.0004677129267019172,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 9,
+   "start": "old_default",
+   "estimate": [
+    7.999538390487859,
+    4.0026328728731935
+   ],
+   "chi_square": 0.00023001809928001817,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 9,
+   "start": "old_doc_example",
+   "estimate": [
+    7.999538392112012,
+    4.00263287037345
+   ],
+   "chi_square": 0.00023001809928004465,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 9,
+   "start": "new_default",
+   "estimate": [
+    7.999538389112012,
+    4.002632869326404
+   ],
+   "chi_square": 0.00023001809928005436,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 9,
+   "start": "truth_order",
+   "estimate": [
+    7.999538386480804,
+    4.002632867066636
+   ],
+   "chi_square": 0.0002300180992801051,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 10,
+   "start": "old_default",
+   "estimate": [
+    7.994650365924747,
+    4.0071723127971035
+   ],
+   "chi_square": 0.0003041844787011675,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 10,
+   "start": "old_doc_example",
+   "estimate": [
+    7.994650369399713,
+    4.007172317390163
+   ],
+   "chi_square": 0.0003041844787011135,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 10,
+   "start": "new_default",
+   "estimate": [
+    7.994650370441718,
+    4.007172317682967
+   ],
+   "chi_square": 0.0003041844787011512,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 10,
+   "start": "truth_order",
+   "estimate": [
+    7.994650365062481,
+    4.007172314158541
+   ],
+   "chi_square": 0.0003041844787011048,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 11,
+   "start": "old_default",
+   "estimate": [
+    7.995565045940242,
+    3.9981069863172047
+   ],
+   "chi_square": 0.0004499519196963274,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 11,
+   "start": "old_doc_example",
+   "estimate": [
+    7.995565052421022,
+    3.998106997177664
+   ],
+   "chi_square": 0.0004499519196963261,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 11,
+   "start": "new_default",
+   "estimate": [
+    7.995565051418095,
+    3.9981069936786566
+   ],
+   "chi_square": 0.0004499519196963415,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 11,
+   "start": "truth_order",
+   "estimate": [
+    7.995565052094741,
+    3.998106995280854
+   ],
+   "chi_square": 0.0004499519196963175,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 12,
+   "start": "old_default",
+   "estimate": [
+    7.9984498535944555,
+    4.0052335452274574
+   ],
+   "chi_square": 0.0005290867732482545,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 12,
+   "start": "old_doc_example",
+   "estimate": [
+    7.998449851971251,
+    4.005233548019892
+   ],
+   "chi_square": 0.0005290867732482211,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 12,
+   "start": "new_default",
+   "estimate": [
+    7.9984498538404925,
+    4.005233546403927
+   ],
+   "chi_square": 0.0005290867732483022,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 12,
+   "start": "truth_order",
+   "estimate": [
+    7.998449853717927,
+    4.005233548264142
+   ],
+   "chi_square": 0.0005290867732482327,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 13,
+   "start": "old_default",
+   "estimate": [
+    8.00507163497164,
+    4.013474019266592
+   ],
+   "chi_square": 0.00036222816052134126,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 13,
+   "start": "old_doc_example",
+   "estimate": [
+    8.005071635638718,
+    4.013474021517769
+   ],
+   "chi_square": 0.0003622281605214068,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 13,
+   "start": "new_default",
+   "estimate": [
+    8.005071635193232,
+    4.013474022476615
+   ],
+   "chi_square": 0.00036222816052138105,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 13,
+   "start": "truth_order",
+   "estimate": [
+    8.00507163735539,
+    4.013474021482143
+   ],
+   "chi_square": 0.0003622281605213897,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 14,
+   "start": "old_default",
+   "estimate": [
+    7.997309760765354,
+    4.003529682209333
+   ],
+   "chi_square": 0.00032765444095381565,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 14,
+   "start": "old_doc_example",
+   "estimate": [
+    7.997309762021297,
+    4.003529682062087
+   ],
+   "chi_square": 0.00032765444095379987,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 14,
+   "start": "new_default",
+   "estimate": [
+    7.997309759196307,
+    4.0035296797124005
+   ],
+   "chi_square": 0.00032765444095379944,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 14,
+   "start": "truth_order",
+   "estimate": [
+    7.997309759798509,
+    4.003529681377908
+   ],
+   "chi_square": 0.00032765444095380605,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 15,
+   "start": "old_default",
+   "estimate": [
+    8.00519562940625,
+    4.007621804325428
+   ],
+   "chi_square": 0.0003199251898933367,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 15,
+   "start": "old_doc_example",
+   "estimate": [
+    8.005195629371743,
+    4.007621804907382
+   ],
+   "chi_square": 0.00031992518989331986,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 15,
+   "start": "new_default",
+   "estimate": [
+    8.0051956275394,
+    4.0076218001205
+   ],
+   "chi_square": 0.0003199251898933422,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 15,
+   "start": "truth_order",
+   "estimate": [
+    8.005195622513614,
+    4.007621787188288
+   ],
+   "chi_square": 0.000319925189893336,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 16,
+   "start": "old_default",
+   "estimate": [
+    7.9961738337729535,
+    3.9991130300332998
+   ],
+   "chi_square": 0.00047244449911333197,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 16,
+   "start": "old_doc_example",
+   "estimate": [
+    7.9961738342010245,
+    3.9991130331731535
+   ],
+   "chi_square": 0.0004724444991132854,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 16,
+   "start": "new_default",
+   "estimate": [
+    7.996173836360555,
+    3.999113037296734
+   ],
+   "chi_square": 0.0004724444991133336,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 16,
+   "start": "truth_order",
+   "estimate": [
+    7.996173834524193,
+    3.9991130344571246
+   ],
+   "chi_square": 0.0004724444991133363,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 17,
+   "start": "old_default",
+   "estimate": [
+    7.9921363896786835,
+    3.9932016616065846
+   ],
+   "chi_square": 0.0005017093695642071,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 17,
+   "start": "old_doc_example",
+   "estimate": [
+    7.992136391723325,
+    3.993201661612587
+   ],
+   "chi_square": 0.0005017093695642063,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 17,
+   "start": "new_default",
+   "estimate": [
+    7.992136393299632,
+    3.9932016677642617
+   ],
+   "chi_square": 0.0005017093695642247,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 17,
+   "start": "truth_order",
+   "estimate": [
+    7.9921363945826585,
+    3.993201670514816
+   ],
+   "chi_square": 0.0005017093695642643,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 18,
+   "start": "old_default",
+   "estimate": [
+    7.999122850041599,
+    4.010380262927064
+   ],
+   "chi_square": 0.0004668281785106789,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 18,
+   "start": "old_doc_example",
+   "estimate": [
+    7.999122857019298,
+    4.010380270488065
+   ],
+   "chi_square": 0.0004668281785107302,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 18,
+   "start": "new_default",
+   "estimate": [
+    7.9991228513228885,
+    4.01038026196676
+   ],
+   "chi_square": 0.0004668281785107553,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 18,
+   "start": "truth_order",
+   "estimate": [
+    7.999122857701351,
+    4.010380270988104
+   ],
+   "chi_square": 0.00046682817851074245,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 19,
+   "start": "old_default",
+   "estimate": [
+    8.008413790194634,
+    4.0001091201874495
+   ],
+   "chi_square": 0.000318706112696223,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 19,
+   "start": "old_doc_example",
+   "estimate": [
+    8.00841379795338,
+    4.000109117003291
+   ],
+   "chi_square": 0.0003187061126962372,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 19,
+   "start": "new_default",
+   "estimate": [
+    8.008413787174048,
+    4.000109118134519
+   ],
+   "chi_square": 0.00031870611269623064,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "seed": 19,
+   "start": "truth_order",
+   "estimate": [
+    8.00841378669267,
+    4.000109115820029
+   ],
+   "chi_square": 0.0003187061126962294,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 0,
+   "start": "old_default",
+   "estimate": [
+    8.900528917792773,
+    4.499823622568691
+   ],
+   "chi_square": 0.00016794479659471776,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 0,
+   "start": "old_doc_example",
+   "estimate": [
+    8.900528917849119,
+    4.499823622571515
+   ],
+   "chi_square": 0.00016794479659471413,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 0,
+   "start": "new_default",
+   "estimate": [
+    8.900528917934725,
+    4.49982362252875
+   ],
+   "chi_square": 0.0001679447965947178,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 0,
+   "start": "truth_order",
+   "estimate": [
+    8.900528917976917,
+    4.49982362275621
+   ],
+   "chi_square": 0.00016794479659471532,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 1,
+   "start": "old_default",
+   "estimate": [
+    8.900769020569482,
+    4.499027817080853
+   ],
+   "chi_square": 0.00017285618258200395,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 1,
+   "start": "old_doc_example",
+   "estimate": [
+    8.900769020522048,
+    4.49902781666238
+   ],
+   "chi_square": 0.00017285618258199947,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 1,
+   "start": "new_default",
+   "estimate": [
+    8.900769020546539,
+    4.499027816917174
+   ],
+   "chi_square": 0.00017285618258200232,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 1,
+   "start": "truth_order",
+   "estimate": [
+    8.900769020536176,
+    4.499027816810051
+   ],
+   "chi_square": 0.00017285618258200045,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 2,
+   "start": "old_default",
+   "estimate": [
+    8.898816638069357,
+    4.499700243907542
+   ],
+   "chi_square": 0.00014888958999622506,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 2,
+   "start": "old_doc_example",
+   "estimate": [
+    8.89881663807999,
+    4.499700243906124
+   ],
+   "chi_square": 0.00014888958999622397,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 2,
+   "start": "new_default",
+   "estimate": [
+    8.898816638071736,
+    4.499700243911178
+   ],
+   "chi_square": 0.0001488895899962232,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 2,
+   "start": "truth_order",
+   "estimate": [
+    8.89881663806281,
+    4.499700243900319
+   ],
+   "chi_square": 0.00014888958999622324,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 3,
+   "start": "old_default",
+   "estimate": [
+    8.90019812045393,
+    4.5011130422664305
+   ],
+   "chi_square": 0.00019075676890807373,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 3,
+   "start": "old_doc_example",
+   "estimate": [
+    8.90019812046293,
+    4.501113042273239
+   ],
+   "chi_square": 0.00019075676890807527,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 3,
+   "start": "new_default",
+   "estimate": [
+    8.900198120462518,
+    4.501113042261585
+   ],
+   "chi_square": 0.00019075676890807362,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 3,
+   "start": "truth_order",
+   "estimate": [
+    8.900198120455604,
+    4.5011130422741825
+   ],
+   "chi_square": 0.0001907567689080738,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 4,
+   "start": "old_default",
+   "estimate": [
+    8.899379812603271,
+    4.500765850126097
+   ],
+   "chi_square": 0.00017160722306434477,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 4,
+   "start": "old_doc_example",
+   "estimate": [
+    8.899379812641216,
+    4.500765850157782
+   ],
+   "chi_square": 0.00017160722306434792,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 4,
+   "start": "new_default",
+   "estimate": [
+    8.8993798126633,
+    4.500765850164987
+   ],
+   "chi_square": 0.0001716072230643476,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 4,
+   "start": "truth_order",
+   "estimate": [
+    8.899379812660646,
+    4.500765850142846
+   ],
+   "chi_square": 0.00017160722306434515,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 5,
+   "start": "old_default",
+   "estimate": [
+    8.901439841177448,
+    4.500224541439204
+   ],
+   "chi_square": 0.00014664210972395748,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 5,
+   "start": "old_doc_example",
+   "estimate": [
+    8.901439841346026,
+    4.500224541440684
+   ],
+   "chi_square": 0.0001466421097239567,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 5,
+   "start": "new_default",
+   "estimate": [
+    8.901439841301688,
+    4.500224541444073
+   ],
+   "chi_square": 0.00014664210972396006,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 5,
+   "start": "truth_order",
+   "estimate": [
+    8.901439841182754,
+    4.500224541435216
+   ],
+   "chi_square": 0.00014664210972396092,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 6,
+   "start": "old_default",
+   "estimate": [
+    8.899355576544963,
+    4.500181128992445
+   ],
+   "chi_square": 0.00015900614569963676,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 6,
+   "start": "old_doc_example",
+   "estimate": [
+    8.899355576596259,
+    4.500181128975049
+   ],
+   "chi_square": 0.00015900614569963782,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 6,
+   "start": "new_default",
+   "estimate": [
+    8.899355576622906,
+    4.5001811290123435
+   ],
+   "chi_square": 0.0001590061456996365,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 6,
+   "start": "truth_order",
+   "estimate": [
+    8.899355576652795,
+    4.500181129024048
+   ],
+   "chi_square": 0.00015900614569963864,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 7,
+   "start": "old_default",
+   "estimate": [
+    8.900547522681883,
+    4.4986059279722905
+   ],
+   "chi_square": 0.00017842955120796504,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 7,
+   "start": "old_doc_example",
+   "estimate": [
+    8.90054752269661,
+    4.498605927975534
+   ],
+   "chi_square": 0.0001784295512079666,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 7,
+   "start": "new_default",
+   "estimate": [
+    8.900547522615161,
+    4.498605927958964
+   ],
+   "chi_square": 0.00017842955120796574,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 7,
+   "start": "truth_order",
+   "estimate": [
+    8.900547522703942,
+    4.4986059281473185
+   ],
+   "chi_square": 0.0001784295512079657,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 8,
+   "start": "old_default",
+   "estimate": [
+    8.900460644152863,
+    4.50002883385279
+   ],
+   "chi_square": 0.0001661159885485689,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 8,
+   "start": "old_doc_example",
+   "estimate": [
+    8.90046064415218,
+    4.5000288339384475
+   ],
+   "chi_square": 0.00016611598854856895,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 8,
+   "start": "new_default",
+   "estimate": [
+    8.90046064414914,
+    4.500028833820648
+   ],
+   "chi_square": 0.00016611598854857223,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 8,
+   "start": "truth_order",
+   "estimate": [
+    8.900460644190417,
+    4.500028834149743
+   ],
+   "chi_square": 0.0001661159885485696,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 9,
+   "start": "old_default",
+   "estimate": [
+    8.900538328609573,
+    4.499650369458427
+   ],
+   "chi_square": 0.000125019839281024,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 9,
+   "start": "old_doc_example",
+   "estimate": [
+    8.900538328699183,
+    4.499650369461866
+   ],
+   "chi_square": 0.0001250198392810228,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 9,
+   "start": "new_default",
+   "estimate": [
+    8.900538328703314,
+    4.499650369439999
+   ],
+   "chi_square": 0.00012501983928102367,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 9,
+   "start": "truth_order",
+   "estimate": [
+    8.900538328612933,
+    4.499650369576193
+   ],
+   "chi_square": 0.00012501983928102188,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 10,
+   "start": "old_default",
+   "estimate": [
+    8.899514541673021,
+    4.5007997640183905
+   ],
+   "chi_square": 0.00015009110202234384,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 10,
+   "start": "old_doc_example",
+   "estimate": [
+    8.899514541693668,
+    4.500799764029901
+   ],
+   "chi_square": 0.00015009110202234428,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 10,
+   "start": "new_default",
+   "estimate": [
+    8.899514541707234,
+    4.500799764028265
+   ],
+   "chi_square": 0.00015009110202234222,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 10,
+   "start": "truth_order",
+   "estimate": [
+    8.89951454170622,
+    4.500799764107461
+   ],
+   "chi_square": 0.00015009110202234046,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 11,
+   "start": "old_default",
+   "estimate": [
+    8.899578804730409,
+    4.49913248106826
+   ],
+   "chi_square": 0.00016866426178567897,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 11,
+   "start": "old_doc_example",
+   "estimate": [
+    8.899578804866794,
+    4.499132481081848
+   ],
+   "chi_square": 0.0001686642617856788,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 11,
+   "start": "new_default",
+   "estimate": [
+    8.899578804839406,
+    4.499132481081935
+   ],
+   "chi_square": 0.00016866426178567797,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 11,
+   "start": "truth_order",
+   "estimate": [
+    8.899578804714745,
+    4.499132481078268
+   ],
+   "chi_square": 0.0001686642617856805,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 12,
+   "start": "old_default",
+   "estimate": [
+    8.89883009121818,
+    4.498777305705072
+   ],
+   "chi_square": 0.00019825438040137883,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 12,
+   "start": "old_doc_example",
+   "estimate": [
+    8.898830091217093,
+    4.498777305723465
+   ],
+   "chi_square": 0.00019825438040137812,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 12,
+   "start": "new_default",
+   "estimate": [
+    8.898830091227607,
+    4.4987773057559775
+   ],
+   "chi_square": 0.00019825438040137541,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 12,
+   "start": "truth_order",
+   "estimate": [
+    8.898830091240601,
+    4.498777305748895
+   ],
+   "chi_square": 0.0001982543804013766,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 13,
+   "start": "old_default",
+   "estimate": [
+    8.899450089202126,
+    4.499700457005179
+   ],
+   "chi_square": 0.0001682968502085801,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 13,
+   "start": "old_doc_example",
+   "estimate": [
+    8.899450089274158,
+    4.499700456999891
+   ],
+   "chi_square": 0.0001682968502085786,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 13,
+   "start": "new_default",
+   "estimate": [
+    8.899450089285692,
+    4.49970045701434
+   ],
+   "chi_square": 0.00016829685020858145,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 13,
+   "start": "truth_order",
+   "estimate": [
+    8.899450089256888,
+    4.499700456999175
+   ],
+   "chi_square": 0.0001682968502085777,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 14,
+   "start": "old_default",
+   "estimate": [
+    8.900050458654308,
+    4.5013590130912515
+   ],
+   "chi_square": 0.00012428663936633205,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 14,
+   "start": "old_doc_example",
+   "estimate": [
+    8.900050458690195,
+    4.5013590131046115
+   ],
+   "chi_square": 0.0001242866393663315,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 14,
+   "start": "new_default",
+   "estimate": [
+    8.900050458735409,
+    4.5013590131051995
+   ],
+   "chi_square": 0.00012428663936633167,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 14,
+   "start": "truth_order",
+   "estimate": [
+    8.90005045874235,
+    4.501359013092571
+   ],
+   "chi_square": 0.00012428663936633078,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 15,
+   "start": "old_default",
+   "estimate": [
+    8.900512680247841,
+    4.500673154270091
+   ],
+   "chi_square": 0.00020551807016468935,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 15,
+   "start": "old_doc_example",
+   "estimate": [
+    8.900512680256174,
+    4.500673154228139
+   ],
+   "chi_square": 0.00020551807016469054,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 15,
+   "start": "new_default",
+   "estimate": [
+    8.900512680276941,
+    4.50067315426239
+   ],
+   "chi_square": 0.00020551807016469122,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 15,
+   "start": "truth_order",
+   "estimate": [
+    8.900512680277469,
+    4.500673154274407
+   ],
+   "chi_square": 0.00020551807016468756,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 16,
+   "start": "old_default",
+   "estimate": [
+    8.9015118569875,
+    4.500394275754807
+   ],
+   "chi_square": 0.0001748521633961347,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 16,
+   "start": "old_doc_example",
+   "estimate": [
+    8.90151185707119,
+    4.500394275777827
+   ],
+   "chi_square": 0.00017485216339613177,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 16,
+   "start": "new_default",
+   "estimate": [
+    8.901511857086954,
+    4.500394275737042
+   ],
+   "chi_square": 0.00017485216339613579,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 16,
+   "start": "truth_order",
+   "estimate": [
+    8.901511857044989,
+    4.500394275908546
+   ],
+   "chi_square": 0.00017485216339613123,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 17,
+   "start": "old_default",
+   "estimate": [
+    8.901554706395235,
+    4.500510331340788
+   ],
+   "chi_square": 0.00022127345631216803,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 17,
+   "start": "old_doc_example",
+   "estimate": [
+    8.901554706374089,
+    4.500510331470949
+   ],
+   "chi_square": 0.0002212734563121657,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 17,
+   "start": "new_default",
+   "estimate": [
+    8.901554706432853,
+    4.500510331197775
+   ],
+   "chi_square": 0.00022127345631216418,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 17,
+   "start": "truth_order",
+   "estimate": [
+    8.901554706376057,
+    4.500510331875482
+   ],
+   "chi_square": 0.00022127345631216304,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 18,
+   "start": "old_default",
+   "estimate": [
+    8.900543674184638,
+    4.498797267223315
+   ],
+   "chi_square": 0.000188680344922171,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 18,
+   "start": "old_doc_example",
+   "estimate": [
+    8.900543674152924,
+    4.498797267182933
+   ],
+   "chi_square": 0.00018868034492217238,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 18,
+   "start": "new_default",
+   "estimate": [
+    8.90054367363462,
+    4.498797266104992
+   ],
+   "chi_square": 0.00018868034492217068,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 18,
+   "start": "truth_order",
+   "estimate": [
+    8.900543674180213,
+    4.498797267237514
+   ],
+   "chi_square": 0.00018868034492216932,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 19,
+   "start": "old_default",
+   "estimate": [
+    8.89853907259429,
+    4.500975333993475
+   ],
+   "chi_square": 0.00018766799228886482,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 19,
+   "start": "old_doc_example",
+   "estimate": [
+    8.898539072628683,
+    4.500975333999861
+   ],
+   "chi_square": 0.0001876679922888655,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 19,
+   "start": "new_default",
+   "estimate": [
+    8.898539072650953,
+    4.500975333992658
+   ],
+   "chi_square": 0.00018766799228886683,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "seed": 19,
+   "start": "truth_order",
+   "estimate": [
+    8.898539072642903,
+    4.500975333983508
+   ],
+   "chi_square": 0.00018766799228886618,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 0,
+   "start": "old_default",
+   "estimate": [
+    7.998484213907005,
+    3.9988835251441657
+   ],
+   "chi_square": 0.0001648716742924332,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 0,
+   "start": "old_doc_example",
+   "estimate": [
+    7.998484213913308,
+    3.99888352510372
+   ],
+   "chi_square": 0.00016487167429243236,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 0,
+   "start": "new_default",
+   "estimate": [
+    7.9984842139059085,
+    3.9988835250764607
+   ],
+   "chi_square": 0.00016487167429243333,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 0,
+   "start": "truth_order",
+   "estimate": [
+    7.998484213961878,
+    3.9988835251210473
+   ],
+   "chi_square": 0.00016487167429243293,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 1,
+   "start": "old_default",
+   "estimate": [
+    8.000934286463321,
+    4.001093690404181
+   ],
+   "chi_square": 0.00017052708836514784,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 1,
+   "start": "old_doc_example",
+   "estimate": [
+    8.000934286460113,
+    4.001093690430382
+   ],
+   "chi_square": 0.00017052708836514866,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 1,
+   "start": "new_default",
+   "estimate": [
+    8.00093428646818,
+    4.001093690478788
+   ],
+   "chi_square": 0.00017052708836514811,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 1,
+   "start": "truth_order",
+   "estimate": [
+    8.000934286495669,
+    4.001093690645579
+   ],
+   "chi_square": 0.00017052708836514738,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 2,
+   "start": "old_default",
+   "estimate": [
+    7.999753874224679,
+    3.999639572678743
+   ],
+   "chi_square": 0.0001542681236512498,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 2,
+   "start": "old_doc_example",
+   "estimate": [
+    7.999753874202828,
+    3.9996395726996568
+   ],
+   "chi_square": 0.0001542681236512486,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 2,
+   "start": "new_default",
+   "estimate": [
+    7.999753874212572,
+    3.999639572672838
+   ],
+   "chi_square": 0.00015426812365124936,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 2,
+   "start": "truth_order",
+   "estimate": [
+    7.999753874087244,
+    3.999639572685945
+   ],
+   "chi_square": 0.000154268123651251,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 3,
+   "start": "old_default",
+   "estimate": [
+    7.999601698037949,
+    4.000190507233702
+   ],
+   "chi_square": 0.000192598235396571,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 3,
+   "start": "old_doc_example",
+   "estimate": [
+    7.999601698067001,
+    4.00019050700148
+   ],
+   "chi_square": 0.00019259823539657142,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 3,
+   "start": "new_default",
+   "estimate": [
+    7.9996016980498394,
+    4.000190507059899
+   ],
+   "chi_square": 0.00019259823539657223,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 3,
+   "start": "truth_order",
+   "estimate": [
+    7.9996016980700775,
+    4.000190507009477
+   ],
+   "chi_square": 0.00019259823539657055,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 4,
+   "start": "old_default",
+   "estimate": [
+    7.998540301754481,
+    4.0011571075692025
+   ],
+   "chi_square": 0.00017324403566440684,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 4,
+   "start": "old_doc_example",
+   "estimate": [
+    7.9985403017448125,
+    4.001157107509869
+   ],
+   "chi_square": 0.0001732440356644063,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 4,
+   "start": "new_default",
+   "estimate": [
+    7.998540301740348,
+    4.001157107505336
+   ],
+   "chi_square": 0.00017324403566440637,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 4,
+   "start": "truth_order",
+   "estimate": [
+    7.998540301737364,
+    4.001157107751254
+   ],
+   "chi_square": 0.0001732440356644066,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 5,
+   "start": "old_default",
+   "estimate": [
+    8.001979876050447,
+    4.000032548452657
+   ],
+   "chi_square": 0.0001454986515276197,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 5,
+   "start": "old_doc_example",
+   "estimate": [
+    8.00197987604932,
+    4.000032548428697
+   ],
+   "chi_square": 0.00014549865152761935,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 5,
+   "start": "new_default",
+   "estimate": [
+    8.001979875936009,
+    4.0000325492929
+   ],
+   "chi_square": 0.00014549865152761981,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 5,
+   "start": "truth_order",
+   "estimate": [
+    8.001979876053653,
+    4.000032548470127
+   ],
+   "chi_square": 0.00014549865152762128,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 6,
+   "start": "old_default",
+   "estimate": [
+    7.9997597242203415,
+    4.000362916535186
+   ],
+   "chi_square": 0.00015727039674194408,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 6,
+   "start": "old_doc_example",
+   "estimate": [
+    7.999759724219939,
+    4.000362916458099
+   ],
+   "chi_square": 0.000157270396741943,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 6,
+   "start": "new_default",
+   "estimate": [
+    7.999759724211995,
+    4.000362916466709
+   ],
+   "chi_square": 0.00015727039674194473,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 6,
+   "start": "truth_order",
+   "estimate": [
+    7.999759724215525,
+    4.0003629164484105
+   ],
+   "chi_square": 0.0001572703967419443,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 7,
+   "start": "old_default",
+   "estimate": [
+    7.999301311290986,
+    3.9983865552050544
+   ],
+   "chi_square": 0.00017389306802832857,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 7,
+   "start": "old_doc_example",
+   "estimate": [
+    7.999301311242266,
+    3.9983865552487154
+   ],
+   "chi_square": 0.00017389306802832415,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 7,
+   "start": "new_default",
+   "estimate": [
+    7.999301311302256,
+    3.9983865551982856
+   ],
+   "chi_square": 0.00017389306802832795,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 7,
+   "start": "truth_order",
+   "estimate": [
+    7.999301311270529,
+    3.998386555244747
+   ],
+   "chi_square": 0.00017389306802832911,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 8,
+   "start": "old_default",
+   "estimate": [
+    8.000418658265588,
+    3.9986011527335634
+   ],
+   "chi_square": 0.00016357489414197158,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 8,
+   "start": "old_doc_example",
+   "estimate": [
+    8.000418658281317,
+    3.99860115271769
+   ],
+   "chi_square": 0.00016357489414197047,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 8,
+   "start": "new_default",
+   "estimate": [
+    8.000418658265511,
+    3.9986011526862857
+   ],
+   "chi_square": 0.00016357489414196955,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 8,
+   "start": "truth_order",
+   "estimate": [
+    8.000418658255779,
+    3.998601152858848
+   ],
+   "chi_square": 0.00016357489414196695,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 9,
+   "start": "old_default",
+   "estimate": [
+    8.000972406852204,
+    3.999421255559005
+   ],
+   "chi_square": 0.00012253419723441458,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 9,
+   "start": "old_doc_example",
+   "estimate": [
+    8.00097240688725,
+    3.9994212556339512
+   ],
+   "chi_square": 0.00012253419723441797,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 9,
+   "start": "new_default",
+   "estimate": [
+    8.00097240684049,
+    3.9994212555387154
+   ],
+   "chi_square": 0.00012253419723441645,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 9,
+   "start": "truth_order",
+   "estimate": [
+    8.00097240690408,
+    3.999421255637028
+   ],
+   "chi_square": 0.00012253419723441618,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 10,
+   "start": "old_default",
+   "estimate": [
+    8.000864076614674,
+    3.9999917687179014
+   ],
+   "chi_square": 0.0001497682714673828,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 10,
+   "start": "old_doc_example",
+   "estimate": [
+    8.000864076623495,
+    3.9999917690860567
+   ],
+   "chi_square": 0.00014976827146738285,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 10,
+   "start": "new_default",
+   "estimate": [
+    8.000864076599724,
+    3.9999917685924284
+   ],
+   "chi_square": 0.00014976827146738367,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 10,
+   "start": "truth_order",
+   "estimate": [
+    8.000864076581315,
+    3.999991768555109
+   ],
+   "chi_square": 0.0001497682714673842,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 11,
+   "start": "old_default",
+   "estimate": [
+    7.999933340933918,
+    3.999847304453315
+   ],
+   "chi_square": 0.00016965825714272215,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 11,
+   "start": "old_doc_example",
+   "estimate": [
+    7.999933340936892,
+    3.9998473044632874
+   ],
+   "chi_square": 0.00016965825714271933,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 11,
+   "start": "new_default",
+   "estimate": [
+    7.999933340940783,
+    3.999847304504681
+   ],
+   "chi_square": 0.0001696582571427201,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 11,
+   "start": "truth_order",
+   "estimate": [
+    7.999933340934546,
+    3.999847304490433
+   ],
+   "chi_square": 0.00016965825714271987,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 12,
+   "start": "old_default",
+   "estimate": [
+    7.999548231645728,
+    3.9987311633910076
+   ],
+   "chi_square": 0.00020156273165850908,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 12,
+   "start": "old_doc_example",
+   "estimate": [
+    7.999548231628921,
+    3.998731163404633
+   ],
+   "chi_square": 0.00020156273165850954,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 12,
+   "start": "new_default",
+   "estimate": [
+    7.999548231637035,
+    3.9987311633810423
+   ],
+   "chi_square": 0.00020156273165850946,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 12,
+   "start": "truth_order",
+   "estimate": [
+    7.999548231632223,
+    3.9987311634805733
+   ],
+   "chi_square": 0.00020156273165850862,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 13,
+   "start": "old_default",
+   "estimate": [
+    8.000097130088294,
+    3.9996098635063895
+   ],
+   "chi_square": 0.00017357391788901114,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 13,
+   "start": "old_doc_example",
+   "estimate": [
+    8.000097130042134,
+    3.9996098636059045
+   ],
+   "chi_square": 0.00017357391788901068,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 13,
+   "start": "new_default",
+   "estimate": [
+    8.000097130076236,
+    3.999609863444709
+   ],
+   "chi_square": 0.00017357391788901181,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 13,
+   "start": "truth_order",
+   "estimate": [
+    8.00009712999944,
+    3.9996098636810835
+   ],
+   "chi_square": 0.00017357391788901263,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 14,
+   "start": "old_default",
+   "estimate": [
+    8.000573352687951,
+    4.000921967797803
+   ],
+   "chi_square": 0.000123993110077768,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 14,
+   "start": "old_doc_example",
+   "estimate": [
+    8.00057335268623,
+    4.000921967806056
+   ],
+   "chi_square": 0.00012399311007776903,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 14,
+   "start": "new_default",
+   "estimate": [
+    8.000573351629571,
+    4.000921968133779
+   ],
+   "chi_square": 0.00012399311007776692,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 14,
+   "start": "truth_order",
+   "estimate": [
+    8.000573352678126,
+    4.000921967838119
+   ],
+   "chi_square": 0.00012399311007776535,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 15,
+   "start": "old_default",
+   "estimate": [
+    8.00010420760588,
+    4.0004731347147775
+   ],
+   "chi_square": 0.00020809457804132697,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 15,
+   "start": "old_doc_example",
+   "estimate": [
+    8.000104207611937,
+    4.000473134710866
+   ],
+   "chi_square": 0.00020809457804132767,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 15,
+   "start": "new_default",
+   "estimate": [
+    8.000104207620396,
+    4.000473134748594
+   ],
+   "chi_square": 0.00020809457804132965,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 15,
+   "start": "truth_order",
+   "estimate": [
+    8.000104207645174,
+    4.00047313474481
+   ],
+   "chi_square": 0.00020809457804132846,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 16,
+   "start": "old_default",
+   "estimate": [
+    8.000658256629457,
+    4.000226692582773
+   ],
+   "chi_square": 0.00017632361608616482,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 16,
+   "start": "old_doc_example",
+   "estimate": [
+    8.000658256721723,
+    4.000226692639737
+   ],
+   "chi_square": 0.00017632361608616493,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 16,
+   "start": "new_default",
+   "estimate": [
+    8.000658256636308,
+    4.000226692631712
+   ],
+   "chi_square": 0.0001763236160861662,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 16,
+   "start": "truth_order",
+   "estimate": [
+    8.000658256856164,
+    4.00022669263975
+   ],
+   "chi_square": 0.000176323616086165,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 17,
+   "start": "old_default",
+   "estimate": [
+    8.001231450769568,
+    3.999686715210956
+   ],
+   "chi_square": 0.00022296842490991344,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 17,
+   "start": "old_doc_example",
+   "estimate": [
+    8.001231450825365,
+    3.999686715415823
+   ],
+   "chi_square": 0.000222968424909916,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 17,
+   "start": "new_default",
+   "estimate": [
+    8.001231450787712,
+    3.9996867151415447
+   ],
+   "chi_square": 0.00022296842490991594,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 17,
+   "start": "truth_order",
+   "estimate": [
+    8.001231450796045,
+    3.999686715149675
+   ],
+   "chi_square": 0.00022296842490991277,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 18,
+   "start": "old_default",
+   "estimate": [
+    7.999996550753702,
+    3.9997860235448943
+   ],
+   "chi_square": 0.00018624731867318545,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 18,
+   "start": "old_doc_example",
+   "estimate": [
+    7.999996550831464,
+    3.999786024732484
+   ],
+   "chi_square": 0.00018624731867318437,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 18,
+   "start": "new_default",
+   "estimate": [
+    7.999996550816696,
+    3.9997860246995733
+   ],
+   "chi_square": 0.0001862473186731869,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 18,
+   "start": "truth_order",
+   "estimate": [
+    7.999996550837445,
+    3.999786024717314
+   ],
+   "chi_square": 0.00018624731867318618,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 19,
+   "start": "old_default",
+   "estimate": [
+    7.999410306925805,
+    4.000871270676699
+   ],
+   "chi_square": 0.00019136259870784723,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 19,
+   "start": "old_doc_example",
+   "estimate": [
+    7.9994103069175955,
+    4.00087127066793
+   ],
+   "chi_square": 0.00019136259870784466,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 19,
+   "start": "new_default",
+   "estimate": [
+    7.99941030644576,
+    4.000871271792877
+   ],
+   "chi_square": 0.00019136259870784623,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "seed": 19,
+   "start": "truth_order",
+   "estimate": [
+    7.999410306932285,
+    4.000871270677115
+   ],
+   "chi_square": 0.00019136259870784596,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 0,
+   "start": "old_default",
+   "estimate": [
+    8.898980878544982,
+    4.500247721118225
+   ],
+   "chi_square": 0.000955711544365594,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 0,
+   "start": "old_doc_example",
+   "estimate": [
+    8.898980878576985,
+    4.500247721124026
+   ],
+   "chi_square": 0.0009557115443655915,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 0,
+   "start": "new_default",
+   "estimate": [
+    8.89898087854116,
+    4.500247721090815
+   ],
+   "chi_square": 0.0009557115443655818,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 0,
+   "start": "truth_order",
+   "estimate": [
+    8.898980878822721,
+    4.500247722673125
+   ],
+   "chi_square": 0.0009557115443655599,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 1,
+   "start": "old_default",
+   "estimate": [
+    8.900328751929637,
+    4.500274300437296
+   ],
+   "chi_square": 0.0007599029661878372,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 1,
+   "start": "old_doc_example",
+   "estimate": [
+    8.900328751918602,
+    4.500274300446852
+   ],
+   "chi_square": 0.0007599029661877628,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 1,
+   "start": "new_default",
+   "estimate": [
+    8.90032875193919,
+    4.500274300532505
+   ],
+   "chi_square": 0.0007599029661877798,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 1,
+   "start": "truth_order",
+   "estimate": [
+    8.900328751937705,
+    4.500274300461541
+   ],
+   "chi_square": 0.0007599029661877367,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 2,
+   "start": "old_default",
+   "estimate": [
+    8.901485802916646,
+    4.499892414224949
+   ],
+   "chi_square": 0.0009247325979042525,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 2,
+   "start": "old_doc_example",
+   "estimate": [
+    8.901485802895913,
+    4.499892414209558
+   ],
+   "chi_square": 0.0009247325979041737,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 2,
+   "start": "new_default",
+   "estimate": [
+    8.901485802749269,
+    4.499892414242092
+   ],
+   "chi_square": 0.0009247325979042729,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 2,
+   "start": "truth_order",
+   "estimate": [
+    8.901485803905059,
+    4.499892414880257
+   ],
+   "chi_square": 0.000924732597904222,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 3,
+   "start": "old_default",
+   "estimate": [
+    8.90113798545712,
+    4.5005420443964805
+   ],
+   "chi_square": 0.001122048836081471,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 3,
+   "start": "old_doc_example",
+   "estimate": [
+    8.90113798546835,
+    4.500542044450624
+   ],
+   "chi_square": 0.0011220488360814288,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 3,
+   "start": "new_default",
+   "estimate": [
+    8.901137985417215,
+    4.500542044368876
+   ],
+   "chi_square": 0.0011220488360815552,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 3,
+   "start": "truth_order",
+   "estimate": [
+    8.901137985428349,
+    4.500542044406737
+   ],
+   "chi_square": 0.0011220488360814329,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 4,
+   "start": "old_default",
+   "estimate": [
+    8.898665288269157,
+    4.500606119864999
+   ],
+   "chi_square": 0.0010648059600428452,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 4,
+   "start": "old_doc_example",
+   "estimate": [
+    8.898665288231305,
+    4.500606119789813
+   ],
+   "chi_square": 0.0010648059600427643,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 4,
+   "start": "new_default",
+   "estimate": [
+    8.898665288239584,
+    4.5006061198312945
+   ],
+   "chi_square": 0.0010648059600427244,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 4,
+   "start": "truth_order",
+   "estimate": [
+    8.898665288265537,
+    4.500606119316341
+   ],
+   "chi_square": 0.0010648059600426895,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 5,
+   "start": "old_default",
+   "estimate": [
+    8.90027078663837,
+    4.501256877880143
+   ],
+   "chi_square": 0.0006772182495189372,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 5,
+   "start": "old_doc_example",
+   "estimate": [
+    8.900270786640766,
+    4.501256877919616
+   ],
+   "chi_square": 0.000677218249518867,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 5,
+   "start": "new_default",
+   "estimate": [
+    8.900270786650799,
+    4.501256877949832
+   ],
+   "chi_square": 0.0006772182495188624,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 5,
+   "start": "truth_order",
+   "estimate": [
+    8.900270786995552,
+    4.501256876744904
+   ],
+   "chi_square": 0.0006772182495188956,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 6,
+   "start": "old_default",
+   "estimate": [
+    8.900689783354446,
+    4.50071016970997
+   ],
+   "chi_square": 0.0006842659531139302,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 6,
+   "start": "old_doc_example",
+   "estimate": [
+    8.90068978339382,
+    4.50071016975966
+   ],
+   "chi_square": 0.0006842659531139535,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 6,
+   "start": "new_default",
+   "estimate": [
+    8.900689783360187,
+    4.500710169733756
+   ],
+   "chi_square": 0.0006842659531172724,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 6,
+   "start": "truth_order",
+   "estimate": [
+    8.900689783371366,
+    4.500710169732276
+   ],
+   "chi_square": 0.0006842659531139318,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 7,
+   "start": "old_default",
+   "estimate": [
+    8.898197226112263,
+    4.500036580492152
+   ],
+   "chi_square": 0.0008161535086855549,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 7,
+   "start": "old_doc_example",
+   "estimate": [
+    8.89819722607746,
+    4.50003658022224
+   ],
+   "chi_square": 0.0008161535086854746,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 7,
+   "start": "new_default",
+   "estimate": [
+    8.898197226114458,
+    4.500036580482046
+   ],
+   "chi_square": 0.0008161535086854477,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 7,
+   "start": "truth_order",
+   "estimate": [
+    8.8981972261058,
+    4.5000365804520115
+   ],
+   "chi_square": 0.0008161535086854523,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 8,
+   "start": "old_default",
+   "estimate": [
+    8.899519079758445,
+    4.498724593454227
+   ],
+   "chi_square": 0.0010380749567298112,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 8,
+   "start": "old_doc_example",
+   "estimate": [
+    8.899519079926437,
+    4.498724593367632
+   ],
+   "chi_square": 0.0010380749567297984,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 8,
+   "start": "new_default",
+   "estimate": [
+    8.899519079735137,
+    4.4987245935032245
+   ],
+   "chi_square": 0.00103807495672975,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 8,
+   "start": "truth_order",
+   "estimate": [
+    8.899519081332542,
+    4.4987245925114205
+   ],
+   "chi_square": 0.0010380749567297383,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 9,
+   "start": "old_default",
+   "estimate": [
+    8.897876164570146,
+    4.497102094098199
+   ],
+   "chi_square": 0.0006942220847381939,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 9,
+   "start": "old_doc_example",
+   "estimate": [
+    8.89787616456738,
+    4.497102094109975
+   ],
+   "chi_square": 0.0006942220847381063,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 9,
+   "start": "new_default",
+   "estimate": [
+    8.89787616456425,
+    4.497102094123774
+   ],
+   "chi_square": 0.0006942220847381033,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 9,
+   "start": "truth_order",
+   "estimate": [
+    8.897876164584973,
+    4.497102094124754
+   ],
+   "chi_square": 0.0006942220847381427,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 10,
+   "start": "old_default",
+   "estimate": [
+    8.900109975087174,
+    4.498118578416696
+   ],
+   "chi_square": 0.00072810502230697,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 10,
+   "start": "old_doc_example",
+   "estimate": [
+    8.90010997510489,
+    4.498118578506187
+   ],
+   "chi_square": 0.0007281050223068904,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 10,
+   "start": "new_default",
+   "estimate": [
+    8.900109974946854,
+    4.4981185783945925
+   ],
+   "chi_square": 0.0007281050223069282,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 10,
+   "start": "truth_order",
+   "estimate": [
+    8.900109975067961,
+    4.498118578456225
+   ],
+   "chi_square": 0.0007281050223069388,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 11,
+   "start": "old_default",
+   "estimate": [
+    8.898557605131593,
+    4.499899884367789
+   ],
+   "chi_square": 0.0010715636645034798,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 11,
+   "start": "old_doc_example",
+   "estimate": [
+    8.898557604762729,
+    4.499899884534631
+   ],
+   "chi_square": 0.0010715636645033599,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 11,
+   "start": "new_default",
+   "estimate": [
+    8.898557605070543,
+    4.499899884293843
+   ],
+   "chi_square": 0.0010715636645034314,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 11,
+   "start": "truth_order",
+   "estimate": [
+    8.89855760512214,
+    4.49989988439491
+   ],
+   "chi_square": 0.001071563664503494,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 12,
+   "start": "old_default",
+   "estimate": [
+    8.899624152476244,
+    4.497941078386129
+   ],
+   "chi_square": 0.0013074564352683555,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 12,
+   "start": "old_doc_example",
+   "estimate": [
+    8.899624152521804,
+    4.497941078437332
+   ],
+   "chi_square": 0.0013074564352683,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 12,
+   "start": "new_default",
+   "estimate": [
+    8.899624152446552,
+    4.4979410783341205
+   ],
+   "chi_square": 0.0013074564352682314,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 12,
+   "start": "truth_order",
+   "estimate": [
+    8.899624152472619,
+    4.497941078350133
+   ],
+   "chi_square": 0.001307456435268342,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 13,
+   "start": "old_default",
+   "estimate": [
+    8.901167885581538,
+    4.497287157876098
+   ],
+   "chi_square": 0.0009549759585633505,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 13,
+   "start": "old_doc_example",
+   "estimate": [
+    8.901167885699842,
+    4.49728715799303
+   ],
+   "chi_square": 0.0009549759585633495,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 13,
+   "start": "new_default",
+   "estimate": [
+    8.90116788559523,
+    4.497287157861988
+   ],
+   "chi_square": 0.0009549759585633772,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 13,
+   "start": "truth_order",
+   "estimate": [
+    8.901167885601957,
+    4.49728715785405
+   ],
+   "chi_square": 0.0009549759585634097,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 14,
+   "start": "old_default",
+   "estimate": [
+    8.900818818805412,
+    4.501981207522125
+   ],
+   "chi_square": 0.0007646389561459745,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 14,
+   "start": "old_doc_example",
+   "estimate": [
+    8.900818818816747,
+    4.501981207507624
+   ],
+   "chi_square": 0.0007646389561460279,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 14,
+   "start": "new_default",
+   "estimate": [
+    8.90081881880519,
+    4.501981207477057
+   ],
+   "chi_square": 0.0007646389561459623,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 14,
+   "start": "truth_order",
+   "estimate": [
+    8.900818819658252,
+    4.5019811826166265
+   ],
+   "chi_square": 0.0007646389561071892,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 15,
+   "start": "old_default",
+   "estimate": [
+    8.899114943179786,
+    4.499263500601828
+   ],
+   "chi_square": 0.0009169387934394069,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 15,
+   "start": "old_doc_example",
+   "estimate": [
+    8.899114942989296,
+    4.499263501154376
+   ],
+   "chi_square": 0.0009169387934394169,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 15,
+   "start": "new_default",
+   "estimate": [
+    8.899114943125678,
+    4.499263500568906
+   ],
+   "chi_square": 0.0009169387934393899,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 15,
+   "start": "truth_order",
+   "estimate": [
+    8.899114943201798,
+    4.499263500605249
+   ],
+   "chi_square": 0.0009169387934394955,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 16,
+   "start": "old_default",
+   "estimate": [
+    8.898951411400585,
+    4.500021340926542
+   ],
+   "chi_square": 0.0010471647775816264,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 16,
+   "start": "old_doc_example",
+   "estimate": [
+    8.898951411385765,
+    4.500021340900913
+   ],
+   "chi_square": 0.0010471647775815926,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 16,
+   "start": "new_default",
+   "estimate": [
+    8.89895141137661,
+    4.500021340882125
+   ],
+   "chi_square": 0.0010471647775815972,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 16,
+   "start": "truth_order",
+   "estimate": [
+    8.898951411623221,
+    4.500021342871115
+   ],
+   "chi_square": 0.0010471647775816143,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 17,
+   "start": "old_default",
+   "estimate": [
+    8.898305448075664,
+    4.503371895212682
+   ],
+   "chi_square": 0.001275181667472626,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 17,
+   "start": "old_doc_example",
+   "estimate": [
+    8.898305448139059,
+    4.503371895218418
+   ],
+   "chi_square": 0.0012751816674726065,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 17,
+   "start": "new_default",
+   "estimate": [
+    8.898305448096927,
+    4.503371895225548
+   ],
+   "chi_square": 0.001275181667472581,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 17,
+   "start": "truth_order",
+   "estimate": [
+    8.898305448107557,
+    4.5033718951889306
+   ],
+   "chi_square": 0.001275181667472544,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 18,
+   "start": "old_default",
+   "estimate": [
+    8.901136927123181,
+    4.498829105719757
+   ],
+   "chi_square": 0.0010575782708952364,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 18,
+   "start": "old_doc_example",
+   "estimate": [
+    8.901136927134447,
+    4.498829105774737
+   ],
+   "chi_square": 0.0010575782708951817,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 18,
+   "start": "new_default",
+   "estimate": [
+    8.901136927096449,
+    4.498829105707557
+   ],
+   "chi_square": 0.0010575782708951683,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 18,
+   "start": "truth_order",
+   "estimate": [
+    8.901136927128649,
+    4.498829105770605
+   ],
+   "chi_square": 0.0010575782708951973,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 19,
+   "start": "old_default",
+   "estimate": [
+    8.900287465419733,
+    4.4995755113452205
+   ],
+   "chi_square": 0.0006395170326067198,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 19,
+   "start": "old_doc_example",
+   "estimate": [
+    8.900287465394927,
+    4.4995755113596285
+   ],
+   "chi_square": 0.0006395170326066858,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 19,
+   "start": "new_default",
+   "estimate": [
+    8.900287465404762,
+    4.499575511314831
+   ],
+   "chi_square": 0.0006395170326066843,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "seed": 19,
+   "start": "truth_order",
+   "estimate": [
+    8.900287465428239,
+    4.499575511336513
+   ],
+   "chi_square": 0.0006395170326066752,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 0,
+   "start": "old_default",
+   "estimate": [
+    7.999114703486911,
+    4.000199693305507
+   ],
+   "chi_square": 0.0009593136819561022,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 0,
+   "start": "old_doc_example",
+   "estimate": [
+    7.999114703486859,
+    4.0001996933393595
+   ],
+   "chi_square": 0.000959313681956217,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 0,
+   "start": "new_default",
+   "estimate": [
+    7.999114703458469,
+    4.0001996933143875
+   ],
+   "chi_square": 0.0009593136819561525,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 0,
+   "start": "truth_order",
+   "estimate": [
+    7.999114704355188,
+    4.00019969500957
+   ],
+   "chi_square": 0.0009593136819561469,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 1,
+   "start": "old_default",
+   "estimate": [
+    8.000283710515186,
+    4.000353492405051
+   ],
+   "chi_square": 0.0007597160551362184,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 1,
+   "start": "old_doc_example",
+   "estimate": [
+    8.000283710547363,
+    4.000353492324718
+   ],
+   "chi_square": 0.0007597160551362439,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 1,
+   "start": "new_default",
+   "estimate": [
+    8.000283710533894,
+    4.000353492269811
+   ],
+   "chi_square": 0.0007597160551362817,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 1,
+   "start": "truth_order",
+   "estimate": [
+    8.000283710564165,
+    4.000353492329907
+   ],
+   "chi_square": 0.0007597160551362024,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 2,
+   "start": "old_default",
+   "estimate": [
+    8.001355697981577,
+    3.999841033024266
+   ],
+   "chi_square": 0.0009288846052473667,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 2,
+   "start": "old_doc_example",
+   "estimate": [
+    8.00135569804266,
+    3.99984103305866
+   ],
+   "chi_square": 0.0009288846052473494,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 2,
+   "start": "new_default",
+   "estimate": [
+    8.00135569792649,
+    3.9998410329303997
+   ],
+   "chi_square": 0.0009288846052474136,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 2,
+   "start": "truth_order",
+   "estimate": [
+    8.001355697949284,
+    3.9998410329892415
+   ],
+   "chi_square": 0.0009288846052473516,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 3,
+   "start": "old_default",
+   "estimate": [
+    8.001215891958303,
+    4.00060021529187
+   ],
+   "chi_square": 0.0011179348080754097,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 3,
+   "start": "old_doc_example",
+   "estimate": [
+    8.001215891921632,
+    4.000600215284507
+   ],
+   "chi_square": 0.0011179348080754387,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 3,
+   "start": "new_default",
+   "estimate": [
+    8.001215891947522,
+    4.0006002153702465
+   ],
+   "chi_square": 0.0011179348080754884,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 3,
+   "start": "truth_order",
+   "estimate": [
+    8.001215891930535,
+    4.000600215355998
+   ],
+   "chi_square": 0.0011179348080754214,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 4,
+   "start": "old_default",
+   "estimate": [
+    7.998701932179763,
+    4.000668928404249
+   ],
+   "chi_square": 0.0010648935645293477,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 4,
+   "start": "old_doc_example",
+   "estimate": [
+    7.9987019321465995,
+    4.000668928337556
+   ],
+   "chi_square": 0.0010648935645292965,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 4,
+   "start": "new_default",
+   "estimate": [
+    7.9987019321124455,
+    4.000668928310829
+   ],
+   "chi_square": 0.0010648935645293592,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 4,
+   "start": "truth_order",
+   "estimate": [
+    7.998701932169245,
+    4.000668928380296
+   ],
+   "chi_square": 0.0010648935645293847,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 5,
+   "start": "old_default",
+   "estimate": [
+    8.000132074985572,
+    4.001356850514982
+   ],
+   "chi_square": 0.0006769095684252739,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 5,
+   "start": "old_doc_example",
+   "estimate": [
+    8.00013207502419,
+    4.001356850505243
+   ],
+   "chi_square": 0.0006769095684253986,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 5,
+   "start": "new_default",
+   "estimate": [
+    8.000132074990335,
+    4.001356850433908
+   ],
+   "chi_square": 0.0006769095684253818,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 5,
+   "start": "truth_order",
+   "estimate": [
+    8.000132074993124,
+    4.001356850468028
+   ],
+   "chi_square": 0.0006769095684252964,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 6,
+   "start": "old_default",
+   "estimate": [
+    8.000721935374251,
+    4.000870871959815
+   ],
+   "chi_square": 0.000680673304912859,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 6,
+   "start": "old_doc_example",
+   "estimate": [
+    8.000721935412054,
+    4.000870872004599
+   ],
+   "chi_square": 0.0006806733049128672,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 6,
+   "start": "new_default",
+   "estimate": [
+    8.000721935394285,
+    4.000870871995799
+   ],
+   "chi_square": 0.0006806733049128362,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 6,
+   "start": "truth_order",
+   "estimate": [
+    8.000721935391534,
+    4.000870871992772
+   ],
+   "chi_square": 0.0006806733049128883,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 7,
+   "start": "old_default",
+   "estimate": [
+    7.998384671322727,
+    4.0001074383366415
+   ],
+   "chi_square": 0.0008238227675661657,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 7,
+   "start": "old_doc_example",
+   "estimate": [
+    7.998384671196356,
+    4.000107438231301
+   ],
+   "chi_square": 0.0008238227675661919,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 7,
+   "start": "new_default",
+   "estimate": [
+    7.998384671209103,
+    4.000107438289521
+   ],
+   "chi_square": 0.0008238227675662565,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 7,
+   "start": "truth_order",
+   "estimate": [
+    7.998384671244017,
+    4.000107438251185
+   ],
+   "chi_square": 0.0008238227675661685,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 8,
+   "start": "old_default",
+   "estimate": [
+    7.99965470171937,
+    3.9985790382989403
+   ],
+   "chi_square": 0.0010368815574332483,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 8,
+   "start": "old_doc_example",
+   "estimate": [
+    7.999654701699915,
+    3.9985790384802327
+   ],
+   "chi_square": 0.0010368815574331865,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 8,
+   "start": "new_default",
+   "estimate": [
+    7.999654701669724,
+    3.998579038338007
+   ],
+   "chi_square": 0.001036881557433297,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 8,
+   "start": "truth_order",
+   "estimate": [
+    7.999654701679024,
+    3.9985790383415054
+   ],
+   "chi_square": 0.0010368815574332971,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 9,
+   "start": "old_default",
+   "estimate": [
+    7.997929683763475,
+    3.9969786983552336
+   ],
+   "chi_square": 0.0006961203056266073,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 9,
+   "start": "old_doc_example",
+   "estimate": [
+    7.99792968375181,
+    3.9969786983022395
+   ],
+   "chi_square": 0.000696120305626628,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 9,
+   "start": "new_default",
+   "estimate": [
+    7.9979296837564835,
+    3.9969786983996336
+   ],
+   "chi_square": 0.0006961203056266554,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 9,
+   "start": "truth_order",
+   "estimate": [
+    7.997929683760279,
+    3.9969786983982223
+   ],
+   "chi_square": 0.0006961203056266858,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 10,
+   "start": "old_default",
+   "estimate": [
+    7.999969169827992,
+    3.9979845606675806
+   ],
+   "chi_square": 0.000726540754388974,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 10,
+   "start": "old_doc_example",
+   "estimate": [
+    7.999969169840303,
+    3.9979845606812345
+   ],
+   "chi_square": 0.0007265407543890866,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 10,
+   "start": "new_default",
+   "estimate": [
+    7.999969169829885,
+    3.9979845606432534
+   ],
+   "chi_square": 0.0007265407543890179,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 10,
+   "start": "truth_order",
+   "estimate": [
+    7.999969167956146,
+    3.997984560104249
+   ],
+   "chi_square": 0.0007265407543890095,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 11,
+   "start": "old_default",
+   "estimate": [
+    7.998484022466924,
+    3.999958870344221
+   ],
+   "chi_square": 0.0010671800251333642,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 11,
+   "start": "old_doc_example",
+   "estimate": [
+    7.998484022501647,
+    3.9999588704304374
+   ],
+   "chi_square": 0.0010671800251333776,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 11,
+   "start": "new_default",
+   "estimate": [
+    7.998484022479227,
+    3.9999588703407074
+   ],
+   "chi_square": 0.0010671800251333676,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 11,
+   "start": "truth_order",
+   "estimate": [
+    7.998484022465279,
+    3.999958870424697
+   ],
+   "chi_square": 0.0010671800251334776,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 12,
+   "start": "old_default",
+   "estimate": [
+    7.999642228063802,
+    3.997729921829807
+   ],
+   "chi_square": 0.0013018141728925498,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 12,
+   "start": "old_doc_example",
+   "estimate": [
+    7.999642228014222,
+    3.9977299218642326
+   ],
+   "chi_square": 0.0013018141728925376,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 12,
+   "start": "new_default",
+   "estimate": [
+    7.999642227946883,
+    3.997729921660757
+   ],
+   "chi_square": 0.0013018141728924773,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 12,
+   "start": "truth_order",
+   "estimate": [
+    7.999642227983444,
+    3.9977299217539963
+   ],
+   "chi_square": 0.0013018141728926233,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 13,
+   "start": "old_default",
+   "estimate": [
+    8.001153631910169,
+    3.9970778768063013
+   ],
+   "chi_square": 0.0009507243049620018,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 13,
+   "start": "old_doc_example",
+   "estimate": [
+    8.001153631908242,
+    3.9970778769002298
+   ],
+   "chi_square": 0.0009507243049620072,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 13,
+   "start": "new_default",
+   "estimate": [
+    8.001153631914336,
+    3.997077876819807
+   ],
+   "chi_square": 0.0009507243049619099,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 13,
+   "start": "truth_order",
+   "estimate": [
+    8.001153631919967,
+    3.997077876878455
+   ],
+   "chi_square": 0.0009507243049618556,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 14,
+   "start": "old_default",
+   "estimate": [
+    8.000837168562963,
+    4.002009909147564
+   ],
+   "chi_square": 0.0007673895917678424,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 14,
+   "start": "old_doc_example",
+   "estimate": [
+    8.000837168525502,
+    4.002009909182483
+   ],
+   "chi_square": 0.00076738959176786,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 14,
+   "start": "new_default",
+   "estimate": [
+    8.00083716853378,
+    4.002009909203943
+   ],
+   "chi_square": 0.0007673895917678195,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 14,
+   "start": "truth_order",
+   "estimate": [
+    8.00083716856855,
+    4.002009909230447
+   ],
+   "chi_square": 0.000767389591767783,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 15,
+   "start": "old_default",
+   "estimate": [
+    7.99921929457956,
+    3.999178922013308
+   ],
+   "chi_square": 0.0009180756674077232,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 15,
+   "start": "old_doc_example",
+   "estimate": [
+    7.999219294548521,
+    3.999178922006301
+   ],
+   "chi_square": 0.0009180756674076818,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 15,
+   "start": "new_default",
+   "estimate": [
+    7.999219294592376,
+    3.99917892217245
+   ],
+   "chi_square": 0.0009180756674077745,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 15,
+   "start": "truth_order",
+   "estimate": [
+    7.999219294543913,
+    3.999178921986509
+   ],
+   "chi_square": 0.0009180756674077204,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 16,
+   "start": "old_default",
+   "estimate": [
+    7.999054409030768,
+    3.999969207820193
+   ],
+   "chi_square": 0.0010495911890642312,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 16,
+   "start": "old_doc_example",
+   "estimate": [
+    7.99905440898251,
+    3.9999692078327014
+   ],
+   "chi_square": 0.0010495911890641514,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 16,
+   "start": "new_default",
+   "estimate": [
+    7.999054409020496,
+    3.999969207932872
+   ],
+   "chi_square": 0.0010495911890642464,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 16,
+   "start": "truth_order",
+   "estimate": [
+    7.999054409032094,
+    3.9999692080142433
+   ],
+   "chi_square": 0.0010495911890640937,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 17,
+   "start": "old_default",
+   "estimate": [
+    7.998325650036339,
+    4.003500827726736
+   ],
+   "chi_square": 0.0012801446218044185,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 17,
+   "start": "old_doc_example",
+   "estimate": [
+    7.998325650056432,
+    4.003500827745506
+   ],
+   "chi_square": 0.0012801446218043532,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 17,
+   "start": "new_default",
+   "estimate": [
+    7.998325650053228,
+    4.003500827755347
+   ],
+   "chi_square": 0.0012801446218043701,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 17,
+   "start": "truth_order",
+   "estimate": [
+    7.9983256500299555,
+    4.003500827687341
+   ],
+   "chi_square": 0.0012801446218044265,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 18,
+   "start": "old_default",
+   "estimate": [
+    8.001188232990554,
+    3.9987399936449215
+   ],
+   "chi_square": 0.0010545135407906722,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 18,
+   "start": "old_doc_example",
+   "estimate": [
+    8.001188232990078,
+    3.998739993698072
+   ],
+   "chi_square": 0.0010545135407907058,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 18,
+   "start": "new_default",
+   "estimate": [
+    8.001188233024834,
+    3.9987399937205748
+   ],
+   "chi_square": 0.0010545135407906763,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 18,
+   "start": "truth_order",
+   "estimate": [
+    8.001188233007325,
+    3.9987399937226424
+   ],
+   "chi_square": 0.0010545135407906167,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 19,
+   "start": "old_default",
+   "estimate": [
+    8.00024197378774,
+    3.9995192518487386
+   ],
+   "chi_square": 0.0006394639308860478,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 19,
+   "start": "old_doc_example",
+   "estimate": [
+    8.00024197382303,
+    3.999519251883065
+   ],
+   "chi_square": 0.0006394639308860801,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 19,
+   "start": "new_default",
+   "estimate": [
+    8.000241973794447,
+    3.9995192518818783
+   ],
+   "chi_square": 0.0006394639308861116,
+   "outcome": "recovered"
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "seed": 19,
+   "start": "truth_order",
+   "estimate": [
+    8.00024197381774,
+    3.999519251921342
+   ],
+   "chi_square": 0.0006394639308860653,
+   "outcome": "recovered"
+  }
+ ],
+ "table": [
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "start": "new_default",
+   "recovered": 20
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "start": "old_default",
+   "recovered": 20
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "start": "old_doc_example",
+   "recovered": 20
+  },
+  {
+   "technique": "nmr",
+   "truth": "doc_ligand",
+   "start": "truth_order",
+   "recovered": 20
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "start": "new_default",
+   "recovered": 20
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "start": "old_default",
+   "recovered": 20
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "start": "old_doc_example",
+   "recovered": 20
+  },
+  {
+   "technique": "nmr",
+   "truth": "sep",
+   "start": "truth_order",
+   "recovered": 20
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "start": "new_default",
+   "recovered": 20
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "start": "old_default",
+   "recovered": 20
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "start": "old_doc_example",
+   "recovered": 20
+  },
+  {
+   "technique": "pot",
+   "truth": "doc_ligand",
+   "start": "truth_order",
+   "recovered": 20
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "start": "new_default",
+   "recovered": 20
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "start": "old_default",
+   "recovered": 20
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "start": "old_doc_example",
+   "recovered": 20
+  },
+  {
+   "technique": "pot",
+   "truth": "sep",
+   "start": "truth_order",
+   "recovered": 20
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "start": "new_default",
+   "recovered": 20
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "start": "old_default",
+   "recovered": 20
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "start": "old_doc_example",
+   "recovered": 20
+  },
+  {
+   "technique": "spec",
+   "truth": "doc_ligand",
+   "start": "truth_order",
+   "recovered": 20
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "start": "new_default",
+   "recovered": 20
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "start": "old_default",
+   "recovered": 20
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "start": "old_doc_example",
+   "recovered": 20
+  },
+  {
+   "technique": "spec",
+   "truth": "sep",
+   "start": "truth_order",
+   "recovered": 20
+  }
+ ]
+}
