@@ -42,7 +42,7 @@ from PySide6.QtWidgets import (
 )
 
 from hmfit_core.api import run_acid_base_fit
-from hmfit_core.acid_base import log_beta_to_pka, pka_to_log_beta
+from hmfit_core.acid_base import inverted_pka_warning, log_beta_to_pka, pka_to_log_beta
 from hmfit_core.acid_base_errors import compute_errors_acid_base_from_context
 from hmfit_core.acid_base_model_utils import (
     acid_base_constant_blocks,
@@ -79,6 +79,15 @@ def _parse_float_list(raw: Any, *, default: list[float] | None = None) -> list[f
     if not text:
         return list(default or [])
     return [float(part.strip()) for part in text.split(",") if part.strip()]
+
+
+def _block_pka_equilibria(block: dict[str, Any]) -> list[str]:
+    """"HL ⇌ L + H⁺"-style label of each pKa of a constant block (see hmfit_core.acid_base.pka_equilibria)."""
+    rows = list(block.get("species") or [])
+    names = [str(sp.get("name") or "") for sp in rows]
+    if len(names) < 2 or not all(names):
+        return []
+    return [f"{cur} ⇌ {prev} + H⁺" for prev, cur in zip(names[:-1], names[1:])]
 
 
 def _table_text(table: QTableWidget, row: int, col: int, default: str = "") -> str:
@@ -532,6 +541,11 @@ class AcidBaseTab(QWidget):
         self.table_basic_pka.setMinimumHeight(90)
         self.table_basic_pka.itemChanged.connect(self._on_basic_pka_table_changed)
         pka_layout.addWidget(self.table_basic_pka)
+        self.lbl_pka_order_warning = QLabel("", self.basic_pka_group)
+        self.lbl_pka_order_warning.setWordWrap(True)
+        self.lbl_pka_order_warning.setStyleSheet("color: #b35900;")
+        self.lbl_pka_order_warning.setVisible(False)
+        pka_layout.addWidget(self.lbl_pka_order_warning)
         layout.addWidget(chemical_group)
 
         self.model_advanced_group = QGroupBox("Advanced options", tab)
@@ -656,19 +670,19 @@ class AcidBaseTab(QWidget):
                 "Examples:\n"
                 "# Monoprotic\n"
                 "L + H <=> HL ; pKa=5.20\n\n"
-                "# Diprotic, stepwise\n"
-                "L + H <=> HL ; pKa=4.50\n"
-                "HL + H <=> H2L ; pKa=8.90\n\n"
+                "# Diprotic, stepwise (pKa1 = most basic site, pKa1 > pKa2)\n"
+                "L + H <=> HL ; pKa=8.90\n"
+                "HL + H <=> H2L ; pKa=4.50\n\n"
                 "# Diprotic, cumulative\n"
-                "L + H <=> HL ; logB=4.50\n"
+                "L + H <=> HL ; logB=8.90\n"
                 "L + 2H <=> H2L ; logB=13.40",
                 equations_page,
             )
         )
         self.equation_editor = QPlainTextEdit(equations_page)
         self.equation_editor.setPlaceholderText(
-            "L + H <=> HL ; pKa=5.20\n"
-            "HL + H <=> H2L ; pKa=8.90"
+            "L + H <=> HL ; pKa=8.90\n"
+            "HL + H <=> H2L ; pKa=4.50"
         )
         equations_layout.addWidget(self.equation_editor, 1)
         eq_buttons = QHBoxLayout()
@@ -1315,8 +1329,11 @@ class AcidBaseTab(QWidget):
         species_rows: list[dict[str, Any]] = []
         included_h = sorted({int(row["h_count"]) for row in rows if bool(row.get("include", True)) and int(row["h_count"]) > 0})
         pka_defaults = self._basic_pka_values()
-        while len(pka_defaults) < len(included_h):
-            pka_defaults.append(5.0 + 2.0 * len(pka_defaults))
+        if len(pka_defaults) < len(included_h):
+            # Descending ladder (HM fit convention: pKa1 is the most basic site, pKa1 > pKa2 > ...).
+            missing = len(included_h) - len(pka_defaults)
+            start = pka_defaults[-1] - 2.0 if pka_defaults else 5.0 + 2.0 * (missing - 1)
+            pka_defaults.extend(start - 2.0 * i for i in range(missing))
         log_beta_by_h: dict[int, float] = {}
         cumulative = pka_to_log_beta(pka_defaults[: len(included_h)]) if included_h else []
         for h_count, log_beta in zip(included_h, cumulative):
@@ -1462,7 +1479,7 @@ class AcidBaseTab(QWidget):
             return
         issues: list[str] = []
         for row in range(self.table_basic_pka.rowCount()):
-            name = _table_text(self.table_basic_pka, row, 0, f"pKa{row + 1}")
+            name = self._basic_pka_key(row)
             texts = [
                 self.table_basic_pka.item(row, col).text() if self.table_basic_pka.item(row, col) is not None else ""
                 for col in (1, 2, 3)
@@ -1478,7 +1495,7 @@ class AcidBaseTab(QWidget):
             fit_widget = self.table_basic_pka.cellWidget(row, 4)
             rows.append(
                 {
-                    "parameter": _table_text(self.table_basic_pka, row, 0, f"pKa{row + 1}"),
+                    "parameter": self._basic_pka_key(row),
                     "initial": float(_table_text(self.table_basic_pka, row, 1, "5.0")),
                     "min": float(_table_text(self.table_basic_pka, row, 2, "-5.0")),
                     "max": float(_table_text(self.table_basic_pka, row, 3, "25.0")),
@@ -1492,12 +1509,13 @@ class AcidBaseTab(QWidget):
             return
         blocks = acid_base_constant_blocks(model)
         pka_values = list(blocks[0].get("pka") or []) if blocks else []
+        equilibria = _block_pka_equilibria(blocks[0]) if blocks else []
         was_updating = self._updating_basic_fields
         self._updating_basic_fields = True
         self.table_basic_pka.blockSignals(True)
         try:
             previous = {
-                _table_text(self.table_basic_pka, row, 0, f"pKa{row + 1}"): {
+                self._basic_pka_key(row): {
                     "min": _table_text(self.table_basic_pka, row, 2, "-5.0"),
                     "max": _table_text(self.table_basic_pka, row, 3, "25.0"),
                     "fit": (
@@ -1511,7 +1529,14 @@ class AcidBaseTab(QWidget):
             self.table_basic_pka.setRowCount(len(pka_values))
             for idx, value in enumerate(pka_values, start=1):
                 key = f"pKa{idx}"
-                label = QTableWidgetItem(f"pKa{idx}")
+                eq = equilibria[idx - 1] if idx - 1 < len(equilibria) else ""
+                label = QTableWidgetItem(f"{key} ({eq})" if eq else key)
+                label.setData(Qt.ItemDataRole.UserRole, key)
+                label.setToolTip(
+                    self.tr("{key} belongs to {eq}. HM fit convention: pKa1 is the most basic site "
+                            "(pKa1 = log β1), so pKa1 > pKa2 > ... for a non-cooperative ligand.").format(
+                        key=key, eq=eq or key)
+                )
                 label.setFlags(label.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.table_basic_pka.setItem(idx - 1, 0, label)
                 _set_table_text(self.table_basic_pka, idx - 1, 1, f"{float(value):.6g}")
@@ -1523,6 +1548,38 @@ class AcidBaseTab(QWidget):
         finally:
             self.table_basic_pka.blockSignals(False)
             self._updating_basic_fields = was_updating
+        self._update_pka_order_warning()
+
+    def _basic_pka_key(self, row: int) -> str:
+        """Parameter key of a pKa row ("pKa1"), independent of the displayed equilibrium."""
+        item = self.table_basic_pka.item(row, 0)
+        if item is not None:
+            key = item.data(Qt.ItemDataRole.UserRole)
+            if key:
+                return str(key)
+            text = item.text().strip()
+            if text:
+                return text.split(" (", 1)[0]
+        return f"pKa{row + 1}"
+
+    def _update_pka_order_warning(self) -> str:
+        """Show (never fix) an inverted pKa order; returns the warning text ("" if none)."""
+        if not hasattr(self, "lbl_pka_order_warning"):
+            return ""
+        values: list[float] = []
+        equilibria: list[str] = []
+        for row in range(self.table_basic_pka.rowCount()):
+            try:
+                values.append(float(_table_text(self.table_basic_pka, row, 1, "nan")))
+            except ValueError:
+                values.append(float("nan"))
+            item = self.table_basic_pka.item(row, 0)
+            text = item.text() if item is not None else ""
+            equilibria.append(text.split(" (", 1)[1].rstrip(")") if " (" in text else "")
+        message = inverted_pka_warning(values, equilibria if all(equilibria) else None)
+        self.lbl_pka_order_warning.setText(message)
+        self.lbl_pka_order_warning.setVisible(bool(message))
+        return message
 
     def _on_basic_pka_table_changed(self, item: QTableWidgetItem) -> None:
         if self._updating_basic_fields or self._updating_tables or item.column() not in {1, 2, 3}:
@@ -1537,6 +1594,7 @@ class AcidBaseTab(QWidget):
         else:
             item.setToolTip("")
         self._sync_parameter_row_from_basic_pka(item.row())
+        self._update_pka_order_warning()
 
     def _on_basic_pka_fit_changed(self) -> None:
         if self._updating_basic_fields or self._updating_tables:

@@ -560,6 +560,10 @@ class ErrorAnalysisWidget(QWidget):
         self._refresh_idle_state()
         self.output_ready.emit(output)
 
+    def _pka_equilibria(self) -> dict[str, str]:
+        eq = list((self._errors_context or {}).get("pka_equilibria") or [])
+        return {f"pKa{i + 1}": str(v) for i, v in enumerate(eq) if v}
+
     def _populate_results_table(self, columns: list[str], rows: list[Any]) -> None:
         self.table_error_results.clear()
         self.table_error_results.setColumnCount(len(columns))
@@ -579,8 +583,12 @@ class ErrorAnalysisWidget(QWidget):
             header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         for col in range(1, len(columns)):
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
+        equilibria = self._pka_equilibria()
         for row_idx, row in enumerate(rows):
             values = list(row) if isinstance(row, (list, tuple)) else [row]
+            if values and str(values[0]) in equilibria:
+                # Show which equilibrium each pKa belongs to (HM fit order: pKa1 = most basic site).
+                values[0] = f"{values[0]} ({equilibria[str(values[0])]})"
             reason = self._row_reason(row_idx)
             for col_idx, value in enumerate(values[: len(columns)]):
                 align_left = col_idx == 0
