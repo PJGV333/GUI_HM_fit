@@ -1,0 +1,39 @@
+{
+ "replicates": 186,
+ "cells": 62,
+ "rtol": 1e-09,
+ "atol": 1e-12,
+ "by_method": {
+  "analytic": {
+   "n": 744,
+   "bad": 0,
+   "max_abs": 0.0,
+   "max_rel": 0.0
+  },
+  "lin_row": {
+   "n": 744,
+   "bad": 0,
+   "max_abs": 0.0,
+   "max_rel": 0.0
+  },
+  "lin_el": {
+   "n": 744,
+   "bad": 0,
+   "max_abs": 0.0,
+   "max_rel": 0.0
+  },
+  "os_row": {
+   "n": 744,
+   "bad": 0,
+   "max_abs": 0.0,
+   "max_rel": 0.0
+  },
+  "os_el": {
+   "n": 744,
+   "bad": 0,
+   "max_abs": 0.0,
+   "max_rel": 0.0
+  }
+ },
+ "mismatches": []
+}

@@ -1,7 +1,8 @@
 # HM fit — Fase 2: validación estadística de las incertidumbres
 
-> **Estado (2026-11-05): etapas 2.0, 2.1 y 2.5 completas; etapa 2.2 en pausa por decisión del
-> autor; decisiones 2.3 y 2.4 pendientes de la campaña.** Etiquetas: **[Defecto comprobado]**
+> **Estado (2026-11-05): etapas 2.0, 2.1 y 2.5 completas. La campaña 2.2 queda aplazada, por
+> decisión del autor, a una campaña final de validación tras las fases siguientes. Las decisiones
+> 2.3 y 2.4 quedan sin decidir y se mantienen los valores por defecto actuales, con su aviso.** Etiquetas: **[Defecto comprobado]**
 > (reproducido con un caso concreto), **[Limitación metodológica]**, **[Sospecha]** (no
 > verificado). Todas las cifras proceden de scripts versionados con semilla; el comando
 > exacto acompaña a cada una. El informe anterior de esta fase se conserva sin cambios
@@ -24,12 +25,12 @@ es un avance rápido (*fast-forward*), sin conflictos.
 | 7 | Defecto comprobado | Errores (GUI) | Cabecera "log10K" también en ácido-base; celdas indefinidas vacías o "nan" sin motivo | Etiqueta real (pKa / log β / log10K), "—" con causa (`ce99054`, `ae8b6b2`) |
 | 8 | Defecto comprobado | Ácido-base (GUI y docs) | Los ejemplos del editor de ecuaciones y de `ACID_BASE_POTENTIOMETRY.md` describían una escalera invertida (pKa=4.50 para HL, 8.90 para H2L); los valores iniciales por defecto eran crecientes (5, 7, 9) | Corregido; advertencia de orden invertido (`582b42e`, `88b241c`) |
 | 9 | Defecto comprobado | Pruebas y validación | Los casos ácido-base de la Fase 1 (`tests/phase1_cases.py`) y la campaña G (`validation/configs/ph/`) usaban pKa₁ < pKa₂ (sistema cooperativo) | Pruebas corregidas (`0c742e1`); lectura de la campaña G corregida en §9.3 |
-| 10 | Defecto comprobado (rendimiento) | Bootstrap one-step | `_as_onp` intenta `import jax` en cada llamada (≈ 25 % del tiempo) y cada réplica recalcula la especiación (≈ 50 %) | Abierto; recomendación para la Fase 3 (§10) |
+| 10 | Defecto comprobado (rendimiento) | Bootstrap one-step | `_as_onp` intenta `import jax` en cada llamada (≈ 25 % del tiempo) y cada réplica recalcula la especiación (≈ 50 %) | Corregido sin cambiar resultados (`1771b58`): 5.1 s → 1.7 s por variante; verificado bit a bit (§3.1) |
 | 11 | Limitación metodológica | Campaña | Con N = 200 (y aun con N = 500) una celda calibrada no puede confirmarse con su IC de Wilson | Declarado (enmienda 1, §2) |
 | 12 | Limitación metodológica | Ácido-base | Un pKa fuera del intervalo de pH muestreado (casi no identificable) recibe SE finito | Abierto (§10) |
 | 13 | Limitación metodológica | Estimadores de ε | El estimador (b) del encargo (Jacobiano condicionado al conjunto activo) no existe en el código | Declarado en el pre-registro; no implementado |
 | 14 | Defecto comprobado | Empaquetado | `scripts/build_hmfit_pyside6_appimage.sh:196` instala sin `-c constraints.txt` | Abierto; pregunta al autor |
-| — | — | Campaña 2.2 | Tier 1 parcial (≈ 23 400 de 36 000 réplicas); tiers 2, 3, 4 y 9 no ejecutados | **En pausa por decisión del autor** |
+| — | — | Campaña 2.2 | 30 754 réplicas guardadas (47 celdas UV-Vis y 15 de RMN); el resto no se ejecutó | **Aplazada a la campaña final** por decisión del autor (§2) |
 
 ## 2. Desviaciones del pre-registro
 
@@ -53,12 +54,33 @@ Pre-registro: `docs/PHASE2_PREREGISTRATION.md` (commit `05ca856`).
    - una celda degenerada de diagnóstico, `diag-ab_nmr-inverted-25-iid`, con pKa = [4, 8].
 
    La rejilla pasa a 327 celdas (SHA-256 `f0723dae…`); las 326 originales no cambian.
-3. **Ejecución incompleta.** La campaña se pausó a petición del autor el 2026-11-05 a las
-   17:24 MST. Lo no ejecutado se reporta como no ejecutado; no se extrapola.
+3. **Enmienda 2** (`76d4583`, §10 del pre-registro, antes de leer resultados). Asigna cada celda
+   a la decisión que alimenta (`python -m validation.coverage_plan table`):
+   - **tier 1:** 2.3 y 2.4 (UV-Vis y RMN, métodos baratos);
+   - **tier 2:** full-refit de UV-Vis y RMN, condicional;
+   - **tier 3:** las celdas de estimadores (2.3), ácido-base, potenciometría y cinética (2.4);
+   - **tier 4:** la rejilla realista con 20 y 30 puntos y los diseños 1:2 (2.4 y el umbral de
+     pocos bloques);
+   - **diferidas:** las celdas con ruido correlacionado y el diagnóstico, que no entran en
+     ninguna regla.
+
+   R1 (118 celdas) se reanudó sin cambios de código: el código actual reproduce bit a bit las
+   réplicas guardadas.
+4. **Ejecución detenida y aplazada** por decisión del autor (2026-11-05, 18:42 MST): primero se
+   avanza con las fases y al final se hace una campaña de validación sobre el motor
+   resultante. Se detuvieron dos pasadas:
+   - la del tier 1 a las 17:24 (UV-Vis: 46 celdas completas y 1 parcial);
+   - R1 a las 18:42 (RMN: 15 celdas en curso; ninguna de estimadores, ácido-base,
+     potenciometría ni cinética).
+
+   **No se leyó ninguna tabla de cobertura ni ningún agregado.** Lo no ejecutado se reporta
+   como no ejecutado; no se extrapola. Las 30 754 réplicas guardadas se conservan (JSONL con
+   manifiesto) y la campaña final puede reanudarlas o descartarlas. Si el motor cambia en la
+   Fase 3, habrá que verificarlas antes con `validation.coverage_replay_check`.
 
 ## 3. Resultados de la campaña por técnica y método
 
-**Pendiente: campaña en pausa.** Las tablas se generarán, sin edición manual, con:
+**No ejecutada en esta fase** (aplazada, §2). Las tablas se generarán, sin edición manual, con:
 
 ```sh
 python -m validation.coverage_report RUN_DIR --csv validation/results/coverage/summary.csv \
@@ -67,12 +89,43 @@ python -m validation.coverage_report RUN_DIR --csv validation/results/coverage/s
 
 Los datos crudos (JSONL por celda y manifiesto con commit y versiones) se publican como
 artefacto del workflow `campaign` y no se versionan. Casos sintéticos para comparar con
-BindFit o HypNMR: `validation/results/coverage/external_cases/`.
+BindFit o HypNMR: `validation/results/coverage/external_cases/`. Los análisis secundarios
+declarados (cobertura agregada en 8–15 puntos con prueba χ² de heterogeneidad, e IC t con SE
+bootstrap frente a percentiles) están implementados en `validation/coverage_secondary.py`
+y se ejecutarán con la campaña final.
+
+### 3.1 Verificación de la optimización del one-step
+
+- **Cambio** (`1771b58`): la especiación a k̂ se resuelve una vez por análisis en los one-step
+  de espectroscopía y RMN (`_FixedPointConcentrations`), y la disponibilidad de JAX se resuelve
+  una sola vez. El solver de especiación no guarda estado entre llamadas.
+- **Verificación:**
+
+  ```sh
+  python -m validation.coverage_replay_check RUN_DIR --per-cell 3 --workers 30 \
+      --json validation/results/coverage/replay_onestep_optimisation.json
+  ```
+
+  Recalcula 3 réplicas guardadas por celda, con sus mismas semillas, y compara est, SE, lo y
+  hi de cada método con lo guardado (rtol = 10⁻⁹, atol = 10⁻¹²).
+- **Resultado:** 186 réplicas de 62 celdas (UV-Vis y RMN; métodos analítico, linealizado y
+  one-step por fila y por elemento), 3 720 comparaciones y **diferencia máxima 0**: salida
+  idéntica bit a bit.
+- **Prueba unitaria:** `tests/test_onestep_speciation_cache.py`. Compara las muestras con y
+  sin caché (idénticas), comprueba que la especiación se llama 1 vez en lugar de 1 + B y que
+  la importación de jax se intenta una sola vez.
+- **Tiempo**, una réplica UV-Vis 1:1, 10 puntos, B = 1000: 5.1 s → 1.7 s por variante de
+  one-step.
+- **Límites:** ácido-base, potenciometría y cinética no tenían réplicas guardadas, así que la
+  verificación no las cubre. El cambio no toca sus caminos: el one-step de cinética ya
+  reutilizaba el Jacobiano y el ácido-base no tiene one-step.
 
 ## 4. Decisión: estimador de absortividades (2.3)
 
-**Pendiente.** Se aplicará la regla del pre-registro (§6 y enmienda 9.4). Ya está
-establecido lo siguiente:
+**Sin decidir en esta fase**, porque la campaña está aplazada (§2). Por la regla del
+pre-registro ("si la evidencia no es clara, se mantiene el valor actual"), **se mantiene
+`soft_penalty` (μ = 10⁻²)**. La decisión se tomará con la campaña final. Ya está establecido
+lo siguiente:
 
 - los pesos por punto están implementados y probados frente a referencias independientes
   (`tests/test_phase2_weights.py`);
@@ -82,7 +135,9 @@ establecido lo siguiente:
 
 ## 5. Decisión: bootstrap por defecto (2.4)
 
-**Pendiente.** Se aplicará la regla del pre-registro (§6). El umbral de advertencia por
+**Sin decidir en esta fase.** Por decisión del autor ("si 2.4 no puede decidirse para alguna
+técnica, se mantiene su valor por defecto actual con su aviso"), **no cambia ningún método ni
+bloque por defecto** y el aviso de pocos bloques sigue en 20 puntos. El umbral de advertencia por
 pocos bloques (hoy 20 puntos) se justificará con la tabla de cobertura frente al número de
 puntos que genera `coverage_report`. HC2/HC3 ya se evaluaron y no se adoptan (Anexo A, §6).
 
