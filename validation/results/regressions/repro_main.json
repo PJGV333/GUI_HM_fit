@@ -1,0 +1,240 @@
+{
+ "tree": "main (5077e2e, git archive)",
+ "python": "3.11.15",
+ "rows": [
+  {
+   "id": "P2-D1",
+   "source": "Fase 2 #1",
+   "module": "Kinetics graph API (Python < 3.14)",
+   "defect": "super() in a slots dataclass",
+   "effect": "crash",
+   "status": "REPRODUCED",
+   "detail": "TypeError: super(type, obj): obj must be an instance or subtype of type"
+  },
+  {
+   "id": "P2-D2a",
+   "source": "Fase 2 #5",
+   "module": "Spectro/NMR parameter table",
+   "defect": "typo in value/bound replaced silently",
+   "effect": "numbers",
+   "status": "REPRODUCED",
+   "detail": "value '3x' -> 1.0, upper bound '8x' -> None"
+  },
+  {
+   "id": "P2-D2b",
+   "source": "Fase 2 #5",
+   "module": "Spectro/NMR parameter table",
+   "defect": "decimal comma ('0,5') replaced silently",
+   "effect": "numbers",
+   "status": "REPRODUCED",
+   "detail": "value '0,5' -> 1.0, lower bound '0,1' -> None"
+  },
+  {
+   "id": "P2-D2c",
+   "source": "Fase 2 #5",
+   "module": "Kinetics parameter table",
+   "defect": "decimal comma ('0,5') replaced silently",
+   "effect": "numbers",
+   "status": "REPRODUCED",
+   "detail": "value '0,5' -> 0.0, lower bound '0,1' -> None"
+  },
+  {
+   "id": "P2-D3",
+   "source": "Fase 2 #2",
+   "module": "Potentiometry",
+   "defect": "fixed pKa crashes the error analysis",
+   "effect": "crash",
+   "status": "REPRODUCED",
+   "detail": "IndexError: list index out of range; fitted pKa1 = 7.9991"
+  },
+  {
+   "id": "P2-D4",
+   "source": "Fase 2 #4",
+   "module": "NMR errors",
+   "defect": "non-identifiable constant: shape mismatch or SE = 0",
+   "effect": "crash/numbers",
+   "status": "REPRODUCED",
+   "detail": "1 of 4 methods raise 'shape mismatch'; 2 report SE = 0 (reads as 'fixed')"
+  },
+  {
+   "id": "RR1",
+   "source": "RELIABILITY_REVIEW #1",
+   "module": "Kinetics/spectro/NMR bootstrap one-step",
+   "defect": "LM step damped with unscaled lambda*I (SD ~7000x too small for k in M^-1 s^-1)",
+   "effect": "numbers",
+   "status": "fix API absent",
+   "detail": "test_lm_damped_step_is_scale_invariant: fix API absent (NameError: name 'lm_damped_step' is not defined)"
+  },
+  {
+   "id": "RR2",
+   "source": "RELIABILITY_REVIEW #2",
+   "module": "UV-Vis absorptivity solver",
+   "defect": "soft_penalty (300 gradient iterations) does not converge at molar scale: biased log K",
+   "effect": "numbers",
+   "status": "REPRODUCED",
+   "detail": "test_soft_penalty_absorptivity_solver_is_exact_at_molar_scale: REPRODUCED (AssertionError: assert np.float64(1.0645357546712395e-06) < 1e-09)"
+  },
+  {
+   "id": "RR3",
+   "source": "RELIABILITY_REVIEW #3",
+   "module": "dof (kinetics, acid-base)",
+   "defect": "degrees of freedom do not subtract the linear parameters removed by variable projection",
+   "effect": "numbers",
+   "status": "REPRODUCED",
+   "detail": "test_kinetics_dof_counts_linear_spectra: fix API absent (AttributeError: n_linear) | test_acid_base_nmr_dof_subtracts_limiting_shifts: REPRODUCED (assert 9 == ((10 - 1) - 2))"
+  },
+  {
+   "id": "RR4",
+   "source": "RELIABILITY_REVIEW #4",
+   "module": "Analytic CI (all)",
+   "defect": "z = 1.96 instead of Student t with the residual dof",
+   "effect": "numbers",
+   "status": "fix API absent",
+   "detail": "test_t_quantile_and_leverage: fix API absent (NameError: name 't_quantile' is not defined)"
+  },
+  {
+   "id": "RR5",
+   "source": "RELIABILITY_REVIEW #5",
+   "module": "Kinetics fit",
+   "defect": "fixing any parameter raises ValueError (bounds)",
+   "effect": "crash",
+   "status": "REPRODUCED",
+   "detail": "test_kinetics_fixed_parameter_does_not_crash_and_has_zero_se: REPRODUCED (ValueError: Each lower bound must be strictly less than each upper bound.)"
+  },
+  {
+   "id": "RR7",
+   "source": "RELIABILITY_REVIEW #7",
+   "module": "Spectro/NMR bootstrap, 1 parameter (1:1)",
+   "defect": "np.corrcoef returns a scalar: every bootstrap of a 1:1 model fails",
+   "effect": "crash",
+   "status": "REPRODUCED",
+   "detail": "test_bootstrap_correlation_for_single_parameter: REPRODUCED (assert () == (1, 1))"
+  },
+  {
+   "id": "RR11",
+   "source": "RELIABILITY_REVIEW #11",
+   "module": "Chemical graphs",
+   "defect": "consistent thermodynamic cycles rejected",
+   "effect": "crash",
+   "status": "absent",
+   "detail": "test_thermodynamic_cycle_consistency: absent (test passes)"
+  },
+  {
+   "id": "P1-1",
+   "source": "Fase 1 #1",
+   "module": "Kinetics bounds",
+   "defect": "inverted bounds silently fix the parameter",
+   "effect": "numbers",
+   "status": "REPRODUCED",
+   "detail": "test_inverted_bounds_raise_instead_of_fixing: REPRODUCED (AssertionError: Regex pattern did not match.)"
+  },
+  {
+   "id": "P1-2",
+   "source": "Fase 1 #2",
+   "module": "Kinetics fixed by mask",
+   "defect": "mask-fixed parameter moved to its lower bound",
+   "effect": "numbers",
+   "status": "fix API absent",
+   "detail": "test_mask_fixed_kinetic_parameter_keeps_its_exact_value: fix API absent (TypeError: least_squares() got an unexpected keyword argument 'fixed_mask')"
+  },
+  {
+   "id": "P1-4",
+   "source": "Fase 1 #4",
+   "module": "Kinetics/spectro identifiability",
+   "defect": "zero Jacobian column read as 'fixed' -> SE = 0",
+   "effect": "numbers",
+   "status": "REPRODUCED",
+   "detail": "test_unidentifiable_kinetic_parameter_is_nan_not_zero: REPRODUCED (AssertionError: assert np.False_)"
+  },
+  {
+   "id": "P1-5",
+   "source": "Fase 1 #5",
+   "module": "Linearized/one-step bootstrap",
+   "defect": "collinear or insensitive parameters get a finite SD or 0",
+   "effect": "numbers",
+   "status": "REPRODUCED",
+   "detail": "test_linearized_bootstrap_never_moves_absent_or_null_directions: REPRODUCED (AssertionError: assert np.False_)"
+  },
+  {
+   "id": "P1-6",
+   "source": "Fase 1 #6",
+   "module": "Spectroscopy errors with fixed log beta",
+   "defect": "analytic/one-step ignore fixed_mask: fixed SE != 0 and inflated free SE",
+   "effect": "numbers",
+   "status": "fix API absent",
+   "detail": "test_spectro_fixed_mask_analytic_and_one_step: fix API absent (TypeError: compute_errors_spectro_varpro() got an unexpected keyword argument 'fixed_mask')"
+  },
+  {
+   "id": "P1-7",
+   "source": "Fase 1 #7",
+   "module": "Acid-base NMR/spectroscopy",
+   "defect": "pka_fit_mask and pka_bounds ignored (fixed pKa refitted)",
+   "effect": "numbers",
+   "status": "REPRODUCED",
+   "detail": "test_acid_base_fixed_pka_is_respected_in_nmr_and_spectroscopy: REPRODUCED (assert [False, False] == [False, True])"
+  },
+  {
+   "id": "P1-8",
+   "source": "Fase 1 #8",
+   "module": "Acid-base context",
+   "defect": "`x or []` on NumPy arrays raises; linear count silently 0",
+   "effect": "crash",
+   "status": "REPRODUCED",
+   "detail": "test_acid_base_context_accepts_numpy_arrays: REPRODUCED (ValueError: The truth value of an array with more than one element is ambiguous. Use a.any)"
+  },
+  {
+   "id": "P1-10",
+   "source": "Fase 1 #10",
+   "module": "dof <= 0 (all)",
+   "defect": "dof <= 0 truncated to 1 without warning",
+   "effect": "numbers",
+   "status": "REPRODUCED",
+   "detail": "test_acid_base_dof_nonpositive_reports_nan: REPRODUCED (assert 2 == 0) | test_linearized_covariance_reference_and_degenerate_cases: fix API absent (NameError: name 'linearized_covariance' is not defined)"
+  },
+  {
+   "id": "P1-x",
+   "source": "Fase 1 §2.1",
+   "module": "Kinetics fixed/free invariants",
+   "defect": "all-fixed / mixed fixed parameters",
+   "effect": "numbers",
+   "status": "REPRODUCED",
+   "detail": "test_all_fixed_none_fixed_and_mixed: fix API absent (AttributeError: 'GlobalFitResult' object has no attribute 'fixed_mask') | test_initial_value_outside_bounds_is_rejected: REPRODUCED (AssertionError: Regex pattern did not match.)"
+  },
+  {
+   "id": "P2-refit",
+   "source": "Fase 2 (Anexo A §4)",
+   "module": "Spectroscopy full-refit",
+   "defect": "optimizer non-convergence / solver failure accepted as a valid replicate",
+   "effect": "numbers",
+   "status": "REPRODUCED",
+   "detail": "test_refit_rejects_optimizer_nonconvergence: REPRODUCED (assert not True) | test_full_refit_counts_failures_and_rejects_nonfinite_success: REPRODUCED (KeyError: 'n_attempted')"
+  },
+  {
+   "id": "P2-pgd",
+   "source": "Fase 2 (Anexo A §4)",
+   "module": "solve_A_nnls_pgd",
+   "defect": "constant per-wavelength multipliers ignored",
+   "effect": "numbers",
+   "status": "fix API absent",
+   "detail": "test_wavelength_constant_multiplier_applies_to_penalized_objective: fix API absent (TypeError: solve_A_nnls_pgd() got an unexpected keyword argument 'weights_row')"
+  },
+  {
+   "id": "P2-nmr12",
+   "source": "Fase 2 (Anexo A §7)",
+   "module": "NMR 1:2",
+   "defect": "optimizer failure flag ignored: echo reported as success",
+   "effect": "numbers",
+   "status": "REPRODUCED",
+   "detail": "test_nmr_unknown_optimizer_fails_honestly: REPRODUCED (assert True is False)"
+  },
+  {
+   "id": "P2-pot",
+   "source": "Fase 2 #2 (D3)",
+   "module": "Potentiometry",
+   "defect": "fixed pKa crashes the error analysis",
+   "effect": "crash",
+   "status": "REPRODUCED",
+   "detail": "test_fixed_pka_reaches_export_sheets: REPRODUCED (KeyError: 'error_parameters')"
+  }
+ ]
+}
