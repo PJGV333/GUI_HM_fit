@@ -209,6 +209,46 @@ def system_pka_values(system: AcidBaseSystem, *, component_index: int = 0) -> li
     return log_beta_to_pka(component_log_beta(system.components[int(component_index)]))
 
 
+def pka_equilibria(system: AcidBaseSystem, *, component_index: int = 0) -> list[str]:
+    """Deprotonation equilibrium of each pKa, in HM fit order: ``pKa_n`` belongs to
+    ``H_nL <=> H_(n-1)L + H+`` (pKa_n = log beta_n - log beta_(n-1)), so pKa1 is the
+    *most basic* site, e.g. ``["HL ⇌ L + H⁺", "H2L ⇌ HL + H⁺"]``."""
+    species = component_species_sorted(system.components[int(component_index)])
+    return [f"{cur.name} ⇌ {prev.name} + H⁺" for prev, cur in zip(species[:-1], species[1:])]
+
+
+def inverted_pka_pairs(pka_values: Sequence[float]) -> list[tuple[int, int]]:
+    """1-based index pairs (n, n+1) with pKa_(n+1) > pKa_n.
+
+    In the HM fit convention a physical (non-cooperative) ladder has
+    pKa1 > pKa2 > ... An increasing pair means the protonation constants are
+    inverted (the second proton binds more strongly than the first); such data
+    mostly determine the sum of the two constants, not each one."""
+    vals = [float(v) for v in pka_values]
+    return [(i + 1, i + 2) for i in range(len(vals) - 1)
+            if np.isfinite(vals[i]) and np.isfinite(vals[i + 1]) and vals[i + 1] > vals[i]]
+
+
+def inverted_pka_warning(pka_values: Sequence[float], equilibria: Sequence[str] | None = None) -> str:
+    """Readable warning for :func:`inverted_pka_pairs` ("" when the order is physical).
+    The values are never reordered."""
+    pairs = inverted_pka_pairs(pka_values)
+    if not pairs:
+        return ""
+    eq = list(equilibria or [])
+    parts = []
+    for a, b in pairs:
+        la = f"pKa{a}" + (f" ({eq[a - 1]})" if len(eq) >= a else "")
+        lb = f"pKa{b}" + (f" ({eq[b - 1]})" if len(eq) >= b else "")
+        parts.append(f"{lb} = {float(pka_values[b - 1]):g} > {la} = {float(pka_values[a - 1]):g}")
+    return (
+        "Inverted protonation constants: " + "; ".join(parts) + ". In HM fit pKa1 belongs to the most "
+        "basic site (pKa1 = log beta1), so a non-cooperative ligand has pKa1 > pKa2 > ... The values "
+        "were used as entered (not reordered); check the order, since inverted constants are usually "
+        "determined only through their sum."
+    )
+
+
 def system_log_beta_values(system: AcidBaseSystem, *, component_index: int = 0) -> list[float]:
     return component_log_beta(system.components[int(component_index)])
 
@@ -973,6 +1013,9 @@ __all__ = [
     "component_charges",
     "component_species_names",
     "system_pka_values",
+    "pka_equilibria",
+    "inverted_pka_pairs",
+    "inverted_pka_warning",
     "system_log_beta_values",
     "clone_system",
     "clone_system_with_log_beta",

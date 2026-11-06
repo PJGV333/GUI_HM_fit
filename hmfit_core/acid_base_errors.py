@@ -876,6 +876,10 @@ def _build_acid_base_output(
         pka_ci_16,
         pka_ci_84,
     )
+    equilibria = [str(v) for v in list(context.get("pka_equilibria") or [])]
+    if len(equilibria) == pka_df.shape[0]:
+        # HM fit convention: pKa_n belongs to H_nL <=> H_(n-1)L + H+ (pKa1 = most basic site).
+        pka_df.insert(1, "Equilibrium", equilibria)
     log_beta_df = _summarize_constant_table(
         log_beta_labels,
         log_beta_estimate,

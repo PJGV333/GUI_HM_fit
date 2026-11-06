@@ -164,16 +164,21 @@ L + H <=> HL ; pKa=5.20
 ### Example 2
 
 ```text
-L + H <=> HL ; pKa=4.50
-HL + H <=> H2L ; pKa=8.90
+L + H <=> HL ; pKa=8.90
+HL + H <=> H2L ; pKa=4.50
 ```
 
 ### Example 3
 
 ```text
-L + H <=> HL ; logB=4.50
+L + H <=> HL ; logB=8.90
 L + 2H <=> H2L ; logB=13.40
 ```
+
+Examples 2 and 3 describe the same diprotic ligand (pKa1 = 8.90, pKa2 = 4.50).
+Earlier versions of this page and of the GUI showed pKa=4.50 for `HL` and
+pKa=8.90 for `H2L` (log_beta1 = 4.50): in the convention below that is an
+*inverted* (cooperative) ladder, not an ordinary diprotic acid.
 
 The parser recognizes:
 
@@ -218,6 +223,36 @@ pKa3 = log_beta3 - log_beta2
 ```
 
 The GUI shows both conventions so the user can verify the ladder.
+
+### Which equilibrium each pKa belongs to
+
+The numbering follows the protonation direction, not the usual textbook
+dissociation numbering of the fully protonated acid:
+
+| Parameter | Equilibrium (diprotic ligand L) | Relation |
+|---|---|---|
+| `pKa1` | `HL ⇌ L + H⁺` | `pKa1 = log_beta1` |
+| `pKa2` | `H2L ⇌ HL + H⁺` | `pKa2 = log_beta2 - log_beta1` |
+
+So `pKa1` is the **most basic** site and an ordinary (non-cooperative) ligand
+has `pKa1 > pKa2 > pKa3 > ...`. A textbook "pKa1" of H2L (first dissociation,
+most acidic proton) is HM Fit's `pKa2`.
+
+- Every pKa label in the GUI names its equilibrium, e.g. `pKa1 (HL ⇌ L + H⁺)`:
+  initial-guess table, fit report and error table.
+- Default initial guesses are a descending ladder (e.g. 7, 5 for a diprotic
+  ligand).
+- If the entered or fitted values have `pKa(n+1) > pKa(n)`, HM Fit shows a
+  warning ("Inverted protonation constants ...") under the pKa table, in the
+  fit log and in the report. Values are **never reordered silently**: the fit
+  uses them exactly as entered. With inverted constants the data usually
+  determine only their sum, so individual values and their uncertainties are
+  poorly defined.
+- Exports: the `pKa` sheet has an `Equilibrium` column and the
+  `pKa_convention` sheet states the convention (plus the warning, if any).
+
+A selector for the alternative (dissociation) numbering is planned for Phase 4;
+until then the internal convention above is the only one.
 
 ## Templates
 

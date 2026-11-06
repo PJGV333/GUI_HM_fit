@@ -135,6 +135,7 @@ def write_results_xlsx(
                 "Error_diagnostics": acid_frame("error_diagnostics"),
                 "Bootstrap_samples": acid_frame("bootstrap_samples"),
                 "Residuals": pd.DataFrame({"residual": np.asarray(export_data.get("residuals") or [], dtype=float).ravel()}),
+                "pKa_convention": pd.DataFrame({"note": list(export_data.get("pka_convention") or [])}),
             }
             for name, df in acid_sheets.items():
                 if df is None or df.empty:

@@ -19,6 +19,8 @@ from hmfit_core.acid_base import (
     NMRAcidBaseDataset,
     SpectroscopicAcidBaseDataset,
     clone_system_with_pka,
+    inverted_pka_warning,
+    pka_equilibria,
     component_log_beta,
     fit_nmr_acid_base,
     fit_spectroscopy_acid_base,
@@ -288,6 +290,23 @@ def _plot_overlay(
     return _figure_to_base64(fig)
 
 
+PKA_CONVENTION_NOTE = (
+    "pKa convention: pKa_n = log beta_n - log beta_(n-1) with cumulative protonation constants "
+    "(L + n H+ <=> HnL), so pKa_n belongs to HnL <=> H(n-1)L + H+ and pKa1 is the most basic site "
+    "(pKa1 > pKa2 > ... for a non-cooperative ligand)."
+)
+
+
+def _warn_inverted_initial_pka(initial_pka, system, log) -> None:
+    """Warn (never reorder) when the entered pKa imply inverted protonation constants."""
+    try:
+        message = inverted_pka_warning(list(initial_pka), pka_equilibria(system))
+    except Exception:
+        message = ""
+    if message:
+        log("Warning (initial values): " + message)
+
+
 def _fit_result_tables(result: AcidBaseFitResult) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     pka_table = [
         {"parameter": f"pKa{i+1}", "value": float(value)}
@@ -370,6 +389,12 @@ def _build_errors_context(
     theta_hat = np.asarray(result.theta_hat, dtype=float).reshape(-1)
     parameter_names = list(result.parameter_names or [row["parameter"] for row in _fit_result_tables(result)[0]])
     fitted_pka = np.asarray(result.fitted_pka, dtype=float).reshape(-1)
+    try:
+        equilibria = pka_equilibria(system)
+    except Exception:
+        equilibria = []
+    if len(equilibria) != fitted_pka.size:
+        equilibria = []
     # Constants held fixed outside the optimised vector (potentiometry drops fixed pKa
     # from parameter_names): report them as fixed instead of omitting them.
     fixed_constants = []
@@ -383,6 +408,7 @@ def _build_errors_context(
     return {
         "analysis_type": "acid_base",
         "fixed_constants": fixed_constants,
+        "pka_equilibria": equilibria,
         "analysis_kind": str(analysis_kind),
         "theta_hat": theta_hat.tolist(),
         "parameter_names": parameter_names,
@@ -455,6 +481,10 @@ def _base_result_payload(
     error_output: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     pka_table, log_beta_table = _fit_result_tables(result)
+    equilibria = list((errors_context or {}).get("pka_equilibria") or [])
+    if len(equilibria) == len(pka_table):
+        for row, eq in zip(pka_table, equilibria):
+            row["equilibrium"] = str(eq)
     constants = pka_table + log_beta_table
     stats = {
         "chi_square": float(result.chi_square),
@@ -471,9 +501,15 @@ def _base_result_payload(
         stats["max_abs_correlation"] = stability_diag.get("max_abs_corr")
     lines = ["Acid-base fit results", ""]
     for row in pka_table:
-        lines.append(f"{row['parameter']}: {row['value']:.8g}")
+        eq = f" ({row['equilibrium']})" if row.get("equilibrium") else ""
+        lines.append(f"{row['parameter']}{eq}: {row['value']:.8g}")
     for row in log_beta_table:
         lines.append(f"{row['parameter']}: {row['value']:.8g}")
+    lines.append("")
+    lines.append(PKA_CONVENTION_NOTE)
+    inverted = inverted_pka_warning([row["value"] for row in pka_table], equilibria)
+    if inverted:
+        lines.append("Warning: " + inverted)
     lines.append("")
     lines.append(f"chi_square: {result.chi_square:.8g}")
     if result.reduced_chi_square is not None:
@@ -482,6 +518,7 @@ def _base_result_payload(
     export_data["analysis_type"] = "acid_base"
     export_data["analysis_kind"] = analysis_kind
     export_data["pka_table"] = pka_table
+    export_data["pka_convention"] = [PKA_CONVENTION_NOTE] + (["Warning: " + inverted] if inverted else [])
     export_data["log_beta_table"] = log_beta_table
     export_data["parameter_table"] = result.parameter_table.to_dict(orient="records")
     export_data["covariance_matrix"] = (
@@ -570,6 +607,7 @@ def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[
 
     system = _build_system(cfg)
     initial_pka = _initial_pka_from_config(cfg, system)
+    _warn_inverted_initial_pka(initial_pka, system, log)
     experiment = PotentiometryExperiment(
         initial_volume=float(cfg.get("initial_volume", 10.0) or 10.0),
         titrant_volumes=volumes,
@@ -834,7 +872,8 @@ def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[
     for row in payload.get("constants") or []:
         name = str(row.get("parameter") or "")
         if name.startswith("pKa") or name == "pKw_app":
-            summary_lines.append(f"- {name} = {float(row.get('value')):.8g}")
+            eq = f" ({row['equilibrium']})" if row.get("equilibrium") else ""
+            summary_lines.append(f"- {name}{eq} = {float(row.get('value')):.8g}")
     summary_lines.extend(
         [
             "",
@@ -880,6 +919,7 @@ def _run_spectroscopy(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[s
     dataset = SpectroscopicAcidBaseDataset(pH=pH, signal=signal, wavelengths=wavelengths)
     system = _build_system(cfg)
     initial_pka = _initial_pka_from_config(cfg, system)
+    _warn_inverted_initial_pka(initial_pka, system, log)
     log("Fitting spectroscopic acid-base data...")
     fixed_pka, pka_bounds = _pka_fit_controls(cfg, len(initial_pka))
     # fixed pKa keep their value: bounds of fixed entries are irrelevant to the optimiser
@@ -964,6 +1004,7 @@ def _run_nmr(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[str, Any]:
     dataset = NMRAcidBaseDataset(pH=pH, shifts=shifts, nuclei_labels=[str(c) for c in shift_cols])
     system = _build_system(cfg)
     initial_pka = _initial_pka_from_config(cfg, system)
+    _warn_inverted_initial_pka(initial_pka, system, log)
     log("Fitting fast-exchange 1H NMR acid-base data...")
     fixed_pka, pka_bounds = _pka_fit_controls(cfg, len(initial_pka))
     pka_bounds = (
