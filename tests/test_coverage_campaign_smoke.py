@@ -65,6 +65,26 @@ def test_wilson_and_classification_thresholds():
     assert cc.classify(0.95, 1.2) == "conservative"
 
 
+def test_indeterminate_when_wilson_interval_contains_a_threshold():
+    """Amendment 1: a cell is "indeterminate" when its Wilson interval contains 0.93 or 0.97."""
+    lo, hi = cc.wilson(190, 200)  # 0.95 at N = 200: [0.910, 0.973] contains both thresholds
+    assert cc.classify_ci(lo, hi, "calibrated") == "indeterminate"
+    lo, hi = cc.wilson(475, 500)  # 0.95 at N = 500: [0.927, 0.966] still contains 0.93
+    assert cc.classify_ci(lo, hi, "calibrated") == "indeterminate"
+    lo, hi = cc.wilson(170, 200)  # 0.85: [0.794, 0.893], clearly below
+    assert cc.classify_ci(lo, hi, "anticonservative") == "anticonservative"
+    lo, hi = cc.wilson(499, 500)
+    assert cc.classify_ci(lo, hi, "conservative") == "conservative"
+    assert cc.classify_ci(float("nan"), float("nan"), "undefined") == "undefined"
+
+
+def test_inverted_acid_base_diagnostic_cell_runs():
+    cell = next(c for c in cc.diagnostic_grid() if c["id"] == "diag-ab_nmr-inverted-25-iid")
+    assert cc.AB_PKA["inverted"] == [4.0, 8.0] and cell["tier"] == 9
+    row = cc.run_replicate({**cell, "B": 20, "B_refit": 4}, 0, ["analytic", "lin_row"])
+    assert row["truth"] == [4.0, 8.0] and "analytic" in row["methods"]
+
+
 @pytest.mark.slow
 @pytest.mark.parametrize("tier", [1, 2, 3, 4, 9])
 def test_full_campaign_tier(tier, tmp_path):

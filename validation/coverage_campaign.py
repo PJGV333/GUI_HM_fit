@@ -168,6 +168,11 @@ def diagnostic_grid() -> list[dict[str, Any]]:
                         B_refit=200, titrant_bias=bias)
             cell["id"] = f"diag-{tech}-{design}-titrant{bias:+.2f}"
             cells.append(cell)
+    # Amendment 1: explicit degenerate acid-base case (inverted pKa ladder, pKa1 < pKa2).
+    cell = dict(technique="ab_nmr", design="inverted", n_points=25, noise="iid", saturation="na",
+                methods=CHEAP_NO_OS + ["fr_row"], tier=9, N=200, B=1000, B_refit=200)
+    cell["id"] = "diag-ab_nmr-inverted-25-iid"
+    cells.append(cell)
     return cells
 
 
@@ -315,7 +320,10 @@ def _nmr_data(cell, rng, workdir):
 # with cumulative *protonation* constants, so pKa1 belongs to HL <=> L + H+ (the most
 # basic site) and a physical diprotic ladder has pKa1 > pKa2. [4, 8] would describe a
 # cooperative system in which HL is never populated and only pKa1 + pKa2 is identifiable.
-AB_PKA = {"sep": [8.0, 4.0], "close": [5.0, 4.4], "fixed": [8.0, 4.0]}
+AB_PKA = {"sep": [8.0, 4.0], "close": [5.0, 4.4], "fixed": [8.0, 4.0],
+          # Amendment 1 (diagnostic only, tier 9): the inverted ladder kept as an explicit
+          # degenerate case; no coverage expectation for the individual pKa.
+          "inverted": [4.0, 8.0]}
 
 
 def _ab_data(cell, rng, workdir):
@@ -658,6 +666,20 @@ def classify(cov: float, se_sd: float) -> str:
     return "calibrated"
 
 
+COVERAGE_THRESHOLDS = (0.93, 0.97)
+
+
+def classify_ci(cov_lo: float, cov_hi: float, point_class: str) -> str:
+    """Amendment 1 (docs/PHASE2_PREREGISTRATION.md, section 9): "indeterminate" when the
+    Wilson interval of the coverage contains a coverage threshold (0.93 or 0.97), i.e. the
+    replicates cannot tell on which side of it the cell lies; otherwise the point class."""
+    if point_class == "undefined" or not (np.isfinite(cov_lo) and np.isfinite(cov_hi)):
+        return "undefined"
+    if any(cov_lo <= t <= cov_hi for t in COVERAGE_THRESHOLDS):
+        return "indeterminate"
+    return point_class
+
+
 def summarize_rows(rows: list[dict[str, Any]], cell_id: str, rng_seed: int = 0) -> list[dict[str, Any]]:
     n_total = len(rows)
     ok_rows = [r for r in rows if r.get("fit_ok")]
@@ -720,6 +742,7 @@ def summarize_rows(rows: list[dict[str, Any]], cell_id: str, rng_seed: int = 0) 
                 "boot_fail_mean": float(np.mean(nfail)) if nfail else math.nan,
                 "seconds_mean": float(np.mean(secs)) if secs else math.nan,
                 "class": classify(cov, ratio),
+                "class_ci": classify_ci(w_lo, w_hi, classify(cov, ratio)),
                 "relevant_bias": bool(sd > 0 and abs(bias) / sd > 0.25),
                 "asymmetric": bool((miss_left + miss_right) >= 10
                                    and max(miss_left, miss_right) >= 3 * max(1, min(miss_left, miss_right))),

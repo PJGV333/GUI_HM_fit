@@ -55,11 +55,24 @@ def aggregate(df: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
     d["evid_anti"] = d.apply(_evidence_anticonservative, axis=1)
     out = []
+    def _verdict(evid_anti: bool, frac: float) -> str:
+        return ("anticonservative" if evid_anti
+                else "calibrated" if frac >= 0.75 else "not calibrated (mixed/conservative)")
+
     for (tech, est, m), g in d.groupby(["technique", "estimator", "method"]):
         n = len(g)
         frac_cal = float((g["class"] == "calibrated").mean())
-        verdict = ("anticonservative" if g["evid_anti"].any()
-                   else "calibrated" if frac_cal >= 0.75 else "not calibrated (mixed/conservative)")
+        verdict = _verdict(bool(g["evid_anti"].any()), frac_cal)
+        # Amendment 1: is the verdict robust to the pairs whose Wilson interval contains a
+        # coverage threshold? Worst case: none of them calibrated; best case: all of them
+        # calibrated when SE/SD is inside [0.85, 1.15].
+        cls_ci = g["class_ci"] if "class_ci" in g else g["class"]
+        ind = cls_ci == "indeterminate"
+        se_ok = g["se_over_sd"].between(0.85, 1.15)
+        frac_lo = float((cls_ci == "calibrated").mean())
+        frac_hi = float(((cls_ci == "calibrated") | (ind & se_ok)).mean())
+        v_lo, v_hi = _verdict(bool(g["evid_anti"].any()), frac_lo), _verdict(bool(g["evid_anti"].any()), frac_hi)
+        verdict_ci = v_lo if v_lo == v_hi else "indeterminate"
         out.append({
             "technique": tech, "estimator": est, "method": m, "pairs": n,
             "n_rep_median": int(g["n_used"].median()),
@@ -69,6 +82,7 @@ def aggregate(df: pd.DataFrame) -> pd.DataFrame:
             "coverage_median": g["coverage"].median(), "coverage_min": g["coverage"].min(),
             "se_sd_median": g["se_over_sd"].median(), "se_sd_min": g["se_over_sd"].min(),
             "relevant_bias_pairs": int(g["relevant_bias"].sum()), "verdict": verdict,
+            "indeterminate": f"{ind.mean():.0%}", "verdict_ci": verdict_ci,
         })
     order = {m: i for i, m in enumerate(ALL_METHODS)}
     res = pd.DataFrame(out)
@@ -95,7 +109,8 @@ def cell_table(df: pd.DataFrame) -> str:
             f"{_fmt(r['se_over_sd'], 2)} [{_fmt(r['se_over_sd_lo'], 2)}, {_fmt(r['se_over_sd_hi'], 2)}] | "
             f"{_fmt(r['coverage'])} [{_fmt(r['coverage_lo'])}, {_fmt(r['coverage_hi'])}] | "
             f"{int(r['miss_left'])}/{int(r['miss_right'])} | {_fmt(r['width_median'], 4)} | "
-            f"{_fmt(r['fit_fail_rate'], 3)} | {r['class']}{' · sesgo' if r['relevant_bias'] else ''}"
+            f"{_fmt(r['fit_fail_rate'], 3)} | {r['class']}"
+            f"{' (indet.)' if r.get('class_ci') == 'indeterminate' else ''}{' · sesgo' if r['relevant_bias'] else ''}"
             f"{' · asim.' if r['asymmetric'] else ''} |")
     return "\n".join(lines)
 

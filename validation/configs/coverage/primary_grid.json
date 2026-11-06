@@ -6600,6 +6600,24 @@
    "B_refit": 200,
    "titrant_bias": 0.03,
    "id": "diag-nmr-11-titrant+0.03"
+  },
+  {
+   "technique": "ab_nmr",
+   "design": "inverted",
+   "n_points": 25,
+   "noise": "iid",
+   "saturation": "na",
+   "methods": [
+    "analytic",
+    "lin_row",
+    "lin_el",
+    "fr_row"
+   ],
+   "tier": 9,
+   "N": 200,
+   "B": 1000,
+   "B_refit": 200,
+   "id": "diag-ab_nmr-inverted-25-iid"
   }
  ]
 }

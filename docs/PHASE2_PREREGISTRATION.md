@@ -9,6 +9,9 @@
 - Rejilla congelada: `validation/configs/coverage/primary_grid.json`
   (SHA-256 `caa6ae6ca5dff5eded26e91c83d3674c8fa444404eda989d61b81de1eeebf518`, 326 celdas;
   generada con `python -m validation.coverage_campaign grid --write …`).
+  Tras la enmienda 1 (§9) el archivo tiene 327 celdas (SHA-256
+  `f0723daec52f9c084a6adadce9eb4704c786395bc58c249a24d3bf968a86d79c`); las 326 originales
+  no cambian, solo se añade una celda de diagnóstico.
 - Código: `validation/coverage_campaign.py` en el commit que añade este documento.
 - Semilla base `BASE_SEED = 20261105`; la réplica *r* de la celda *c* usa
   `SeedSequence([20261105, crc32(seed_id(c)), r])`; los datos y cada método reciben
@@ -147,3 +150,61 @@ python -m validation.coverage_campaign run $G runs/coverage --tier 4 --workers 3
 python -m validation.coverage_campaign run $G runs/coverage --tier 9 --workers 30   # diagnóstico
 python -m validation.coverage_campaign summarize runs/coverage --csv validation/results/coverage/summary.csv
 ```
+
+## 9. Enmienda 1 (2026-11-05, antes de leer resultados)
+
+Registrada a petición del autor, con la campaña en pausa. **Estado de los datos al
+registrarla:** solo existen réplicas del tier 1 de UV-Vis (unas 23 400 de 36 000); no se ha
+ejecutado ninguna celda de RMN, ácido-base, potenciometría, cinética, full-refit ni
+diagnóstico. Durante la supervisión del tier 1 se vio un resumen parcial de algunas celdas
+UV-Vis (SE/SD ≈ 1,8–2 con el estimador por defecto); se declara aquí. Ninguna regla de
+esta enmienda depende de esos números: se aplica igual a todas las celdas.
+
+**9.1 Verificación del orden de pKa (sin desviación).** En el commit del registro
+(`05ca856`) todas las celdas ácido-base usan pKa₁ > pKa₂ en la convención de HM fit
+(pKa₁ = log β₁, sitio más básico): `sep` = [8,0; 4,0], `close` = [5,0; 4,4],
+`fixed` = [8,0; 4,0] con pKa₂ fijo, potenciometría [5,0] y [7,5; 4,0]. No hace falta
+corregir ninguna celda. Se añade un caso degenerado **explícito de diagnóstico**,
+`diag-ab_nmr-inverted-25-iid` (RMN ácido-base, pKa = [4,0; 8,0], 25 puntos, ruido iid,
+N = 200, métodos `analytic`, `lin_row`, `lin_el`, `fr_row`, tier 9). No tiene
+expectativa de cobertura para cada pKa por separado (en ese régimen los datos determinan
+sobre todo la suma) y no entra en ninguna agregación ni regla de decisión.
+
+**9.2 Categoría "indeterminado".** Para cada par celda × método × parámetro se reporta,
+además de la clase pre-registrada (§4, por estimación puntual, que sigue siendo la
+clasificación primaria), la columna `class_ci`:
+
+- `indeterminate` si el IC de Wilson al 95 % de la cobertura **contiene** 0,93 o 0,97 (las
+  réplicas no permiten decir de qué lado del umbral está la celda);
+- en otro caso, la clase pre-registrada.
+
+Consecuencia que se declara de antemano: con cobertura real 0,95 el IC de Wilson es
+[0,910; 0,973] a N = 200 y [0,927; 0,966] a N = 500; **una celda perfectamente calibrada
+es casi siempre "indeterminada"** con estos tamaños. La categoría separa sobre todo las
+celdas claramente anticonservadoras (Wilson superior < 0,93) o claramente conservadoras
+(Wilson inferior > 0,97) de las que la campaña no puede resolver. Para confirmar
+"calibrado" con el IC dentro de [0,93; 0,97] harían falta N ≳ 550 réplicas.
+
+Agregado (§4): el veredicto pre-registrado se mantiene. Se añade `verdict_ci`, que
+recalcula el veredicto en el peor caso (ningún par indeterminado cuenta como calibrado)
+y en el mejor (cuentan como calibrados los indeterminados con SE/SD en [0,85; 1,15]). Si
+ambos coinciden, ese es `verdict_ci`; si no, `indeterminate`. El criterio de
+"anticonservador con evidencia" no cambia.
+
+**9.3 Construcción de los intervalos.** El IC del método analítico es t de Student con
+los grados de libertad residuales (θ̂ ± t₀.₉₇₅,ν · SE). En **todos los bootstrap**
+(linealizado, one-step y full-refit) el IC95 es el de **percentiles 2,5 y 97,5** de las
+réplicas bootstrap, y el SE es la desviación estándar de esas réplicas; **no** se usa
+t con SE bootstrap. La cobertura medida es la del IC que muestra la GUI. Con
+B_refit = 200 cada extremo percentil descansa en unas 5 réplicas por cola: esa
+variabilidad Monte Carlo adicional forma parte de lo que se mide y no se corrige.
+
+**9.4 Ampliación de N dirigida (solo etapa 2.3).** Si la elección del estimador de
+absortividades (§6) depende de una celda cuyo `class_ci` es `indeterminate` (es decir,
+si cambiar la clase de esa celda cambiaría el `verdict_ci` de un estimador o el
+estimador elegido), se amplía N **solo en esa celda**: a N = 1500 para métodos baratos y
+a N = 600 para el full-refit, continuando los índices de réplica con las mismas semillas
+(`run … --select '^<celda>$' --n-rep <N>`). Se evalúa una sola vez; no hay más
+iteraciones. Si sigue indeterminada, se aplica la cláusula "evidencia no clara" de §6
+(se mantiene el valor actual y se presentan las opciones al autor).
+
