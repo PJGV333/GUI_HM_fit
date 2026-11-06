@@ -198,6 +198,14 @@ parámetros fijos, datos faltantes, ácido-base, potenciometría y cinética.
 
 ## 8. Etapa G (inicial): ácido-base y potenciometría (n=40 c/u)
 
+> **Corrección (Fase 2, 2026-11-05).** En la convención de HM fit (pKa₁ = log β₁, sitio más
+> básico) los escenarios "4.0 / 7.5" y "4.0 / 4.4" tienen pKa₁ < pKa₂: describen sistemas
+> **cooperativos**, no ácidos dipróticos ordinarios, y los datos determinan sobre todo la suma
+> pKa₁ + pKa₂ (obsérvense los sesgos medios simétricos −0.870 / +0.871). La lectura
+> "problema de diseño/condicionamiento… escapadas del mínimo" queda superada. Véase
+> `docs/STABILITY_PHASE2_REPORT.md` §9.3; los diseños con pKa₁ > pKa₂ están en la campaña
+> pre-registrada de la Fase 2.
+
 Arnés `validation/ph_experiment.py` sobre `run_acid_base` + errores
 analíticos de producción; generadores espejo de
 `tests/phase1_cases.acid_base_nmr_case` y `.potentiometry_case`. Semillas

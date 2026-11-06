@@ -1,4 +1,339 @@
-# HM fit — Fase 2: validación estadística de incertidumbres
+# HM fit — Fase 2: validación estadística de las incertidumbres
+
+> **Estado (2026-11-05): etapas 2.0, 2.1 y 2.5 completas; etapa 2.2 en pausa por decisión del
+> autor; decisiones 2.3 y 2.4 pendientes de la campaña.** Etiquetas: **[Defecto comprobado]**
+> (reproducido con un caso concreto), **[Limitación metodológica]**, **[Sospecha]** (no
+> verificado). Todas las cifras proceden de scripts versionados con semilla; el comando
+> exacto acompaña a cada una. El informe anterior de esta fase se conserva sin cambios
+> como **Anexo A**.
+
+Rama de trabajo: `fix/stable-phase2-completion`. Contiene `fix/uncertainty-reliability`
+(`14a6f10`) y `main` (`5077e2e`) como ancestros: integrarla en `fix/uncertainty-reliability`
+es un avance rápido (*fast-forward*), sin conflictos.
+
+## 1. Resumen: problemas y estado
+
+| # | Etiqueta | Ámbito | Problema | Estado |
+|---|---|---|---|---|
+| 1 | Defecto comprobado | Cinética (API de grafo) | `KineticReactionEdge` usaba `super()` sin argumentos en una dataclass `slots=True`: `TypeError` en Python < 3.14 | Corregido (`24e2335`) |
+| 2 | Defecto comprobado | Potenciometría | Con un pKa fijo, el análisis de errores lanzaba `IndexError`: sin tabla de errores ni hojas de error en la exportación | Corregido; el pKa fijo se muestra como fijo (`95e7092`) |
+| 3 | Defecto comprobado | Espectroscopía, RMN, cinética, ácido-base | Convenciones de incertidumbre incumplidas: correlaciones de fijos/no identificables = 0 o 1; SE finito con ν ≤ 0 en los bootstrap; cinética truncaba ν a 1; full-refit con SE finito para no identificables | Corregido en los tres motores (`390ae95`, `996a98e`, `88a43fb`); matriz de 105 casos |
+| 4 | Defecto comprobado | RMN | `ValueError: shape mismatch` en el análisis de errores cuando una constante no es identificable | Corregido (`390ae95`) |
+| 5 | Defecto comprobado | Espectroscopía y RMN (GUI) | Valor inicial no numérico → 1.0 en silencio; límite no numérico → sin límite | Rechazado con un mensaje legible (`6e62398`) |
+| 6 | Defecto comprobado | Cinética (GUI) | El combo "Algorithm" ofrecía opciones que no cambiaban el método; "multistart" forzaba 10 arranques | Una sola opción real; configuraciones antiguas conservan su comportamiento (`b70fbae`) |
+| 7 | Defecto comprobado | Errores (GUI) | Cabecera "log10K" también en ácido-base; celdas indefinidas vacías o "nan" sin motivo | Etiqueta real (pKa / log β / log10K), "—" con causa (`ce99054`, `ae8b6b2`) |
+| 8 | Defecto comprobado | Ácido-base (GUI y docs) | Los ejemplos del editor de ecuaciones y de `ACID_BASE_POTENTIOMETRY.md` describían una escalera invertida (pKa=4.50 para HL, 8.90 para H2L); los valores iniciales por defecto eran crecientes (5, 7, 9) | Corregido; advertencia de orden invertido (`582b42e`, `88b241c`) |
+| 9 | Defecto comprobado | Pruebas y validación | Los casos ácido-base de la Fase 1 (`tests/phase1_cases.py`) y la campaña G (`validation/configs/ph/`) usaban pKa₁ < pKa₂ (sistema cooperativo) | Pruebas corregidas (`0c742e1`); lectura de la campaña G corregida en §9.3 |
+| 10 | Defecto comprobado (rendimiento) | Bootstrap one-step | `_as_onp` intenta `import jax` en cada llamada (≈ 25 % del tiempo) y cada réplica recalcula la especiación (≈ 50 %) | Abierto; recomendación para la Fase 3 (§10) |
+| 11 | Limitación metodológica | Campaña | Con N = 200 (y aun con N = 500) una celda calibrada no puede confirmarse con su IC de Wilson | Declarado (enmienda 1, §2) |
+| 12 | Limitación metodológica | Ácido-base | Un pKa fuera del intervalo de pH muestreado (casi no identificable) recibe SE finito | Abierto (§10) |
+| 13 | Limitación metodológica | Estimadores de ε | El estimador (b) del encargo (Jacobiano condicionado al conjunto activo) no existe en el código | Declarado en el pre-registro; no implementado |
+| 14 | Defecto comprobado | Empaquetado | `scripts/build_hmfit_pyside6_appimage.sh:196` instala sin `-c constraints.txt` | Abierto; pregunta al autor |
+| — | — | Campaña 2.2 | Tier 1 parcial (≈ 23 400 de 36 000 réplicas); tiers 2, 3, 4 y 9 no ejecutados | **En pausa por decisión del autor** |
+
+## 2. Desviaciones del pre-registro
+
+Pre-registro: `docs/PHASE2_PREREGISTRATION.md` (commit `05ca856`).
+
+1. **Tamaños del full-refit** (declarada en el propio registro, §5): N = 200 y
+   B_refit = 200, en lugar de N ≥ 500 y B ≥ 500. Motivo: coste medido de ≈ 4 400 h-CPU con
+   los tamaños del encargo.
+2. **Enmienda 1** (`5c38662`, §9 del pre-registro, a petición del autor y antes de leer
+   resultados). Cuando se registró solo había réplicas UV-Vis del tier 1; durante la
+   supervisión se vio un resumen parcial de algunas celdas, y eso queda declarado. La
+   enmienda contiene:
+   - la categoría **"indeterminado"**: el IC de Wilson de la cobertura contiene 0.93 o 0.97;
+   - el veredicto agregado `verdict_ci` (peor y mejor caso);
+   - la constancia de que todos los bootstrap usan IC de **percentiles** (no t con SE
+     bootstrap) y el analítico usa t con ν residual;
+   - una ampliación de N dirigida y única para la etapa 2.3 (N = 1500 en métodos baratos,
+     600 en full-refit);
+   - la verificación del orden de pKa de todas las celdas ácido-base, que era correcto:
+     no hubo que corregir ninguna;
+   - una celda degenerada de diagnóstico, `diag-ab_nmr-inverted-25-iid`, con pKa = [4, 8].
+
+   La rejilla pasa a 327 celdas (SHA-256 `f0723dae…`); las 326 originales no cambian.
+3. **Ejecución incompleta.** La campaña se pausó a petición del autor el 2026-11-05 a las
+   17:24 MST. Lo no ejecutado se reporta como no ejecutado; no se extrapola.
+
+## 3. Resultados de la campaña por técnica y método
+
+**Pendiente: campaña en pausa.** Las tablas se generarán, sin edición manual, con:
+
+```sh
+python -m validation.coverage_report RUN_DIR --csv validation/results/coverage/summary.csv \
+    --md docs/PHASE2_COVERAGE_TABLES.md --aggregate-csv validation/results/coverage/aggregate.csv
+```
+
+Los datos crudos (JSONL por celda y manifiesto con commit y versiones) se publican como
+artefacto del workflow `campaign` y no se versionan. Casos sintéticos para comparar con
+BindFit o HypNMR: `validation/results/coverage/external_cases/`.
+
+## 4. Decisión: estimador de absortividades (2.3)
+
+**Pendiente.** Se aplicará la regla del pre-registro (§6 y enmienda 9.4). Ya está
+establecido lo siguiente:
+
+- los pesos por punto están implementados y probados frente a referencias independientes
+  (`tests/test_phase2_weights.py`);
+- el estimador (b) no existe y no se compara;
+- si la evidencia no es clara, se mantiene `soft_penalty` (μ = 10⁻²) y se presentan las
+  opciones al autor.
+
+## 5. Decisión: bootstrap por defecto (2.4)
+
+**Pendiente.** Se aplicará la regla del pre-registro (§6). El umbral de advertencia por
+pocos bloques (hoy 20 puntos) se justificará con la tabla de cobertura frente al número de
+puntos que genera `coverage_report`. HC2/HC3 ya se evaluaron y no se adoptan (Anexo A, §6).
+
+## 6. Defectos en versiones publicadas
+
+Versiones publicadas con binarios: **v0.2.0**, construida desde `main` en `247c4df` el
+2026-04-24, y **v0.1.0-beta.2** (`f86936a`, 2026-03-10). Ambas se construyeron con
+Python **3.11** (`release.yml` de esa versión). El `main` actual (`5077e2e`, 2026-09-11)
+no tiene release; potenciometría y `acid_base_errors` llegaron a `main` después de v0.2.0
+(`f14ba48`, `5095c43`, mayo de 2026).
+
+Reproducción, con el código fuente extraído con `git archive <rev>` y Python 3.11.15
+(NumPy 2.4.2, SciPy 1.17.1, PySide6 6.10.2):
+
+```sh
+QT_QPA_PLATFORM=offscreen python3.11 validation/regressions/repro_published_defects.py <árbol>
+```
+
+| Defecto | Existe desde | v0.2.0 (binario 3.11) | `main` | Esta rama | ¿Cambia números o solo cae? |
+|---|---|---|---|---|---|
+| D1 `super()` en `KineticReactionEdge` | `89bf613` (2026-02-24), antes de beta.1 | Reproducido: `TypeError: super(type, obj)…` | Reproducido | No | Solo cae. Afecta únicamente a la API `KineticGraph.add_kinetic_reaction`; la pestaña de cinética de la GUI no la usa, así que **el flujo de la GUI del binario no se ve afectado** |
+| D2 Texto no numérico en la tabla de parámetros (espectroscopía/RMN) | `fdf7f03` (v1.21, 2026-01-04) | Reproducido: `'3,5'` → 1.0; límite `'8x'` → sin límite | Reproducido | No (mensaje) | **Cambia números en silencio**: el ajuste arranca en log K = 1 o queda sin límite superior |
+| D3 Potenciometría con pKa fijo | Llegada de potenciometría a `main` (mayo 2026) | No aplica (código ausente) | Reproducido: `IndexError`; el ajuste en sí es correcto (pKa₁ = 7.9991) | No | Solo cae: falta la tabla de errores, los valores ajustados son correctos |
+| D4 RMN con una constante no identificable | anterior a v0.2.0 | Reproducido: 4 de 4 métodos con `shape mismatch` | 1 de 4 (analítico); los bootstrap dan **SE = 0** | No | v0.2.0 cae; en `main` el analítico cae y los bootstrap **cambian números**: SE = 0 se lee como "fijo" |
+| D5 Convenciones (matriz de 105 casos) | anterior a v0.2.0 | Incumplen 48 de 60 casos GUI (16 espectroscopía, 16 RMN, 16 cinética); ácido-base ausente | 48 GUI y 21 ácido-base | 0 | **Cambian números mostrados** (por ejemplo, en v0.2.0 un parámetro fijo de espectroscopía recibe SE = 0.0052 en lugar de 0, y las correlaciones de fijos se muestran como 0) y además hay caídas: cinética y espectroscopía con ν ≤ 0 en bootstrap (`IndexError`) |
+
+La matriz se ejecutó copiando `tests/test_phase2_invariants_matrix.py` en cada árbol
+(`pytest -o addopts="" tests_p2/…`, Python 3.11). Es una reproducción por la API de la GUI,
+no por clics. **[Sospecha]** Algunas violaciones en árboles antiguos podrían deberse a
+diferencias de API del arnés y no a la versión. Por eso solo se citan aquí las que fallan
+por el valor y no por un error de llamada. D1–D4 se reprodujeron además con el script
+directo.
+
+## 7. Fe de erratas de la Fase 1
+
+El informe de la Fase 1 (`docs/STABILITY_PHASE1_REPORT.md`) daba por corregidos estos
+puntos **en todos los caminos**. La matriz de 105 casos ejecutada sobre el estado final de
+la Fase 1 (`0b63824`, Python 3.11) muestra que no lo estaban:
+
+- **Fila 10 y §2.2 ("ν ≤ 0 → SE = NaN").** Era cierto para el SE analítico, pero:
+  - en el analítico las correlaciones seguían siendo finitas (1 en la diagonal; matriz
+    identidad en ácido-base) en espectroscopía, RMN y ácido-base;
+  - los bootstrap linealizado, one-step y full-refit daban **SE finito** (por ejemplo,
+    6.02 en espectroscopía linealizado) en espectroscopía, RMN, cinética y ácido-base.
+- **Filas 4–5 y §2.2 ("no identificable → fila/columna NaN").**
+  - Las correlaciones de no identificables no eran NaN en espectroscopía y cinética.
+  - El full-refit daba SE finito en espectroscopía, RMN, cinética y ácido-base.
+  - En ácido-base, el bootstrap linealizado caía (`pka_values contains non-finite values`).
+  - El analítico de RMN caía (`shape mismatch`).
+- **§2.1 ("Cov_fijo,· = 0").** La covarianza era 0, pero las **correlaciones** con fijos se
+  mostraban como 0 (y la diagonal como 1), no como "no definidas", en espectroscopía, RMN,
+  cinética y ácido-base analítico. En los bootstrap de cinética el SE de un fijo era
+  5.8·10⁻¹⁷, no exactamente 0 (efecto cosmético).
+- **§6 (validaciones numéricas).** Los tres casos ácido-base RMN usaban pKa₁ < pKa₂, es
+  decir, un sistema cooperativo en la convención de HM fit. Sus cifras de la tabla de la
+  §6 no describen un ácido diprótico ordinario. Se corrigieron en `0c742e1`; las pruebas
+  siguen pasando con las mismas tolerancias.
+
+Todas estas violaciones están corregidas en esta rama. La matriz pasa 105 de 105 y se
+ejecuta en CI.
+
+## 8. Convención de pKa (decisión del autor)
+
+Se mantiene la convención interna: pKa_n = log β_n − log β_{n−1} con constantes
+acumuladas de protonación. Por tanto pKa₁ (HL ⇌ L + H⁺) es el sitio **más básico**, y un
+ligando no cooperativo cumple pKa₁ > pKa₂ > … Lo implementado en esta fase:
+
+- **(a) Etiquetas.** Cada etiqueta de pKa nombra su equilibrio: tabla de valores iniciales,
+  texto de resultados, resumen de potenciometría y tabla de errores. Ejemplo:
+  `pKa1 (HL ⇌ L + H⁺)`.
+- **(b) Orden invertido.** Hay una advertencia bajo la tabla, en el registro del ajuste
+  (valores iniciales) y en el informe (valores ajustados). Los valores **no se reordenan**.
+  Los valores iniciales por defecto pasan a ser una escalera decreciente.
+- **(c) Documentación y exportaciones.**
+  - `docs/ACID_BASE_POTENTIOMETRY.md` tiene un apartado nuevo y ejemplos corregidos.
+  - En la exportación, la hoja `pKa` tiene la columna `Equilibrium` y se añade la hoja
+    `pKa_convention`.
+
+Pruebas: `tests/test_pka_convention_labels.py`, 8 pruebas (núcleo, exportación XLSX y GUI
+offscreen). El selector de convención queda para la Fase 4.
+
+## 9. Cambios esperados en resultados científicos
+
+### 9.1 Valores ajustados
+
+- **Sin cambios** para configuraciones válidas.
+- **Cambian** cuando la tabla de parámetros de espectroscopía o RMN contenía texto no
+  numérico. Antes el ajuste arrancaba en 1.0 o perdía el límite; ahora no arranca y explica
+  el problema.
+- **Ácido-base con valores iniciales por defecto.** Ahora son decrecientes (diprótico 7, 5;
+  triprótico 9, 7, 5) en lugar de crecientes. **[Sospecha]** Con datos que determinan
+  ambos pKa el mínimo es el mismo; si el arranque anterior llevaba a la rama cooperativa,
+  el resultado puede cambiar. No se ha cuantificado.
+
+### 9.2 Errores estándar e intervalos
+
+- **Potenciometría con pKa fijo.** Ahora aparece la tabla de errores. El fijo tiene SE = 0,
+  IC degenerado y correlación "—"; los libres tienen SE normal. Antes no había tabla.
+- **ν ≤ 0, cualquier técnica y método.** SE e IC son NaN, mostrados como "—" con su causa,
+  en lugar de cifras finitas. La cinética ya no trunca ν a 1.
+- **No identificables.** SE NaN en full-refit (antes era finito) y en los bootstrap de RMN
+  (antes era 0). El análisis de RMN ya no cae.
+- **Correlaciones con fijos o no identificables.** "—" (NaN) en lugar de 0, o de 1 en la
+  diagonal.
+- **Cinética, sin covarianza.** El SE es NaN, no 0; el 0 queda reservado para "fijo".
+- **Porcentaje de error.** Sigue al SE: es NaN cuando el SE no está definido.
+
+### 9.3 Interpretación de resultados previos
+
+La lectura de la campaña G (`docs/MONTE_CARLO_RESULTS.md` §8) del escenario RMN
+"2 pKa 4.0/7.5" como "problema de diseño/condicionamiento… escapadas del mínimo"
+**queda superada**. Ese escenario simula pKa₁ = 4.0 < pKa₂ = 7.5, un sistema cooperativo
+en la convención de HM fit en el que los datos determinan sobre todo la suma. Los sesgos
+medios de pKa₁ y pKa₂ son simétricos (−0.870 y +0.871), lo que es coherente con una suma
+conservada.
+
+### 9.4 Presentación y exportaciones
+
+- Cabeceras de la tabla de errores: "Estimate (pKa)" o "SE (log β)" según la técnica, en
+  lugar de "log10K".
+- Celdas indefinidas: "—" con la causa en la ayuda emergente.
+- Exportaciones:
+  - columna `Note` con la causa;
+  - NaN numérico en lugar de texto;
+  - en ácido-base, columna `Equilibrium` y hoja `pKa_convention`.
+- Cinética: el combo "Algorithm" tiene una sola opción ("Trust-region reflective
+  (bounded)"); los arranques múltiples se configuran en su control propio. Una
+  configuración guardada con "multistart" sigue cargando 10 arranques.
+
+**Valores por defecto de métodos de error y del estimador de ε: sin cambios.** Dependen de
+las decisiones 2.3 y 2.4, todavía pendientes.
+
+## 10. Estado de CI
+
+- Workflow `tests` (`.github/workflows/tests.yml`), en cada push y PR:
+  - Linux, Python 3.11 y 3.14: suite completa, GUI offscreen;
+  - Windows, Python 3.11 y 3.14: `-m "not gui and not slow"`.
+- `release.yml` construye solo si pasa el trabajo `tests`. En esta fase no se disparó
+  ningún release.
+- Workflow manual `campaign` para la campaña completa.
+- Recuentos tomados de los JUnit de CI (recolectadas / aprobadas / fallidas / xfail /
+  omitidas):
+
+| Ejecución | Linux 3.11 | Linux 3.14 | Windows 3.11 | Windows 3.14 |
+|---|---|---|---|---|
+| Antes: [42114949753](https://github.com/PJGV333/GUI_HM_fit/actions/runs/42114949753) (`0737301`, etapa 2.0) | 288 / 283 / 0 / 4 / 1 | 288 / 283 / 0 / 4 / 1 | 172 / 170 / 0 / 1 / 1 | 172 / 170 / 0 / 1 / 1 |
+| [42123409391](https://github.com/PJGV333/GUI_HM_fit/actions/runs/42123409391) (`ea1557e`, 2.5) | 421 / 416 / 0 / 4 / 1 | 421 / 416 / 0 / 4 / 1 | 185 / 183 / 0 / 1 / 1 | 185 / 183 / 0 / 1 / 1 |
+| Después: [42139346429](https://github.com/PJGV333/GUI_HM_fit/actions/runs/42139346429) (`d70d26c`, último commit de código) | 433 / 428 / 0 / 4 / 1 | 433 / 428 / 0 / 4 / 1 | 189 / 187 / 0 / 1 / 1 | 189 / 187 / 0 / 1 / 1 |
+
+Los commits posteriores a `d70d26c` solo modifican documentación. Todas las ejecuciones citadas terminaron en *success*.
+
+Entorno local de la campaña y de las reproducciones: Python 3.14.9 / 3.11.15, NumPy 2.4.2,
+SciPy 1.17.1, pandas 3.0.1, PySide6 6.10.2, Matplotlib 3.10.8 (CachyOS Linux, 32 núcleos).
+
+### 10.1 `constraints.txt` y versiones de Python
+
+`requirements_qt.txt` y `requirements-dev.txt` fijan rangos con cota superior.
+`constraints.txt` es un `pip freeze` del entorno en que pasó la suite completa: fija la
+versión exacta de cada paquete, incluidas las dependencias transitivas. CI y `release.yml`
+instalan con:
+
+```sh
+pip install -r requirements_qt.txt -r requirements-dev.txt -c constraints.txt
+```
+
+`-c` no instala nada por sí mismo; solo impone versiones a lo que piden los `-r`. **El mismo
+archivo vale para 3.11 y 3.14** porque cada versión fijada publica ruedas para ambas
+(NumPy 2.4.2, SciPy 1.17.1, pandas 3.0.1 y contourpy 1.3.3: `Requires-Python >= 3.11`;
+PySide6 6.10.2: `>= 3.9, < 3.15`). CI lo verifica en Linux y en Windows con las dos
+versiones.
+
+**3.9 y 3.10 no son viables:**
+
+- **Dependencias.** Las versiones fijadas exigen ≥ 3.11 (`Requires-Python` de NumPy, SciPy,
+  pandas y contourpy). pip no encuentra distribución para 3.9 ni 3.10, así que
+  `constraints.txt` no se puede cumplir.
+- **Pila alternativa.** Soportar 3.10 exigiría una segunda pila, más antigua y no probada
+  (NumPy ≤ 2.2, SciPy ≤ 1.15, pandas ≤ 2.3), con su propio `constraints` y su fila de CI.
+  Además Python 3.10 terminó su soporte en octubre de 2026.
+- **Código en 3.9.** **[Defecto comprobado por inspección]** El código no se ejecuta en
+  3.9: `@dataclass(slots=True)` (`hmfit_core/graph/chemical_graph.py:47`) requiere 3.10, y
+  hay anotaciones `X | None` evaluadas en ejecución (`hmfit_core/solvers/nr_conc.py:174`).
+- **Código en 3.10.** **[Sospecha]** El código podría funcionar con la pila antigua (no se
+  encontraron construcciones exclusivas de 3.11), pero no se ha probado.
+
+Por eso el mínimo documentado es 3.11 (`0737301`) y no se bajaron dependencias.
+
+## 11. Problemas abiertos y recomendaciones para la Fase 3
+
+### Abiertos
+
+1. **Campaña 2.2 incompleta.** Faltan el tier 1 restante (≈ 12 600 réplicas), los tiers 2–4
+   y el diagnóstico. Sin ella no hay decisiones 2.3 ni 2.4.
+2. **[Defecto comprobado] Rendimiento del one-step** (perfil de una réplica UV-Vis 1:1,
+   10 puntos, B = 1000):
+   - por método: analítico 0.65 s, linealizado 0.67 s, one-step 5.1 s por variante;
+   - dentro del one-step, `_as_onp` (`hmfit_core/utils/errors.py:352`) importa `jax` en
+     cada llamada: unas 28 000 importaciones fallidas, ≈ 25 % del tiempo;
+   - la especiación a k̂ se recalcula en cada réplica aunque no depende de los datos
+     remuestreados: ≈ 50 % del tiempo.
+
+   Afecta también al bootstrap one-step de la GUI.
+3. **[Limitación metodológica]** En ácido-base, un pKa casi no identificable (fuera del
+   rango de pH) recibe SE finito: el criterio de rango del Jacobiano no lo detecta.
+4. Cuatro pruebas `xfail(strict=True)` heredadas: tres de ácido-base GUI (Fase 4) y una de
+   `absgrp` (Fase 3).
+5. Empaquetado AppImage sin `constraints.txt` (fila 14).
+6. **Casos externos 1:2.** El ajuste con la configuración por defecto de la GUI dio K₂ =
+   4.15 (UV-Vis) y 0.0001 en el límite (RMN), frente a un valor verdadero de 2.5. Es la
+   identificabilidad 1:2 del diseño, pendiente de comparar con BindFit y HypNMR.
+7. Windows solo ejecuta pruebas no GUI en CI.
+
+### Recomendaciones para la Fase 3
+
+- **Optimizar** el punto 2 de la lista anterior sin cambiar resultados: comprobar `jax` una
+  sola vez y calcular C(k̂) y dC/dlog K una vez por análisis. Añadir una prueba de
+  equivalencia con las mismas semillas y el mismo resultado hasta el redondeo.
+  Estimación: one-step de 5 s a 1–1.5 s.
+- **Validar con una campaña final dedicada** (propuesta del autor; pendiente de decidir).
+  Durante el desarrollo, solo la campaña *smoke* en CI. Al final, una campaña completa en
+  dos etapas: N = 100 en todas las celdas y ampliación solo en las indeterminadas. Esta
+  estructura debe pre-registrarse antes de ejecutarse.
+- Detección de casi no identificabilidad en ácido-base: perfil de verosimilitud o umbral de
+  condicionamiento, validado con la campaña.
+- Unificación de los tres motores de error, prevista para la Fase 3 y no hecha en esta
+  fase. La matriz de 105 casos es la red de seguridad.
+
+### Preguntas para el autor
+
+1. ¿Se integra `fix/stable-phase2-completion` en `fix/uncertainty-reliability`? Es un
+   avance rápido de 59 commits.
+2. ¿Se reanuda la campaña tal cual (varias horas) u optimización primero más campaña final
+   (§11)? ¿Se aplazan los tiers 3–4?
+3. ¿Se acepta el cambio de los valores iniciales por defecto de pKa a una escalera
+   decreciente?
+4. Los defectos D2 y D4/D5 cambian números en el binario publicado v0.2.0. ¿Se emite una
+   versión correctora o un aviso a los usuarios?
+5. ¿Se añade `-c constraints.txt` a los scripts de empaquetado (AppImage y Flatpak)?
+6. ¿Qué criterio de identificabilidad se acepta para el diseño 1:2 de los casos externos?
+
+---
+
+## Anexo A. Informe anterior de la Fase 2 (sin cambios)
+
+Texto íntegro del informe en `0b63824`, que cubría las Etapas A–H. Incluye, en §4, la
+corrección original de la identificabilidad en el one-step de RMN. Se comprobó de nuevo en
+esta fase: se usa el Jacobiano del ajuste base y no el de la última réplica
+(`hmfit_core/utils/errors.py`, `bootstrap_one_step_nmr`; prueba
+`tests/test_nmr_onestep_identifiability_base.py`).
+
+### HM fit — Fase 2: validación estadística de incertidumbres
 
 > **Estado: PARCIALMENTE VALIDADA (dictamen provisional B).** La investigación del
 > sesgo UV-Vis (Etapas A–D) está completada y documentada en
@@ -7,7 +342,7 @@
 > (Etapas E–G), la comparación de métodos de incertidumbre (Etapa F), las
 > campañas intermedia/confirmatoria y la Etapa H de rendimiento.
 
-## 1. Base y entorno
+#### 1. Base y entorno
 
 La rama `fix/stable-phase2-statistical-validation` parte de `f36d6c8`. El informe de Fase 1 está disponible en el commit `14a6f10`, pero no está presente en el árbol del commit base `f36d6c8`. La línea base se obtuvo con `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q --tb=line -p no:cacheprovider`, desde la raíz del repositorio. Se instaló `odfpy` en el entorno virtual antes de esta ejecución.
 
@@ -18,7 +353,7 @@ La rama `fix/stable-phase2-statistical-validation` parte de `f36d6c8`. El inform
 | SciPy | 1.17.1 |
 | PySide6 | 6.10.2 |
 
-## 2. Suite
+#### 2. Suite
 
 | Ejecución | Recolectadas | Aprobadas | Fallidas | Omitidas | Tiempo |
 |---|---:|---:|---:|---:|---:|
@@ -43,7 +378,7 @@ En las dos pasadas del estado de trabajo, los identificadores de los cuatro fall
 
 Ejecutar únicamente `pytest tests/` no reproduce esa línea base porque excluye pruebas descubiertas desde la raíz.
 
-## 3. Pesos por punto: estado parcial
+#### 3. Pesos por punto: estado parcial
 
 [Implementado y probado con casos sintéticos; **no validado por campaña**] La nueva opción de configuración `weights_matrix` acepta pesos estadísticos no negativos por punto y longitud de onda. Su raíz cuadrada multiplica el residuo; los pesos preexistentes por longitud de onda siguen siendo multiplicadores del residuo. Las rutas modificadas incluyen el estimador por columnas, el Jacobiano VarPro proyectado, el recuento de grados de libertad y la transferencia de pesos al contexto de incertidumbres y al refit. No se han establecido aún todas las garantías de compatibilidad.
 
@@ -53,7 +388,7 @@ Ejecutar únicamente `pytest tests/` no reproduce esa línea base porque excluye
 
 [Limitación de pruebas] En el entorno de esta ejecución no está instalado JAX; no se ha verificado la ruta con ese backend. Tampoco se ha completado una validación integral de todos los caminos de remuestreo y refit con pesos por punto.
 
-## 4. Auditoría de la rama de finalización
+#### 4. Auditoría de la rama de finalización
 
 Se integró `fix/uncertainty-reliability` en la rama de finalización mediante un merge ordinario; se conservan los historiales del checkpoint `fb9ea9e` y del merge de Fase 1 `14a6f10`.
 
@@ -81,7 +416,7 @@ Se integró `fix/uncertainty-reliability` en la rama de finalización mediante u
 
 [Auditoría `legacy` vs `absolute`, sonda puntual] `validation/legacy_vs_absolute_probe.py` (resultado commitado en `validation/results/legacy_absolute_probe.json`) ajusta un dataset del piloto con tres ponderaciones (unidad, rampa por longitud de onda, rampa por punto) bajo ambas convenciones mediante la objetivo perfilada de producción. En este régimen (μ=10⁻², sin suavizado) la diferencia de log K entre convenciones es ≤1.5·10⁻⁸ y las objetivo cruzadas coinciden a 10⁻⁸: la divergencia de convenciones (la ruta `legacy` reescala μ respecto a los pesos; `absolute` añade la penalización explícitamente a la objetivo) es numéricamente irrelevante cuando los coeficientes penalmente activos son pocos y pequeños. La auditoría completa (regímenes de penalización fuerte, cotas activas, pesos extremos, suavizado `absolute` con solver disperso) sigue pendiente; una sonda de un dataset no la sustituye.
 
-## 5. Investigación del sesgo UV-Vis (Etapas A–D, completadas)
+#### 5. Investigación del sesgo UV-Vis (Etapas A–D, completadas)
 
 Documento completo con tablas, figuras y datos: `docs/UVVIS_BIAS_INVESTIGATION.md`.
 Resultados decisivos, todos reproducibles desde los artefactos commitados:
@@ -94,7 +429,7 @@ Resultados decisivos, todos reproducibles desde los artefactos commitados:
 - Nueve pruebas de regresión en `tests/test_uvvis_bias_reference.py` fijan: recuperación sin ruido (tres proyectores y producción), química cerrada vs NewtonRaphson, argmin exacto = Powell archivado, referencia independiente, identidad del Jacobiano, regímenes de μ y reproducibilidad de estimaciones archivadas del piloto.
 - Matriz de 21 escenarios pareados (20–40 réplicas) con configuraciones en `validation/configs/bias/` y resúmenes en `validation/results/bias/`; figuras regenerables con `validation.make_bias_figures`.
 
-## 6. Comparación de incertidumbre (Etapas E–F, intermedia completada)
+#### 6. Comparación de incertidumbre (Etapas E–F, intermedia completada)
 
 Extensión del arnés (`validation/uncertainty_experiment.py`,
 `validation/uncertainty_methods.py`): matriz pareada estimador × método sobre
@@ -134,7 +469,7 @@ i.i.d. —0.95— supera al remuestreo completo —0.81—). Mientras no exista
 intervalo con sesgo corregido que alcance [0.90,0.97] en el caso restringido, la
 cobertura de ese estimador sigue sin calibrar.
 
-## 7. Trabajo pendiente y dictamen
+#### 7. Trabajo pendiente y dictamen
 
 - ~~Completar y validar el estimador ponderado para cotas suaves y suavizado, sin alterar los resultados por defecto.~~ (Etapas G–H: validación emparejada del camino ponderado y solver disperso con guard documentado; ruta densa inalterada bajo el guard.)
 - ~~Crear y verificar el arnés `validation/` para todas las técnicas y métodos solicitados, incluidos checkpoints y manifiesto reproducible.~~ (`uncertainty_experiment.py` + zoo completo; configs congelados y manifiestos con hash.)
@@ -167,7 +502,7 @@ abiertos en la rama. El hueco NMR 1:2 quedó diagnosticado y resuelto
 sigue siendo un checkpoint; la fusión a `main` y la certificación final
 requieren decisión del mantenedor.
 
-## 8. Etapa H: solver disperso con suavizado y auditoría legacy/absolute
+#### 8. Etapa H: solver disperso con suavizado y auditoría legacy/absolute
 
 **Solver disperso (`hmfit_core/utils/nnls_utils._solve_weighted_penalty_newton_sparse`).**
 Gemelo exacto del Newton semisuave denso (mismo layout de variables, mismo
