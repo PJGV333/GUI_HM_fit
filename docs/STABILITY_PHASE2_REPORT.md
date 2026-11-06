@@ -91,30 +91,128 @@ puntos que genera `coverage_report`. HC2/HC3 ya se evaluaron y no se adoptan (An
 Versiones publicadas con binarios: **v0.2.0**, construida desde `main` en `247c4df` el
 2026-04-24, y **v0.1.0-beta.2** (`f86936a`, 2026-03-10). Ambas se construyeron con
 Python **3.11** (`release.yml` de esa versión). El `main` actual (`5077e2e`, 2026-09-11)
-no tiene release; potenciometría y `acid_base_errors` llegaron a `main` después de v0.2.0
-(`f14ba48`, `5095c43`, mayo de 2026).
+no tiene release; ácido-base y potenciometría (`acid_base_errors`) llegaron a `main` después
+de v0.2.0 (`f14ba48`, `5095c43`, mayo de 2026).
 
-Reproducción, con el código fuente extraído con `git archive <rev>` y Python 3.11.15
-(NumPy 2.4.2, SciPy 1.17.1, PySide6 6.10.2):
+### 6.1 Método
 
 ```sh
-QT_QPA_PLATFORM=offscreen python3.11 validation/regressions/repro_published_defects.py <árbol>
+git archive v0.2.0 | tar -x -C /tmp/v020      # ídem con main
+QT_QPA_PLATFORM=offscreen python3.11 validation/regressions/repro_published_defects.py /tmp/v020 --json OUT
 ```
 
-| Defecto | Existe desde | v0.2.0 (binario 3.11) | `main` | Esta rama | ¿Cambia números o solo cae? |
-|---|---|---|---|---|---|
-| D1 `super()` en `KineticReactionEdge` | `89bf613` (2026-02-24), antes de beta.1 | Reproducido: `TypeError: super(type, obj)…` | Reproducido | No | Solo cae. Afecta únicamente a la API `KineticGraph.add_kinetic_reaction`; la pestaña de cinética de la GUI no la usa, así que **el flujo de la GUI del binario no se ve afectado** |
-| D2 Texto no numérico en la tabla de parámetros (espectroscopía/RMN) | `fdf7f03` (v1.21, 2026-01-04) | Reproducido: `'3,5'` → 1.0; límite `'8x'` → sin límite | Reproducido | No (mensaje) | **Cambia números en silencio**: el ajuste arranca en log K = 1 o queda sin límite superior |
-| D3 Potenciometría con pKa fijo | Llegada de potenciometría a `main` (mayo 2026) | No aplica (código ausente) | Reproducido: `IndexError`; el ajuste en sí es correcto (pKa₁ = 7.9991) | No | Solo cae: falta la tabla de errores, los valores ajustados son correctos |
-| D4 RMN con una constante no identificable | anterior a v0.2.0 | Reproducido: 4 de 4 métodos con `shape mismatch` | 1 de 4 (analítico); los bootstrap dan **SE = 0** | No | v0.2.0 cae; en `main` el analítico cae y los bootstrap **cambian números**: SE = 0 se lee como "fijo" |
-| D5 Convenciones (matriz de 105 casos) | anterior a v0.2.0 | Incumplen 48 de 60 casos GUI (16 espectroscopía, 16 RMN, 16 cinética); ácido-base ausente | 48 GUI y 21 ácido-base | 0 | **Cambian números mostrados** (por ejemplo, en v0.2.0 un parámetro fijo de espectroscopía recibe SE = 0.0052 en lugar de 0, y las correlaciones de fijos se muestran como 0) y además hay caídas: cinética y espectroscopía con ν ≤ 0 en bootstrap (`IndexError`) |
+Python 3.11.15, NumPy 2.4.2, SciPy 1.17.1, PySide6 6.10.2. Resultados versionados:
+`validation/results/regressions/repro_v020.json` y `repro_main.json`. El script combina dos
+tipos de comprobación:
 
-La matriz se ejecutó copiando `tests/test_phase2_invariants_matrix.py` en cada árbol
-(`pytest -o addopts="" tests_p2/…`, Python 3.11). Es una reproducción por la API de la GUI,
-no por clics. **[Sospecha]** Algunas violaciones en árboles antiguos podrían deberse a
-diferencias de API del arnés y no a la versión. Por eso solo se citan aquí las que fallan
-por el valor y no por un error de llamada. D1–D4 se reprodujeron además con el script
-directo.
+- **Sondas directas** por los widgets de la GUI o la API.
+- **La prueba de regresión que fija cada corrección**, copiada de esta rama y ejecutada contra
+  el código del árbol. Los imports de nivel superior van protegidos para que un módulo ausente
+  solo afecte a las pruebas que lo usan.
+
+Cada defecto queda en uno de cuatro estados:
+
+- **reproducido**: falla la aserción o aparece el error documentado;
+- **ausente**: la prueba pasa;
+- **corrección ausente (API)**: la prueba no puede llamar a la función que necesita; el
+  comportamiento **no** queda verificado por la prueba;
+- **no aplica**: el módulo no existe en ese árbol.
+
+En esta rama todas salen *ausente*.
+
+### 6.2 Resultado
+
+"Números" significa que el defecto cambia en silencio un valor, SE, IC o correlación mostrados;
+"caída" significa que algo falla de forma visible sin cambiar números.
+
+| Id | Origen | Módulo | Defecto | Efecto | v0.2.0 | `main` |
+|---|---|---|---|---|---|---|
+| P2-D2a | Fase 2 | Tabla de parámetros, espectroscopía/RMN | Errata en valor o límite: valor → 1.0, límite → sin límite | **números** | reproducido (`'3x'` → 1.0; `'8x'` → None) | reproducido |
+| P2-D2b | Fase 2 | Ídem | **Coma decimal** `'0,5'` → 1.0; límite `'0,1'` → sin límite | **números** | reproducido | reproducido |
+| P2-D2c | Fase 2 | Tabla de parámetros, cinética | Coma decimal `'0,5'` → **0.0**; límite → sin límite | **números** | reproducido | reproducido |
+| RR2 | Revisión #2 | Solver de ε UV-Vis (`soft_penalty`, por defecto) | No converge a escala molar: log K sesgado y varianza reducida | **números** | reproducido (error del solver 1.1·10⁻⁶ frente a < 10⁻⁹) | reproducido |
+| RR1 | Revisión #1 | Bootstrap one-step (cinética; también espectroscopía y RMN) | Amortiguamiento λ·I sin escalar: SD ~7000× menor con k en M⁻¹ s⁻¹ | **números** | corrección ausente; **reproducido por inspección**: `jac_lin.T @ jac_lin + float(lam) * np.eye(p)` en `kinetics_model_opt_plots.py:1022`, el mismo código que en `main`, donde la revisión midió el defecto | ídem |
+| RR4 | Revisión #4 | IC analíticos (todas) | z = 1.96 en lugar de t(ν) | **números** | corrección ausente; **reproducido por inspección** (`z95 = 1.96` en `model_opt_plots.py:1160` y `kinetics_model_opt_plots.py:1111`) | ídem |
+| RR3 | Revisión #3 | ν en cinética y ácido-base | No resta los parámetros lineales | **números** | cinética: corrección ausente (API); ácido-base no aplica | reproducido (ácido-base RMN) |
+| P1-1 | Fase 1 #1 | Cinética | Límites invertidos fijan el parámetro sin aviso | **números** | reproducido | reproducido |
+| P1-4 | Fase 1 #4 | Cinética / espectroscopía | Columna nula del Jacobiano → SE = 0 (parece "fijo") | **números** | reproducido | reproducido |
+| P1-5 | Fase 1 #5 | Bootstrap linealizado / one-step | Colineales o insensibles con SD finita o 0 | **números** | reproducido | reproducido |
+| P1-x | Fase 1 §2.1 | Cinética | Valor inicial fuera de límites aceptado; invariantes de fijos | **números** | reproducido | reproducido |
+| P1-2 | Fase 1 #2 | Cinética, fijo por máscara | El fijo se mueve a su límite inferior | **números** | corrección ausente (API) | ídem |
+| P1-6 | Fase 1 #6 | Errores de espectroscopía con log β fijo | `fixed_mask` ignorado: fijo con SE ≠ 0 e inflación de los libres | **números** | corrección ausente (API); la matriz D5 lo **reproduce** (SE = 0.0052 para un fijo) | ídem |
+| P1-10 | Fase 1 #10 | ν ≤ 0 | Truncado a 1 sin aviso | **números** | corrección ausente (API) | reproducido (ácido-base) |
+| P1-7 | Fase 1 #7 | Ácido-base RMN/espectroscopía | `pka_fit_mask` y `pka_bounds` ignorados | **números** | no aplica | reproducido |
+| P2-refit | Fase 2 (Anexo A §4) | Full-refit espectroscópico | Réplicas no convergidas aceptadas | **números** | reproducido | reproducido |
+| P2-pgd | Fase 2 (Anexo A §4) | `solve_A_nnls_pgd` | Multiplicadores constantes por λ ignorados | **números** | corrección ausente (API) | ídem |
+| P2-nmr12 | Fase 2 (Anexo A §7) | RMN 1:2 | Fallo del optimizador reportado como éxito | **números** | reproducido | reproducido |
+| P2-D5 | Fase 2 #3 | Convenciones (matriz de 105 casos) | Correlaciones de fijos 0 o 1, SE finito con ν ≤ 0, etc. | **números** (y alguna caída) | 48 de 60 casos de la GUI | 48 GUI + 21 ácido-base |
+| P2-D4 | Fase 2 #4 | Errores de RMN, constante no identificable | `shape mismatch` / SE = 0 | **v0.2.0: solo caída**; `main`: caída y números | reproducido: 4 de 4 métodos caen | 1 de 4 cae; 2 de 4 dan **SE = 0** |
+| RR5 | Revisión #5 | Cinética | Fijar un parámetro → `ValueError` de límites | caída | reproducido | reproducido |
+| RR7 | Revisión #7 | Bootstrap 1:1 (1 parámetro) | Todo bootstrap falla (`np.corrcoef` escalar) | caída | reproducido | reproducido |
+| P2-D1 | Fase 2 #1 | API de grafos cinéticos, Python < 3.14 | `super()` en una dataclass `slots=True` | caída (la GUI no usa esa API) | reproducido | reproducido |
+| P2-D3 | Fase 2 #2 | Potenciometría con pKa fijo | `IndexError` en errores | caída (el ajuste es correcto) | no aplica | reproducido |
+| P1-8 | Fase 1 #8 | Contexto ácido-base | `x or []` con arreglos | caída | no aplica | reproducido |
+| RR11 | Revisión #11 | Grafos con ciclos | Ciclos consistentes rechazados | caída | **ausente** (la prueba pasa) | ausente |
+
+**Aclaración sobre el fallo de RMN (P2-D4).** En **v0.2.0 solo provoca una caída**: los cuatro
+métodos lanzan `shape mismatch` y no se muestra ningún número. El cambio silencioso de números
+(**SE = 0** en los bootstrap linealizado y one-step, que se lee como "parámetro fijo") se
+reproduce en **`main`**, que no tiene release. La pregunta del mensaje anterior ("cambian
+números en el binario publicado") mezclaba las dos columnas. En v0.2.0, los defectos que sí
+cambian números en silencio son los marcados **números** con "reproducido" en esa columna.
+
+**Coma decimal (punto 10).** Sí dispara el reemplazo. En v0.2.0, `'0,5'` como valor inicial
+pasa a **1.0** en espectroscopía/RMN y a **0.0** en cinética, y un límite con coma se trata como
+"sin límite". En esta rama y en `fix/v0.2.1` se rechaza con el mensaje
+`K1: the initial value ('0,5') is not a number. Enter a number (use '.' as decimal separator).`
+
+**Puntos de partida antiguos de pKa (punto 7).** `python -m validation.pka_start_check
+--seeds 20` (`validation/results/pka_start_check.json`) usa datos en el orden correcto: dos
+ligandos dipróticos, [8.9, 4.5] y [8.0, 4.0], en RMN, UV-Vis y potenciometría. Los ajusta
+partiendo de cuatro puntos: los valores por defecto antiguos (5, 7), el ejemplo antiguo de la
+documentación (4.50, 8.90), los nuevos valores por defecto (7, 5) y los valores verdaderos.
+**Los 480 ajustes recuperan los valores verdaderos** (|Δ| < 0.1). Ningún caso termina con
+el orden intercambiado ni en otra rama. Con estos diseños, los arranques antiguos no cambiaban
+los valores ajustados. El defecto de los ejemplos era de interpretación: atribuir 4.50 a HL.
+
+### 6.3 Aviso y versión correctora (preparados, sin publicar)
+
+- **Borrador de aviso:** `docs/KNOWN_ISSUES_v0.2.0.md`. Recoge los módulos afectados, qué
+  revisar y cómo.
+- **Rama `fix/v0.2.1`**, creada desde `247c4df` (el commit de v0.2.0). Es **solo local**: sin
+  push, sin tag y sin release. Contenido:
+  - cherry-picks limpios de infraestructura: `30c5ceb` (dependencias y `constraints.txt`),
+    `2c90413` (`tests.yml`), `8e5aa64` (release condicionado a pruebas) y `2624598`
+    (ubuntu-24.04 y acciones Node 24; sin `campaign.yml`, que no existe en v0.2.0);
+  - `pytest.ini` y `conftest.py` de `0485c8a`;
+  - D1 (`24e2335`, una línea), necesaria para que el CI pase en 3.11;
+  - **la corrección de errores silenciosos D2a/b/c**: validación de las tablas de parámetros
+    de espectroscopía, RMN y cinética desde el texto escrito. Esto incluye además los límites
+    invertidos de cinética (P1-1) en la GUI. Es un port aditivo: `param_validation.py`
+    procede de `6e62398` y los dos métodos `validate_parameter_table` de `ce99054`/`b70fbae`;
+    el cherry-pick directo choca solo con `acid_base_tab.py`, que no existe en v0.2.0;
+  - las 4 fallas previas de v0.2.0 como `xfail(strict=True)`, con su causa: un `.xlsx` de
+    prueba que falta en el tag, ciclos (RR11), una firma desfasada en una prueba y `absgrp`.
+- **Tamaño:** 8 commits; 21 archivos, +510 / −32 líneas. En código de la aplicación, 8
+  archivos, +145 / −1; el resto son CI, dependencias y pruebas.
+- **Pruebas locales:** Python 3.11 y 3.14, **104 aprobadas y 4 xfail**; sin GUI (como Windows
+  en CI), 83 aprobadas y 4 xfail.
+- **Lo que quedó fuera**, porque su cherry-pick no aplica limpiamente (conflictos de contenido
+  con el código de v0.2.0):
+  - RR1–RR4 y RR7 (`7124267`, 5 conflictos);
+  - P1-1/2/4/5/6 en el núcleo (`535d1f0`, 8 conflictos; `a1ef955`, 5);
+  - P2-nmr12 (`0b63824`, 4);
+  - las convenciones D5 (`fe1ef79`, `390ae95`, `996a98e`);
+  - el full-refit espectroscópico (P2-refit) y `solve_A_nnls_pgd` (P2-pgd), en commits WIP
+    mezclados.
+
+  Portarlos exige reescribirlos sobre v0.2.0 y validarlos de nuevo: es trabajo nuevo, no un
+  backport.
+
+**v0.2.1 corrige, por tanto, 4 de los 14 defectos de "números" reproducidos o
+confirmados en v0.2.0:** D2a, D2b, D2c y, solo en la GUI, P1-1. Otros 4 (RR3 en cinética,
+P1-2, P1-10 y P2-pgd) no se pudieron verificar en v0.2.0, porque falta la API que usa su
+prueba. El aviso debe dejarlo claro.
 
 ## 7. Fe de erratas de la Fase 1
 
