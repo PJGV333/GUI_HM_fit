@@ -383,9 +383,13 @@ las decisiones 2.3 y 2.4, todavía pendientes.
 |---|---|---|---|---|
 | Antes: [42114949753](https://github.com/PJGV333/GUI_HM_fit/actions/runs/42114949753) (`0737301`, etapa 2.0) | 288 / 283 / 0 / 4 / 1 | 288 / 283 / 0 / 4 / 1 | 172 / 170 / 0 / 1 / 1 | 172 / 170 / 0 / 1 / 1 |
 | [42123409391](https://github.com/PJGV333/GUI_HM_fit/actions/runs/42123409391) (`ea1557e`, 2.5) | 421 / 416 / 0 / 4 / 1 | 421 / 416 / 0 / 4 / 1 | 185 / 183 / 0 / 1 / 1 | 185 / 183 / 0 / 1 / 1 |
-| Después: [42139346429](https://github.com/PJGV333/GUI_HM_fit/actions/runs/42139346429) (`d70d26c`, último commit de código) | 433 / 428 / 0 / 4 / 1 | 433 / 428 / 0 / 4 / 1 | 189 / 187 / 0 / 1 / 1 | 189 / 187 / 0 / 1 / 1 |
+| [42139346429](https://github.com/PJGV333/GUI_HM_fit/actions/runs/42139346429) (`d70d26c`) | 433 / 428 / 0 / 4 / 1 | 433 / 428 / 0 / 4 / 1 | 189 / 187 / 0 / 1 / 1 | 189 / 187 / 0 / 1 / 1 |
+| Después: [42145951211](https://github.com/PJGV333/GUI_HM_fit/actions/runs/42145951211) (`d71fb95`, cierre de la Fase 2; ubuntu-24.04, acciones Node 24) | 436 / 431 / 0 / 4 / 1 | 436 / 431 / 0 / 4 / 1 | 192 / 190 / 0 / 1 / 1 | 192 / 190 / 0 / 1 / 1 |
 
-Los commits posteriores a `d70d26c` solo modifican documentación. Todas las ejecuciones citadas terminaron en *success*.
+Todas las ejecuciones citadas terminaron en *success*. Desde `2624598` los runners Linux son
+`ubuntu-24.04` (antes `ubuntu-latest`; la construcción AppImage sigue en `ubuntu-22.04` por
+compatibilidad de glibc). Las acciones pasan a checkout@v7, setup-python@v7, upload-artifact@v7
+y download-artifact@v8, todas en Node 24, y desaparece el aviso de Node.js 20.
 
 Entorno local de la campaña y de las reproducciones: Python 3.14.9 / 3.11.15, NumPy 2.4.2,
 SciPy 1.17.1, pandas 3.0.1, PySide6 6.10.2, Matplotlib 3.10.8 (CachyOS Linux, 32 núcleos).
