@@ -196,10 +196,13 @@ def all_cases():
         nmr_case("NMR 1:1, log K = 3", [3.0], [2.5], [{"min": 0, "max": 8}]),
         nmr_case("NMR 1:2, log b2 fixed", [4.0, 7.0], [3.5, 7.0], [{"min": 0, "max": 8}, {"min": 7.0, "max": 7.0}],
                  fixed=[False, True], model=m12, n=15),
-        acid_base_nmr_case("Acid-base NMR, pKa 4.0/7.5", [4.0, 7.5], [4.3, 7.2]),
-        acid_base_nmr_case("Acid-base NMR, close pKa 4.0/4.4", [4.0, 4.4], [3.8, 4.6]),
-        acid_base_nmr_case("Acid-base NMR, pKa2 fixed", [4.0, 9.0], [4.2, 9.0], ph=(2.0, 7.0), n=15,
-                           fit_mask=[True, False]),
+        # HM fit convention: pKa_n = log beta_n - log beta_(n-1), so pKa1 belongs to HL <=> L + H+
+        # (the most basic site) and a physical diprotic ligand has pKa1 > pKa2. The Phase 1
+        # versions of these three cases used the inverted order (cooperative protonation).
+        acid_base_nmr_case("Acid-base NMR, pKa 7.5/4.0", [7.5, 4.0], [7.2, 4.3]),
+        acid_base_nmr_case("Acid-base NMR, close pKa 4.4/4.0", [4.4, 4.0], [4.6, 3.8]),
+        acid_base_nmr_case("Acid-base NMR, pKa1 fixed", [9.0, 4.0], [9.0, 4.2], ph=(2.0, 7.0), n=15,
+                           fit_mask=[False, True]),
         potentiometry_case("Potentiometry, pKa 5.0", [5.0], [4.4]),
         kinetics_case("Kinetics 1st order A->B->C", FIRST_ORDER, {"k1": 1.2, "k2": 0.4}, [1.0, 0.5], y01, t1),
         kinetics_case("Kinetics 1st order, no noise", FIRST_ORDER, {"k1": 1.2, "k2": 0.4}, [1.0, 0.5], y01, t1, noise=0.0),

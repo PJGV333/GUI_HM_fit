@@ -18,8 +18,9 @@ from hmfit_core.potentiometry import PotentiometryExperiment, simulate_pH_titrat
 from hmfit_core.run_acid_base import run_acid_base
 
 
-def _fit(tmp_path, mask, init="4.2, 8.0"):
-    system = make_simple_acid_base_system(analytical_concentration=1e-2, pka=[4.0, 8.0], base_charge=-2)
+def _fit(tmp_path, mask, init="8.0, 4.2"):
+    # pKa1 > pKa2: HM fit convention (pKa1 = log beta1, the most basic site).
+    system = make_simple_acid_base_system(analytical_concentration=1e-2, pka=[8.0, 4.0], base_charge=-2)
     vol = np.linspace(0.0, 25.0, 40)
     exp = PotentiometryExperiment(initial_volume=10.0, titrant_volumes=vol, analyte_concentration=1e-2,
                                   titrant_concentration=1e-2, titrant_type="base")
@@ -37,7 +38,7 @@ def _fit(tmp_path, mask, init="4.2, 8.0"):
 @pytest.mark.parametrize("method", ["analytic", "bootstrap_linear", "bootstrap_full_refit_audit"])
 @pytest.mark.parametrize("mask, fixed_idx", [([True, False], 1), ([False, True], 0)])
 def test_fixed_pka_reported_as_fixed(tmp_path, method, mask, fixed_idx):
-    res = _fit(tmp_path, mask, init="4.2, 8.0" if fixed_idx == 1 else "4.0, 8.3")
+    res = _fit(tmp_path, mask, init="8.3, 4.0" if fixed_idx == 1 else "8.0, 4.2")
     opts = {"method": method, "B": 40, "seed": 3}
     out = compute_errors_acid_base_from_context(res["errors_context"], opts)
     names = [row[0] for row in out["results_rows"]]
@@ -47,7 +48,7 @@ def test_fixed_pka_reported_as_fixed(tmp_path, method, mask, fixed_idx):
     assert fixed_row[-1] == "Yes" and free_row[-1] == ""
     assert float(fixed_row[2]) == 0.0
     assert float(fixed_row[3]) == float(fixed_row[1]) == float(fixed_row[4])
-    assert float(fixed_row[1]) == pytest.approx(8.0 if fixed_idx == 1 else 4.0, abs=1e-12)
+    assert float(fixed_row[1]) == pytest.approx(4.0 if fixed_idx == 1 else 8.0, abs=1e-12)
     assert np.isfinite(float(free_row[2])) and float(free_row[2]) > 0.0
     corr = np.asarray(out["corr"], dtype=float)
     assert corr.shape == (2, 2)
@@ -67,7 +68,7 @@ def test_fixed_pka_reaches_export_sheets(tmp_path):
 
 
 def test_all_free_potentiometry_unchanged(tmp_path):
-    res = _fit(tmp_path, [True, True], init="4.2, 8.1")
+    res = _fit(tmp_path, [True, True], init="8.1, 4.2")
     assert res["errors_context"]["fixed_constants"] == []
     out = compute_errors_acid_base_from_context(res["errors_context"], {"method": "analytic"})
     assert [row[-1] for row in out["results_rows"]] == ["", ""]

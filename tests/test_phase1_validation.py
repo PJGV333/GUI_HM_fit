@@ -34,7 +34,7 @@ def _z(c):
 
 NOISY = [
     "UV-Vis 1:1, log K = 3", "UV-Vis 1:2, log b2 fixed", "NMR 1:1, log K = 3", "NMR 1:2, log b2 fixed",
-    "Acid-base NMR, pKa 4.0/7.5", "Acid-base NMR, close pKa 4.0/4.4", "Acid-base NMR, pKa2 fixed",
+    "Acid-base NMR, pKa 7.5/4.0", "Acid-base NMR, close pKa 4.4/4.0", "Acid-base NMR, pKa1 fixed",
     "Potentiometry, pKa 5.0", "Kinetics 1st order A->B->C", "Kinetics 1st order, k2 fixed",
     "Kinetics 2nd order, k = 5e3 M^-1 s^-1",
 ]
@@ -71,11 +71,11 @@ def test_acid_base_covariance_matches_independent_finite_difference():
     from hmfit_core.run_acid_base import _build_system, run_acid_base
 
     pH = np.linspace(2.0, 10.0, 25)
-    y = distribution_fractions_from_pH(pH, pka_to_log_beta([4.0, 4.4])) @ np.array([7.9, 7.5, 7.0])
+    y = distribution_fractions_from_pH(pH, pka_to_log_beta([4.4, 4.0])) @ np.array([7.9, 7.5, 7.0])
     y = y + np.random.default_rng(0).normal(0.0, 3e-3, pH.size)
     path = os.path.join(tempfile.mkdtemp(), "fd.csv")
     pd.DataFrame({"pH": pH, "H1": y}).to_csv(path, index=False)
-    cfg = {"file_path": path, "data_type": "nmr", "pka_initial": "3.8,4.6",
+    cfg = {"file_path": path, "data_type": "nmr", "pka_initial": "4.6,3.8",
            "analyte_concentration": 1e-3, "base_charge": -2}
     r = run_acid_base(cfg, progress_cb=lambda _m: None)
     out = compute_errors_acid_base_from_context(r["errors_context"], {"method": "analytic"})
