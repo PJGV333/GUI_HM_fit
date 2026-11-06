@@ -208,3 +208,55 @@ a N = 600 para el full-refit, continuando los índices de réplica con las misma
 iteraciones. Si sigue indeterminada, se aplica la cláusula "evidencia no clara" de §6
 (se mantiene el valor actual y se presentan las opciones al autor).
 
+
+## 10. Enmienda 2 (2026-11-05, antes de leer resultados): qué celdas se ejecutan en esta fase
+
+Registrada por decisión del autor, con la campaña en pausa. Datos existentes: tier 1 de UV-Vis
+(46 celdas completas y 1 parcial, todas UV-Vis); no se ha leído ninguna tabla de cobertura ni
+ningún agregado. Las reglas, umbrales, tamaños y celdas no cambian; solo se fija **qué celdas
+se ejecutan ahora** y en qué orden. La asignación se genera con `python -m validation.coverage_plan table`:
+
+| tier | decisión | etapa de ejecución | celdas |
+|---:|---|---|---:|
+| 1 | 2.3 + 2.4 | R1 | 12 |
+| 1 | 2.4 | R1 | 36 |
+| 1 | diferida (ruido correlacionado) | — | 24 |
+| 2 | 2.3 + 2.4 | FR-uvvis | 6 |
+| 2 | 2.4 | FR-nmr | 6 |
+| 2 | diferida (ruido correlacionado) | — | 12 |
+| 3 | 2.3 | R1 | 36 |
+| 3 | 2.3 | FR-2.3 | 16 |
+| 3 | 2.3 + 2.4 | FR-uvvis | 4 |
+| 3 | 2.4 | R1 (ácido-base 24, potenciometría 4, cinética 6) | 34 |
+| 3 | 2.4 | FR-pot / FR-kin | 4 / 3 |
+| 3 | diferida (ruido correlacionado) | — | 33 |
+| 4 | 2.3 + 2.4 (UV-Vis 12zero, iid, 8/12/15 puntos) | R2 | 6 |
+| 4 | 2.4 (resto de la rejilla realista; incluye n = 20, 30 para el umbral de pocos bloques) | R2 | 58 |
+| 4 | diferida (ruido correlacionado) | — | 32 |
+| 9 | diferida (diagnóstico) | — | 5 |
+
+1. **Diferidas.** Las celdas con ruido correlacionado (`offset`, `point`, `drift`) no entran en
+   ninguna regla de decisión (§4: "se reportan aparte"), y el diagnóstico (tier 9) no tiene
+   expectativa de cobertura. Ambos se aplazan a la campaña final de validación, después de la
+   Fase 3 y sobre el motor unificado. Las réplicas ya guardadas de celdas diferidas se conservan
+   y solo se citan como descriptivas.
+2. **R1** se ejecuta ahora **sin cambios de código** (commit de datos `f195b21`; se comprobó
+   que el código actual reproduce bit a bit una réplica guardada de cada una de las 47 celdas con
+   datos: `python -m validation.coverage_replay_check`).
+3. **R2** se ejecuta después de la optimización del one-step. Condición previa: la optimización
+   reproduce las réplicas guardadas dentro de la tolerancia numérica declarada, que se verifica
+   con el mismo comprobador. Si no las reproduce, R2 se ejecuta con el código sin optimizar.
+4. **Full-refit condicional (FR-*).** Las reglas de §6 recorren los métodos en orden de coste.
+   Las pasadas `~fr` de una técnica (FR-uvvis, FR-nmr, FR-pot, FR-kin) se ejecutan **solo si**,
+   en la rejilla realista de esa técnica, ningún método más barato resulta "calibrado" según
+   `verdict` (§4). En ese caso la regla necesita conocer el full-refit, para "el menos
+   anticonservador" o "nunca uno anticonservador si existe una alternativa conservadora". Lo
+   mismo vale para 2.3: las pasadas FR-2.3 se ejecutan solo si el estimador de menor RMSE no
+   queda calibrado con ningún método barato. Si una técnica no puede decidirse con lo
+   ejecutado, se mantiene su valor por defecto actual con su aviso.
+5. **Análisis secundarios** (declarados como tales porque ya hay resultados del tier 1), que no
+   alimentan las reglas de decisión:
+   - cobertura agregada por técnica y método en el rango realista de puntos (8–15), con una
+     prueba de heterogeneidad entre celdas (χ² de homogeneidad de proporciones);
+   - cobertura del IC t con SE bootstrap (θ̂ ± t₀.₉₇₅,ν · SE_boot), junto a la de percentiles,
+     reconstruida a partir de los SE por réplica guardados.
