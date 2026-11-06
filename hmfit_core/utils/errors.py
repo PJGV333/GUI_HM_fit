@@ -349,14 +349,51 @@ def _stack_rows(lst):
     # stack que funcione en ambos backends
     return np.stack(lst, axis=0)
 
+def _jax_array_type():
+    """jax.numpy.ndarray if JAX is importable, else None. Resolved once: the previous
+    per-call ``import jax.numpy`` cost ~25 % of a one-step bootstrap when JAX is absent."""
+    global _JAX_ARRAY_TYPE
+    if _JAX_ARRAY_TYPE is _UNRESOLVED:
+        try:
+            import jax.numpy as jnp
+            _JAX_ARRAY_TYPE = jnp.ndarray
+        except Exception:
+            _JAX_ARRAY_TYPE = None
+    return _JAX_ARRAY_TYPE
+
+
+_UNRESOLVED = object()
+_JAX_ARRAY_TYPE = _UNRESOLVED
+
+
 def _as_onp(x):
-    try:
-        import jax.numpy as jnp
-        if isinstance(x, jnp.ndarray):
-            return _onp.array(x)
-    except Exception:
-        pass
+    jax_type = _jax_array_type()
+    if jax_type is not None and isinstance(x, jax_type):
+        return _onp.array(x)
     return _onp.array(x)
+
+
+class _FixedPointConcentrations:
+    """Wrap a speciation solver so that ``concentraciones(k)`` is solved once per distinct
+    ``k``. The one-step bootstraps re-evaluate the metrics at the same k_hat for every
+    replicate (only the data change), so the speciation, ~50 % of their time, is reused.
+    The solver is deterministic and stateless between calls, hence results are identical;
+    copies are returned so callers cannot alter the cached arrays."""
+
+    def __init__(self, solver):
+        self._solver = solver
+        self._key = None
+        self._value = None
+
+    def concentraciones(self, k):
+        key = _onp.asarray(k, dtype=float).tobytes()
+        if key != self._key:
+            self._value = self._solver.concentraciones(k)
+            self._key = key
+        return tuple(_onp.array(v, copy=True) if isinstance(v, _onp.ndarray) else v for v in self._value)
+
+    def __getattr__(self, name):
+        return getattr(self._solver, name)
 
 def _normalize_modelo(modelo, nspec):
     Min = _as_onp(modelo)
@@ -1630,6 +1667,7 @@ def bootstrap_one_step_spectro(
     if B <= 0:
         raise ValueError("B must be > 0.")
 
+    res = _FixedPointConcentrations(res)  # same k_hat for every replicate
     metrics0 = compute_errors_spectro_varpro(
         k_hat,
         res,
@@ -1738,6 +1776,7 @@ def bootstrap_one_step_nmr(
         fixed_mask = _onp.asarray(fixed_mask, dtype=bool)
     free_idx = _onp.where(~fixed_mask)[0]
 
+    res = _FixedPointConcentrations(res)  # same k_hat for every replicate
     metrics0 = compute_errors_nmr_varpro(
         k_hat, res, dq_obs, D_cols, modelo, nas, stoichiometry=stoichiometry,
         mask=mask, fixed_mask=fixed_mask, rcond=rcond,
