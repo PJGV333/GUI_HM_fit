@@ -1,0 +1,40 @@
+{
+ "id": "r09b-spec-r",
+ "technique": "speciation",
+ "kind": "speciation",
+ "description": "R + QX: BC50 (X vs R) and species distribution, T_Q = T_X",
+ "source": {
+  "article": "R09b",
+  "citation": "S. Roelens, A. Vacca, O. Francesconi, C. Venturi, \"Ion-Pair Binding: Is Binding Both Binding Better?\", Chem. Eur. J. 2009, 15, 8296-8302",
+  "doi": "10.1002/chem.200900342",
+  "si_pages": [
+   "S20"
+  ],
+  "constants_from": "r09b-r-qx",
+  "notice": "Data belong to their authors (see SOURCES.md); used only for the internal validation of HM fit."
+ },
+ "reagents": [
+  "R",
+  "Q",
+  "X"
+ ],
+ "analysed": "R",
+ "bound": "X",
+ "ancillary": "Q",
+ "columns": [
+  "xbound(X)",
+  "BC50",
+  "T(R)",
+  "T(Q)",
+  "[X]",
+  "[R]",
+  "[Q]",
+  "x(X)",
+  "x(RQX)",
+  "x(RX)",
+  "x(R2X)",
+  "x(QX)"
+ ],
+ "n_rows": 50,
+ "extraction": "validation/literature_extract.py (pdfplumber vs pdftotext, compared)"
+}

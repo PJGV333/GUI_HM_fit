@@ -1,0 +1,175 @@
+{
+ "id": "r09b-b-qx",
+ "technique": "nmr",
+ "kind": "fit",
+ "description": "Receptor B + TMAC, Me only, beta(QX) constant, 2 titrations",
+ "source": {
+  "article": "R09b",
+  "citation": "S. Roelens, A. Vacca, O. Francesconi, C. Venturi, \"Ion-Pair Binding: Is Binding Both Binding Better?\", Chem. Eur. J. 2009, 15, 8296-8302",
+  "doi": "10.1002/chem.200900342",
+  "si_pages": [
+   "S13",
+   "S14"
+  ],
+  "data_table_page": "S13",
+  "results_pages": [
+   "S14"
+  ],
+  "article_table": "R09b Table 2",
+  "notice": "Data belong to their authors (see SOURCES.md); used only for the internal validation of HM fit."
+ },
+ "reagents": [
+  "B",
+  "Q",
+  "X"
+ ],
+ "species": [
+  {
+   "name": "BQX",
+   "stoich": [
+    1,
+    1,
+    1
+   ],
+   "status": "refined"
+  },
+  {
+   "name": "BQ",
+   "stoich": [
+    1,
+    1,
+    0
+   ],
+   "status": "refined"
+  },
+  {
+   "name": "QX",
+   "stoich": [
+    0,
+    1,
+    1
+   ],
+   "status": "fixed",
+   "log_beta": 4.0897,
+   "fixed_value_note": "printed log beta used as the constant value"
+  }
+ ],
+ "nuclei": [
+  {
+   "name": "Me",
+   "reagent": "Q",
+   "limiting_shifts": {
+    "Q": {
+     "status": "refined"
+    },
+    "BQX": {
+     "status": "refined"
+    },
+    "BQ": {
+     "status": "refined"
+    },
+    "QX": {
+     "status": "refined"
+    }
+   }
+  }
+ ],
+ "counts": {
+  "n_spectra": 50,
+  "n_values": 45,
+  "n_nuclei": 1,
+  "n_datasets": 2
+ },
+ "dof_identity": {
+  "m": 45,
+  "p_beta": 2,
+  "p_shifts": 4,
+  "p": 6,
+  "m_over_m_minus_p": 1.1538461538461537,
+  "sigma_over_rms_squared": 1.153846191144687,
+  "rel_diff": 3.2325395471488605e-08
+ },
+ "reference": {
+  "program": "HypNMR",
+  "version": "19.06.2007",
+  "hqdll_version": null,
+  "n_spectra": 50,
+  "n_values": 45,
+  "n_nuclei": 1,
+  "chi_squared": 4.96,
+  "sigma": 0.00055162499,
+  "rms_weighted_residual": 0.00051353491,
+  "log_beta": {
+   "BQX": {
+    "status": "refined",
+    "beta": 58446.0,
+    "rel_sd": 0.048,
+    "log_beta": 4.7668,
+    "sd": 0.0208
+   },
+   "BQ": {
+    "status": "refined",
+    "beta": 23.622,
+    "rel_sd": 0.0163,
+    "log_beta": 1.3733,
+    "sd": 0.0071
+   },
+   "QX": {
+    "status": "fixed",
+    "beta": 12294.0,
+    "rel_sd": null,
+    "log_beta": 4.0897,
+    "sd": 0.0051
+   }
+  },
+  "limiting_shifts": {
+   "Me": {
+    "Q": {
+     "value": 3.0187,
+     "error": 0.001
+    },
+    "BQX": {
+     "value": 2.1108,
+     "error": 0.0387
+    },
+    "BQ": {
+     "value": 1.7115,
+     "error": 0.0159
+    },
+    "QX": {
+     "value": 3.2234,
+     "error": 0.0005
+    }
+   }
+  },
+  "correlation_x1000": {
+   "params": [
+    [
+     1,
+     1,
+     1
+    ],
+    [
+     1,
+     1,
+     0
+    ]
+   ],
+   "lower_x1000": [
+    [],
+    [
+     -894
+    ]
+   ],
+   "names": [
+    "BQX",
+    "BQ"
+   ]
+  }
+ },
+ "notes": [
+  "45 resonance values in 50 spectra (5 missing Me values).",
+  "beta(QX) held constant at log beta = 4.0897 (from R09b Table 1)."
+ ],
+ "extraction": "validation/literature_extract.py (pdfplumber vs pdftotext, compared)"
+}

@@ -1,0 +1,316 @@
+{
+ "id": "r09b-r-qx",
+ "technique": "nmr",
+ "kind": "fit",
+ "description": "Repeats r09a-r1-5sp from the R09b SI (extraction cross-check)",
+ "source": {
+  "article": "R09b",
+  "citation": "S. Roelens, A. Vacca, O. Francesconi, C. Venturi, \"Ion-Pair Binding: Is Binding Both Binding Better?\", Chem. Eur. J. 2009, 15, 8296-8302",
+  "doi": "10.1002/chem.200900342",
+  "si_pages": [
+   "S9",
+   "S10"
+  ],
+  "data_table_page": "S9",
+  "results_pages": [
+   "S10"
+  ],
+  "article_table": "R09b Table 1",
+  "notice": "Data belong to their authors (see SOURCES.md); used only for the internal validation of HM fit."
+ },
+ "reagents": [
+  "R",
+  "Q",
+  "X"
+ ],
+ "species": [
+  {
+   "name": "RQX",
+   "stoich": [
+    1,
+    1,
+    1
+   ],
+   "status": "refined"
+  },
+  {
+   "name": "RX",
+   "stoich": [
+    1,
+    0,
+    1
+   ],
+   "status": "refined"
+  },
+  {
+   "name": "R2",
+   "stoich": [
+    2,
+    0,
+    0
+   ],
+   "status": "refined"
+  },
+  {
+   "name": "R2X",
+   "stoich": [
+    2,
+    0,
+    1
+   ],
+   "status": "refined"
+  },
+  {
+   "name": "QX",
+   "stoich": [
+    0,
+    1,
+    1
+   ],
+   "status": "refined"
+  }
+ ],
+ "nuclei": [
+  {
+   "name": "NH-2",
+   "reagent": "R",
+   "limiting_shifts": {
+    "R": {
+     "status": "refined"
+    },
+    "RQX": {
+     "status": "refined"
+    },
+    "RX": {
+     "status": "refined"
+    },
+    "R2": {
+     "status": "refined"
+    },
+    "R2X": {
+     "status": "refined"
+    }
+   }
+  },
+  {
+   "name": "NH-1",
+   "reagent": "R",
+   "limiting_shifts": {
+    "R": {
+     "status": "refined"
+    },
+    "RQX": {
+     "status": "refined"
+    },
+    "RX": {
+     "status": "refined"
+    },
+    "R2": {
+     "status": "refined"
+    },
+    "R2X": {
+     "status": "refined"
+    }
+   }
+  },
+  {
+   "name": "Me",
+   "reagent": "Q",
+   "limiting_shifts": {
+    "Q": {
+     "status": "refined"
+    },
+    "RQX": {
+     "status": "refined"
+    },
+    "QX": {
+     "status": "refined"
+    }
+   }
+  }
+ ],
+ "counts": {
+  "n_spectra": 40,
+  "n_values": 116,
+  "n_nuclei": 3,
+  "n_datasets": 2
+ },
+ "dof_identity": {
+  "m": 116,
+  "p_beta": 5,
+  "p_shifts": 13,
+  "p": 18,
+  "m_over_m_minus_p": 1.183673469387755,
+  "sigma_over_rms_squared": 1.18367341552173,
+  "rel_diff": -4.5507503876329736e-08
+ },
+ "reference": {
+  "program": "HypNMR",
+  "version": "16.11.2006.",
+  "hqdll_version": "05/10/2006",
+  "n_spectra": 40,
+  "n_values": 116,
+  "n_nuclei": 3,
+  "chi_squared": 20.28,
+  "sigma": 0.00027084514,
+  "rms_weighted_residual": 0.00024894597,
+  "log_beta": {
+   "RQX": {
+    "status": "refined",
+    "beta": 1322100.0,
+    "rel_sd": 0.0233,
+    "log_beta": 6.1213,
+    "sd": 0.0101
+   },
+   "RX": {
+    "status": "refined",
+    "beta": 883.21,
+    "rel_sd": 0.0196,
+    "log_beta": 2.9461,
+    "sd": 0.0085
+   },
+   "R2": {
+    "status": "refined",
+    "beta": 6.0605,
+    "rel_sd": 0.0615,
+    "log_beta": 0.7825,
+    "sd": 0.0267
+   },
+   "R2X": {
+    "status": "refined",
+    "beta": 32545.0,
+    "rel_sd": 0.1052,
+    "log_beta": 4.5125,
+    "sd": 0.0457
+   },
+   "QX": {
+    "status": "refined",
+    "beta": 12295.0,
+    "rel_sd": 0.0117,
+    "log_beta": 4.0897,
+    "sd": 0.0051
+   }
+  },
+  "limiting_shifts": {
+   "NH-2": {
+    "R": {
+     "value": 4.3422,
+     "error": 0.0014
+    },
+    "RQX": {
+     "value": 4.9673,
+     "error": 0.0775
+    },
+    "RX": {
+     "value": 5.4904,
+     "error": 0.0458
+    },
+    "R2": {
+     "value": 4.8159,
+     "error": 0.016
+    },
+    "R2X": {
+     "value": 6.3471,
+     "error": 0.1001
+    }
+   },
+   "NH-1": {
+    "R": {
+     "value": 4.1642,
+     "error": 0.001
+    },
+    "RQX": {
+     "value": 5.1992,
+     "error": 0.0635
+    },
+    "RX": {
+     "value": 5.4741,
+     "error": 0.0381
+    },
+    "R2": {
+     "value": 4.5111,
+     "error": 0.0121
+    },
+    "R2X": {
+     "value": 5.4123,
+     "error": 0.0438
+    }
+   },
+   "Me": {
+    "Q": {
+     "value": 3.0073,
+     "error": 0.0003
+    },
+    "RQX": {
+     "value": 2.9864,
+     "error": 0.002
+    },
+    "QX": {
+     "value": 3.2222,
+     "error": 0.0005
+    }
+   }
+  },
+  "correlation_x1000": {
+   "params": [
+    [
+     1,
+     1,
+     1
+    ],
+    [
+     1,
+     0,
+     1
+    ],
+    [
+     2,
+     0,
+     0
+    ],
+    [
+     2,
+     0,
+     1
+    ],
+    [
+     0,
+     1,
+     1
+    ]
+   ],
+   "lower_x1000": [
+    [],
+    [
+     -423
+    ],
+    [
+     117,
+     -548
+    ],
+    [
+     98,
+     -292,
+     624
+    ],
+    [
+     146,
+     642,
+     -434,
+     -388
+    ]
+   ],
+   "names": [
+    "RQX",
+    "RX",
+    "R2",
+    "R2X",
+    "QX"
+   ]
+  }
+ },
+ "notes": [
+  "Data and results reported from R09a (ref. 42 of R09b)."
+ ],
+ "extraction": "validation/literature_extract.py (pdfplumber vs pdftotext, compared)"
+}

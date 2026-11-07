@@ -1,0 +1,559 @@
+{
+ "id": "r09a-p2-058",
+ "technique": "nmr",
+ "kind": "fit",
+ "description": "Receptor 2 (P) + TMAC, titrations at 0.15 and 0.58 mM, 7 nuclei, 6 species",
+ "source": {
+  "article": "R09a",
+  "citation": "S. Roelens, A. Vacca, C. Venturi, \"Binding of Ionic Species: A General Approach To Measuring Binding Constants and Assessing Affinities\", Chem. Eur. J. 2009, 15, 2635-2644",
+  "doi": "10.1002/chem.200802298",
+  "si_pages": [
+   "S12",
+   "S13",
+   "S14"
+  ],
+  "data_table_page": "S12",
+  "results_pages": [
+   "S13",
+   "S14"
+  ],
+  "article_table": "R09a Table 2",
+  "notice": "Data belong to their authors (see SOURCES.md); used only for the internal validation of HM fit."
+ },
+ "reagents": [
+  "P",
+  "Q",
+  "X"
+ ],
+ "species": [
+  {
+   "name": "PQX",
+   "stoich": [
+    1,
+    1,
+    1
+   ],
+   "status": "refined"
+  },
+  {
+   "name": "PX",
+   "stoich": [
+    1,
+    0,
+    1
+   ],
+   "status": "refined"
+  },
+  {
+   "name": "QX",
+   "stoich": [
+    0,
+    1,
+    1
+   ],
+   "status": "refined"
+  },
+  {
+   "name": "P2",
+   "stoich": [
+    2,
+    0,
+    0
+   ],
+   "status": "fixed",
+   "log_beta": 0.1,
+   "fixed_value_note": "printed log beta used as the constant value"
+  },
+  {
+   "name": "P2X",
+   "stoich": [
+    2,
+    0,
+    1
+   ],
+   "status": "refined"
+  },
+  {
+   "name": "P2QX",
+   "stoich": [
+    2,
+    1,
+    1
+   ],
+   "status": "refined"
+  }
+ ],
+ "nuclei": [
+  {
+   "name": "NH-2",
+   "reagent": "P",
+   "limiting_shifts": {
+    "P": {
+     "status": "refined"
+    },
+    "PQX": {
+     "status": "refined"
+    },
+    "PX": {
+     "status": "refined"
+    },
+    "P2": {
+     "status": "refined"
+    },
+    "P2X": {
+     "status": "refined"
+    },
+    "P2QX": {
+     "status": "refined"
+    }
+   }
+  },
+  {
+   "name": "CH-B",
+   "reagent": "P",
+   "limiting_shifts": {
+    "P": {
+     "status": "refined"
+    },
+    "PQX": {
+     "status": "refined"
+    },
+    "PX": {
+     "status": "refined"
+    },
+    "P2": {
+     "status": "refined"
+    },
+    "P2X": {
+     "status": "refined"
+    },
+    "P2QX": {
+     "status": "refined"
+    }
+   }
+  },
+  {
+   "name": "CH-C",
+   "reagent": "P",
+   "limiting_shifts": {
+    "P": {
+     "status": "refined"
+    },
+    "PQX": {
+     "status": "refined"
+    },
+    "PX": {
+     "status": "refined"
+    },
+    "P2": {
+     "status": "refined"
+    },
+    "P2X": {
+     "status": "refined"
+    },
+    "P2QX": {
+     "status": "refined"
+    }
+   }
+  },
+  {
+   "name": "NH-1",
+   "reagent": "P",
+   "limiting_shifts": {
+    "P": {
+     "status": "refined"
+    },
+    "PQX": {
+     "status": "refined"
+    },
+    "PX": {
+     "status": "refined"
+    },
+    "P2": {
+     "status": "refined"
+    },
+    "P2X": {
+     "status": "refined"
+    },
+    "P2QX": {
+     "status": "refined"
+    }
+   }
+  },
+  {
+   "name": "CH2-Bn",
+   "reagent": "P",
+   "limiting_shifts": {
+    "P": {
+     "status": "refined"
+    },
+    "PQX": {
+     "status": "refined"
+    },
+    "PX": {
+     "status": "refined"
+    },
+    "P2": {
+     "status": "refined"
+    },
+    "P2X": {
+     "status": "refined"
+    },
+    "P2QX": {
+     "status": "refined"
+    }
+   }
+  },
+  {
+   "name": "CH2N",
+   "reagent": "P",
+   "limiting_shifts": {
+    "P": {
+     "status": "refined"
+    },
+    "PQX": {
+     "status": "refined"
+    },
+    "PX": {
+     "status": "refined"
+    },
+    "P2": {
+     "status": "refined"
+    },
+    "P2X": {
+     "status": "refined"
+    },
+    "P2QX": {
+     "status": "refined"
+    }
+   }
+  },
+  {
+   "name": "Me",
+   "reagent": "Q",
+   "limiting_shifts": {
+    "Q": {
+     "status": "refined"
+    },
+    "PQX": {
+     "status": "refined"
+    },
+    "QX": {
+     "status": "refined"
+    },
+    "P2QX": {
+     "status": "refined"
+    }
+   }
+  }
+ ],
+ "counts": {
+  "n_spectra": 39,
+  "n_values": 257,
+  "n_nuclei": 7,
+  "n_datasets": 2
+ },
+ "dof_identity": {
+  "m": 257,
+  "p_beta": 5,
+  "p_shifts": 40,
+  "p": 45,
+  "m_over_m_minus_p": 1.2122641509433962,
+  "sigma_over_rms_squared": 1.2122641793274218,
+  "rel_diff": 2.3414060024151695e-08
+ },
+ "reference": {
+  "program": "HypNMR",
+  "version": "19.06.2007",
+  "hqdll_version": null,
+  "n_spectra": 39,
+  "n_values": 257,
+  "n_nuclei": 7,
+  "chi_squared": 142.66,
+  "sigma": 0.00054342807,
+  "rms_weighted_residual": 0.00049356395,
+  "log_beta": {
+   "PQX": {
+    "status": "refined",
+    "beta": 15445000.0,
+    "rel_sd": 0.0472,
+    "log_beta": 7.1888,
+    "sd": 0.0205
+   },
+   "PX": {
+    "status": "refined",
+    "beta": 3781.5,
+    "rel_sd": 0.0314,
+    "log_beta": 3.5777,
+    "sd": 0.0137
+   },
+   "QX": {
+    "status": "refined",
+    "beta": 11566.0,
+    "rel_sd": 0.0332,
+    "log_beta": 4.0632,
+    "sd": 0.0144
+   },
+   "P2": {
+    "status": "fixed",
+    "beta": 1.2589,
+    "rel_sd": null,
+    "log_beta": 0.1,
+    "sd": null
+   },
+   "P2X": {
+    "status": "refined",
+    "beta": 1802200.0,
+    "rel_sd": 0.0812,
+    "log_beta": 6.2558,
+    "sd": 0.0353
+   },
+   "P2QX": {
+    "status": "refined",
+    "beta": 2921800000.0,
+    "rel_sd": 0.0867,
+    "log_beta": 9.4656,
+    "sd": 0.0376
+   }
+  },
+  "limiting_shifts": {
+   "NH-2": {
+    "P": {
+     "value": 9.9566,
+     "error": 0.0009
+    },
+    "PQX": {
+     "value": 10.2155,
+     "error": 0.0091
+    },
+    "PX": {
+     "value": 10.8743,
+     "error": 0.0168
+    },
+    "P2": {
+     "value": 11.3464,
+     "error": 0.0198
+    },
+    "P2X": {
+     "value": 10.1788,
+     "error": 0.0255
+    },
+    "P2QX": {
+     "value": 10.3061,
+     "error": 0.035
+    }
+   },
+   "CH-B": {
+    "P": {
+     "value": 6.7225,
+     "error": 0.0009
+    },
+    "PQX": {
+     "value": 6.6914,
+     "error": 0.0078
+    },
+    "PX": {
+     "value": 6.6542,
+     "error": 0.0061
+    },
+    "P2": {
+     "value": 6.5868,
+     "error": 0.0196
+    },
+    "P2X": {
+     "value": 6.7348,
+     "error": 0.0212
+    },
+    "P2QX": {
+     "value": 6.656,
+     "error": 0.0298
+    }
+   },
+   "CH-C": {
+    "P": {
+     "value": 6.4698,
+     "error": 0.0009
+    },
+    "PQX": {
+     "value": 6.6893,
+     "error": 0.0089
+    },
+    "PX": {
+     "value": 7.1155,
+     "error": 0.0129
+    },
+    "P2": {
+     "value": 6.4665,
+     "error": 0.0202
+    },
+    "P2X": {
+     "value": 6.7652,
+     "error": 0.0242
+    },
+    "P2QX": {
+     "value": 6.6409,
+     "error": 0.0332
+    }
+   },
+   "NH-1": {
+    "P": {
+     "value": 6.3092,
+     "error": 0.0013
+    },
+    "PQX": {
+     "value": 7.0096,
+     "error": 0.0163
+    },
+    "PX": {
+     "value": 8.4901,
+     "error": 0.0392
+    },
+    "P2": {
+     "value": 6.8746,
+     "error": 0.0252
+    },
+    "P2X": {
+     "value": 7.1818,
+     "error": 0.0416
+    },
+    "P2QX": {
+     "value": 6.8357,
+     "error": 0.0566
+    }
+   },
+   "CH2-Bn": {
+    "P": {
+     "value": 5.1758,
+     "error": 0.0008
+    },
+    "PQX": {
+     "value": 5.1571,
+     "error": 0.0074
+    },
+    "PX": {
+     "value": 5.157,
+     "error": 0.006
+    },
+    "P2": {
+     "value": 4.9797,
+     "error": 0.0187
+    },
+    "P2X": {
+     "value": 5.2,
+     "error": 0.0191
+    },
+    "P2QX": {
+     "value": 5.1339,
+     "error": 0.0277
+    }
+   },
+   "CH2N": {
+    "P": {
+     "value": 4.5032,
+     "error": 0.0008
+    },
+    "PQX": {
+     "value": 4.4813,
+     "error": 0.0074
+    },
+    "PX": {
+     "value": 4.4861,
+     "error": 0.006
+    },
+    "P2": {
+     "value": 4.2733,
+     "error": 0.0187
+    },
+    "P2X": {
+     "value": 4.5516,
+     "error": 0.0195
+    },
+    "P2QX": {
+     "value": 4.4557,
+     "error": 0.0279
+    }
+   },
+   "Me": {
+    "Q": {
+     "value": 3.0077,
+     "error": 0.0005
+    },
+    "PQX": {
+     "value": 3.0037,
+     "error": 0.0032
+    },
+    "QX": {
+     "value": 3.2242,
+     "error": 0.0017
+    },
+    "P2QX": {
+     "value": 2.8855,
+     "error": 0.0064
+    }
+   }
+  },
+  "correlation_x1000": {
+   "params": [
+    [
+     1,
+     1,
+     1
+    ],
+    [
+     1,
+     0,
+     1
+    ],
+    [
+     0,
+     1,
+     1
+    ],
+    [
+     2,
+     0,
+     1
+    ],
+    [
+     2,
+     1,
+     1
+    ]
+   ],
+   "lower_x1000": [
+    [],
+    [
+     286
+    ],
+    [
+     747,
+     465
+    ],
+    [
+     729,
+     357,
+     690
+    ],
+    [
+     346,
+     327,
+     88,
+     153
+    ]
+   ],
+   "names": [
+    "PQX",
+    "PX",
+    "QX",
+    "P2X",
+    "P2QX"
+   ]
+  }
+ },
+ "notes": [
+  "beta(P2) is held constant (log beta = 0.1000) by the authors.",
+  "Missing values in the table ('-') are left empty.",
+  "R09a Table 2 prints SD(log beta P2X) = 0.03; the SI results page prints 0.0353, which rounds to 0.04. Both values are reported; the benchmark uses the SI value."
+ ],
+ "extraction": "validation/literature_extract.py (pdfplumber vs pdftotext, compared)"
+}

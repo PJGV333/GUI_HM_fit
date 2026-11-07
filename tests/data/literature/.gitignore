@@ -1,0 +1,4 @@
+# The source articles and their Supporting Information are copyrighted and must
+# never be committed here: only the extracted numbers are versioned.
+*.pdf
+*.PDF

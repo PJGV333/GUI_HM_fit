@@ -1,0 +1,512 @@
+{
+ "id": "r09b-d-qx",
+ "technique": "nmr",
+ "kind": "fit",
+ "description": "Ditopic receptor D + TMAC, 6 nuclei, beta(QX) and beta(D2) constant",
+ "source": {
+  "article": "R09b",
+  "citation": "S. Roelens, A. Vacca, O. Francesconi, C. Venturi, \"Ion-Pair Binding: Is Binding Both Binding Better?\", Chem. Eur. J. 2009, 15, 8296-8302",
+  "doi": "10.1002/chem.200900342",
+  "si_pages": [
+   "S15",
+   "S16",
+   "S17"
+  ],
+  "data_table_page": "S15",
+  "results_pages": [
+   "S16",
+   "S17"
+  ],
+  "article_table": "R09b Table 3",
+  "notice": "Data belong to their authors (see SOURCES.md); used only for the internal validation of HM fit."
+ },
+ "reagents": [
+  "D",
+  "Q",
+  "X"
+ ],
+ "species": [
+  {
+   "name": "DQX",
+   "stoich": [
+    1,
+    1,
+    1
+   ],
+   "status": "refined"
+  },
+  {
+   "name": "DQ2X2",
+   "stoich": [
+    1,
+    2,
+    2
+   ],
+   "status": "refined"
+  },
+  {
+   "name": "DQ",
+   "stoich": [
+    1,
+    1,
+    0
+   ],
+   "status": "refined"
+  },
+  {
+   "name": "DX",
+   "stoich": [
+    1,
+    0,
+    1
+   ],
+   "status": "refined"
+  },
+  {
+   "name": "QX",
+   "stoich": [
+    0,
+    1,
+    1
+   ],
+   "status": "fixed",
+   "log_beta": 4.0897,
+   "fixed_value_note": "printed log beta used as the constant value"
+  },
+  {
+   "name": "D2",
+   "stoich": [
+    2,
+    0,
+    0
+   ],
+   "status": "fixed",
+   "log_beta": 0.1892,
+   "fixed_value_note": "printed log beta used as the constant value"
+  }
+ ],
+ "nuclei": [
+  {
+   "name": "NH-1",
+   "reagent": "D",
+   "limiting_shifts": {
+    "D": {
+     "status": "refined"
+    },
+    "DQX": {
+     "status": "refined"
+    },
+    "DQ2X2": {
+     "status": "refined"
+    },
+    "DQ": {
+     "status": "fixed",
+     "value": 5.669
+    },
+    "DX": {
+     "status": "refined"
+    },
+    "D2": {
+     "status": "refined"
+    }
+   }
+  },
+  {
+   "name": "CH2O-1",
+   "reagent": "D",
+   "limiting_shifts": {
+    "D": {
+     "status": "refined"
+    },
+    "DQX": {
+     "status": "refined"
+    },
+    "DQ2X2": {
+     "status": "refined"
+    },
+    "DQ": {
+     "status": "fixed",
+     "value": 4.003
+    },
+    "DX": {
+     "status": "refined"
+    },
+    "D2": {
+     "status": "refined"
+    }
+   }
+  },
+  {
+   "name": "CH2O-2",
+   "reagent": "D",
+   "limiting_shifts": {
+    "D": {
+     "status": "refined"
+    },
+    "DQX": {
+     "status": "refined"
+    },
+    "DQ2X2": {
+     "status": "refined"
+    },
+    "DQ": {
+     "status": "fixed",
+     "value": 3.821
+    },
+    "DX": {
+     "status": "refined"
+    },
+    "D2": {
+     "status": "refined"
+    }
+   }
+  },
+  {
+   "name": "CH2N",
+   "reagent": "D",
+   "limiting_shifts": {
+    "D": {
+     "status": "refined"
+    },
+    "DQX": {
+     "status": "refined"
+    },
+    "DQ2X2": {
+     "status": "refined"
+    },
+    "DQ": {
+     "status": "fixed",
+     "value": 3.558
+    },
+    "DX": {
+     "status": "refined"
+    },
+    "D2": {
+     "status": "refined"
+    }
+   }
+  },
+  {
+   "name": "NH-2",
+   "reagent": "D",
+   "limiting_shifts": {
+    "D": {
+     "status": "refined"
+    },
+    "DQX": {
+     "status": "refined"
+    },
+    "DQ2X2": {
+     "status": "refined"
+    },
+    "DQ": {
+     "status": "fixed",
+     "value": 4.867
+    },
+    "DX": {
+     "status": "refined"
+    },
+    "D2": {
+     "status": "refined"
+    }
+   }
+  },
+  {
+   "name": "Me",
+   "reagent": "Q",
+   "limiting_shifts": {
+    "Q": {
+     "status": "refined"
+    },
+    "DQX": {
+     "status": "refined"
+    },
+    "DQ2X2": {
+     "status": "refined"
+    },
+    "DQ": {
+     "status": "fixed",
+     "value": 2.501
+    },
+    "QX": {
+     "status": "refined"
+    }
+   }
+  }
+ ],
+ "counts": {
+  "n_spectra": 41,
+  "n_values": 236,
+  "n_nuclei": 6,
+  "n_datasets": 2
+ },
+ "dof_identity": {
+  "m": 235,
+  "p_beta": 4,
+  "p_shifts": 29,
+  "p": 33,
+  "m_over_m_minus_p": 1.1633663366336633,
+  "sigma_over_rms_squared": 1.163366322827925,
+  "rel_diff": -1.1867060223380577e-08
+ },
+ "reference": {
+  "program": "HypNMR",
+  "version": "16.11.2006.",
+  "hqdll_version": "05/10/2006",
+  "n_spectra": 41,
+  "n_values": 235,
+  "n_nuclei": 6,
+  "chi_squared": 27.71,
+  "sigma": 0.00015853698,
+  "rms_weighted_residual": 0.00014698477,
+  "log_beta": {
+   "DQX": {
+    "status": "refined",
+    "beta": 234910.0,
+    "rel_sd": 0.0386,
+    "log_beta": 5.3709,
+    "sd": 0.0168
+   },
+   "DQ2X2": {
+    "status": "refined",
+    "beta": 1151100000000.0,
+    "rel_sd": 0.0411,
+    "log_beta": 12.0611,
+    "sd": 0.0178
+   },
+   "DQ": {
+    "status": "refined",
+    "beta": 9.6079,
+    "rel_sd": 0.0511,
+    "log_beta": 0.9826,
+    "sd": 0.0222
+   },
+   "DX": {
+    "status": "refined",
+    "beta": 135.66,
+    "rel_sd": 0.0459,
+    "log_beta": 2.1324,
+    "sd": 0.0199
+   },
+   "QX": {
+    "status": "fixed",
+    "beta": 12294.0,
+    "rel_sd": null,
+    "log_beta": 4.0897,
+    "sd": 0.0051
+   },
+   "D2": {
+    "status": "fixed",
+    "beta": 1.546,
+    "rel_sd": null,
+    "log_beta": 0.1892,
+    "sd": 0.0063
+   }
+  },
+  "limiting_shifts": {
+   "NH-1": {
+    "D": {
+     "value": 4.6764,
+     "error": 0.0002
+    },
+    "DQX": {
+     "value": 6.3208,
+     "error": 0.0469
+    },
+    "DQ2X2": {
+     "value": 5.5948,
+     "error": 0.1432
+    },
+    "DQ": {
+     "value": 5.669,
+     "error": null
+    },
+    "DX": {
+     "value": 4.7663,
+     "error": 0.0257
+    },
+    "D2": {
+     "value": 5.2287,
+     "error": 0.0015
+    }
+   },
+   "CH2O-1": {
+    "D": {
+     "value": 4.6227,
+     "error": 0.0002
+    },
+    "DQX": {
+     "value": 4.8928,
+     "error": 0.0461
+    },
+    "DQ2X2": {
+     "value": 3.9356,
+     "error": 0.118
+    },
+    "DQ": {
+     "value": 4.003,
+     "error": null
+    },
+    "DX": {
+     "value": 4.7123,
+     "error": 0.0268
+    },
+    "D2": {
+     "value": 4.2599,
+     "error": 0.0015
+    }
+   },
+   "CH2O-2": {
+    "D": {
+     "value": 4.5381,
+     "error": 0.0002
+    },
+    "DQX": {
+     "value": 4.6513,
+     "error": 0.0437
+    },
+    "DQ2X2": {
+     "value": 3.9834,
+     "error": 0.1205
+    },
+    "DQ": {
+     "value": 3.821,
+     "error": null
+    },
+    "DX": {
+     "value": 4.588,
+     "error": 0.0261
+    },
+    "D2": {
+     "value": 4.1961,
+     "error": 0.0015
+    }
+   },
+   "CH2N": {
+    "D": {
+     "value": 4.3338,
+     "error": 0.0003
+    },
+    "DQX": {
+     "value": 4.6773,
+     "error": 0.0538
+    },
+    "DQ2X2": {
+     "value": 3.5176,
+     "error": 0.1252
+    },
+    "DQ": {
+     "value": 3.558,
+     "error": null
+    },
+    "DX": {
+     "value": 4.4417,
+     "error": 0.0276
+    },
+    "D2": {
+     "value": 3.9498,
+     "error": 0.0015
+    }
+   },
+   "NH-2": {
+    "D": {
+     "value": 3.7709,
+     "error": 0.0002
+    },
+    "DQX": {
+     "value": 5.774,
+     "error": 0.0535
+    },
+    "DQ2X2": {
+     "value": 5.5884,
+     "error": 0.1677
+    },
+    "DQ": {
+     "value": 4.867,
+     "error": null
+    },
+    "DX": {
+     "value": 3.7811,
+     "error": 0.0257
+    },
+    "D2": {
+     "value": 4.4115,
+     "error": 0.0015
+    }
+   },
+   "Me": {
+    "Q": {
+     "value": 2.9942,
+     "error": 0.0006
+    },
+    "DQX": {
+     "value": 1.7651,
+     "error": 0.0291
+    },
+    "DQ2X2": {
+     "value": 2.5414,
+     "error": 0.0375
+    },
+    "DQ": {
+     "value": 2.501,
+     "error": null
+    },
+    "QX": {
+     "value": 3.226,
+     "error": 0.0004
+    }
+   }
+  },
+  "correlation_x1000": {
+   "params": [
+    [
+     1,
+     1,
+     1
+    ],
+    [
+     1,
+     2,
+     2
+    ],
+    [
+     1,
+     1,
+     0
+    ],
+    [
+     1,
+     0,
+     1
+    ]
+   ],
+   "lower_x1000": [
+    [],
+    [
+     165
+    ],
+    [
+     -927,
+     -511
+    ],
+    [
+     -975,
+     -342,
+     976
+    ]
+   ],
+   "names": [
+    "DQX",
+    "DQ2X2",
+    "DQ",
+    "DX"
+   ]
+  }
+ },
+ "notes": [
+  "The six DQ limiting shifts are printed without error: they were held fixed (see the degrees-of-freedom identity, p = 33).",
+  "The D2 limiting shifts are refined although beta(D2) is constant.",
+  "The SI table holds 236 resonance values but the results page prints 235 (and the degrees-of-freedom identity holds with m = 235): one tabulated value was not used by the original fit and the SI does not say which."
+ ],
+ "extraction": "validation/literature_extract.py (pdfplumber vs pdftotext, compared)"
+}

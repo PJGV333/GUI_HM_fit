@@ -1,0 +1,101 @@
+{
+ "id": "r09a-qx-dil",
+ "technique": "nmr",
+ "kind": "fit",
+ "description": "TMAC dilution, Q + X = QX, Me signal",
+ "source": {
+  "article": "R09a",
+  "citation": "S. Roelens, A. Vacca, C. Venturi, \"Binding of Ionic Species: A General Approach To Measuring Binding Constants and Assessing Affinities\", Chem. Eur. J. 2009, 15, 2635-2644",
+  "doi": "10.1002/chem.200802298",
+  "si_pages": [
+   "S10",
+   "S11"
+  ],
+  "data_table_page": "S10",
+  "results_pages": [
+   "S11"
+  ],
+  "article_table": null,
+  "notice": "Data belong to their authors (see SOURCES.md); used only for the internal validation of HM fit."
+ },
+ "reagents": [
+  "Q",
+  "X"
+ ],
+ "species": [
+  {
+   "name": "QX",
+   "stoich": [
+    1,
+    1
+   ],
+   "status": "refined"
+  }
+ ],
+ "nuclei": [
+  {
+   "name": "Me",
+   "reagent": "Q",
+   "limiting_shifts": {
+    "Q": {
+     "status": "refined"
+    },
+    "QX": {
+     "status": "refined"
+    }
+   }
+  }
+ ],
+ "counts": {
+  "n_spectra": 25,
+  "n_values": 25,
+  "n_nuclei": 1,
+  "n_datasets": 1
+ },
+ "dof_identity": {
+  "m": 25,
+  "p_beta": 1,
+  "p_shifts": 2,
+  "p": 3,
+  "m_over_m_minus_p": 1.1363636363636365,
+  "sigma_over_rms_squared": 1.1363636298257633,
+  "rel_diff": -5.753328369273447e-09
+ },
+ "reference": {
+  "program": "HypNMR",
+  "version": "19.06.2007",
+  "hqdll_version": null,
+  "n_spectra": 25,
+  "n_values": 25,
+  "n_nuclei": 1,
+  "chi_squared": 5.4,
+  "sigma": 0.00100615139,
+  "rms_weighted_residual": 0.00094385367,
+  "log_beta": {
+   "QX": {
+    "status": "refined",
+    "beta": 11240.0,
+    "rel_sd": 0.0284,
+    "log_beta": 4.0508,
+    "sd": 0.0123
+   }
+  },
+  "limiting_shifts": {
+   "Me": {
+    "Q": {
+     "value": 3.0223,
+     "error": 0.0007
+    },
+    "QX": {
+     "value": 3.2318,
+     "error": 0.0012
+    }
+   }
+  },
+  "correlation_x1000": null
+ },
+ "notes": [
+  "Independent value of log beta(QX) (log beta = 4.05 +/- 0.01 in the text)."
+ ],
+ "extraction": "validation/literature_extract.py (pdfplumber vs pdftotext, compared)"
+}

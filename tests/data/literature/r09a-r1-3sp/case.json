@@ -1,0 +1,233 @@
+{
+ "id": "r09a-r1-3sp",
+ "technique": "nmr",
+ "kind": "fit",
+ "description": "Receptor 1 + TMAC, three reagents, species RQX, RX, QX; titrations at 0.131 and 1.06 mM",
+ "source": {
+  "article": "R09a",
+  "citation": "S. Roelens, A. Vacca, C. Venturi, \"Binding of Ionic Species: A General Approach To Measuring Binding Constants and Assessing Affinities\", Chem. Eur. J. 2009, 15, 2635-2644",
+  "doi": "10.1002/chem.200802298",
+  "si_pages": [
+   "S7",
+   "S8"
+  ],
+  "data_table_page": "S7",
+  "results_pages": [
+   "S8"
+  ],
+  "article_table": null,
+  "notice": "Data belong to their authors (see SOURCES.md); used only for the internal validation of HM fit."
+ },
+ "reagents": [
+  "R",
+  "Q",
+  "X"
+ ],
+ "species": [
+  {
+   "name": "RQX",
+   "stoich": [
+    1,
+    1,
+    1
+   ],
+   "status": "refined"
+  },
+  {
+   "name": "RX",
+   "stoich": [
+    1,
+    0,
+    1
+   ],
+   "status": "refined"
+  },
+  {
+   "name": "QX",
+   "stoich": [
+    0,
+    1,
+    1
+   ],
+   "status": "refined"
+  }
+ ],
+ "nuclei": [
+  {
+   "name": "NH-2",
+   "reagent": "R",
+   "limiting_shifts": {
+    "R": {
+     "status": "refined"
+    },
+    "RQX": {
+     "status": "refined"
+    },
+    "RX": {
+     "status": "refined"
+    }
+   }
+  },
+  {
+   "name": "NH-1",
+   "reagent": "R",
+   "limiting_shifts": {
+    "R": {
+     "status": "refined"
+    },
+    "RQX": {
+     "status": "refined"
+    },
+    "RX": {
+     "status": "refined"
+    }
+   }
+  },
+  {
+   "name": "Me",
+   "reagent": "Q",
+   "limiting_shifts": {
+    "Q": {
+     "status": "refined"
+    },
+    "RQX": {
+     "status": "refined"
+    },
+    "QX": {
+     "status": "refined"
+    }
+   }
+  }
+ ],
+ "counts": {
+  "n_spectra": 40,
+  "n_values": 116,
+  "n_nuclei": 3,
+  "n_datasets": 2
+ },
+ "dof_identity": {
+  "m": 116,
+  "p_beta": 3,
+  "p_shifts": 9,
+  "p": 12,
+  "m_over_m_minus_p": 1.1153846153846154,
+  "sigma_over_rms_squared": 1.1153846138891559,
+  "rel_diff": -1.3407568388856816e-09
+ },
+ "reference": {
+  "program": "HypNMR",
+  "version": "16.11.2006.",
+  "hqdll_version": "05/10/2006",
+  "n_spectra": 40,
+  "n_values": 116,
+  "n_nuclei": 3,
+  "chi_squared": 10.34,
+  "sigma": 0.007742015,
+  "rms_weighted_residual": 0.00733063648,
+  "log_beta": {
+   "RQX": {
+    "status": "refined",
+    "beta": 3385700.0,
+    "rel_sd": 0.4234,
+    "log_beta": 6.5296,
+    "sd": 0.1839
+   },
+   "RX": {
+    "status": "refined",
+    "beta": 138.95,
+    "rel_sd": 0.2717,
+    "log_beta": 2.1429,
+    "sd": 0.118
+   },
+   "QX": {
+    "status": "refined",
+    "beta": 18030.0,
+    "rel_sd": 0.4304,
+    "log_beta": 4.256,
+    "sd": 0.1869
+   }
+  },
+  "limiting_shifts": {
+   "NH-2": {
+    "R": {
+     "value": 4.447,
+     "error": 0.0073
+    },
+    "RQX": {
+     "value": 7.947,
+     "error": 0.4479
+    },
+    "RX": {
+     "value": -9.5152,
+     "error": 5.5975
+    }
+   },
+   "NH-1": {
+    "R": {
+     "value": 4.2244,
+     "error": 0.0041
+    },
+    "RQX": {
+     "value": 6.5988,
+     "error": 0.229
+    },
+    "RX": {
+     "value": -0.7041,
+     "error": 2.0824
+    }
+   },
+   "Me": {
+    "Q": {
+     "value": 2.953,
+     "error": 0.0245
+    },
+    "RQX": {
+     "value": 3.0095,
+     "error": 0.0092
+    },
+    "QX": {
+     "value": 3.2235,
+     "error": 0.0113
+    }
+   }
+  },
+  "correlation_x1000": {
+   "params": [
+    [
+     1,
+     1,
+     1
+    ],
+    [
+     1,
+     0,
+     1
+    ],
+    [
+     0,
+     1,
+     1
+    ]
+   ],
+   "lower_x1000": [
+    [],
+    [
+     -2
+    ],
+    [
+     969,
+     -208
+    ]
+   ],
+   "names": [
+    "RQX",
+    "RX",
+    "QX"
+   ]
+  }
+ },
+ "notes": [
+  "Intermediate model of the paper (standard deviations judged unsatisfactory)."
+ ],
+ "extraction": "validation/literature_extract.py (pdfplumber vs pdftotext, compared)"
+}

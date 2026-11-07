@@ -1,0 +1,101 @@
+{
+ "id": "r09a-r1-11-me",
+ "technique": "nmr",
+ "kind": "fit",
+ "description": "Receptor 1 + TMAC, 1:1 two-reagent model (R, G), Me signal only",
+ "source": {
+  "article": "R09a",
+  "citation": "S. Roelens, A. Vacca, C. Venturi, \"Binding of Ionic Species: A General Approach To Measuring Binding Constants and Assessing Affinities\", Chem. Eur. J. 2009, 15, 2635-2644",
+  "doi": "10.1002/chem.200802298",
+  "si_pages": [
+   "S4",
+   "S5"
+  ],
+  "data_table_page": "S4",
+  "results_pages": [
+   "S5"
+  ],
+  "article_table": null,
+  "notice": "Data belong to their authors (see SOURCES.md); used only for the internal validation of HM fit."
+ },
+ "reagents": [
+  "R",
+  "G"
+ ],
+ "species": [
+  {
+   "name": "RG",
+   "stoich": [
+    1,
+    1
+   ],
+   "status": "refined"
+  }
+ ],
+ "nuclei": [
+  {
+   "name": "Me",
+   "reagent": "G",
+   "limiting_shifts": {
+    "G": {
+     "status": "refined"
+    },
+    "RG": {
+     "status": "refined"
+    }
+   }
+  }
+ ],
+ "counts": {
+  "n_spectra": 20,
+  "n_values": 20,
+  "n_nuclei": 1,
+  "n_datasets": 1
+ },
+ "dof_identity": {
+  "m": 20,
+  "p_beta": 1,
+  "p_shifts": 2,
+  "p": 3,
+  "m_over_m_minus_p": 1.1764705882352942,
+  "sigma_over_rms_squared": 1.1764705268323863,
+  "rel_diff": -5.219247167786989e-08
+ },
+ "reference": {
+  "program": "HypNMR",
+  "version": "16.11.2006.",
+  "hqdll_version": "05/10/2006",
+  "n_spectra": 20,
+  "n_values": 20,
+  "n_nuclei": 1,
+  "chi_squared": 2.4,
+  "sigma": 0.00019624596,
+  "rms_weighted_residual": 0.00018092984,
+  "log_beta": {
+   "RG": {
+    "status": "refined",
+    "beta": 371.52,
+    "rel_sd": 0.0072,
+    "log_beta": 2.57,
+    "sd": 0.0031
+   }
+  },
+  "limiting_shifts": {
+   "Me": {
+    "G": {
+     "value": 3.1068,
+     "error": 0.0002
+    },
+    "RG": {
+     "value": 3.0036,
+     "error": 0.0002
+    }
+   }
+  },
+  "correlation_x1000": null
+ },
+ "notes": [
+  "Me is assigned to G: the paper treats TMAC as the chloride guest."
+ ],
+ "extraction": "validation/literature_extract.py (pdfplumber vs pdftotext, compared)"
+}

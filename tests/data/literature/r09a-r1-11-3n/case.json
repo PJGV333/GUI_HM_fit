@@ -1,0 +1,145 @@
+{
+ "id": "r09a-r1-11-3n",
+ "technique": "nmr",
+ "kind": "fit",
+ "description": "Same data, 1:1 model with 3 nuclei (deliberately poor fit)",
+ "source": {
+  "article": "R09a",
+  "citation": "S. Roelens, A. Vacca, C. Venturi, \"Binding of Ionic Species: A General Approach To Measuring Binding Constants and Assessing Affinities\", Chem. Eur. J. 2009, 15, 2635-2644",
+  "doi": "10.1002/chem.200802298",
+  "si_pages": [
+   "S4",
+   "S6"
+  ],
+  "data_table_page": "S4",
+  "results_pages": [
+   "S6"
+  ],
+  "article_table": null,
+  "notice": "Data belong to their authors (see SOURCES.md); used only for the internal validation of HM fit."
+ },
+ "reagents": [
+  "R",
+  "G"
+ ],
+ "species": [
+  {
+   "name": "RG",
+   "stoich": [
+    1,
+    1
+   ],
+   "status": "refined"
+  }
+ ],
+ "nuclei": [
+  {
+   "name": "NH-2",
+   "reagent": "R",
+   "limiting_shifts": {
+    "R": {
+     "status": "refined"
+    },
+    "RG": {
+     "status": "refined"
+    }
+   }
+  },
+  {
+   "name": "NH-1",
+   "reagent": "R",
+   "limiting_shifts": {
+    "R": {
+     "status": "refined"
+    },
+    "RG": {
+     "status": "refined"
+    }
+   }
+  },
+  {
+   "name": "Me",
+   "reagent": "G",
+   "limiting_shifts": {
+    "G": {
+     "status": "refined"
+    },
+    "RG": {
+     "status": "refined"
+    }
+   }
+  }
+ ],
+ "counts": {
+  "n_spectra": 20,
+  "n_values": 58,
+  "n_nuclei": 3,
+  "n_datasets": 1
+ },
+ "dof_identity": {
+  "m": 58,
+  "p_beta": 1,
+  "p_shifts": 6,
+  "p": 7,
+  "m_over_m_minus_p": 1.1372549019607843,
+  "sigma_over_rms_squared": 1.137254904076567,
+  "rel_diff": 1.860429588163015e-09
+ },
+ "reference": {
+  "program": "HypNMR",
+  "version": "16.11.2006.",
+  "hqdll_version": "05/10/2006",
+  "n_spectra": 20,
+  "n_values": 58,
+  "n_nuclei": 3,
+  "chi_squared": 2.69,
+  "sigma": 0.00700660423,
+  "rms_weighted_residual": 0.00657020133,
+  "log_beta": {
+   "RG": {
+    "status": "refined",
+    "beta": 238.86,
+    "rel_sd": 0.2714,
+    "log_beta": 2.3781,
+    "sd": 0.1179
+   }
+  },
+  "limiting_shifts": {
+   "NH-2": {
+    "R": {
+     "value": 4.4251,
+     "error": 0.0043
+    },
+    "RG": {
+     "value": 2.9561,
+     "error": 0.4585
+    }
+   },
+   "NH-1": {
+    "R": {
+     "value": 4.2196,
+     "error": 0.0036
+    },
+    "RG": {
+     "value": 4.095,
+     "error": 0.243
+    }
+   },
+   "Me": {
+    "G": {
+     "value": 3.0996,
+     "error": 0.0054
+    },
+    "RG": {
+     "value": 2.9947,
+     "error": 0.0073
+    }
+   }
+  },
+  "correlation_x1000": null
+ },
+ "notes": [
+  "Deliberately inadequate model (the paper uses it to show that a 1:1 two-reagent model does not describe the system)."
+ ],
+ "extraction": "validation/literature_extract.py (pdfplumber vs pdftotext, compared)"
+}
