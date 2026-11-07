@@ -1,6 +1,6 @@
 # HM fit — Banco de validación externa con datos publicados
 
-> **Estado (2026-11-07): etapas A–D completas; la E (BC50, opcional) no se ha hecho.** Las
+> **Estado (2026-11-07): etapas A–E completas (la E, opcional, tras A–D con el CI en verde).** Las
 > secciones 1–4 son el pre-registro (commit `a39f0c0`) y no se han modificado después, salvo esta
 > línea de estado; los resultados empiezan en §5. Etiquetas, como en las fases anteriores: **[Defecto comprobado]** (reproducido con un caso
 > concreto), **[Limitación metodológica]**, **[Sospecha]** (no verificado).
@@ -532,6 +532,62 @@ artículo (Tablas 1–3). `python -m validation.literature_speciation --json val
 - **[Defecto comprobado] del resolvedor: ninguno.** El resolvedor de balances de HM fit
   reproduce las cuatro tablas dentro de su precisión impresa.
 
+### 7.1 Etapa E — BC50 y BC⁰₅₀ (`hmfit_core/bc50.py`)
+
+`python -m validation.literature_bc50 --json validation/results/literature/bc50.json`; criterios
+de §4.7 (commit `2aea949`, anterior a la comparación); pruebas en `tests/test_literature_bc50.py`.
+La implementación reproduce exactamente las expresiones A23, A24, A25, A28 y A30 del apéndice
+de R09a (`tests/test_bc50.py`).
+
+**Tablas S20–S23 de R09b** (rejilla x exacta, T_C = T_A), celdas: BC50, T_B, T_C,
+concentraciones libres y fracciones:
+
+| Tabla | Constantes del SI: ≤ 0.5 u / ≤ 1 u | Constantes del artículo: ≤ 0.5 u / ≤ 1 u | Clasificación (SI) |
+|---|---|---|---|
+| `r09b-spec-r` (S20) | 530/550 (96.4 %) / 550/550 | 319/550 / 473/550 (peor 2.2 u) | no reproduce (< 98 %) |
+| `r09b-spec-b` (S21) | 477/500 (95.4 %) / 500/500 | 467/500 / 500/500 | no reproduce (< 98 %) |
+| `r09b-spec-d-x` (S22) | 535/550 (97.3 %) / 550/550 | 470/550 / 550/550 | no reproduce (< 98 %) |
+| `r09b-spec-d-q` (S23) | 539/550 (98.0 %) / 550/550 | 458/550 / 549/550 | **reproduce** |
+
+"u" es la unidad del último dígito impreso. Con las constantes del SI, todas las celdas están a
+≤ 0.55 u. **Las tablas se calcularon con las constantes de la página de resultados (o con más
+cifras), no con las redondeadas del artículo**: con estas hay celdas a más de 1 u (hasta 2.2 u en
+`r09b-spec-r`), aunque los pies de figura citan las Tablas 1–3. Esto responde también a la
+pregunta de §7, que la fila x = 0 no podía decidir.
+
+**[Limitación metodológica]** El 2.7–4.6 % de las celdas de tres tablas está entre 0.50 y 0.55 u,
+así que no se cumple el umbral pre-registrado del 98 % (no se ha cambiado). No se explica por la
+precisión de las constantes impresas: ni log₁₀ del β impreso ni 40 perturbaciones de log β dentro
+de ±5·10⁻⁵ bajan la peor celda de 0.53 u. Causas posibles, sin poder discriminarlas: la tolerancia
+del resolvedor del programa original (≈ 10⁻⁴ relativo bastaría), su forma de redondear o
+constantes con más cifras que las impresas.
+
+**Valores de los artículos** (constantes del SI; con las del artículo fallan los cuatro de R09a):
+
+| Magnitud | Fuente | Publicado | HM fit | Resultado |
+|---|---|---|---|---|
+| BC⁰₅₀ receptor 1, [TMA] = 1 M | R09a, texto y Fig. 4 | 1.03(3)·10⁻² | 1.0337·10⁻² | ✓ |
+| BC⁰₅₀ receptor 2, [TMA] = 1 M | R09a | 6.7(3)·10⁻⁴ | 6.662·10⁻⁴ | ✓ |
+| BC50(1)/BC50(2), [TMA] = 1 M | R09a | 15.4, constante en x | **15.52**, constante en x | ✗ (`xfail` estricto) |
+| Máximo del cociente, T_TMA = T_Cl | R09a | 16.5, al 50 % | 16.48 en x = 0.50 | ✓ |
+| Cociente en x = 0, T_TMA = T_Cl | R09a | 4.6 | 4.64 | ✓ |
+| BC⁰₅₀ receptor 1 sin pares iónicos (T_TMA = T_Cl, x = 0) | R09a, texto | 1.10·10⁻³ | 1.103·10⁻³ | ✓ (adicional) |
+| BC⁰₅₀ de X, receptor R | R09b, Fig. 2 | 5.0(1)·10⁻³ | 4.988·10⁻³ | ✓ |
+| BC⁰₅₀ de X, receptor D | R09b | 1.05(2)·10⁻² | 1.050·10⁻² | ✓ |
+| BC⁰₅₀ de Q, receptor B | R09b, Fig. 1 | 1.95(9)·10⁻¹ | 1.947·10⁻¹ | ✓ |
+| BC⁰₅₀ de Q, receptor D | R09b | 1.19(3)·10⁻² | 1.187·10⁻² | ✓ |
+
+Sobre el cociente 15.4: ambos valores se reportan. HM fit lo obtiene constante en x, como dice el
+artículo, pero igual a 15.52 (15.70 con las constantes del artículo). Una causa posible: el
+cociente de los BC⁰₅₀ ya redondeados, 1.03·10⁻²/6.7·10⁻⁴ = 15.37 ≈ 15.4.
+
+**Limitación del descriptor (R09a, nota 18).** Si hay especies multinucleares en el analito B que
+contienen A (p. ej. R2X en "X vs R"), `bc50_curve` siempre añade un aviso: su peso en BC50 depende
+de x_A y de T_B, y BC⁰₅₀ las ignora. Si ninguna especie mononuclear en B contiene A (caso AB₂C,
+ec. A28), BC⁰₅₀ es indefinido y se devuelve NaN con aviso. Nunca devuelve un valor sin aviso. Las
+dos condiciones para el tercer reactivo están implementadas: [C] libre fija (1 mol/L por defecto)
+y electroneutralidad (T_C = T del contraion, que puede ser A o B).
+
 ## 8. Variabilidad entre titulaciones (solo reportada)
 
 Diferencias expresadas en SD combinadas, z = Δ / √(SD₁² + SD₂²). Sin cambios metodológicos.
@@ -600,12 +656,14 @@ python -m validation.literature_benchmark tolerances validation/results/literatu
 python -m validation.literature_benchmark run --json validation/results/literature/run.json --md TABLA.md
 python -m validation.literature_benchmark diagnose --json validation/results/literature/diagnose.json
 python -m validation.literature_speciation --json validation/results/literature/speciation.json
+python -m validation.literature_bc50 --json validation/results/literature/bc50.json
 python -m validation.literature_benchmark baseline --write           # solo con "Update literature baseline"
 ```
 
 Pruebas: `tests/test_literature_benchmark.py` (casos, nivel 0 y línea base),
 `tests/test_literature_benchmark_gui.py` (caminos de la GUI), `tests/test_literature_speciation.py`
-(etapa D), `tests/test_nmr_square_stoichiometry.py`, `tests/test_nmr_export_coefficients.py`.
+(etapa D), `tests/test_literature_bc50.py` y `tests/test_bc50.py` (etapa E),
+`tests/test_nmr_square_stoichiometry.py`, `tests/test_nmr_export_coefficients.py`.
 Tiempo total del banco ≈ 50 s: corre completo en cada push (workflow `tests`), sin subconjunto
 de humo. Los PDF no están versionados (`git ls-files '*.pdf'` vacío antes de cada push).
 

@@ -1,0 +1,512 @@
+{
+ "si": {
+  "tables": {
+   "r09b-spec-r": {
+    "cells": 550,
+    "within_half_ulp": 530.0,
+    "within_one_ulp": 550.0,
+    "reproduce": 0.0,
+    "worst": [
+     {
+      "ulp": 0.5465446458061997,
+      "row": 15,
+      "column": "[Q]",
+      "hm": 0.001334534553541938,
+      "printed": "1.34E-03"
+     },
+     {
+      "ulp": 0.5444313400182823,
+      "row": 35,
+      "column": "[R]",
+      "hm": 0.017545556865998173,
+      "printed": "1.76E-02"
+     },
+     {
+      "ulp": 0.5403445235424228,
+      "row": 24,
+      "column": "T(Q)",
+      "hm": 0.013645965547645758,
+      "printed": "1.37E-02"
+     },
+     {
+      "ulp": 0.5403445235424055,
+      "row": 24,
+      "column": "BC50",
+      "hm": 0.01364596554764576,
+      "printed": "1.37E-02"
+     },
+     {
+      "ulp": 0.5366415664914692,
+      "row": 46,
+      "column": "[R]",
+      "hm": 0.09454633584335086,
+      "printed": "9.46E-02"
+     }
+    ],
+    "warnings": [
+     "species multinuclear in the bound analyte present (R2X): their weight in BC50 depends on x_A and on T_B, and BC50^0 ignores them (R09a, note 18)"
+    ]
+   },
+   "r09b-spec-b": {
+    "cells": 500,
+    "within_half_ulp": 477.0,
+    "within_one_ulp": 500.0,
+    "reproduce": 0.0,
+    "worst": [
+     {
+      "ulp": 0.5473058389015684,
+      "row": 39,
+      "column": "T(B)",
+      "hm": 1.4645269416109843,
+      "printed": "1.47E+00"
+     },
+     {
+      "ulp": 0.5386256125322619,
+      "row": 22,
+      "column": "T(X)",
+      "hm": 0.3624613743874677,
+      "printed": "3.63E-01"
+     },
+     {
+      "ulp": 0.5386256125322619,
+      "row": 22,
+      "column": "BC50",
+      "hm": 0.3624613743874677,
+      "printed": "3.63E-01"
+     },
+     {
+      "ulp": 0.5375877017188557,
+      "row": 34,
+      "column": "T(B)",
+      "hm": 0.8734624122982811,
+      "printed": "8.74E-01"
+     },
+     {
+      "ulp": 0.5360788773980107,
+      "row": 10,
+      "column": "T(X)",
+      "hm": 0.249463921122602,
+      "printed": "2.50E-01"
+     }
+    ],
+    "warnings": []
+   },
+   "r09b-spec-d-x": {
+    "cells": 550,
+    "within_half_ulp": 535.0,
+    "within_one_ulp": 550.0,
+    "reproduce": 0.0,
+    "worst": [
+     {
+      "ulp": 0.5494769788864234,
+      "row": 38,
+      "column": "[D]",
+      "hm": 0.018245052302111358,
+      "printed": "1.83E-02"
+     },
+     {
+      "ulp": 0.548430476353997,
+      "row": 2,
+      "column": "T(Q)",
+      "hm": 0.0109451569523646,
+      "printed": "1.10E-02"
+     },
+     {
+      "ulp": 0.548430476353997,
+      "row": 2,
+      "column": "BC50",
+      "hm": 0.0109451569523646,
+      "printed": "1.10E-02"
+     },
+     {
+      "ulp": 0.5468871529614762,
+      "row": 12,
+      "column": "[Q]",
+      "hm": 0.0009894531128470385,
+      "printed": "9.90E-04"
+     },
+     {
+      "ulp": 0.5440299298038465,
+      "row": 49,
+      "column": "T(D)",
+      "hm": 0.7484559700701962,
+      "printed": "7.49E-01"
+     }
+    ],
+    "warnings": []
+   },
+   "r09b-spec-d-q": {
+    "cells": 550,
+    "within_half_ulp": 539.0,
+    "within_one_ulp": 550.0,
+    "reproduce": 1.0,
+    "worst": [
+     {
+      "ulp": 0.5438865489909572,
+      "row": 19,
+      "column": "BC50",
+      "hm": 0.019345611345100905,
+      "printed": "1.94E-02"
+     },
+     {
+      "ulp": 0.5438865489909225,
+      "row": 19,
+      "column": "T(X)",
+      "hm": 0.01934561134510091,
+      "printed": "1.94E-02"
+     },
+     {
+      "ulp": 0.5397020341792786,
+      "row": 4,
+      "column": "T(D)",
+      "hm": 0.0011446029796582072,
+      "printed": "1.15E-03"
+     },
+     {
+      "ulp": 0.5381762409461783,
+      "row": 13,
+      "column": "[Q]",
+      "hm": 0.0010546182375905382,
+      "printed": "1.06E-03"
+     },
+     {
+      "ulp": 0.5371352232970764,
+      "row": 13,
+      "column": "[X]",
+      "hm": 0.000839462864776703,
+      "printed": "8.40E-04"
+     }
+    ],
+    "warnings": []
+   }
+  },
+  "r09a": {
+   "BC50_0_receptor1_TMA1": {
+    "hm": 0.010336866856717322,
+    "printed": "1.03E-02",
+    "pass": true
+   },
+   "BC50_0_receptor2_TMA1": {
+    "hm": 0.0006661644188692406,
+    "printed": "6.7E-04",
+    "pass": true
+   },
+   "ratio_TMA1_min": {
+    "hm": 15.51699034641218,
+    "printed": "15.4",
+    "pass": false
+   },
+   "ratio_TMA1_max": {
+    "hm": 15.51699034641234,
+    "printed": "15.4",
+    "pass": false
+   },
+   "ratio_neutral_max": {
+    "hm": 16.481334134102053,
+    "printed": "16.5",
+    "pass": true
+   },
+   "ratio_neutral_x0": {
+    "hm": 4.640084875805741,
+    "printed": "4.6",
+    "pass": true
+   },
+   "ratio_neutral_argmax_x": 0.5,
+   "BC50_0_receptor1_neutral": 0.0011028443007310216,
+   "BC50_0_receptor2_neutral": 0.00023767761371811438,
+   "warnings": {
+    "r09a-r1-5sp": {
+     "fixed": [],
+     "neutral": []
+    },
+    "r09a-p2-058": {
+     "fixed": [],
+     "neutral": []
+    }
+   }
+  },
+  "r09b": {
+   "X vs R": {
+    "hm": 0.004987887026384334,
+    "printed": "5.0E-03",
+    "pass": true,
+    "warnings": [
+     "species multinuclear in the bound analyte present (R2X): their weight in BC50 depends on x_A and on T_B, and BC50^0 ignores them (R09a, note 18)"
+    ]
+   },
+   "X vs D": {
+    "hm": 0.010504114271112301,
+    "printed": "1.05E-02",
+    "pass": true,
+    "warnings": []
+   },
+   "Q vs B": {
+    "hm": 0.19469837833912332,
+    "printed": "1.95E-01",
+    "pass": true,
+    "warnings": []
+   },
+   "Q vs D": {
+    "hm": 0.011874086356557723,
+    "printed": "1.19E-02",
+    "pass": true,
+    "warnings": []
+   }
+  }
+ },
+ "article": {
+  "tables": {
+   "r09b-spec-r": {
+    "cells": 550,
+    "within_half_ulp": 319.0,
+    "within_one_ulp": 473.0,
+    "reproduce": 0.0,
+    "worst": [
+     {
+      "ulp": 2.2000711627232494,
+      "row": 48,
+      "column": "T(Q)",
+      "hm": 0.6842000711627233,
+      "printed": "6.82E-01"
+     },
+     {
+      "ulp": 2.2000711627231384,
+      "row": 48,
+      "column": "BC50",
+      "hm": 0.6842000711627232,
+      "printed": "6.82E-01"
+     },
+     {
+      "ulp": 2.0634252713157273,
+      "row": 48,
+      "column": "[Q]",
+      "hm": 0.058406342527131574,
+      "printed": "5.82E-02"
+     },
+     {
+      "ulp": 1.9796431201418718,
+      "row": 43,
+      "column": "T(Q)",
+      "hm": 0.08299796431201419,
+      "printed": "8.28E-02"
+     },
+     {
+      "ulp": 1.9796431201418718,
+      "row": 43,
+      "column": "BC50",
+      "hm": 0.08299796431201419,
+      "printed": "8.28E-02"
+     }
+    ],
+    "warnings": [
+     "species multinuclear in the bound analyte present (R2X): their weight in BC50 depends on x_A and on T_B, and BC50^0 ignores them (R09a, note 18)"
+    ]
+   },
+   "r09b-spec-b": {
+    "cells": 500,
+    "within_half_ulp": 467.0,
+    "within_one_ulp": 500.0,
+    "reproduce": 0.0,
+    "worst": [
+     {
+      "ulp": 0.7527218707455151,
+      "row": 16,
+      "column": "[X]",
+      "hm": 0.007242472781292545,
+      "printed": "7.25E-03"
+     },
+     {
+      "ulp": 0.7361543009801185,
+      "row": 20,
+      "column": "[X]",
+      "hm": 0.008262638456990198,
+      "printed": "8.27E-03"
+     },
+     {
+      "ulp": 0.6956744092062074,
+      "row": 8,
+      "column": "[X]",
+      "hm": 0.005493043255907938,
+      "printed": "5.50E-03"
+     },
+     {
+      "ulp": 0.6392927949997254,
+      "row": 6,
+      "column": "[X]",
+      "hm": 0.005093607072050003,
+      "printed": "5.10E-03"
+     },
+     {
+      "ulp": 0.6318110615408101,
+      "row": 44,
+      "column": "[X]",
+      "hm": 0.02493681889384592,
+      "printed": "2.50E-02"
+     }
+    ],
+    "warnings": []
+   },
+   "r09b-spec-d-x": {
+    "cells": 550,
+    "within_half_ulp": 470.0,
+    "within_one_ulp": 550.0,
+    "reproduce": 0.0,
+    "worst": [
+     {
+      "ulp": 0.9891298706289631,
+      "row": 44,
+      "column": "T(D)",
+      "hm": 0.0927989129870629,
+      "printed": "9.27E-02"
+     },
+     {
+      "ulp": 0.9788512998115673,
+      "row": 43,
+      "column": "T(Q)",
+      "hm": 0.07919788512998116,
+      "printed": "7.91E-02"
+     },
+     {
+      "ulp": 0.9788512998112897,
+      "row": 43,
+      "column": "BC50",
+      "hm": 0.07919788512998113,
+      "printed": "7.91E-02"
+     },
+     {
+      "ulp": 0.8912759771884105,
+      "row": 5,
+      "column": "x(QX)",
+      "hm": 0.8271891275977188,
+      "printed": "0.8271"
+     },
+     {
+      "ulp": 0.8912759771881329,
+      "row": 5,
+      "column": "x(X)",
+      "hm": 0.0728108724022812,
+      "printed": "0.0729"
+     }
+    ],
+    "warnings": []
+   },
+   "r09b-spec-d-q": {
+    "cells": 550,
+    "within_half_ulp": 458.0,
+    "within_one_ulp": 549.0,
+    "reproduce": 0.0,
+    "worst": [
+     {
+      "ulp": 1.0071190352224646,
+      "row": 43,
+      "column": "T(D)",
+      "hm": 0.08980071190352225,
+      "printed": "8.97E-02"
+     },
+     {
+      "ulp": 0.9192485574726141,
+      "row": 26,
+      "column": "[D]",
+      "hm": 0.006519192485574726,
+      "printed": "6.51E-03"
+     },
+     {
+      "ulp": 0.9152378189897226,
+      "row": 42,
+      "column": "T(D)",
+      "hm": 0.07579152378189898,
+      "printed": "7.57E-02"
+     },
+     {
+      "ulp": 0.9140840560238963,
+      "row": 31,
+      "column": "[D]",
+      "hm": 0.00990914084056024,
+      "printed": "9.90E-03"
+     },
+     {
+      "ulp": 0.8702117589287628,
+      "row": 41,
+      "column": "T(D)",
+      "hm": 0.06508702117589288,
+      "printed": "6.50E-02"
+     }
+    ],
+    "warnings": []
+   }
+  },
+  "r09a": {
+   "BC50_0_receptor1_TMA1": {
+    "hm": 0.010353802011551063,
+    "printed": "1.03E-02",
+    "pass": false
+   },
+   "BC50_0_receptor2_TMA1": {
+    "hm": 0.0006596216237667274,
+    "printed": "6.7E-04",
+    "pass": false
+   },
+   "ratio_TMA1_min": {
+    "hm": 15.696577611307346,
+    "printed": "15.4",
+    "pass": false
+   },
+   "ratio_TMA1_max": {
+    "hm": 15.696577611307506,
+    "printed": "15.4",
+    "pass": false
+   },
+   "ratio_neutral_max": {
+    "hm": 16.677025819994657,
+    "printed": "16.5",
+    "pass": false
+   },
+   "ratio_neutral_x0": {
+    "hm": 4.665216863237693,
+    "printed": "4.6",
+    "pass": false
+   },
+   "ratio_neutral_argmax_x": 0.5,
+   "BC50_0_receptor1_neutral": 0.00110305120491879,
+   "BC50_0_receptor2_neutral": 0.0002364415711541574,
+   "warnings": {
+    "r09a-r1-5sp": {
+     "fixed": [],
+     "neutral": []
+    },
+    "r09a-p2-058": {
+     "fixed": [],
+     "neutral": []
+    }
+   }
+  },
+  "r09b": {
+   "X vs R": {
+    "hm": 0.004993775448703737,
+    "printed": "5.0E-03",
+    "pass": true,
+    "warnings": [
+     "species multinuclear in the bound analyte present (R2X): their weight in BC50 depends on x_A and on T_B, and BC50^0 ignores them (R09a, note 18)"
+    ]
+   },
+   "X vs D": {
+    "hm": 0.010512216222583916,
+    "printed": "1.05E-02",
+    "pass": true,
+    "warnings": []
+   },
+   "Q vs B": {
+    "hm": 0.19475871944862716,
+    "printed": "1.95E-01",
+    "pass": true,
+    "warnings": []
+   },
+   "Q vs D": {
+    "hm": 0.011881844547700885,
+    "printed": "1.19E-02",
+    "pass": true,
+    "warnings": []
+   }
+  }
+ }
+}
