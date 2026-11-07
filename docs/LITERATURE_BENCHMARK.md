@@ -667,4 +667,4 @@ Pruebas: `tests/test_literature_benchmark.py` (casos, nivel 0 y línea base),
 Tiempo total del banco ≈ 50 s: corre completo en cada push (workflow `tests`), sin subconjunto
 de humo. Los PDF no están versionados (`git ls-files '*.pdf'` vacío antes de cada push).
 
-Ejecución de CI: _pendiente_.
+Ejecución de CI (workflow `tests`, commit `07b8f58`, los cuatro trabajos en verde: Linux y Windows, Python 3.11 y 3.14; el banco corre en los cuatro, salvo la prueba de GUI en Windows): <https://github.com/PJGV333/GUI_HM_fit/actions/runs/42406298647>. Ejecución anterior, sin la etapa E: <https://github.com/PJGV333/GUI_HM_fit/actions/runs/42404783942>.
