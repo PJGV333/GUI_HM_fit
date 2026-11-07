@@ -246,8 +246,29 @@ def write_results_xlsx(
                     nonzero_rows = np.linalg.norm(Xbase, axis=1) > 0.0
                     goodX = finite_rows & nonzero_rows
                     mask = np.isfinite(dq_arr) & np.isfinite(D_cols) & (np.abs(D_cols) > 0)
+                    # Same fractions as the fit (project_coeffs_block_onp_frac): with a
+                    # per-signal stoichiometry map the signal is normalised by the total of
+                    # its own reagent, D = C @ S_j, and each species weighted by S_j.
+                    S_map = None
+                    S_raw = export_data.get("stoichiometry_map")
+                    if S_raw is not None and len(S_raw):
+                        S_try = np.asarray(S_raw, dtype=float)
+                        if S_try.shape == (Xbase.shape[1], dq_arr.shape[1]):
+                            S_map = S_try
 
                     for j in range(dq_arr.shape[1]):
+                        if S_map is not None:
+                            S_j = S_map[:, j]
+                            D = Xbase @ S_j
+                            mj = np.isfinite(dq_arr[:, j]) & goodX & np.isfinite(D) & (np.abs(D) > 1e-12)
+                            if int(mj.sum()) < 2:
+                                continue
+                            Xj = (Xbase[mj, :] * S_j[None, :]) / D[mj][:, None]
+                            y = dq_arr[mj, j]
+                            coef_vec, *_ = np.linalg.lstsq(Xj, y, rcond=1e-10)
+                            coef_vec = np.where(S_j > 0, coef_vec, np.nan)
+                            coef_mat[:, j] = coef_vec
+                            continue
                         D = D_cols[:, j]
                         mj = mask[:, j] & goodX & np.isfinite(D) & (np.abs(D) > 0)
                         if int(mj.sum()) < 2:
