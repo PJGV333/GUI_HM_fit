@@ -152,19 +152,21 @@ CASES: dict[str, dict[str, Any]] = {
                              "say which."]),
 }
 
-# Speciation tables (stage D). columns as printed.
+# Speciation tables (stage D), columns as printed. ``analysed`` is the reagent A whose
+# bound fraction is the x axis and whose total is BC50 (A = X in "X vs R"); ``bound`` is
+# the analyte B of which 50 % is bound; ``ancillary`` is C with T_C = T_A.
 SPEC_CASES: dict[str, dict[str, Any]] = {
     "r09b-spec-r": dict(source="R09b", pages=["S20"], results_case="r09b-r-qx", reagents=["R", "Q", "X"],
-                        analysed="R", bound="X", ancillary="Q",
+                        analysed="X", bound="R", ancillary="Q",
                         description="R + QX: BC50 (X vs R) and species distribution, T_Q = T_X"),
     "r09b-spec-b": dict(source="R09b", pages=["S21"], results_case="r09b-b-qx", reagents=["B", "Q", "X"],
-                        analysed="B", bound="Q", ancillary="X",
+                        analysed="Q", bound="B", ancillary="X",
                         description="B + QX: BC50 (Q vs B) and species distribution, T_X = T_Q"),
     "r09b-spec-d-x": dict(source="R09b", pages=["S22"], results_case="r09b-d-qx", reagents=["D", "Q", "X"],
-                          analysed="D", bound="X", ancillary="Q",
+                          analysed="X", bound="D", ancillary="Q",
                           description="D + QX: BC50 (X vs D) and species distribution, T_Q = T_X"),
     "r09b-spec-d-q": dict(source="R09b", pages=["S23"], results_case="r09b-d-qx", reagents=["D", "Q", "X"],
-                          analysed="D", bound="Q", ancillary="X",
+                          analysed="Q", bound="D", ancillary="X",
                           description="D + QX: BC50 (Q vs D) and species distribution, T_X = T_Q"),
 }
 

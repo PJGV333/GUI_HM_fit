@@ -18,8 +18,8 @@
   "Q",
   "X"
  ],
- "analysed": "B",
- "bound": "Q",
+ "analysed": "Q",
+ "bound": "B",
  "ancillary": "X",
  "columns": [
   "xbound(Q)",

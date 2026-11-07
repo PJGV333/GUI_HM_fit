@@ -1,0 +1,7526 @@
+{
+ "r09b-spec-b": {
+  "source": {
+   "article": "R09b",
+   "citation": "S. Roelens, A. Vacca, O. Francesconi, C. Venturi, \"Ion-Pair Binding: Is Binding Both Binding Better?\", Chem. Eur. J. 2009, 15, 8296-8302",
+   "doi": "10.1002/chem.200900342",
+   "si_pages": [
+    "S21"
+   ],
+   "constants_from": "r09b-b-qx",
+   "notice": "Data belong to their authors (see SOURCES.md); used only for the internal validation of HM fit."
+  },
+  "results": {
+   "si/Newton-Raphson": {
+    "constants": "si",
+    "algorithm": "Newton-Raphson",
+    "n_rows": 50,
+    "n_pass": 39.0,
+    "worst": {
+     "conc_rel": 0.008651900664706003,
+     "frac_abs": 0.001028784822397294,
+     "xbound_abs": 0.001015786192062551
+    },
+    "rows": [
+     {
+      "row": 0,
+      "xbound": 0.0,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": NaN
+     },
+     {
+      "row": 1,
+      "xbound": 0.02,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4995848478351644
+     },
+     {
+      "row": 2,
+      "xbound": 0.04,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49987082968686997
+     },
+     {
+      "row": 3,
+      "xbound": 0.06,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999167069677768
+     },
+     {
+      "row": 4,
+      "xbound": 0.08,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49977276725204633
+     },
+     {
+      "row": 5,
+      "xbound": 0.1,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5006109188189374
+     },
+     {
+      "row": 6,
+      "xbound": 0.12,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000181353772138
+     },
+     {
+      "row": 7,
+      "xbound": 0.14,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5003258684025735
+     },
+     {
+      "row": 8,
+      "xbound": 0.16,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5003723680401088
+     },
+     {
+      "row": 9,
+      "xbound": 0.18,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000479564083922
+     },
+     {
+      "row": 10,
+      "xbound": 0.2,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5005780443112642
+     },
+     {
+      "row": 11,
+      "xbound": 0.22,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.7692701187915698,
+        0.7698,
+        0.0005298812084302273,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.499540920332045
+     },
+     {
+      "row": 12,
+      "xbound": 0.24,
+      "pass": false,
+      "fails": {
+       "x(BQX)": [
+        0.2262374510329494,
+        0.2256,
+        0.0006374510329494043,
+        0.0
+       ],
+       "x(QX)": [
+        0.7497354339194341,
+        0.7504,
+        0.0006645660805658649,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5002500709000902
+     },
+     {
+      "row": 13,
+      "xbound": 0.26,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49992458296821796
+     },
+     {
+      "row": 14,
+      "xbound": 0.28,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001315497926001
+     },
+     {
+      "row": 15,
+      "xbound": 0.3,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49983483034020026
+     },
+     {
+      "row": 16,
+      "xbound": 0.32,
+      "pass": false,
+      "fails": {
+       "x(BQX)": [
+        0.3037140444302518,
+        0.3031,
+        0.0006140444302518144,
+        0.0
+       ],
+       "x(QX)": [
+        0.6718063583719727,
+        0.6725,
+        0.0006936416280273194,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49954254361021366
+     },
+     {
+      "row": 17,
+      "xbound": 0.34,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002629675412467
+     },
+     {
+      "row": 18,
+      "xbound": 0.36,
+      "pass": false,
+      "fails": {
+       "[B]": [
+        0.1133892472846558,
+        0.114,
+        0.0053574799591596944,
+        0.0
+       ],
+       "x(QX)": [
+        0.6338125397818656,
+        0.6333,
+        0.0005125397818656063,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5004878974270406
+     },
+     {
+      "row": 19,
+      "xbound": 0.38,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49976508615204357
+     },
+     {
+      "row": 20,
+      "xbound": 0.4,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004595080940761
+     },
+     {
+      "row": 21,
+      "xbound": 0.42,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002284475825459
+     },
+     {
+      "row": 22,
+      "xbound": 0.44,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004571595268846
+     },
+     {
+      "row": 23,
+      "xbound": 0.46,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4998219611302637
+     },
+     {
+      "row": 24,
+      "xbound": 0.48,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.5150973469361642,
+        0.5156,
+        0.0005026530638357896,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4996336225839064
+     },
+     {
+      "row": 25,
+      "xbound": 0.5,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4998739717699145
+     },
+     {
+      "row": 26,
+      "xbound": 0.52,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000979679047264
+     },
+     {
+      "row": 27,
+      "xbound": 0.54,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5003166830726273
+     },
+     {
+      "row": 28,
+      "xbound": 0.56,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4997776179006068
+     },
+     {
+      "row": 29,
+      "xbound": 0.58,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49999449913185484
+     },
+     {
+      "row": 30,
+      "xbound": 0.6,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002001095215517
+     },
+     {
+      "row": 31,
+      "xbound": 0.62,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4997206396713888
+     },
+     {
+      "row": 32,
+      "xbound": 0.64,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002458588199863
+     },
+     {
+      "row": 33,
+      "xbound": 0.66,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.500111172578312
+     },
+     {
+      "row": 34,
+      "xbound": 0.68,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4996931347601762
+     },
+     {
+      "row": 35,
+      "xbound": 0.7,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001559136252399
+     },
+     {
+      "row": 36,
+      "xbound": 0.72,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4995102813444684
+     },
+     {
+      "row": 37,
+      "xbound": 0.74,
+      "pass": false,
+      "fails": {
+       "[B]": [
+        0.5839001076123223,
+        0.587,
+        0.005280906963675891,
+        0.0
+       ],
+       "x(BQX)": [
+        0.7205882633604591,
+        0.7215,
+        0.0009117366395409165,
+        0.0
+       ],
+       "x(QX)": [
+        0.2595664927254418,
+        0.2587,
+        0.0008664927254418142,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5009400789638283
+     },
+     {
+      "row": 38,
+      "xbound": 0.76,
+      "pass": false,
+      "fails": {
+       "x(BQX)": [
+        0.7425734135207994,
+        0.7419,
+        0.0006734135207994152,
+        0.0
+       ],
+       "x(QX)": [
+        0.23815337245931337,
+        0.2388,
+        0.0006466275406866451,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4993763474406898
+     },
+     {
+      "row": 39,
+      "xbound": 0.78,
+      "pass": false,
+      "fails": {
+       "[Q]": [
+        0.0009512057139092217,
+        0.000956,
+        0.005014943609600753,
+        0.0
+       ],
+       "[B]": [
+        0.7366261767656732,
+        0.732,
+        0.006319913614307726,
+        0.0
+       ],
+       "x(BQX)": [
+        0.763389695269527,
+        0.7624,
+        0.00098969526952708,
+        0.0
+       ],
+       "x(QX)": [
+        0.2179712151776027,
+        0.219,
+        0.001028784822397294,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4988937573022767
+     },
+     {
+      "row": 40,
+      "xbound": 0.8,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49929739017077096
+     },
+     {
+      "row": 41,
+      "xbound": 0.82,
+      "pass": false,
+      "fails": {
+       "x(BQX)": [
+        0.8041061525125415,
+        0.8036,
+        0.0005061525125414912,
+        0.0
+       ],
+       "x(QX)": [
+        0.17871236194078952,
+        0.1793,
+        0.0005876380592104713,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4992776391268837
+     },
+     {
+      "row": 42,
+      "xbound": 0.84,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5009339185561805
+     },
+     {
+      "row": 43,
+      "xbound": 0.86,
+      "pass": false,
+      "fails": {
+       "[B]": [
+        1.2768194512870317,
+        1.27,
+        0.005369646682702012,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4992864896994573
+     },
+     {
+      "row": 44,
+      "xbound": 0.88,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49931650530654526
+     },
+     {
+      "row": 45,
+      "xbound": 0.9,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004579394414608
+     },
+     {
+      "row": 46,
+      "xbound": 0.92,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49943453653097625
+     },
+     {
+      "row": 47,
+      "xbound": 0.94,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5008846326145989
+     },
+     {
+      "row": 48,
+      "xbound": 0.96,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5010303775213646
+     },
+     {
+      "row": 49,
+      "xbound": 0.98,
+      "pass": false,
+      "fails": {
+       "[Q]": [
+        0.00026596170053153393,
+        0.000264,
+        0.007430683831567864,
+        0.0
+       ],
+       "[B]": [
+        10.21088542315353,
+        10.3,
+        0.008651900664706003,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.501908028138853
+     }
+    ]
+   },
+   "si/Levenberg-Marquardt": {
+    "constants": "si",
+    "algorithm": "Levenberg-Marquardt",
+    "n_rows": 50,
+    "n_pass": 39.0,
+    "worst": {
+     "conc_rel": 0.008651900664706336,
+     "frac_abs": 0.0010287848224027063,
+     "xbound_abs": 0.0010157861920433442
+    },
+    "rows": [
+     {
+      "row": 0,
+      "xbound": 0.0,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": NaN
+     },
+     {
+      "row": 1,
+      "xbound": 0.02,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4995848479919467
+     },
+     {
+      "row": 2,
+      "xbound": 0.04,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49987083002960175
+     },
+     {
+      "row": 3,
+      "xbound": 0.06,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49991670769307006
+     },
+     {
+      "row": 4,
+      "xbound": 0.08,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49977276725204534
+     },
+     {
+      "row": 5,
+      "xbound": 0.1,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5006109188189339
+     },
+     {
+      "row": 6,
+      "xbound": 0.12,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000181353772059
+     },
+     {
+      "row": 7,
+      "xbound": 0.14,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5003258684025612
+     },
+     {
+      "row": 8,
+      "xbound": 0.16,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5003723680400893
+     },
+     {
+      "row": 9,
+      "xbound": 0.18,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000479564083623
+     },
+     {
+      "row": 10,
+      "xbound": 0.2,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5005780443112183
+     },
+     {
+      "row": 11,
+      "xbound": 0.22,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.7692701187915288,
+        0.7698,
+        0.0005298812084711946,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4995409203319905
+     },
+     {
+      "row": 12,
+      "xbound": 0.24,
+      "pass": false,
+      "fails": {
+       "x(BQX)": [
+        0.22623745103293977,
+        0.2256,
+        0.0006374510329397731,
+        0.0
+       ],
+       "x(QX)": [
+        0.7497354339193981,
+        0.7504,
+        0.0006645660806018361,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5002500709000687
+     },
+     {
+      "row": 13,
+      "xbound": 0.26,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49992458296839376
+     },
+     {
+      "row": 14,
+      "xbound": 0.28,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001315497936084
+     },
+     {
+      "row": 15,
+      "xbound": 0.3,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49983483034410187
+     },
+     {
+      "row": 16,
+      "xbound": 0.32,
+      "pass": false,
+      "fails": {
+       "x(BQX)": [
+        0.30371404443928474,
+        0.3031,
+        0.0006140444392847555,
+        0.0
+       ],
+       "x(QX)": [
+        0.6718063583830126,
+        0.6725,
+        0.0006936416169873727,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.499542543624792
+     },
+     {
+      "row": 17,
+      "xbound": 0.34,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002629675924984
+     },
+     {
+      "row": 18,
+      "xbound": 0.36,
+      "pass": false,
+      "fails": {
+       "[B]": [
+        0.11338924728448453,
+        0.114,
+        0.005357479960662048,
+        0.0
+       ],
+       "x(QX)": [
+        0.6338125397804381,
+        0.6333,
+        0.0005125397804380816,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.500487897425178
+     },
+     {
+      "row": 19,
+      "xbound": 0.38,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49976508614921666
+     },
+     {
+      "row": 20,
+      "xbound": 0.4,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004595080894743
+     },
+     {
+      "row": 21,
+      "xbound": 0.42,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002284475753094
+     },
+     {
+      "row": 22,
+      "xbound": 0.44,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004571595153278
+     },
+     {
+      "row": 23,
+      "xbound": 0.46,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49982196111243077
+     },
+     {
+      "row": 24,
+      "xbound": 0.48,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.5150973469140149,
+        0.5156,
+        0.000502653085985072,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4996336225551524
+     },
+     {
+      "row": 25,
+      "xbound": 0.5,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4998739717232796
+     },
+     {
+      "row": 26,
+      "xbound": 0.52,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000979678273207
+     },
+     {
+      "row": 27,
+      "xbound": 0.54,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5003166830756496
+     },
+     {
+      "row": 28,
+      "xbound": 0.56,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.499777617918355
+     },
+     {
+      "row": 29,
+      "xbound": 0.58,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49999449913185484
+     },
+     {
+      "row": 30,
+      "xbound": 0.6,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002001095215517
+     },
+     {
+      "row": 31,
+      "xbound": 0.62,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49972063967138886
+     },
+     {
+      "row": 32,
+      "xbound": 0.64,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002458588199863
+     },
+     {
+      "row": 33,
+      "xbound": 0.66,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001111725783164
+     },
+     {
+      "row": 34,
+      "xbound": 0.68,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4996931347602462
+     },
+     {
+      "row": 35,
+      "xbound": 0.7,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.500155913626438
+     },
+     {
+      "row": 36,
+      "xbound": 0.72,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49951028136232123
+     },
+     {
+      "row": 37,
+      "xbound": 0.74,
+      "pass": false,
+      "fails": {
+       "[B]": [
+        0.5839001076123219,
+        0.587,
+        0.005280906963676446,
+        0.0
+       ],
+       "x(BQX)": [
+        0.7205882633604579,
+        0.7215,
+        0.0009117366395421378,
+        0.0
+       ],
+       "x(QX)": [
+        0.25956649272544086,
+        0.2587,
+        0.0008664927254408705,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5009400789638274
+     },
+     {
+      "row": 38,
+      "xbound": 0.76,
+      "pass": false,
+      "fails": {
+       "x(BQX)": [
+        0.7425734135207955,
+        0.7419,
+        0.0006734135207955294,
+        0.0
+       ],
+       "x(QX)": [
+        0.2381533724593117,
+        0.2388,
+        0.0006466275406883104,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4993763474406872
+     },
+     {
+      "row": 39,
+      "xbound": 0.78,
+      "pass": false,
+      "fails": {
+       "[Q]": [
+        0.0009512057139092049,
+        0.000956,
+        0.005014943609618405,
+        0.0
+       ],
+       "[B]": [
+        0.736626176765673,
+        0.732,
+        0.006319913614307282,
+        0.0
+       ],
+       "x(BQX)": [
+        0.7633896952695082,
+        0.7624,
+        0.0009896952695082062,
+        0.0
+       ],
+       "x(QX)": [
+        0.2179712151775973,
+        0.219,
+        0.0010287848224027063,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4988937573022644
+     },
+     {
+      "row": 40,
+      "xbound": 0.8,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4992973901707973
+     },
+     {
+      "row": 41,
+      "xbound": 0.82,
+      "pass": false,
+      "fails": {
+       "x(BQX)": [
+        0.804106152523047,
+        0.8036,
+        0.0005061525230469766,
+        0.0
+       ],
+       "x(QX)": [
+        0.17871236194312473,
+        0.1793,
+        0.0005876380568752559,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49927763913334156
+     },
+     {
+      "row": 42,
+      "xbound": 0.84,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5009339185546674
+     },
+     {
+      "row": 43,
+      "xbound": 0.86,
+      "pass": false,
+      "fails": {
+       "[B]": [
+        1.2768194512869542,
+        1.27,
+        0.0053696466826411715,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49928648969139094
+     },
+     {
+      "row": 44,
+      "xbound": 0.88,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49931650530690613
+     },
+     {
+      "row": 45,
+      "xbound": 0.9,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004579394407017
+     },
+     {
+      "row": 46,
+      "xbound": 0.92,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4994345365309868
+     },
+     {
+      "row": 47,
+      "xbound": 0.94,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5008846326145971
+     },
+     {
+      "row": 48,
+      "xbound": 0.96,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5010303775213637
+     },
+     {
+      "row": 49,
+      "xbound": 0.98,
+      "pass": false,
+      "fails": {
+       "[Q]": [
+        0.00026596170053153626,
+        0.000264,
+        0.007430683831576745,
+        0.0
+       ],
+       "[B]": [
+        10.210885423153526,
+        10.3,
+        0.008651900664706336,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5019080281388523
+     }
+    ]
+   },
+   "si/rounding": {
+    "failing_rows": 11,
+    "explained_by_input_rounding": 11,
+    "unexplained": [],
+    "n_perturbations": 2000
+   },
+   "article/Newton-Raphson": {
+    "constants": "article",
+    "algorithm": "Newton-Raphson",
+    "n_rows": 50,
+    "n_pass": 39.0,
+    "worst": {
+     "conc_rel": 0.008647304319636895,
+     "frac_abs": 0.0009947355630648136,
+     "xbound_abs": 0.0009816976512190267
+    },
+    "rows": [
+     {
+      "row": 0,
+      "xbound": 0.0,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": NaN
+     },
+     {
+      "row": 1,
+      "xbound": 0.02,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49951205737848653
+     },
+     {
+      "row": 2,
+      "xbound": 0.04,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4997997502015266
+     },
+     {
+      "row": 3,
+      "xbound": 0.06,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.499847235726071
+     },
+     {
+      "row": 4,
+      "xbound": 0.08,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49970480822907043
+     },
+     {
+      "row": 5,
+      "xbound": 0.1,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.500544395947874
+     },
+     {
+      "row": 6,
+      "xbound": 0.12,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999529878844292
+     },
+     {
+      "row": 7,
+      "xbound": 0.14,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002620468758437
+     },
+     {
+      "row": 8,
+      "xbound": 0.16,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5003098286283373
+     },
+     {
+      "row": 9,
+      "xbound": 0.18,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999866849292222
+     },
+     {
+      "row": 10,
+      "xbound": 0.2,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5005179907641288
+     },
+     {
+      "row": 11,
+      "xbound": 0.22,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.769297749085292,
+        0.7698,
+        0.0005022509147080134,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49948211358868644
+     },
+     {
+      "row": 12,
+      "xbound": 0.24,
+      "pass": false,
+      "fails": {
+       "x(BQX)": [
+        0.22622024110028516,
+        0.2256,
+        0.0006202411002851627,
+        0.0
+       ],
+       "x(QX)": [
+        0.749764618920213,
+        0.7504,
+        0.0006353810797870008,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5001924668596982
+     },
+     {
+      "row": 13,
+      "xbound": 0.26,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.499868128918213
+     },
+     {
+      "row": 14,
+      "xbound": 0.28,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000762416802749
+     },
+     {
+      "row": 15,
+      "xbound": 0.3,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4997806877490896
+     },
+     {
+      "row": 16,
+      "xbound": 0.32,
+      "pass": false,
+      "fails": {
+       "x(BQX)": [
+        0.3036919715685041,
+        0.3031,
+        0.0005919715685041016,
+        0.0
+       ],
+       "x(QX)": [
+        0.6718412025503433,
+        0.6725,
+        0.0006587974496566895,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49948963527839335
+     },
+     {
+      "row": 17,
+      "xbound": 0.34,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002111860105658
+     },
+     {
+      "row": 18,
+      "xbound": 0.36,
+      "pass": false,
+      "fails": {
+       "[B]": [
+        0.11340074334039936,
+        0.114,
+        0.005256637364917882,
+        0.0
+       ],
+       "x(QX)": [
+        0.633849596246052,
+        0.6333,
+        0.0005495962460519976,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.500437254009703
+     },
+     {
+      "row": 19,
+      "xbound": 0.38,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4997156671436463
+     },
+     {
+      "row": 20,
+      "xbound": 0.4,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004112397775764
+     },
+     {
+      "row": 21,
+      "xbound": 0.42,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001814014714149
+     },
+     {
+      "row": 22,
+      "xbound": 0.44,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004112912916046
+     },
+     {
+      "row": 23,
+      "xbound": 0.46,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49977733210984004
+     },
+     {
+      "row": 24,
+      "xbound": 0.48,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49959026443700094
+     },
+     {
+      "row": 25,
+      "xbound": 0.5,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49983182343806537
+     },
+     {
+      "row": 26,
+      "xbound": 0.52,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000570991453478
+     },
+     {
+      "row": 27,
+      "xbound": 0.54,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002770769552796
+     },
+     {
+      "row": 28,
+      "xbound": 0.56,
+      "pass": false,
+      "fails": {
+       "[X]": [
+        0.010844269891190299,
+        0.0109,
+        0.005112854019238666,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.499739358453243
+     },
+     {
+      "row": 29,
+      "xbound": 0.58,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49995756891148074
+     },
+     {
+      "row": 30,
+      "xbound": 0.6,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001645195503792
+     },
+     {
+      "row": 31,
+      "xbound": 0.62,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49968647752228207
+     },
+     {
+      "row": 32,
+      "xbound": 0.64,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002130671706917
+     },
+     {
+      "row": 33,
+      "xbound": 0.66,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.500079840601516
+     },
+     {
+      "row": 34,
+      "xbound": 0.68,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4996633199244424
+     },
+     {
+      "row": 35,
+      "xbound": 0.7,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001275746420053
+     },
+     {
+      "row": 36,
+      "xbound": 0.72,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49948354567348996
+     },
+     {
+      "row": 37,
+      "xbound": 0.74,
+      "pass": false,
+      "fails": {
+       "[B]": [
+        0.5839296949920225,
+        0.587,
+        0.005230502568956519,
+        0.0
+       ],
+       "x(BQX)": [
+        0.7205623341157447,
+        0.7215,
+        0.0009376658842553676,
+        0.0
+       ],
+       "x(QX)": [
+        0.2596037701150339,
+        0.2587,
+        0.0009037701150338973,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5009147906051107
+     },
+     {
+      "row": 38,
+      "xbound": 0.76,
+      "pass": false,
+      "fails": {
+       "x(BQX)": [
+        0.7425487071526823,
+        0.7419,
+        0.0006487071526822819,
+        0.0
+       ],
+       "x(QX)": [
+        0.23818911449529534,
+        0.2388,
+        0.0006108855047046724,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4993528586143792
+     },
+     {
+      "row": 39,
+      "xbound": 0.78,
+      "pass": false,
+      "fails": {
+       "[B]": [
+        0.7366581859055239,
+        0.732,
+        0.006363641947437104,
+        0.0
+       ],
+       "x(BQX)": [
+        0.7633663297537796,
+        0.7624,
+        0.0009663297537796378,
+        0.0
+       ],
+       "x(QX)": [
+        0.2180052644369352,
+        0.219,
+        0.0009947355630648136,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49887198237720726
+     },
+     {
+      "row": 40,
+      "xbound": 0.8,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49927722139691677
+     },
+     {
+      "row": 41,
+      "xbound": 0.82,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.17874246889004491,
+        0.1793,
+        0.0005575311099550728,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49925929684988685
+     },
+     {
+      "row": 42,
+      "xbound": 0.84,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5009173048392701
+     },
+     {
+      "row": 43,
+      "xbound": 0.86,
+      "pass": false,
+      "fails": {
+       "[B]": [
+        1.2768569101961091,
+        1.27,
+        0.005399141886700098,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49927179993131127
+     },
+     {
+      "row": 44,
+      "xbound": 0.88,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49930373931280964
+     },
+     {
+      "row": 45,
+      "xbound": 0.9,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004470882270772
+     },
+     {
+      "row": 46,
+      "xbound": 0.92,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49942576552259144
+     },
+     {
+      "row": 47,
+      "xbound": 0.94,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5008779201242605
+     },
+     {
+      "row": 48,
+      "xbound": 0.96,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5010258270654238
+     },
+     {
+      "row": 49,
+      "xbound": 0.98,
+      "pass": false,
+      "fails": {
+       "[Q]": [
+        0.000265990578085628,
+        0.000264,
+        0.0075400685061666195,
+        0.0
+       ],
+       "[B]": [
+        10.21093276550774,
+        10.3,
+        0.008647304319636895,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5019057187557201
+     }
+    ]
+   },
+   "article/Levenberg-Marquardt": {
+    "constants": "article",
+    "algorithm": "Levenberg-Marquardt",
+    "n_rows": 50,
+    "n_pass": 39.0,
+    "worst": {
+     "conc_rel": 0.00864730431963745,
+     "frac_abs": 0.0009947355630702814,
+     "xbound_abs": 0.0009816976512011522
+    },
+    "rows": [
+     {
+      "row": 0,
+      "xbound": 0.0,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": NaN
+     },
+     {
+      "row": 1,
+      "xbound": 0.02,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4995120575365811
+     },
+     {
+      "row": 2,
+      "xbound": 0.04,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49979975054703213
+     },
+     {
+      "row": 3,
+      "xbound": 0.06,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49984723645704765
+     },
+     {
+      "row": 4,
+      "xbound": 0.08,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4997048082290686
+     },
+     {
+      "row": 5,
+      "xbound": 0.1,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5005443959478704
+     },
+     {
+      "row": 6,
+      "xbound": 0.12,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999529878844223
+     },
+     {
+      "row": 7,
+      "xbound": 0.14,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002620468758305
+     },
+     {
+      "row": 8,
+      "xbound": 0.16,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.500309828628317
+     },
+     {
+      "row": 9,
+      "xbound": 0.18,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999866849291905
+     },
+     {
+      "row": 10,
+      "xbound": 0.2,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5005179907640822
+     },
+     {
+      "row": 11,
+      "xbound": 0.22,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.7692977490852497,
+        0.7698,
+        0.0005022509147503129,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4994821135886329
+     },
+     {
+      "row": 12,
+      "xbound": 0.24,
+      "pass": false,
+      "fails": {
+       "x(BQX)": [
+        0.2262202411002767,
+        0.2256,
+        0.0006202411002766972,
+        0.0
+       ],
+       "x(QX)": [
+        0.7497646189201795,
+        0.7504,
+        0.0006353810798204185,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5001924668596794
+     },
+     {
+      "row": 13,
+      "xbound": 0.26,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49986812891839033
+     },
+     {
+      "row": 14,
+      "xbound": 0.28,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000762416812911
+     },
+     {
+      "row": 15,
+      "xbound": 0.3,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4997806877530274
+     },
+     {
+      "row": 16,
+      "xbound": 0.32,
+      "pass": false,
+      "fails": {
+       "x(BQX)": [
+        0.30369197157762107,
+        0.3031,
+        0.0005919715776210865,
+        0.0
+       ],
+       "x(QX)": [
+        0.6718412025614924,
+        0.6725,
+        0.0006587974385076079,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49948963529310697
+     },
+     {
+      "row": 17,
+      "xbound": 0.34,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002111860622711
+     },
+     {
+      "row": 18,
+      "xbound": 0.36,
+      "pass": false,
+      "fails": {
+       "[B]": [
+        0.11340074334022587,
+        0.114,
+        0.005256637366439776,
+        0.0
+       ],
+       "x(QX)": [
+        0.633849596244604,
+        0.6333,
+        0.0005495962446040448,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5004372540078161
+     },
+     {
+      "row": 19,
+      "xbound": 0.38,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49971566714078375
+     },
+     {
+      "row": 20,
+      "xbound": 0.4,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004112397729142
+     },
+     {
+      "row": 21,
+      "xbound": 0.42,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.500181401464086
+     },
+     {
+      "row": 22,
+      "xbound": 0.44,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004112912798994
+     },
+     {
+      "row": 23,
+      "xbound": 0.46,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49977733209177944
+     },
+     {
+      "row": 24,
+      "xbound": 0.48,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4995902644078854
+     },
+     {
+      "row": 25,
+      "xbound": 0.5,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49983182339085325
+     },
+     {
+      "row": 26,
+      "xbound": 0.52,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000570990669972
+     },
+     {
+      "row": 27,
+      "xbound": 0.54,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002770769583296
+     },
+     {
+      "row": 28,
+      "xbound": 0.56,
+      "pass": false,
+      "fails": {
+       "[X]": [
+        0.010844269891380494,
+        0.0109,
+        0.005112854001789513,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4997393584711488
+     },
+     {
+      "row": 29,
+      "xbound": 0.58,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49995756891148074
+     },
+     {
+      "row": 30,
+      "xbound": 0.6,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001645195503792
+     },
+     {
+      "row": 31,
+      "xbound": 0.62,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49968647752228207
+     },
+     {
+      "row": 32,
+      "xbound": 0.64,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002130671706909
+     },
+     {
+      "row": 33,
+      "xbound": 0.66,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000798406015202
+     },
+     {
+      "row": 34,
+      "xbound": 0.68,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49966331992451424
+     },
+     {
+      "row": 35,
+      "xbound": 0.7,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001275746432148
+     },
+     {
+      "row": 36,
+      "xbound": 0.72,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4994835456914953
+     },
+     {
+      "row": 37,
+      "xbound": 0.74,
+      "pass": false,
+      "fails": {
+       "[B]": [
+        0.5839296949920222,
+        0.587,
+        0.005230502568957074,
+        0.0
+       ],
+       "x(BQX)": [
+        0.7205623341157421,
+        0.7215,
+        0.0009376658842579211,
+        0.0
+       ],
+       "x(QX)": [
+        0.259603770115033,
+        0.2587,
+        0.0009037701150330091,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.500914790605109
+     },
+     {
+      "row": 38,
+      "xbound": 0.76,
+      "pass": false,
+      "fails": {
+       "x(BQX)": [
+        0.742548707152677,
+        0.7419,
+        0.0006487071526769528,
+        0.0
+       ],
+       "x(QX)": [
+        0.23818911449529367,
+        0.2388,
+        0.0006108855047063377,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49935285861437567
+     },
+     {
+      "row": 39,
+      "xbound": 0.78,
+      "pass": false,
+      "fails": {
+       "[B]": [
+        0.736658185905524,
+        0.732,
+        0.006363641947437104,
+        0.0
+       ],
+       "x(BQX)": [
+        0.763366329753762,
+        0.7624,
+        0.0009663297537619853,
+        0.0
+       ],
+       "x(QX)": [
+        0.21800526443692972,
+        0.219,
+        0.0009947355630702814,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4988719823771958
+     },
+     {
+      "row": 40,
+      "xbound": 0.8,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49927722139694236
+     },
+     {
+      "row": 41,
+      "xbound": 0.82,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.1787424688923999,
+        0.1793,
+        0.0005575311076000955,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4992592968563982
+     },
+     {
+      "row": 42,
+      "xbound": 0.84,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5009173048377341
+     },
+     {
+      "row": 43,
+      "xbound": 0.86,
+      "pass": false,
+      "fails": {
+       "[B]": [
+        1.27685691019603,
+        1.27,
+        0.005399141886637926,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4992717999231256
+     },
+     {
+      "row": 44,
+      "xbound": 0.88,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49930373931317384
+     },
+     {
+      "row": 45,
+      "xbound": 0.9,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004470882263093
+     },
+     {
+      "row": 46,
+      "xbound": 0.92,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49942576552260115
+     },
+     {
+      "row": 47,
+      "xbound": 0.94,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5008779201242587
+     },
+     {
+      "row": 48,
+      "xbound": 0.96,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5010258270654238
+     },
+     {
+      "row": 49,
+      "xbound": 0.98,
+      "pass": false,
+      "fails": {
+       "[Q]": [
+        0.0002659905780856313,
+        0.000264,
+        0.007540068506179054,
+        0.0
+       ],
+       "[B]": [
+        10.210932765507735,
+        10.3,
+        0.00864730431963745,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5019057187557201
+     }
+    ]
+   },
+   "article/rounding": {
+    "failing_rows": 11,
+    "explained_by_input_rounding": 11,
+    "unexplained": [],
+    "n_perturbations": 2000
+   }
+  }
+ },
+ "r09b-spec-d-q": {
+  "source": {
+   "article": "R09b",
+   "citation": "S. Roelens, A. Vacca, O. Francesconi, C. Venturi, \"Ion-Pair Binding: Is Binding Both Binding Better?\", Chem. Eur. J. 2009, 15, 8296-8302",
+   "doi": "10.1002/chem.200900342",
+   "si_pages": [
+    "S23"
+   ],
+   "constants_from": "r09b-d-qx",
+   "notice": "Data belong to their authors (see SOURCES.md); used only for the internal validation of HM fit."
+  },
+  "results": {
+   "si/Newton-Raphson": {
+    "constants": "si",
+    "algorithm": "Newton-Raphson",
+    "n_rows": 50,
+    "n_pass": 43.0,
+    "worst": {
+     "conc_rel": 0.006681474780439567,
+     "frac_abs": 0.0010356721460721419,
+     "xbound_abs": 0.0010207413065448923
+    },
+    "rows": [
+     {
+      "row": 0,
+      "xbound": 0.0,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": NaN
+     },
+     {
+      "row": 1,
+      "xbound": 0.02,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4992687625776372
+     },
+     {
+      "row": 2,
+      "xbound": 0.04,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5008862011768362
+     },
+     {
+      "row": 3,
+      "xbound": 0.06,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4984363260750282
+     },
+     {
+      "row": 4,
+      "xbound": 0.08,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.0005119382177640099,
+        0.000509,
+        0.005772529988231634,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49903559012813326
+     },
+     {
+      "row": 5,
+      "xbound": 0.1,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49960755121965805
+     },
+     {
+      "row": 6,
+      "xbound": 0.12,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4992252446390822
+     },
+     {
+      "row": 7,
+      "xbound": 0.14,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49855544325459983
+     },
+     {
+      "row": 8,
+      "xbound": 0.16,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5008464776400019
+     },
+     {
+      "row": 9,
+      "xbound": 0.18,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49901446737781296
+     },
+     {
+      "row": 10,
+      "xbound": 0.2,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000596336934525
+     },
+     {
+      "row": 11,
+      "xbound": 0.22,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002278420469419
+     },
+     {
+      "row": 12,
+      "xbound": 0.24,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001184791566896
+     },
+     {
+      "row": 13,
+      "xbound": 0.26,
+      "pass": false,
+      "fails": {
+       "[Q]": [
+        0.0010536698103269168,
+        0.00106,
+        0.0059718770500784,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4989695657329971
+     },
+     {
+      "row": 14,
+      "xbound": 0.28,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001407913953158
+     },
+     {
+      "row": 15,
+      "xbound": 0.3,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5005064401285709
+     },
+     {
+      "row": 16,
+      "xbound": 0.32,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001314668253104
+     },
+     {
+      "row": 17,
+      "xbound": 0.34,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49884579004360896
+     },
+     {
+      "row": 18,
+      "xbound": 0.36,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4994191415126189
+     },
+     {
+      "row": 19,
+      "xbound": 0.38,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5012441821312347
+     },
+     {
+      "row": 20,
+      "xbound": 0.4,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4998061985837265
+     },
+     {
+      "row": 21,
+      "xbound": 0.42,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49946045652511506
+     },
+     {
+      "row": 22,
+      "xbound": 0.44,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999068792351241
+     },
+     {
+      "row": 23,
+      "xbound": 0.46,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4993735896562732
+     },
+     {
+      "row": 24,
+      "xbound": 0.48,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.00556694855553583,
+        0.00553,
+        0.006681474780439567,
+        0.0
+       ],
+       "x(DQ2X2)": [
+        0.42857862236770294,
+        0.4278,
+        0.0007786223677029303,
+        0.0
+       ],
+       "x(QX)": [
+        0.46676432785392785,
+        0.4678,
+        0.0010356721460721419,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49904590151987804
+     },
+     {
+      "row": 25,
+      "xbound": 0.5,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5006548002571016
+     },
+     {
+      "row": 26,
+      "xbound": 0.52,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.4310052113094975,
+        0.4304,
+        0.0006052113094974776,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5004564521694558
+     },
+     {
+      "row": 27,
+      "xbound": 0.54,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5005614521235848
+     },
+     {
+      "row": 28,
+      "xbound": 0.56,
+      "pass": false,
+      "fails": {
+       "x(DQ2X2)": [
+        0.49839840003950026,
+        0.4989,
+        0.0005015999604997545,
+        0.0
+       ],
+       "x(QX)": [
+        0.39368171061554047,
+        0.3931,
+        0.000581710615540465,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.500659265218699
+     },
+     {
+      "row": 29,
+      "xbound": 0.58,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.3749964043236708,
+        0.3744,
+        0.0005964043236708072,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5010102225718854
+     },
+     {
+      "row": 30,
+      "xbound": 0.6,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000592111684481
+     },
+     {
+      "row": 31,
+      "xbound": 0.62,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5007638823346021
+     },
+     {
+      "row": 32,
+      "xbound": 0.64,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5003731519368513
+     },
+     {
+      "row": 33,
+      "xbound": 0.66,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.500241585164387
+     },
+     {
+      "row": 34,
+      "xbound": 0.68,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004293065699617
+     },
+     {
+      "row": 35,
+      "xbound": 0.7,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4998506035344675
+     },
+     {
+      "row": 36,
+      "xbound": 0.72,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49970612710848417
+     },
+     {
+      "row": 37,
+      "xbound": 0.74,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000790473678045
+     },
+     {
+      "row": 38,
+      "xbound": 0.76,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.500041359852754
+     },
+     {
+      "row": 39,
+      "xbound": 0.78,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49982689762269134
+     },
+     {
+      "row": 40,
+      "xbound": 0.8,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004023429944326
+     },
+     {
+      "row": 41,
+      "xbound": 0.82,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.500453026708123
+     },
+     {
+      "row": 42,
+      "xbound": 0.84,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004662293787717
+     },
+     {
+      "row": 43,
+      "xbound": 0.86,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5003741852151565
+     },
+     {
+      "row": 44,
+      "xbound": 0.88,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.501326948084056
+     },
+     {
+      "row": 45,
+      "xbound": 0.9,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.05522182145591144,
+        0.0555,
+        0.005012226019613708,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5020741163899723
+     },
+     {
+      "row": 46,
+      "xbound": 0.92,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5006013871997577
+     },
+     {
+      "row": 47,
+      "xbound": 0.94,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4987375304072575
+     },
+     {
+      "row": 48,
+      "xbound": 0.96,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5009560176014622
+     },
+     {
+      "row": 49,
+      "xbound": 0.98,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4996910057095391
+     }
+    ]
+   },
+   "si/Levenberg-Marquardt": {
+    "constants": "si",
+    "algorithm": "Levenberg-Marquardt",
+    "n_rows": 50,
+    "n_pass": 43.0,
+    "worst": {
+     "conc_rel": 0.006681475051592445,
+     "frac_abs": 0.0010356719675350679,
+     "xbound_abs": 0.0010207417835841337
+    },
+    "rows": [
+     {
+      "row": 0,
+      "xbound": 0.0,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": NaN
+     },
+     {
+      "row": 1,
+      "xbound": 0.02,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4992687677958993
+     },
+     {
+      "row": 2,
+      "xbound": 0.04,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5008862169194929
+     },
+     {
+      "row": 3,
+      "xbound": 0.06,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49843635957533
+     },
+     {
+      "row": 4,
+      "xbound": 0.08,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.000511938216888516,
+        0.000509,
+        0.005772528268204402,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49903558908488205
+     },
+     {
+      "row": 5,
+      "xbound": 0.1,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.499607551219733
+     },
+     {
+      "row": 6,
+      "xbound": 0.12,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4992252446393928
+     },
+     {
+      "row": 7,
+      "xbound": 0.14,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4985554432434256
+     },
+     {
+      "row": 8,
+      "xbound": 0.16,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5008464772177961
+     },
+     {
+      "row": 9,
+      "xbound": 0.18,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4990144618010744
+     },
+     {
+      "row": 10,
+      "xbound": 0.2,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000596342986652
+     },
+     {
+      "row": 11,
+      "xbound": 0.22,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002278450821784
+     },
+     {
+      "row": 12,
+      "xbound": 0.24,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.500118479156277
+     },
+     {
+      "row": 13,
+      "xbound": 0.26,
+      "pass": false,
+      "fails": {
+       "[Q]": [
+        0.0010536698103256704,
+        0.00106,
+        0.005971877051254237,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.498969565729437
+     },
+     {
+      "row": 14,
+      "xbound": 0.28,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001407913718976
+     },
+     {
+      "row": 15,
+      "xbound": 0.3,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5005064400291539
+     },
+     {
+      "row": 16,
+      "xbound": 0.32,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001314665370727
+     },
+     {
+      "row": 17,
+      "xbound": 0.34,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4988457894745455
+     },
+     {
+      "row": 18,
+      "xbound": 0.36,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4994191409262802
+     },
+     {
+      "row": 19,
+      "xbound": 0.38,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5012441799044846
+     },
+     {
+      "row": 20,
+      "xbound": 0.4,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4998061985837264
+     },
+     {
+      "row": 21,
+      "xbound": 0.42,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49946045652516113
+     },
+     {
+      "row": 22,
+      "xbound": 0.44,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999068792364821
+     },
+     {
+      "row": 23,
+      "xbound": 0.46,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.499373589683608
+     },
+     {
+      "row": 24,
+      "xbound": 0.48,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.005566948557035306,
+        0.00553,
+        0.006681475051592445,
+        0.0
+       ],
+       "x(DQ2X2)": [
+        0.42857862281100384,
+        0.4278,
+        0.0007786228110038262,
+        0.0
+       ],
+       "x(QX)": [
+        0.4667643280324649,
+        0.4678,
+        0.0010356719675350679,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4990459019977023
+     },
+     {
+      "row": 25,
+      "xbound": 0.5,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5006548002571048
+     },
+     {
+      "row": 26,
+      "xbound": 0.52,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.43100521130949826,
+        0.4304,
+        0.0006052113094982547,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5004564521694591
+     },
+     {
+      "row": 27,
+      "xbound": 0.54,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5005614521238649
+     },
+     {
+      "row": 28,
+      "xbound": 0.56,
+      "pass": false,
+      "fails": {
+       "x(DQ2X2)": [
+        0.49839840005166114,
+        0.4989,
+        0.0005015999483388711,
+        0.0
+       ],
+       "x(QX)": [
+        0.3936817106196126,
+        0.3931,
+        0.0005817106196125965,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5006592652298717
+     },
+     {
+      "row": 29,
+      "xbound": 0.58,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.3749964044575491,
+        0.3744,
+        0.0005964044575491045,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5010102229488069
+     },
+     {
+      "row": 30,
+      "xbound": 0.6,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000592104657421
+     },
+     {
+      "row": 31,
+      "xbound": 0.62,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5007638823346181
+     },
+     {
+      "row": 32,
+      "xbound": 0.64,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5003731519277738
+     },
+     {
+      "row": 33,
+      "xbound": 0.66,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002415853835134
+     },
+     {
+      "row": 34,
+      "xbound": 0.68,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004293065645912
+     },
+     {
+      "row": 35,
+      "xbound": 0.7,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49985060353455396
+     },
+     {
+      "row": 36,
+      "xbound": 0.72,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4997061271150063
+     },
+     {
+      "row": 37,
+      "xbound": 0.74,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000790473678032
+     },
+     {
+      "row": 38,
+      "xbound": 0.76,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000413597017348
+     },
+     {
+      "row": 39,
+      "xbound": 0.78,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4998268977278003
+     },
+     {
+      "row": 40,
+      "xbound": 0.8,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.500402342994434
+     },
+     {
+      "row": 41,
+      "xbound": 0.82,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004530267284021
+     },
+     {
+      "row": 42,
+      "xbound": 0.84,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004662293787746
+     },
+     {
+      "row": 43,
+      "xbound": 0.86,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5003741853746355
+     },
+     {
+      "row": 44,
+      "xbound": 0.88,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5013269480851511
+     },
+     {
+      "row": 45,
+      "xbound": 0.9,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.05522182145591141,
+        0.0555,
+        0.005012226019614263,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5020741163899992
+     },
+     {
+      "row": 46,
+      "xbound": 0.92,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5006013871734526
+     },
+     {
+      "row": 47,
+      "xbound": 0.94,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49873753041714913
+     },
+     {
+      "row": 48,
+      "xbound": 0.96,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5009560176032216
+     },
+     {
+      "row": 49,
+      "xbound": 0.98,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4996910057047085
+     }
+    ]
+   },
+   "si/rounding": {
+    "failing_rows": 7,
+    "explained_by_input_rounding": 7,
+    "unexplained": [],
+    "n_perturbations": 2000
+   },
+   "article/Newton-Raphson": {
+    "constants": "article",
+    "algorithm": "Newton-Raphson",
+    "n_rows": 50,
+    "n_pass": 42.0,
+    "worst": {
+     "conc_rel": 0.007052579157937222,
+     "frac_abs": 0.0008487258443936052,
+     "xbound_abs": 0.0008492875881012107
+    },
+    "rows": [
+     {
+      "row": 0,
+      "xbound": 0.0,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": NaN
+     },
+     {
+      "row": 1,
+      "xbound": 0.02,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4989781379998421
+     },
+     {
+      "row": 2,
+      "xbound": 0.04,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5006016299288787
+     },
+     {
+      "row": 3,
+      "xbound": 0.06,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49815826081351816
+     },
+     {
+      "row": 4,
+      "xbound": 0.08,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.0005122839369429132,
+        0.000509,
+        0.006451742520458215,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4987638083897877
+     },
+     {
+      "row": 5,
+      "xbound": 0.1,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49934178746276786
+     },
+     {
+      "row": 6,
+      "xbound": 0.12,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4989659345494191
+     },
+     {
+      "row": 7,
+      "xbound": 0.14,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.0009602064429233437,
+        0.000955,
+        0.005451772694600843,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4983025377825927
+     },
+     {
+      "row": 8,
+      "xbound": 0.16,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5005994206029156
+     },
+     {
+      "row": 9,
+      "xbound": 0.18,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4987741091039549
+     },
+     {
+      "row": 10,
+      "xbound": 0.2,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49982537253296544
+     },
+     {
+      "row": 11,
+      "xbound": 0.22,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999999680484422
+     },
+     {
+      "row": 12,
+      "xbound": 0.24,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4998968696929879
+     },
+     {
+      "row": 13,
+      "xbound": 0.26,
+      "pass": false,
+      "fails": {
+       "[Q]": [
+        0.0010533659496214957,
+        0.00106,
+        0.006258538092928534,
+        0.0
+       ],
+       "[D]": [
+        0.0020810481650430208,
+        0.00207,
+        0.005337277798560747,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4987546393361878
+     },
+     {
+      "row": 14,
+      "xbound": 0.28,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49993204005971836
+     },
+     {
+      "row": 15,
+      "xbound": 0.3,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5003040324404034
+     },
+     {
+      "row": 16,
+      "xbound": 0.32,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49993553606900787
+     },
+     {
+      "row": 17,
+      "xbound": 0.34,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.498656588072128
+     },
+     {
+      "row": 18,
+      "xbound": 0.36,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4992362290674951
+     },
+     {
+      "row": 19,
+      "xbound": 0.38,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.501067397633327
+     },
+     {
+      "row": 20,
+      "xbound": 0.4,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49963615033554787
+     },
+     {
+      "row": 21,
+      "xbound": 0.42,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49929701185036224
+     },
+     {
+      "row": 22,
+      "xbound": 0.44,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4997499799747206
+     },
+     {
+      "row": 23,
+      "xbound": 0.46,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4992233317394781
+     },
+     {
+      "row": 24,
+      "xbound": 0.48,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.005569000762743393,
+        0.00553,
+        0.007052579157937222,
+        0.0
+       ],
+       "x(DQ2X2)": [
+        0.4283890757891229,
+        0.4278,
+        0.0005890757891228726,
+        0.0
+       ],
+       "x(QX)": [
+        0.4669512741556064,
+        0.4678,
+        0.0008487258443936052,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49890243491049363
+     },
+     {
+      "row": 25,
+      "xbound": 0.5,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5005172325630103
+     },
+     {
+      "row": 26,
+      "xbound": 0.52,
+      "pass": false,
+      "fails": {
+       "x(DQ2X2)": [
+        0.4626301393780427,
+        0.4633,
+        0.0006698606219572856,
+        0.0
+       ],
+       "x(QX)": [
+        0.43119077789890525,
+        0.4304,
+        0.0007907778989052483,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.500325255790111
+     },
+     {
+      "row": 27,
+      "xbound": 0.54,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004371016233609
+     },
+     {
+      "row": 28,
+      "xbound": 0.56,
+      "pass": false,
+      "fails": {
+       "x(DQ2X2)": [
+        0.4982099570725897,
+        0.4989,
+        0.000690042927410317,
+        0.0
+       ],
+       "x(QX)": [
+        0.3938637438368589,
+        0.3931,
+        0.0007637438368588989,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5005411752019412
+     },
+     {
+      "row": 29,
+      "xbound": 0.58,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.3751757552042337,
+        0.3744,
+        0.0007757552042336746,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5008986745271751
+     },
+     {
+      "row": 30,
+      "xbound": 0.6,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49995461500135846
+     },
+     {
+      "row": 31,
+      "xbound": 0.62,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.33783148740150964,
+        0.3373,
+        0.000531487401509656,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5006656148362815
+     },
+     {
+      "row": 32,
+      "xbound": 0.64,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002816995622034
+     },
+     {
+      "row": 33,
+      "xbound": 0.66,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001567172805095
+     },
+     {
+      "row": 34,
+      "xbound": 0.68,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5003509580257138
+     },
+     {
+      "row": 35,
+      "xbound": 0.7,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49977895941723655
+     },
+     {
+      "row": 36,
+      "xbound": 0.72,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4996409977661551
+     },
+     {
+      "row": 37,
+      "xbound": 0.74,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000204141623655
+     },
+     {
+      "row": 38,
+      "xbound": 0.76,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999892422842634
+     },
+     {
+      "row": 39,
+      "xbound": 0.78,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4997812700436282
+     },
+     {
+      "row": 40,
+      "xbound": 0.8,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5003630728219075
+     },
+     {
+      "row": 41,
+      "xbound": 0.82,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004201114502784
+     },
+     {
+      "row": 42,
+      "xbound": 0.84,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004396291587504
+     },
+     {
+      "row": 43,
+      "xbound": 0.86,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5003538166595544
+     },
+     {
+      "row": 44,
+      "xbound": 0.88,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5013126835474734
+     },
+     {
+      "row": 45,
+      "xbound": 0.9,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.502065680815645
+     },
+     {
+      "row": 46,
+      "xbound": 0.92,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5005988377713924
+     },
+     {
+      "row": 47,
+      "xbound": 0.94,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.498740438297161
+     },
+     {
+      "row": 48,
+      "xbound": 0.96,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5009637264557617
+     },
+     {
+      "row": 49,
+      "xbound": 0.98,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49970249711956954
+     }
+    ]
+   },
+   "article/Levenberg-Marquardt": {
+    "constants": "article",
+    "algorithm": "Levenberg-Marquardt",
+    "n_rows": 50,
+    "n_pass": 42.0,
+    "worst": {
+     "conc_rel": 0.00705257942883164,
+     "frac_abs": 0.0008487256660480447,
+     "xbound_abs": 0.0008492880642750333
+    },
+    "rows": [
+     {
+      "row": 0,
+      "xbound": 0.0,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": NaN
+     },
+     {
+      "row": 1,
+      "xbound": 0.02,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4989781432100743
+     },
+     {
+      "row": 2,
+      "xbound": 0.04,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5006016456457417
+     },
+     {
+      "row": 3,
+      "xbound": 0.06,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4981582942588989
+     },
+     {
+      "row": 4,
+      "xbound": 0.08,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.0005122839360690779,
+        0.000509,
+        0.0064517408036894874,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49876380734965625
+     },
+     {
+      "row": 5,
+      "xbound": 0.1,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49934178746284275
+     },
+     {
+      "row": 6,
+      "xbound": 0.12,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4989659345497296
+     },
+     {
+      "row": 7,
+      "xbound": 0.14,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.0009602064429099594,
+        0.000955,
+        0.005451772680585831,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4983025377714252
+     },
+     {
+      "row": 8,
+      "xbound": 0.16,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5005994201805894
+     },
+     {
+      "row": 9,
+      "xbound": 0.18,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.498774103518936
+     },
+     {
+      "row": 10,
+      "xbound": 0.2,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49982537313706094
+     },
+     {
+      "row": 11,
+      "xbound": 0.22,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49999997107845356
+     },
+     {
+      "row": 12,
+      "xbound": 0.24,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.499896869692569
+     },
+     {
+      "row": 13,
+      "xbound": 0.26,
+      "pass": false,
+      "fails": {
+       "[Q]": [
+        0.0010533659496202309,
+        0.00106,
+        0.006258538094121802,
+        0.0
+       ],
+       "[D]": [
+        0.002081048165035433,
+        0.00207,
+        0.005337277794895234,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49875463933257613
+     },
+     {
+      "row": 14,
+      "xbound": 0.28,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999320400359105
+     },
+     {
+      "row": 15,
+      "xbound": 0.3,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5003040323389643
+     },
+     {
+      "row": 16,
+      "xbound": 0.32,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999355357736857
+     },
+     {
+      "row": 17,
+      "xbound": 0.34,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49865658748502567
+     },
+     {
+      "row": 18,
+      "xbound": 0.36,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49923622843929205
+     },
+     {
+      "row": 19,
+      "xbound": 0.38,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5010673953227882
+     },
+     {
+      "row": 20,
+      "xbound": 0.4,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4996361503355511
+     },
+     {
+      "row": 21,
+      "xbound": 0.42,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4992970118504055
+     },
+     {
+      "row": 22,
+      "xbound": 0.44,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4997499799760753
+     },
+     {
+      "row": 23,
+      "xbound": 0.46,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4992233317667572
+     },
+     {
+      "row": 24,
+      "xbound": 0.48,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.005569000764241439,
+        0.00553,
+        0.00705257942883164,
+        0.0
+       ],
+       "x(DQ2X2)": [
+        0.42838907623159456,
+        0.4278,
+        0.000589076231594543,
+        0.0
+       ],
+       "x(QX)": [
+        0.46695127433395195,
+        0.4678,
+        0.0008487256660480447,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4989024353874744
+     },
+     {
+      "row": 25,
+      "xbound": 0.5,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5005172325630071
+     },
+     {
+      "row": 26,
+      "xbound": 0.52,
+      "pass": false,
+      "fails": {
+       "x(DQ2X2)": [
+        0.4626301393780493,
+        0.4633,
+        0.0006698606219506797,
+        0.0
+       ],
+       "x(QX)": [
+        0.43119077789890675,
+        0.4304,
+        0.0007907778989067471,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5003252557901176
+     },
+     {
+      "row": 27,
+      "xbound": 0.54,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004371016236348
+     },
+     {
+      "row": 28,
+      "xbound": 0.56,
+      "pass": false,
+      "fails": {
+       "x(DQ2X2)": [
+        0.49820995708470706,
+        0.4989,
+        0.0006900429152929544,
+        0.0
+       ],
+       "x(QX)": [
+        0.3938637438409182,
+        0.3931,
+        0.0007637438409182074,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5005411752130748
+     },
+     {
+      "row": 29,
+      "xbound": 0.58,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.3751757553376722,
+        0.3744,
+        0.0007757553376722126,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5008986749025757
+     },
+     {
+      "row": 30,
+      "xbound": 0.6,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49995461424633664
+     },
+     {
+      "row": 31,
+      "xbound": 0.62,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.33783148740151564,
+        0.3373,
+        0.0005314874015156512,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5006656148362975
+     },
+     {
+      "row": 32,
+      "xbound": 0.64,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002816995523675
+     },
+     {
+      "row": 33,
+      "xbound": 0.66,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001567174991337
+     },
+     {
+      "row": 34,
+      "xbound": 0.68,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5003509580201387
+     },
+     {
+      "row": 35,
+      "xbound": 0.7,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49977895941732303
+     },
+     {
+      "row": 36,
+      "xbound": 0.72,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4996409977722875
+     },
+     {
+      "row": 37,
+      "xbound": 0.74,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000204141623641
+     },
+     {
+      "row": 38,
+      "xbound": 0.76,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49998924213253826
+     },
+     {
+      "row": 39,
+      "xbound": 0.78,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49978127014844337
+     },
+     {
+      "row": 40,
+      "xbound": 0.8,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5003630728219078
+     },
+     {
+      "row": 41,
+      "xbound": 0.82,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004201114704901
+     },
+     {
+      "row": 42,
+      "xbound": 0.84,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004396291587535
+     },
+     {
+      "row": 43,
+      "xbound": 0.86,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.500353816818497
+     },
+     {
+      "row": 44,
+      "xbound": 0.88,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.501312683548563
+     },
+     {
+      "row": 45,
+      "xbound": 0.9,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.502065680815669
+     },
+     {
+      "row": 46,
+      "xbound": 0.92,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5005988377448424
+     },
+     {
+      "row": 47,
+      "xbound": 0.94,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4987404383069539
+     },
+     {
+      "row": 48,
+      "xbound": 0.96,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5009637264575163
+     },
+     {
+      "row": 49,
+      "xbound": 0.98,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49970249711464854
+     }
+    ]
+   },
+   "article/rounding": {
+    "failing_rows": 8,
+    "explained_by_input_rounding": 8,
+    "unexplained": [],
+    "n_perturbations": 2000
+   }
+  }
+ },
+ "r09b-spec-d-x": {
+  "source": {
+   "article": "R09b",
+   "citation": "S. Roelens, A. Vacca, O. Francesconi, C. Venturi, \"Ion-Pair Binding: Is Binding Both Binding Better?\", Chem. Eur. J. 2009, 15, 8296-8302",
+   "doi": "10.1002/chem.200900342",
+   "si_pages": [
+    "S22"
+   ],
+   "constants_from": "r09b-d-qx",
+   "notice": "Data belong to their authors (see SOURCES.md); used only for the internal validation of HM fit."
+  },
+  "results": {
+   "si/Newton-Raphson": {
+    "constants": "si",
+    "algorithm": "Newton-Raphson",
+    "n_rows": 50,
+    "n_pass": 44.0,
+    "worst": {
+     "conc_rel": 0.00674469127788857,
+     "frac_abs": 0.0009039500690024571,
+     "xbound_abs": 0.0009479062797028703
+    },
+    "rows": [
+     {
+      "row": 0,
+      "xbound": 0.0,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": NaN
+     },
+     {
+      "row": 1,
+      "xbound": 0.02,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4992092004145929
+     },
+     {
+      "row": 2,
+      "xbound": 0.04,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5021330311335068
+     },
+     {
+      "row": 3,
+      "xbound": 0.06,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5007524295738968
+     },
+     {
+      "row": 4,
+      "xbound": 0.08,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49918953374233377
+     },
+     {
+      "row": 5,
+      "xbound": 0.1,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5007478850042412
+     },
+     {
+      "row": 6,
+      "xbound": 0.12,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.0008272407923512591,
+        0.000832,
+        0.005720201500890476,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5019177039857833
+     },
+     {
+      "row": 7,
+      "xbound": 0.14,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4989228229190023
+     },
+     {
+      "row": 8,
+      "xbound": 0.16,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49917765076139314
+     },
+     {
+      "row": 9,
+      "xbound": 0.18,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4988331141379553
+     },
+     {
+      "row": 10,
+      "xbound": 0.2,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.501474664770698
+     },
+     {
+      "row": 11,
+      "xbound": 0.22,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49997089094480024
+     },
+     {
+      "row": 12,
+      "xbound": 0.24,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.0019102450038283845,
+        0.00192,
+        0.005080727172716459,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5013594651921027
+     },
+     {
+      "row": 13,
+      "xbound": 0.26,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49885842123024976
+     },
+     {
+      "row": 14,
+      "xbound": 0.28,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49890612342381446
+     },
+     {
+      "row": 15,
+      "xbound": 0.3,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.501304313686901
+     },
+     {
+      "row": 16,
+      "xbound": 0.32,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49980853569012035
+     },
+     {
+      "row": 17,
+      "xbound": 0.34,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5003775195051453
+     },
+     {
+      "row": 18,
+      "xbound": 0.36,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002136189455655
+     },
+     {
+      "row": 19,
+      "xbound": 0.38,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49937914564698677
+     },
+     {
+      "row": 20,
+      "xbound": 0.4,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49996807018497624
+     },
+     {
+      "row": 21,
+      "xbound": 0.42,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4994629514158714
+     },
+     {
+      "row": 22,
+      "xbound": 0.44,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004692512127731
+     },
+     {
+      "row": 23,
+      "xbound": 0.46,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.005118837736847033,
+        0.00509,
+        0.005665567160517249,
+        0.0
+       ],
+       "x(DQ2X2)": [
+        0.3867757571107802,
+        0.3861,
+        0.0006757571107802174,
+        0.0
+       ],
+       "x(QX)": [
+        0.5030960499309975,
+        0.504,
+        0.0009039500690024571,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49944538508538383
+     },
+     {
+      "row": 24,
+      "xbound": 0.48,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.005478801595634501,
+        0.00551,
+        0.005662142353085153,
+        0.0
+       ],
+       "x(QX)": [
+        0.4864990306655527,
+        0.4858,
+        0.0006990306655527134,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5015511921128855
+     },
+     {
+      "row": 25,
+      "xbound": 0.5,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49986829784126136
+     },
+     {
+      "row": 26,
+      "xbound": 0.52,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002682296803719
+     },
+     {
+      "row": 27,
+      "xbound": 0.54,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5008422245061807
+     },
+     {
+      "row": 28,
+      "xbound": 0.56,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49974791498942633
+     },
+     {
+      "row": 29,
+      "xbound": 0.58,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.39387323424335186,
+        0.3945,
+        0.0006267657566481621,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4991331419798019
+     },
+     {
+      "row": 30,
+      "xbound": 0.6,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001994654225551
+     },
+     {
+      "row": 31,
+      "xbound": 0.62,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49993606151620273
+     },
+     {
+      "row": 32,
+      "xbound": 0.64,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.01042918074158217,
+        0.0105,
+        0.00674469127788857,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5000121587431785
+     },
+     {
+      "row": 33,
+      "xbound": 0.66,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4991256179198326
+     },
+     {
+      "row": 34,
+      "xbound": 0.68,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4997774803023422
+     },
+     {
+      "row": 35,
+      "xbound": 0.7,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49963533987166125
+     },
+     {
+      "row": 36,
+      "xbound": 0.72,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999841724750586
+     },
+     {
+      "row": 37,
+      "xbound": 0.74,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4996413791848364
+     },
+     {
+      "row": 38,
+      "xbound": 0.76,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999451420362188
+     },
+     {
+      "row": 39,
+      "xbound": 0.78,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000173491132233
+     },
+     {
+      "row": 40,
+      "xbound": 0.8,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999757359509553
+     },
+     {
+      "row": 41,
+      "xbound": 0.82,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49947359228533633
+     },
+     {
+      "row": 42,
+      "xbound": 0.84,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.499556280670228
+     },
+     {
+      "row": 43,
+      "xbound": 0.86,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49988957438328135
+     },
+     {
+      "row": 44,
+      "xbound": 0.88,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000497843751339
+     },
+     {
+      "row": 45,
+      "xbound": 0.9,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4986047499592566
+     },
+     {
+      "row": 46,
+      "xbound": 0.92,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4994521293453874
+     },
+     {
+      "row": 47,
+      "xbound": 0.94,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5003290208698539
+     },
+     {
+      "row": 48,
+      "xbound": 0.96,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4996075456735525
+     },
+     {
+      "row": 49,
+      "xbound": 0.98,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999129087910047
+     }
+    ]
+   },
+   "si/Levenberg-Marquardt": {
+    "constants": "si",
+    "algorithm": "Levenberg-Marquardt",
+    "n_rows": 50,
+    "n_pass": 44.0,
+    "worst": {
+     "conc_rel": 0.00674469127788857,
+     "frac_abs": 0.0009039501556338259,
+     "xbound_abs": 0.0009479060900474678
+    },
+    "rows": [
+     {
+      "row": 0,
+      "xbound": 0.0,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": NaN
+     },
+     {
+      "row": 1,
+      "xbound": 0.02,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49920920041866623
+     },
+     {
+      "row": 2,
+      "xbound": 0.04,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5021330297673191
+     },
+     {
+      "row": 3,
+      "xbound": 0.06,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5007524296420841
+     },
+     {
+      "row": 4,
+      "xbound": 0.08,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49918953394709814
+     },
+     {
+      "row": 5,
+      "xbound": 0.1,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5007478851396582
+     },
+     {
+      "row": 6,
+      "xbound": 0.12,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.0008272407994399147,
+        0.000832,
+        0.0057201929808716745,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5019177082948895
+     },
+     {
+      "row": 7,
+      "xbound": 0.14,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49892283399638715
+     },
+     {
+      "row": 8,
+      "xbound": 0.16,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4991776507595082
+     },
+     {
+      "row": 9,
+      "xbound": 0.18,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.498833114090212
+     },
+     {
+      "row": 10,
+      "xbound": 0.2,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5014746640117578
+     },
+     {
+      "row": 11,
+      "xbound": 0.22,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999708852029192
+     },
+     {
+      "row": 12,
+      "xbound": 0.24,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.001910245003885032,
+        0.00192,
+        0.0050807271432126155,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5013594652081923
+     },
+     {
+      "row": 13,
+      "xbound": 0.26,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49885842131485436
+     },
+     {
+      "row": 14,
+      "xbound": 0.28,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49890612400403084
+     },
+     {
+      "row": 15,
+      "xbound": 0.3,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5013043182876091
+     },
+     {
+      "row": 16,
+      "xbound": 0.32,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49980853568764066
+     },
+     {
+      "row": 17,
+      "xbound": 0.34,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5003775194961608
+     },
+     {
+      "row": 18,
+      "xbound": 0.36,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002136189227427
+     },
+     {
+      "row": 19,
+      "xbound": 0.38,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4993791456064614
+     },
+     {
+      "row": 20,
+      "xbound": 0.4,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49996807016163736
+     },
+     {
+      "row": 21,
+      "xbound": 0.42,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4994629519423304
+     },
+     {
+      "row": 22,
+      "xbound": 0.44,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004692510484744
+     },
+     {
+      "row": 23,
+      "xbound": 0.46,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.0051188377363361225,
+        0.00509,
+        0.005665567060141985,
+        0.0
+       ],
+       "x(DQ2X2)": [
+        0.3867757569389733,
+        0.3861,
+        0.0006757569389733153,
+        0.0
+       ],
+       "x(QX)": [
+        0.5030960498443662,
+        0.504,
+        0.0009039501556338259,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49944538489171375
+     },
+     {
+      "row": 24,
+      "xbound": 0.48,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.005478801594861468,
+        0.00551,
+        0.0056621424933814835,
+        0.0
+       ],
+       "x(QX)": [
+        0.4864990305378574,
+        0.4858,
+        0.0006990305378574146,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5015511918215124
+     },
+     {
+      "row": 25,
+      "xbound": 0.5,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4998682974636272
+     },
+     {
+      "row": 26,
+      "xbound": 0.52,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002682290599915
+     },
+     {
+      "row": 27,
+      "xbound": 0.54,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5008422262697186
+     },
+     {
+      "row": 28,
+      "xbound": 0.56,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49974791498942667
+     },
+     {
+      "row": 29,
+      "xbound": 0.58,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.3938732342433756,
+        0.3945,
+        0.0006267657566244034,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4991331419798603
+     },
+     {
+      "row": 30,
+      "xbound": 0.6,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001994654265377
+     },
+     {
+      "row": 31,
+      "xbound": 0.62,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49993606167540594
+     },
+     {
+      "row": 32,
+      "xbound": 0.64,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.01042918074158217,
+        0.0105,
+        0.00674469127788857,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5000121587431813
+     },
+     {
+      "row": 33,
+      "xbound": 0.66,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49912561791972243
+     },
+     {
+      "row": 34,
+      "xbound": 0.68,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49977747996477845
+     },
+     {
+      "row": 35,
+      "xbound": 0.7,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4996353401966104
+     },
+     {
+      "row": 36,
+      "xbound": 0.72,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999841717613392
+     },
+     {
+      "row": 37,
+      "xbound": 0.74,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49964137918500645
+     },
+     {
+      "row": 38,
+      "xbound": 0.76,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999451422437251
+     },
+     {
+      "row": 39,
+      "xbound": 0.78,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000173491065951
+     },
+     {
+      "row": 40,
+      "xbound": 0.8,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999757359569295
+     },
+     {
+      "row": 41,
+      "xbound": 0.82,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49947359217579534
+     },
+     {
+      "row": 42,
+      "xbound": 0.84,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4995562806730828
+     },
+     {
+      "row": 43,
+      "xbound": 0.86,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49988957438328113
+     },
+     {
+      "row": 44,
+      "xbound": 0.88,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.50004978454171
+     },
+     {
+      "row": 45,
+      "xbound": 0.9,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4986047499639463
+     },
+     {
+      "row": 46,
+      "xbound": 0.92,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4994521293484834
+     },
+     {
+      "row": 47,
+      "xbound": 0.94,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5003290208698553
+     },
+     {
+      "row": 48,
+      "xbound": 0.96,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4996075456891333
+     },
+     {
+      "row": 49,
+      "xbound": 0.98,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49991290879100453
+     }
+    ]
+   },
+   "si/rounding": {
+    "failing_rows": 6,
+    "explained_by_input_rounding": 6,
+    "unexplained": [],
+    "n_perturbations": 2000
+   },
+   "article/Newton-Raphson": {
+    "constants": "article",
+    "algorithm": "Newton-Raphson",
+    "n_rows": 50,
+    "n_pass": 42.0,
+    "worst": {
+     "conc_rel": 0.006509487007562154,
+     "frac_abs": 0.0008913090847779137,
+     "xbound_abs": 0.0009167219024843742
+    },
+    "rows": [
+     {
+      "row": 0,
+      "xbound": 0.0,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": NaN
+     },
+     {
+      "row": 1,
+      "xbound": 0.02,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4988865696490002
+     },
+     {
+      "row": 2,
+      "xbound": 0.04,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.501816315593879
+     },
+     {
+      "row": 3,
+      "xbound": 0.06,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004422020004048
+     },
+     {
+      "row": 4,
+      "xbound": 0.08,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49888575460356227
+     },
+     {
+      "row": 5,
+      "xbound": 0.1,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004502533410617
+     },
+     {
+      "row": 6,
+      "xbound": 0.12,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.000827720164681019,
+        0.000832,
+        0.005144032835313617,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.501626212424061
+     },
+     {
+      "row": 7,
+      "xbound": 0.14,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.498638261052137
+     },
+     {
+      "row": 8,
+      "xbound": 0.16,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49889941596853044
+     },
+     {
+      "row": 9,
+      "xbound": 0.18,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4985613896637193
+     },
+     {
+      "row": 10,
+      "xbound": 0.2,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5012088108429922
+     },
+     {
+      "row": 11,
+      "xbound": 0.22,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.499711828439359
+     },
+     {
+      "row": 12,
+      "xbound": 0.24,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.501106537697238
+     },
+     {
+      "row": 13,
+      "xbound": 0.26,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49861247986792084
+     },
+     {
+      "row": 14,
+      "xbound": 0.28,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4986666586286877
+     },
+     {
+      "row": 15,
+      "xbound": 0.3,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.501070815112197
+     },
+     {
+      "row": 16,
+      "xbound": 0.32,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4995819233438156
+     },
+     {
+      "row": 17,
+      "xbound": 0.34,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001573988326703
+     },
+     {
+      "row": 18,
+      "xbound": 0.36,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000001078893259
+     },
+     {
+      "row": 19,
+      "xbound": 0.38,
+      "pass": false,
+      "fails": {
+       "[Q]": [
+        0.0010744266973435142,
+        0.00108,
+        0.0051604654226721225,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4991723270896872
+     },
+     {
+      "row": 20,
+      "xbound": 0.4,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4997677828615662
+     },
+     {
+      "row": 21,
+      "xbound": 0.42,
+      "pass": false,
+      "fails": {
+       "[Q]": [
+        0.0011043651494523693,
+        0.00111,
+        0.0050764419348025,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4992694802820954
+     },
+     {
+      "row": 22,
+      "xbound": 0.44,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002822261272811
+     },
+     {
+      "row": 23,
+      "xbound": 0.46,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.005120650871487842,
+        0.00509,
+        0.006021782217650706,
+        0.0
+       ],
+       "x(QX)": [
+        0.5032881815227048,
+        0.504,
+        0.0007118184772951786,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4992655956867616
+     },
+     {
+      "row": 24,
+      "xbound": 0.48,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.005480688297499852,
+        0.00551,
+        0.0053197282214424435,
+        0.0
+       ],
+       "x(DQ2X2)": [
+        0.4027193047081298,
+        0.4033,
+        0.0005806952918702146,
+        0.0
+       ],
+       "x(QX)": [
+        0.4866913090847779,
+        0.4858,
+        0.0008913090847779137,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5013771650589731
+     },
+     {
+      "row": 25,
+      "xbound": 0.5,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4997017886529672
+     },
+     {
+      "row": 26,
+      "xbound": 0.52,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001082935101319
+     },
+     {
+      "row": 27,
+      "xbound": 0.54,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5006889456514609
+     },
+     {
+      "row": 28,
+      "xbound": 0.56,
+      "pass": false,
+      "fails": {
+       "x(DQ2X2)": [
+        0.4721499978391033,
+        0.4727,
+        0.0005500021608967343,
+        0.0
+       ],
+       "x(QX)": [
+        0.41333807568326547,
+        0.4128,
+        0.000538075683265471,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49960164602087803
+     },
+     {
+      "row": 29,
+      "xbound": 0.58,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4989942462006281
+     },
+     {
+      "row": 30,
+      "xbound": 0.6,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000669960253894
+     },
+     {
+      "row": 31,
+      "xbound": 0.62,
+      "pass": false,
+      "fails": {
+       "x(DQ2X2)": [
+        0.5248195929192515,
+        0.5254,
+        0.0005804070807484685,
+        0.0
+       ],
+       "x(QX)": [
+        0.3583588965389307,
+        0.3578,
+        0.0005588965389307088,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49981053485744253
+     },
+     {
+      "row": 32,
+      "xbound": 0.64,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.010431650386420598,
+        0.0105,
+        0.006509487007562154,
+        0.0
+       ],
+       "x(DQ2X2)": [
+        0.5425588483689875,
+        0.5431,
+        0.0005411516310125375,
+        0.0
+       ],
+       "x(QX)": [
+        0.33992731214366817,
+        0.3394,
+        0.0005273121436681905,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49989363078278665
+     },
+     {
+      "row": 33,
+      "xbound": 0.66,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4990145703168311
+     },
+     {
+      "row": 34,
+      "xbound": 0.68,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4996731708055695
+     },
+     {
+      "row": 35,
+      "xbound": 0.7,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4995382286817173
+     },
+     {
+      "row": 36,
+      "xbound": 0.72,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4998942664582844
+     },
+     {
+      "row": 37,
+      "xbound": 0.74,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4995586712413106
+     },
+     {
+      "row": 38,
+      "xbound": 0.76,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49986962379398353
+     },
+     {
+      "row": 39,
+      "xbound": 0.78,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999491778014615
+     },
+     {
+      "row": 40,
+      "xbound": 0.8,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49991486046387357
+     },
+     {
+      "row": 41,
+      "xbound": 0.82,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4994202071738218
+     },
+     {
+      "row": 42,
+      "xbound": 0.84,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4995103321572221
+     },
+     {
+      "row": 43,
+      "xbound": 0.86,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49985106873746027
+     },
+     {
+      "row": 44,
+      "xbound": 0.88,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000188428416752
+     },
+     {
+      "row": 45,
+      "xbound": 0.9,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4985815690531799
+     },
+     {
+      "row": 46,
+      "xbound": 0.92,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49943656970919204
+     },
+     {
+      "row": 47,
+      "xbound": 0.94,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.500321205562619
+     },
+     {
+      "row": 48,
+      "xbound": 0.96,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49960748960552037
+     },
+     {
+      "row": 49,
+      "xbound": 0.98,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49992026409193824
+     }
+    ]
+   },
+   "article/Levenberg-Marquardt": {
+    "constants": "article",
+    "algorithm": "Levenberg-Marquardt",
+    "n_rows": 50,
+    "n_pass": 42.0,
+    "worst": {
+     "conc_rel": 0.006509487007563042,
+     "frac_abs": 0.0008913089481317193,
+     "xbound_abs": 0.0009167222185268997
+    },
+    "rows": [
+     {
+      "row": 0,
+      "xbound": 0.0,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": NaN
+     },
+     {
+      "row": 1,
+      "xbound": 0.02,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4988865696530668
+     },
+     {
+      "row": 2,
+      "xbound": 0.04,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5018163142328982
+     },
+     {
+      "row": 3,
+      "xbound": 0.06,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004422020684607
+     },
+     {
+      "row": 4,
+      "xbound": 0.08,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49888575480795977
+     },
+     {
+      "row": 5,
+      "xbound": 0.1,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004502534778789
+     },
+     {
+      "row": 6,
+      "xbound": 0.12,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.0008277201717655514,
+        0.000832,
+        0.005144024320250629,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5016262167256594
+     },
+     {
+      "row": 7,
+      "xbound": 0.14,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4986382721109348
+     },
+     {
+      "row": 8,
+      "xbound": 0.16,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4988994159666499
+     },
+     {
+      "row": 9,
+      "xbound": 0.18,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4985613896159748
+     },
+     {
+      "row": 10,
+      "xbound": 0.2,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5012088100828382
+     },
+     {
+      "row": 11,
+      "xbound": 0.22,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49971182844102197
+     },
+     {
+      "row": 12,
+      "xbound": 0.24,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5011065377132945
+     },
+     {
+      "row": 13,
+      "xbound": 0.26,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4986124799523605
+     },
+     {
+      "row": 14,
+      "xbound": 0.28,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4986666592078809
+     },
+     {
+      "row": 15,
+      "xbound": 0.3,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5010708197054775
+     },
+     {
+      "row": 16,
+      "xbound": 0.32,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4995819233412743
+     },
+     {
+      "row": 17,
+      "xbound": 0.34,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001573988234386
+     },
+     {
+      "row": 18,
+      "xbound": 0.36,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000001078657564
+     },
+     {
+      "row": 19,
+      "xbound": 0.38,
+      "pass": false,
+      "fails": {
+       "[Q]": [
+        0.0010744266973231156,
+        0.00108,
+        0.005160465441559681,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49917232704749404
+     },
+     {
+      "row": 20,
+      "xbound": 0.4,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4997677828346615
+     },
+     {
+      "row": 21,
+      "xbound": 0.42,
+      "pass": false,
+      "fails": {
+       "[Q]": [
+        0.0011043651496936886,
+        0.00111,
+        0.005076441717397739,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4992694808018234
+     },
+     {
+      "row": 22,
+      "xbound": 0.44,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002822259537606
+     },
+     {
+      "row": 23,
+      "xbound": 0.46,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.0051206508709440495,
+        0.00509,
+        0.006021782110815277,
+        0.0
+       ],
+       "x(QX)": [
+        0.5032881814304975,
+        0.504,
+        0.0007118185695025314,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49926559548078464
+     },
+     {
+      "row": 24,
+      "xbound": 0.48,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.005480688296672628,
+        0.00551,
+        0.005319728371573795,
+        0.0
+       ],
+       "x(DQ2X2)": [
+        0.40271930442120507,
+        0.4033,
+        0.0005806955787949208,
+        0.0
+       ],
+       "x(QX)": [
+        0.48669130894813173,
+        0.4858,
+        0.0008913089481317193,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5013771647474123
+     },
+     {
+      "row": 25,
+      "xbound": 0.5,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49970178824644934
+     },
+     {
+      "row": 26,
+      "xbound": 0.52,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001082928330148
+     },
+     {
+      "row": 27,
+      "xbound": 0.54,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5006889474118744
+     },
+     {
+      "row": 28,
+      "xbound": 0.56,
+      "pass": false,
+      "fails": {
+       "x(DQ2X2)": [
+        0.4721499978391033,
+        0.4727,
+        0.0005500021608967343,
+        0.0
+       ],
+       "x(QX)": [
+        0.41333807568326614,
+        0.4128,
+        0.0005380756832661371,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4996016460208781
+     },
+     {
+      "row": 29,
+      "xbound": 0.58,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4989942462006837
+     },
+     {
+      "row": 30,
+      "xbound": 0.6,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000669960293496
+     },
+     {
+      "row": 31,
+      "xbound": 0.62,
+      "pass": false,
+      "fails": {
+       "x(DQ2X2)": [
+        0.5248195931112986,
+        0.5254,
+        0.0005804068887014235,
+        0.0
+       ],
+       "x(QX)": [
+        0.35835889659845416,
+        0.3578,
+        0.0005588965984541505,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4998105350146633
+     },
+     {
+      "row": 32,
+      "xbound": 0.64,
+      "pass": false,
+      "fails": {
+       "[D]": [
+        0.010431650386420589,
+        0.0105,
+        0.006509487007563042,
+        0.0
+       ],
+       "x(DQ2X2)": [
+        0.5425588483689875,
+        0.5431,
+        0.0005411516310125375,
+        0.0
+       ],
+       "x(QX)": [
+        0.33992731214366756,
+        0.3394,
+        0.0005273121436675798,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49989363078278654
+     },
+     {
+      "row": 33,
+      "xbound": 0.66,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4990145703167143
+     },
+     {
+      "row": 34,
+      "xbound": 0.68,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49967317045304216
+     },
+     {
+      "row": 35,
+      "xbound": 0.7,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4995382290059083
+     },
+     {
+      "row": 36,
+      "xbound": 0.72,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49989426572911905
+     },
+     {
+      "row": 37,
+      "xbound": 0.74,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49955867124147446
+     },
+     {
+      "row": 38,
+      "xbound": 0.76,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4998696240009544
+     },
+     {
+      "row": 39,
+      "xbound": 0.78,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999491777947996
+     },
+     {
+      "row": 40,
+      "xbound": 0.8,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999148604698286
+     },
+     {
+      "row": 41,
+      "xbound": 0.82,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49942020706407975
+     },
+     {
+      "row": 42,
+      "xbound": 0.84,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4995103321600645
+     },
+     {
+      "row": 43,
+      "xbound": 0.86,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4998510687374622
+     },
+     {
+      "row": 44,
+      "xbound": 0.88,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.500018843007691
+     },
+     {
+      "row": 45,
+      "xbound": 0.9,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49858156905785384
+     },
+     {
+      "row": 46,
+      "xbound": 0.92,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4994365697122785
+     },
+     {
+      "row": 47,
+      "xbound": 0.94,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5003212055626162
+     },
+     {
+      "row": 48,
+      "xbound": 0.96,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49960748962104573
+     },
+     {
+      "row": 49,
+      "xbound": 0.98,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999202640919414
+     }
+    ]
+   },
+   "article/rounding": {
+    "failing_rows": 8,
+    "explained_by_input_rounding": 8,
+    "unexplained": [],
+    "n_perturbations": 2000
+   }
+  }
+ },
+ "r09b-spec-r": {
+  "source": {
+   "article": "R09b",
+   "citation": "S. Roelens, A. Vacca, O. Francesconi, C. Venturi, \"Ion-Pair Binding: Is Binding Both Binding Better?\", Chem. Eur. J. 2009, 15, 8296-8302",
+   "doi": "10.1002/chem.200900342",
+   "si_pages": [
+    "S20"
+   ],
+   "constants_from": "r09b-r-qx",
+   "notice": "Data belong to their authors (see SOURCES.md); used only for the internal validation of HM fit."
+  },
+  "results": {
+   "si/Newton-Raphson": {
+    "constants": "si",
+    "algorithm": "Newton-Raphson",
+    "n_rows": 50,
+    "n_pass": 40.0,
+    "worst": {
+     "conc_rel": 0.00510593246611446,
+     "frac_abs": 0.0008751140643038224,
+     "xbound_abs": 0.0008437713048909945
+    },
+    "rows": [
+     {
+      "row": 0,
+      "xbound": 0.0,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": NaN
+     },
+     {
+      "row": 1,
+      "xbound": 0.02,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001625135737678
+     },
+     {
+      "row": 2,
+      "xbound": 0.04,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999321314595269
+     },
+     {
+      "row": 3,
+      "xbound": 0.06,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4998455827477317
+     },
+     {
+      "row": 4,
+      "xbound": 0.08,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001879577242332
+     },
+     {
+      "row": 5,
+      "xbound": 0.1,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999678537947171
+     },
+     {
+      "row": 6,
+      "xbound": 0.12,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000608459206399
+     },
+     {
+      "row": 7,
+      "xbound": 0.14,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000255159177962
+     },
+     {
+      "row": 8,
+      "xbound": 0.16,
+      "pass": false,
+      "fails": {
+       "[R]": [
+        0.001105616525712726,
+        0.0011,
+        0.00510593246611446,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4998067852913579
+     },
+     {
+      "row": 9,
+      "xbound": 0.18,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000774655865035
+     },
+     {
+      "row": 10,
+      "xbound": 0.2,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000350105889463
+     },
+     {
+      "row": 11,
+      "xbound": 0.22,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001523070725477
+     },
+     {
+      "row": 12,
+      "xbound": 0.24,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.500008624158838
+     },
+     {
+      "row": 13,
+      "xbound": 0.26,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999441939539952
+     },
+     {
+      "row": 14,
+      "xbound": 0.28,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49996784215476875
+     },
+     {
+      "row": 15,
+      "xbound": 0.3,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49996857466593897
+     },
+     {
+      "row": 16,
+      "xbound": 0.32,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000070142283192
+     },
+     {
+      "row": 17,
+      "xbound": 0.34,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001465120723365
+     },
+     {
+      "row": 18,
+      "xbound": 0.36,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4995416864018915
+     },
+     {
+      "row": 19,
+      "xbound": 0.38,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5005971964992627
+     },
+     {
+      "row": 20,
+      "xbound": 0.4,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5006391578486107
+     },
+     {
+      "row": 21,
+      "xbound": 0.42,
+      "pass": false,
+      "fails": {
+       "x(RQX)": [
+        0.2927721560583859,
+        0.2922,
+        0.0005721560583858976,
+        0.0
+       ],
+       "x(QX)": [
+        0.5542735903700308,
+        0.555,
+        0.0007264096299692824,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4996366564105197
+     },
+     {
+      "row": 22,
+      "xbound": 0.44,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.5378087072969291,
+        0.537,
+        0.0008087072969290565,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5009587570889256
+     },
+     {
+      "row": 23,
+      "xbound": 0.46,
+      "pass": false,
+      "fails": {
+       "x(RQX)": [
+        0.3277834467320644,
+        0.3271,
+        0.0006834467320643856,
+        0.0
+       ],
+       "x(QX)": [
+        0.5181496051423992,
+        0.5189,
+        0.0007503948576008668,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49988421527845756
+     },
+     {
+      "row": 24,
+      "xbound": 0.48,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.5014431004857747,
+        0.5007,
+        0.0007431004857746393,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5012409834744357
+     },
+     {
+      "row": 25,
+      "xbound": 0.5,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.500395894474989
+     },
+     {
+      "row": 26,
+      "xbound": 0.52,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5007299320001541
+     },
+     {
+      "row": 27,
+      "xbound": 0.54,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.4446091418282974,
+        0.4454,
+        0.000790858171702602,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4991317203962236
+     },
+     {
+      "row": 28,
+      "xbound": 0.56,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.4274639726251741,
+        0.4268,
+        0.0006639726251740918,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.500602424099107
+     },
+     {
+      "row": 29,
+      "xbound": 0.58,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.4088900302493929,
+        0.4081,
+        0.0007900302493928923,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5011143606529775
+     },
+     {
+      "row": 30,
+      "xbound": 0.6,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.3886414894455166,
+        0.3893,
+        0.0006585105544834047,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49909353695446856
+     },
+     {
+      "row": 31,
+      "xbound": 0.62,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5006579610650443
+     },
+     {
+      "row": 32,
+      "xbound": 0.64,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49986172172589755
+     },
+     {
+      "row": 33,
+      "xbound": 0.66,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000210185874782
+     },
+     {
+      "row": 34,
+      "xbound": 0.68,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49965048424854747
+     },
+     {
+      "row": 35,
+      "xbound": 0.7,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49951630273066544
+     },
+     {
+      "row": 36,
+      "xbound": 0.72,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4996237404617526
+     },
+     {
+      "row": 37,
+      "xbound": 0.74,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000028263006404
+     },
+     {
+      "row": 38,
+      "xbound": 0.76,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5006430111956718
+     },
+     {
+      "row": 39,
+      "xbound": 0.78,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49977351459434904
+     },
+     {
+      "row": 40,
+      "xbound": 0.8,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999858287340681
+     },
+     {
+      "row": 41,
+      "xbound": 0.82,
+      "pass": false,
+      "fails": {
+       "x(RQX)": [
+        0.684127588387204,
+        0.6847,
+        0.0005724116127959755,
+        0.0
+       ],
+       "x(QX)": [
+        0.17897511406430383,
+        0.1781,
+        0.0008751140643038224,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5014337889817881
+     },
+     {
+      "row": 42,
+      "xbound": 0.84,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49921663858945897
+     },
+     {
+      "row": 43,
+      "xbound": 0.86,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001619322070263
+     },
+     {
+      "row": 44,
+      "xbound": 0.88,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5010520052336418
+     },
+     {
+      "row": 45,
+      "xbound": 0.9,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49990953157123774
+     },
+     {
+      "row": 46,
+      "xbound": 0.92,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000715433101279
+     },
+     {
+      "row": 47,
+      "xbound": 0.94,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49981077882046887
+     },
+     {
+      "row": 48,
+      "xbound": 0.96,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5006877581238952
+     },
+     {
+      "row": 49,
+      "xbound": 0.98,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001215801170669
+     }
+    ]
+   },
+   "si/Levenberg-Marquardt": {
+    "constants": "si",
+    "algorithm": "Levenberg-Marquardt",
+    "n_rows": 50,
+    "n_pass": 40.0,
+    "worst": {
+     "conc_rel": 0.005105932451360706,
+     "frac_abs": 0.0008751142170877468,
+     "xbound_abs": 0.0008437719625776774
+    },
+    "rows": [
+     {
+      "row": 0,
+      "xbound": 0.0,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": NaN
+     },
+     {
+      "row": 1,
+      "xbound": 0.02,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.500162567129929
+     },
+     {
+      "row": 2,
+      "xbound": 0.04,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49993213146024285
+     },
+     {
+      "row": 3,
+      "xbound": 0.06,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49984558274746055
+     },
+     {
+      "row": 4,
+      "xbound": 0.08,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001879577229342
+     },
+     {
+      "row": 5,
+      "xbound": 0.1,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999678537920021
+     },
+     {
+      "row": 6,
+      "xbound": 0.12,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000608459157877
+     },
+     {
+      "row": 7,
+      "xbound": 0.14,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000255159100987
+     },
+     {
+      "row": 8,
+      "xbound": 0.16,
+      "pass": false,
+      "fails": {
+       "[R]": [
+        0.0011056165256964968,
+        0.0011,
+        0.005105932451360706,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4998067852805961
+     },
+     {
+      "row": 9,
+      "xbound": 0.18,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000774655731458
+     },
+     {
+      "row": 10,
+      "xbound": 0.2,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000350105783301
+     },
+     {
+      "row": 11,
+      "xbound": 0.22,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001523070837748
+     },
+     {
+      "row": 12,
+      "xbound": 0.24,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000086242572754
+     },
+     {
+      "row": 13,
+      "xbound": 0.26,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999441943528308
+     },
+     {
+      "row": 14,
+      "xbound": 0.28,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49996784352151613
+     },
+     {
+      "row": 15,
+      "xbound": 0.3,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999685745429095
+     },
+     {
+      "row": 16,
+      "xbound": 0.32,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.500007014069608
+     },
+     {
+      "row": 17,
+      "xbound": 0.34,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001465118677942
+     },
+     {
+      "row": 18,
+      "xbound": 0.36,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4995416861469795
+     },
+     {
+      "row": 19,
+      "xbound": 0.38,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5005971961546605
+     },
+     {
+      "row": 20,
+      "xbound": 0.4,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5006391574010524
+     },
+     {
+      "row": 21,
+      "xbound": 0.42,
+      "pass": false,
+      "fails": {
+       "x(RQX)": [
+        0.29277215573225557,
+        0.2922,
+        0.0005721557322555526,
+        0.0
+       ],
+       "x(QX)": [
+        0.554273589975467,
+        0.555,
+        0.0007264100245329974,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49963665584990635
+     },
+     {
+      "row": 22,
+      "xbound": 0.44,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.5378087067670305,
+        0.537,
+        0.000808706767030487,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5009587563291038
+     },
+     {
+      "row": 23,
+      "xbound": 0.46,
+      "pass": false,
+      "fails": {
+       "x(RQX)": [
+        0.32778344613460586,
+        0.3271,
+        0.0006834461346058585,
+        0.0
+       ],
+       "x(QX)": [
+        0.5181496045190023,
+        0.5189,
+        0.0007503954809977564,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4998842143614781
+     },
+     {
+      "row": 24,
+      "xbound": 0.48,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.501443099972736,
+        0.5007,
+        0.0007430999727359167,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5012409825195113
+     },
+     {
+      "row": 25,
+      "xbound": 0.5,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5003958947604095
+     },
+     {
+      "row": 26,
+      "xbound": 0.52,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5007299320001541
+     },
+     {
+      "row": 27,
+      "xbound": 0.54,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.4446091418283006,
+        0.4454,
+        0.0007908581716994378,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4991317203962271
+     },
+     {
+      "row": 28,
+      "xbound": 0.56,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.42746397262520747,
+        0.4268,
+        0.000663972625207454,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5006024240991394
+     },
+     {
+      "row": 29,
+      "xbound": 0.58,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.40889003024979453,
+        0.4081,
+        0.0007900302497945155,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5011143606534021
+     },
+     {
+      "row": 30,
+      "xbound": 0.6,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.3886414894498997,
+        0.3893,
+        0.0006585105501002997,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49909353695936925
+     },
+     {
+      "row": 31,
+      "xbound": 0.62,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5006579611219624
+     },
+     {
+      "row": 32,
+      "xbound": 0.64,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4998617223126444
+     },
+     {
+      "row": 33,
+      "xbound": 0.66,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000210185874763
+     },
+     {
+      "row": 34,
+      "xbound": 0.68,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49965048424854136
+     },
+     {
+      "row": 35,
+      "xbound": 0.7,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49951630273072467
+     },
+     {
+      "row": 36,
+      "xbound": 0.72,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49962374046572966
+     },
+     {
+      "row": 37,
+      "xbound": 0.74,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000028264463442
+     },
+     {
+      "row": 38,
+      "xbound": 0.76,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5006430111869347
+     },
+     {
+      "row": 39,
+      "xbound": 0.78,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49977351452409524
+     },
+     {
+      "row": 40,
+      "xbound": 0.8,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49998582873634123
+     },
+     {
+      "row": 41,
+      "xbound": 0.82,
+      "pass": false,
+      "fails": {
+       "x(RQX)": [
+        0.6841275889585536,
+        0.6847,
+        0.0005724110414463413,
+        0.0
+       ],
+       "x(QX)": [
+        0.17897511421708776,
+        0.1781,
+        0.0008751142170877468,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.501433789363374
+     },
+     {
+      "row": 42,
+      "xbound": 0.84,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4992166385894547
+     },
+     {
+      "row": 43,
+      "xbound": 0.86,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001619322140634
+     },
+     {
+      "row": 44,
+      "xbound": 0.88,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5010520049812619
+     },
+     {
+      "row": 45,
+      "xbound": 0.9,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49990953159657314
+     },
+     {
+      "row": 46,
+      "xbound": 0.92,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000715432535567
+     },
+     {
+      "row": 47,
+      "xbound": 0.94,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49981077882044433
+     },
+     {
+      "row": 48,
+      "xbound": 0.96,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.500687758123724
+     },
+     {
+      "row": 49,
+      "xbound": 0.98,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001215801176355
+     }
+    ]
+   },
+   "si/rounding": {
+    "failing_rows": 10,
+    "explained_by_input_rounding": 10,
+    "unexplained": [],
+    "n_perturbations": 2000
+   },
+   "article/Newton-Raphson": {
+    "constants": "article",
+    "algorithm": "Newton-Raphson",
+    "n_rows": 50,
+    "n_pass": 37.0,
+    "worst": {
+     "conc_rel": 0.0055457046643569985,
+     "frac_abs": 0.0010813925633074428,
+     "xbound_abs": 0.0010505198043231356
+    },
+    "rows": [
+     {
+      "row": 0,
+      "xbound": 0.0,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": NaN
+     },
+     {
+      "row": 1,
+      "xbound": 0.02,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999307872606751
+     },
+     {
+      "row": 2,
+      "xbound": 0.04,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4996999402187387
+     },
+     {
+      "row": 3,
+      "xbound": 0.06,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49961318620743556
+     },
+     {
+      "row": 4,
+      "xbound": 0.08,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999555566941468
+     },
+     {
+      "row": 5,
+      "xbound": 0.1,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49973582262968735
+     },
+     {
+      "row": 6,
+      "xbound": 0.12,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.499829399336921
+     },
+     {
+      "row": 7,
+      "xbound": 0.14,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4997949619171676
+     },
+     {
+      "row": 8,
+      "xbound": 0.16,
+      "pass": false,
+      "fails": {
+       "[R]": [
+        0.0011061002751307928,
+        0.0011,
+        0.0055457046643569985,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.499577410177426
+     },
+     {
+      "row": 9,
+      "xbound": 0.18,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49984938138843593
+     },
+     {
+      "row": 10,
+      "xbound": 0.2,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4998085685718197
+     },
+     {
+      "row": 11,
+      "xbound": 0.22,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999276547377608
+     },
+     {
+      "row": 12,
+      "xbound": 0.24,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4997860790199224
+     },
+     {
+      "row": 13,
+      "xbound": 0.26,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4997239720397854
+     },
+     {
+      "row": 14,
+      "xbound": 0.28,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49975013482419506
+     },
+     {
+      "row": 15,
+      "xbound": 0.3,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4997535363487409
+     },
+     {
+      "row": 16,
+      "xbound": 0.32,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4997948944085664
+     },
+     {
+      "row": 17,
+      "xbound": 0.34,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.499937424876392
+     },
+     {
+      "row": 18,
+      "xbound": 0.36,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49933608077614206
+     },
+     {
+      "row": 19,
+      "xbound": 0.38,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.5911520741762822,
+        0.5905,
+        0.0006520741762822135,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5003947117942925
+     },
+     {
+      "row": 20,
+      "xbound": 0.4,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004403563351765
+     },
+     {
+      "row": 21,
+      "xbound": 0.42,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.5544812570962458,
+        0.555,
+        0.0005187429037541991,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4994421401233561
+     },
+     {
+      "row": 22,
+      "xbound": 0.44,
+      "pass": false,
+      "fails": {
+       "x(RQX)": [
+        0.30882828654540667,
+        0.3095,
+        0.0006717134545933257,
+        0.0
+       ],
+       "x(QX)": [
+        0.5380221728451645,
+        0.537,
+        0.0010221728451644818,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5007676393756997
+     },
+     {
+      "row": 23,
+      "xbound": 0.46,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.518369862064738,
+        0.5189,
+        0.0005301379352620206,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49969792594269313
+     },
+     {
+      "row": 24,
+      "xbound": 0.48,
+      "pass": false,
+      "fails": {
+       "x(RQX)": [
+        0.3442802881292655,
+        0.3449,
+        0.0006197118707345073,
+        0.0
+       ],
+       "x(QX)": [
+        0.5016684019912722,
+        0.5007,
+        0.0009684019912721276,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5010584234683195
+     },
+     {
+      "row": 25,
+      "xbound": 0.5,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002183307043274
+     },
+     {
+      "row": 26,
+      "xbound": 0.52,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.46447180927381243,
+        0.4639,
+        0.0005718092738124514,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5005569733016615
+     },
+     {
+      "row": 27,
+      "xbound": 0.54,
+      "pass": false,
+      "fails": {
+       "[X]": [
+        0.00023282346240487356,
+        0.000234,
+        0.005027938440711255,
+        0.0
+       ],
+       "x(QX)": [
+        0.4448492092429881,
+        0.4454,
+        0.0005507907570119208,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4989644169665147
+     },
+     {
+      "row": 28,
+      "xbound": 0.56,
+      "pass": false,
+      "fails": {
+       "x(RQX)": [
+        0.41749354936157745,
+        0.4182,
+        0.0007064506384225622,
+        0.0
+       ],
+       "x(QX)": [
+        0.4277071205559853,
+        0.4268,
+        0.0009071205559852968,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5004395310109909
+     },
+     {
+      "row": 29,
+      "xbound": 0.58,
+      "pass": false,
+      "fails": {
+       "x(RQX)": [
+        0.43640706230639126,
+        0.4371,
+        0.0006929376936087306,
+        0.0
+       ],
+       "x(QX)": [
+        0.4091360208105256,
+        0.4081,
+        0.001036020810525562,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5009566682340045
+     },
+     {
+      "row": 30,
+      "xbound": 0.6,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4989423367573844
+     },
+     {
+      "row": 31,
+      "xbound": 0.62,
+      "pass": false,
+      "fails": {
+       "x(RQX)": [
+        0.474989795786948,
+        0.4756,
+        0.0006102042130520235,
+        0.0
+       ],
+       "x(QX)": [
+        0.37122605763317174,
+        0.3705,
+        0.0007260576331717394,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5005117916398026
+     },
+     {
+      "row": 32,
+      "xbound": 0.64,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4997219994205174
+     },
+     {
+      "row": 33,
+      "xbound": 0.66,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4998873022188224
+     },
+     {
+      "row": 34,
+      "xbound": 0.68,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4995234603769049
+     },
+     {
+      "row": 35,
+      "xbound": 0.7,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49939596955101634
+     },
+     {
+      "row": 36,
+      "xbound": 0.72,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49951017388595575
+     },
+     {
+      "row": 37,
+      "xbound": 0.74,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49989628947211984
+     },
+     {
+      "row": 38,
+      "xbound": 0.76,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.23705232615491895,
+        0.2365,
+        0.0005523261549189584,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.500543625032301
+     },
+     {
+      "row": 39,
+      "xbound": 0.78,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4996821319637673
+     },
+     {
+      "row": 40,
+      "xbound": 0.8,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49990234737978334
+     },
+     {
+      "row": 41,
+      "xbound": 0.82,
+      "pass": false,
+      "fails": {
+       "x(RQX)": [
+        0.6838682026923404,
+        0.6847,
+        0.0008317973076595875,
+        0.0
+       ],
+       "x(QX)": [
+        0.17918139256330745,
+        0.1781,
+        0.0010813925633074428,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5013579224916739
+     },
+     {
+      "row": 42,
+      "xbound": 0.84,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4991502791164711
+     },
+     {
+      "row": 43,
+      "xbound": 0.86,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001040990451728
+     },
+     {
+      "row": 44,
+      "xbound": 0.88,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5010031528912281
+     },
+     {
+      "row": 45,
+      "xbound": 0.9,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4998705882069942
+     },
+     {
+      "row": 46,
+      "xbound": 0.92,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000424798152185
+     },
+     {
+      "row": 47,
+      "xbound": 0.94,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4997919214100852
+     },
+     {
+      "row": 48,
+      "xbound": 0.96,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5006790250020029
+     },
+     {
+      "row": 49,
+      "xbound": 0.98,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001225017495374
+     }
+    ]
+   },
+   "article/Levenberg-Marquardt": {
+    "constants": "article",
+    "algorithm": "Levenberg-Marquardt",
+    "n_rows": 50,
+    "n_pass": 37.0,
+    "worst": {
+     "conc_rel": 0.005545704649549288,
+     "frac_abs": 0.0010813927151101521,
+     "xbound_abs": 0.0010505204586883088
+    },
+    "rows": [
+     {
+      "row": 0,
+      "xbound": 0.0,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": NaN
+     },
+     {
+      "row": 1,
+      "xbound": 0.02,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999308406841311
+     },
+     {
+      "row": 2,
+      "xbound": 0.04,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49969994021944847
+     },
+     {
+      "row": 3,
+      "xbound": 0.06,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49961318620715833
+     },
+     {
+      "row": 4,
+      "xbound": 0.08,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999555566928395
+     },
+     {
+      "row": 5,
+      "xbound": 0.1,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4997358226269624
+     },
+     {
+      "row": 6,
+      "xbound": 0.12,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4998293993320545
+     },
+     {
+      "row": 7,
+      "xbound": 0.14,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49979496190945216
+     },
+     {
+      "row": 8,
+      "xbound": 0.16,
+      "pass": false,
+      "fails": {
+       "[R]": [
+        0.0011061002751145044,
+        0.0011,
+        0.005545704649549288,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4995774101666472
+     },
+     {
+      "row": 9,
+      "xbound": 0.18,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4998493813750623
+     },
+     {
+      "row": 10,
+      "xbound": 0.2,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4998085685612064
+     },
+     {
+      "row": 11,
+      "xbound": 0.22,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49992765474903883
+     },
+     {
+      "row": 12,
+      "xbound": 0.24,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4997860791185147
+     },
+     {
+      "row": 13,
+      "xbound": 0.26,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49972397243896305
+     },
+     {
+      "row": 14,
+      "xbound": 0.28,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.499750136191448
+     },
+     {
+      "row": 15,
+      "xbound": 0.3,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49975353622595997
+     },
+     {
+      "row": 16,
+      "xbound": 0.32,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49979489425024703
+     },
+     {
+      "row": 17,
+      "xbound": 0.34,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49993742467244007
+     },
+     {
+      "row": 18,
+      "xbound": 0.36,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4993360805220793
+     },
+     {
+      "row": 19,
+      "xbound": 0.38,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.5911520739421757,
+        0.5905,
+        0.0006520739421757016,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5003947114509765
+     },
+     {
+      "row": 20,
+      "xbound": 0.4,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5004403558894712
+     },
+     {
+      "row": 21,
+      "xbound": 0.42,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.5544812567032048,
+        0.555,
+        0.0005187432967952432,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.4994421395652946
+     },
+     {
+      "row": 22,
+      "xbound": 0.44,
+      "pass": false,
+      "fails": {
+       "x(RQX)": [
+        0.30882828608175444,
+        0.3095,
+        0.0006717139182455534,
+        0.0
+       ],
+       "x(QX)": [
+        0.5380221723175501,
+        0.537,
+        0.0010221723175500852,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5007676386196246
+     },
+     {
+      "row": 23,
+      "xbound": 0.46,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.51836986144451,
+        0.5189,
+        0.0005301385554900007,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49969792503076477
+     },
+     {
+      "row": 24,
+      "xbound": 0.48,
+      "pass": false,
+      "fails": {
+       "x(RQX)": [
+        0.3442802875060847,
+        0.3449,
+        0.000619712493915292,
+        0.0
+       ],
+       "x(QX)": [
+        0.5016684014823587,
+        0.5007,
+        0.0009684014823586606,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5010584225199513
+     },
+     {
+      "row": 25,
+      "xbound": 0.5,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5002183309943967
+     },
+     {
+      "row": 26,
+      "xbound": 0.52,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.46447180927381326,
+        0.4639,
+        0.0005718092738132841,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5005569733016617
+     },
+     {
+      "row": 27,
+      "xbound": 0.54,
+      "pass": false,
+      "fails": {
+       "[X]": [
+        0.00023282346240487606,
+        0.000234,
+        0.005027938440700597,
+        0.0
+       ],
+       "x(QX)": [
+        0.44484920924299126,
+        0.4454,
+        0.0005507907570087567,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.49896441696651855
+     },
+     {
+      "row": 28,
+      "xbound": 0.56,
+      "pass": false,
+      "fails": {
+       "x(RQX)": [
+        0.4174935493616041,
+        0.4182,
+        0.0007064506383959168,
+        0.0
+       ],
+       "x(QX)": [
+        0.42770712055601795,
+        0.4268,
+        0.0009071205560179374,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5004395310110223
+     },
+     {
+      "row": 29,
+      "xbound": 0.58,
+      "pass": false,
+      "fails": {
+       "x(RQX)": [
+        0.4364070623067958,
+        0.4371,
+        0.0006929376932041653,
+        0.0
+       ],
+       "x(QX)": [
+        0.4091360208109267,
+        0.4081,
+        0.0010360208109266855,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5009566682344276
+     },
+     {
+      "row": 30,
+      "xbound": 0.6,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4989423367622597
+     },
+     {
+      "row": 31,
+      "xbound": 0.62,
+      "pass": false,
+      "fails": {
+       "x(RQX)": [
+        0.4749897958468476,
+        0.4756,
+        0.0006102041531524383,
+        0.0
+       ],
+       "x(QX)": [
+        0.3712260576811433,
+        0.3705,
+        0.0007260576811433106,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5005117916964069
+     },
+     {
+      "row": 32,
+      "xbound": 0.64,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49972200000416933
+     },
+     {
+      "row": 33,
+      "xbound": 0.66,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4998873022188195
+     },
+     {
+      "row": 34,
+      "xbound": 0.68,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4995234603768953
+     },
+     {
+      "row": 35,
+      "xbound": 0.7,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49939596955107546
+     },
+     {
+      "row": 36,
+      "xbound": 0.72,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4995101738899046
+     },
+     {
+      "row": 37,
+      "xbound": 0.74,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49989628961679833
+     },
+     {
+      "row": 38,
+      "xbound": 0.76,
+      "pass": false,
+      "fails": {
+       "x(QX)": [
+        0.23705232614988864,
+        0.2365,
+        0.0005523261498886489,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5005436250236395
+     },
+     {
+      "row": 39,
+      "xbound": 0.78,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4996821318940305
+     },
+     {
+      "row": 40,
+      "xbound": 0.8,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4999023473820363
+     },
+     {
+      "row": 41,
+      "xbound": 0.82,
+      "pass": false,
+      "fails": {
+       "x(RQX)": [
+        0.6838682032591437,
+        0.6847,
+        0.0008317967408563165,
+        0.0
+       ],
+       "x(QX)": [
+        0.17918139271511016,
+        0.1781,
+        0.0010813927151101521,
+        0.0
+       ]
+      },
+      "bound_fraction_B": 0.5013579228703017
+     },
+     {
+      "row": 42,
+      "xbound": 0.84,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.4991502791164683
+     },
+     {
+      "row": 43,
+      "xbound": 0.86,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001040990521357
+     },
+     {
+      "row": 44,
+      "xbound": 0.88,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5010031526397635
+     },
+     {
+      "row": 45,
+      "xbound": 0.9,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49987058823208524
+     },
+     {
+      "row": 46,
+      "xbound": 0.92,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5000424797587965
+     },
+     {
+      "row": 47,
+      "xbound": 0.94,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.49979192141005996
+     },
+     {
+      "row": 48,
+      "xbound": 0.96,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5006790250018307
+     },
+     {
+      "row": 49,
+      "xbound": 0.98,
+      "pass": true,
+      "fails": {},
+      "bound_fraction_B": 0.5001225017501014
+     }
+    ]
+   },
+   "article/rounding": {
+    "failing_rows": 13,
+    "explained_by_input_rounding": 13,
+    "unexplained": [],
+    "n_perturbations": 2000
+   }
+  }
+ }
+}
