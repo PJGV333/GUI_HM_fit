@@ -1,0 +1,42 @@
+{
+ "case": "r09b-b-qx",
+ "log_beta": {
+  "BQX": 4.766751509705757,
+  "BQ": 1.373318281763353,
+  "QX": 4.0897
+ },
+ "se": {
+  "BQX": 0.02084732685327837,
+  "BQ": 0.007093549113934764,
+  "QX": 0.0
+ },
+ "rms": 0.000513534828877081,
+ "sigma_errors_tab": 0.0005148420092138826,
+ "errors_tab_se": {
+  "BQX": 0.020267834224647147,
+  "BQ": 0.006940433902107817,
+  "QX": 0.0
+ },
+ "limiting_shifts": {
+  "Me": {
+   "Q": 3.0191475920093236,
+   "BQX": 2.11283886567088,
+   "BQ": 1.710906620635611,
+   "QX": 3.2229835404645235
+  }
+ },
+ "objective_evaluations": 214,
+ "settings": {
+  "optimizer": "powell",
+  "algorithm": "Newton-Raphson",
+  "start_offset": 0.2
+ },
+ "environment": {
+  "commit": "02c8aab301dba14ac99210f9391d98a0ce15da99",
+  "python": "3.14.9",
+  "numpy": "2.4.2",
+  "scipy": "1.17.1",
+  "pandas": "3.0.1",
+  "platform": "Linux-7.3.1-1-cachyos-x86_64-with-glibc2.44"
+ }
+}

@@ -1,0 +1,42 @@
+{
+ "case": "r09a-r1-11-3n",
+ "log_beta": {
+  "RG": 2.5699170013012393
+ },
+ "se": {
+  "RG": 0.0030759058961845826
+ },
+ "rms": 0.006713066317782323,
+ "sigma_errors_tab": 0.00722992242388993,
+ "errors_tab_se": {
+  "RG": 0.16834979529562516
+ },
+ "limiting_shifts": {
+  "NH-2": {
+   "R": 4.420777567043216,
+   "RG": 3.5080136467643723
+  },
+  "NH-1": {
+   "R": 4.218380373134212,
+   "RG": 4.190689352444488
+  },
+  "Me": {
+   "G": 3.10695343041894,
+   "RG": 3.003496829249206
+  }
+ },
+ "objective_evaluations": 98,
+ "settings": {
+  "optimizer": "powell",
+  "algorithm": "Newton-Raphson",
+  "start_offset": 0.2
+ },
+ "environment": {
+  "commit": "02c8aab301dba14ac99210f9391d98a0ce15da99",
+  "python": "3.14.9",
+  "numpy": "2.4.2",
+  "scipy": "1.17.1",
+  "pandas": "3.0.1",
+  "platform": "Linux-7.3.1-1-cachyos-x86_64-with-glibc2.44"
+ }
+}
