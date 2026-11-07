@@ -1,0 +1,19 @@
+{
+ "rule": "proposed tolerance, or 3 x rounding dispersion if larger",
+ "L1_rms_rel": 0.14717975023807447,
+ "L2_abs": {
+  "RG": 0.005
+ },
+ "L3_se_rel": {
+  "RG": 0.15
+ },
+ "widened": [
+  "L1: cv(RMS) = 0.0491 > 0.03"
+ ],
+ "sensitivity": {
+  "file": "validation/results/literature/sensitivity.json",
+  "n": 50,
+  "base_seed": 20261107,
+  "commit": "4550ee5280b4fe2529400e390590e5dd2546d46a"
+ }
+}

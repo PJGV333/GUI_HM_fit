@@ -1,0 +1,27 @@
+{
+ "rule": "proposed tolerance, or 3 x rounding dispersion if larger",
+ "L1_rms_rel": 0.03,
+ "L2_abs": {
+  "PQX": 0.0061,
+  "PX": 0.0054,
+  "QX": 0.005,
+  "P2X": 0.012275,
+  "P2QX": 0.029937924709256485
+ },
+ "L3_se_rel": {
+  "PQX": 0.15,
+  "PX": 0.15,
+  "QX": 0.15,
+  "P2X": 0.15,
+  "P2QX": 0.15
+ },
+ "widened": [
+  "L2 P2QX: SD = 0.00998 > 0.00685"
+ ],
+ "sensitivity": {
+  "file": "validation/results/literature/sensitivity.json",
+  "n": 50,
+  "base_seed": 20261107,
+  "commit": "4550ee5280b4fe2529400e390590e5dd2546d46a"
+ }
+}
