@@ -859,7 +859,10 @@ def compute_errors_nmr_varpro(
             if S.size == 0 or S.ndim != 2:
                 S = None
             else:
-                if S.shape == (nP, n_abs):
+                # Canonical orientation is species x signals (as in the processor). Only
+                # transpose a map that is NOT already in that orientation: with as many
+                # signals as species the old order transposed a correct square map.
+                if S.shape not in ((n_abs, nP), (nspec, nP)) and S.shape in ((nP, n_abs), (nP, nspec)):
                     S = S.T
                 if S.shape == (nspec, nP):
                     nas_idx = []
