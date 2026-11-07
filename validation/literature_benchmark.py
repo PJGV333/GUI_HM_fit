@@ -15,6 +15,7 @@ Commands::
     python -m validation.literature_benchmark run [--json OUT] [--md OUT]
     python -m validation.literature_benchmark sensitivity [--n 50] [--workers 30] [--json OUT]
     python -m validation.literature_benchmark baseline [--write]
+    python -m validation.literature_benchmark diagnose [--json OUT]   # weights vs optimiser
 """
 from __future__ import annotations
 
@@ -519,6 +520,9 @@ def main(argv=None) -> int:
     p_s.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 2))
     p_s.add_argument("--json", type=Path)
     p_s.add_argument("cases", nargs="*")
+    p_d = sub.add_parser("diagnose")
+    p_d.add_argument("--json", type=Path)
+    p_d.add_argument("cases", nargs="*")
     p_t = sub.add_parser("tolerances")
     p_t.add_argument("sensitivity_json", type=Path)
     p_t.add_argument("--write", action="store_true")
@@ -550,6 +554,8 @@ def main(argv=None) -> int:
                   f"max SD(logb)={max(np.array(r['sd_log_beta'])[fr]):.2e} "
                   f"max range(logb)={max(np.array(r['range_log_beta'])[fr]):.2e} "
                   f"max cv(SE)={np.nanmax(np.array(r['cv_se'])[fr]):.2e} t={r['median_elapsed_s']:.1f}s")
+    elif args.cmd == "diagnose":
+        diagnose_main(args.cases or case_ids(), args.json)
     elif args.cmd == "tolerances":
         sens = json.loads(args.sensitivity_json.read_text())
         for cid, sc in sens["cases"].items():
@@ -579,6 +585,116 @@ def main(argv=None) -> int:
             if args.write:
                 (DATA_DIR / cid / "baseline.json").write_text(json.dumps(bl, indent=1) + "\n")
     return 0
+
+
+
+# ----------------------------------------------------------------------------- diagnostics
+def _residuals_at(case, log_beta) -> np.ndarray:
+    """Residual matrix of HM fit's own projection with every constant fixed at ``log_beta``."""
+    from hmfit_core.api import run_nmr_fit
+
+    conc, shifts = numeric_table(case)
+    with tempfile.TemporaryDirectory() as td:
+        cfg = gui_config(case, os.path.join(td, "case.xlsx"), conc, shifts, start="reference")
+        cfg["initial_k"] = [float(x) for x in log_beta]
+        cfg["fixed_mask"] = cfg["k_fixed"] = [True] * len(cfg["initial_k"])
+        r = run_nmr_fit(cfg, progress_cb=lambda _m: None)
+    ed = r["export_data"]
+    return np.asarray(ed["Chemical_Shifts"], float) - np.asarray(ed["Calculated_Chemical_Shifts"], float)
+
+
+def _irls_weights(resid) -> np.ndarray:
+    """The per-signal weights HM fit's NMR fit uses (nmr_processor: 1/max(rms_j, 1e-4)^2)."""
+    w = []
+    for j in range(resid.shape[1]):
+        rj = resid[np.isfinite(resid[:, j]), j]
+        w.append(1.0 / max(float(np.sqrt(np.mean(rj ** 2))), 1e-4) ** 2 if rj.size > 2 else 1.0)
+    return np.asarray(w)
+
+
+def diagnose(case) -> dict[str, Any]:
+    """Hypothesis (2) weights vs (3) optimiser, without changing any method:
+    HM fit's weighted objective (its own final IRLS weights) and the unweighted RMS
+    at HM fit's solution and at the reference constants, plus a refit started at the
+    reference constants."""
+    names = [s["name"] for s in case["species"]]
+    ref_lb = [s["log_beta"] if s["status"] == "fixed" else case["reference"]["log_beta"][s["name"]]["log_beta"]
+              for s in case["species"]]
+    fit = fit_case(case, with_errors_tab=False)
+    fit_ref_start = fit_case(case, start="reference", with_errors_tab=False)
+    r_hm = _residuals_at(case, fit["log_beta"])
+    r_ref = _residuals_at(case, ref_lb)
+    w = _irls_weights(r_hm)
+    def wobj(r):
+        m = np.isfinite(r)
+        return float(np.sqrt(np.mean((r ** 2 * w[None, :])[m])))
+    def rms(r):
+        return float(np.sqrt(np.nanmean(r ** 2)))
+    per_nuc = {n["name"]: {"hm": float(np.sqrt(np.nanmean(r_hm[:, j] ** 2))),
+                           "ref": float(np.sqrt(np.nanmean(r_ref[:, j] ** 2)))}
+               for j, n in enumerate(case["nuclei"])}
+    return {"names": names, "log_beta_hm": fit["log_beta"], "log_beta_ref": ref_lb,
+            "log_beta_hm_from_ref_start": fit_ref_start["log_beta"],
+            "rms_hm": rms(r_hm), "rms_ref": rms(r_ref), "rms_hm_from_ref_start": fit_ref_start["rms"],
+            "weighted_obj_hm": wobj(r_hm), "weighted_obj_ref": wobj(r_ref),
+            "irls_weights_rel": (w / w.max()).tolist(), "per_nucleus_rms": per_nuc,
+            "evals": fit["objective_evaluations"], "evals_from_ref_start": fit_ref_start["objective_evaluations"]}
+
+
+def unit_weight_model_check(case) -> dict[str, Any]:
+    """DIAGNOSTIC ONLY, not an HM fit result: unit-weight least squares (scipy
+    ``least_squares``) on HM fit's own forward model (NewtonRaphson speciation +
+    ``project_coeffs_block_onp_frac``). Tests whether HM fit's chemical model, with
+    HypNMR's weights, has its minimum at the published values."""
+    from scipy.optimize import least_squares
+
+    from hmfit_core.processors.nmr_processor import project_coeffs_block_onp_frac
+    from hmfit_core.solvers import NewtonRaphson
+
+    conc, d = numeric_table(case)
+    M, S = model_matrices(case)
+    S = np.asarray(S, float)
+    mask = np.isfinite(d)
+    nr = NewtonRaphson(conc, np.asarray(M, float).T, nas=[], model_sett="Free")
+    fixed = np.array([s["status"] == "fixed" for s in case["species"]])
+    ref = np.array([s["log_beta"] if s["status"] == "fixed" else case["reference"]["log_beta"][s["name"]]["log_beta"]
+                    for s in case["species"]], float)
+
+    def resid(theta):
+        k = ref.copy()
+        k[~fixed] = theta
+        C, _ = nr.concentraciones(k)
+        fit = project_coeffs_block_onp_frac(d, np.asarray(C), np.ones_like(d), mask, stoichiometry=S,
+                                            rcond=1e-10, ridge=1e-8)
+        return (d - fit)[mask]
+
+    sol = least_squares(resid, ref[~fixed] + START_OFFSET, x_scale=0.1, xtol=1e-12, ftol=1e-14, gtol=1e-12)
+    m = int(mask.sum())
+    p = int(case["dof_identity"]["p"])
+    s2 = float(np.sum(sol.fun ** 2)) / (m - p)
+    se = np.sqrt(np.diag(np.linalg.inv(sol.jac.T @ sol.jac)) * s2)
+    names = [s["name"] for s, f in zip(case["species"], fixed) if not f]
+    return {"names": names, "log_beta": sol.x.tolist(), "ref": ref[~fixed].tolist(),
+            "delta": (sol.x - ref[~fixed]).tolist(), "rms": float(np.sqrt(np.mean(sol.fun ** 2))),
+            "rms_ref": case["reference"]["rms_weighted_residual"], "se": se.tolist(),
+            "sd_ref": [case["reference"]["log_beta"][n]["sd"] for n in names]}
+
+
+def diagnose_main(cids, out_path: Path | None) -> dict[str, Any]:
+    out = {"environment": environment(), "cases": {}}
+    for cid in cids:
+        case = load_case(cid)
+        if not supported(case)[0]:
+            continue
+        out["cases"][cid] = {"weights_vs_optimizer": diagnose(case), "unit_weight_model_check": unit_weight_model_check(case)}
+        d, u = out["cases"][cid]["weights_vs_optimizer"], out["cases"][cid]["unit_weight_model_check"]
+        print(f"{cid:15s} weighted obj HM/ref = {d['weighted_obj_hm']:.4f}/{d['weighted_obj_ref']:.4f}; "
+              f"ref-start -> max|dlogb vs HM| = {np.max(np.abs(np.subtract(d['log_beta_hm_from_ref_start'], d['log_beta_hm']))):.4f}; "
+              f"unit-weight model: max|dlogb vs ref| = {np.max(np.abs(u['delta'])):.5f}, "
+              f"RMS {u['rms']:.5e} vs {u['rms_ref']:.5e}")
+    if out_path:
+        out_path.write_text(json.dumps(out, indent=1) + "\n")
+    return out
 
 
 if __name__ == "__main__":

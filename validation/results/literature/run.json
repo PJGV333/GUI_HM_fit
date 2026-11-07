@@ -1,0 +1,3081 @@
+{
+ "environment": {
+  "commit": "f93bfcd89e6f18e4cc4f41dc64d55b5d43fb883b",
+  "python": "3.14.9",
+  "numpy": "2.4.2",
+  "scipy": "1.17.1",
+  "pandas": "3.0.1",
+  "platform": "Linux-7.3.1-1-cachyos-x86_64-with-glibc2.44"
+ },
+ "criteria": {
+  "L1_rms_rel": 0.03,
+  "L2_abs_factor": 0.25,
+  "L2_abs_floor": 0.005,
+  "L3_se_rel": 0.15,
+  "L4_corr_abs": 0.05
+ },
+ "start_offset": 0.2,
+ "cases": {
+  "r09a-p2-058": {
+   "source": {
+    "article": "R09a",
+    "citation": "S. Roelens, A. Vacca, C. Venturi, \"Binding of Ionic Species: A General Approach To Measuring Binding Constants and Assessing Affinities\", Chem. Eur. J. 2009, 15, 2635-2644",
+    "doi": "10.1002/chem.200802298",
+    "si_pages": [
+     "S12",
+     "S13",
+     "S14"
+    ],
+    "data_table_page": "S12",
+    "results_pages": [
+     "S13",
+     "S14"
+    ],
+    "article_table": "R09a Table 2",
+    "notice": "Data belong to their authors (see SOURCES.md); used only for the internal validation of HM fit."
+   },
+   "supported": true,
+   "forward": {
+    "success": true,
+    "rms_hm": 0.0004935638732302211,
+    "rms_ref": 0.00049356395,
+    "rel": -1.5554170618159446e-07
+   },
+   "fit": {
+    "success": true,
+    "elapsed_s": 3.9092238169978373,
+    "objective_evaluations": 768,
+    "names": [
+     "PQX",
+     "PX",
+     "QX",
+     "P2",
+     "P2X",
+     "P2QX"
+    ],
+    "log_beta": [
+     7.173709719109068,
+     3.596861415561381,
+     4.060430460716096,
+     0.1,
+     6.238710668132484,
+     9.512709144239286
+    ],
+    "se": [
+     0.015917149455837998,
+     0.010006351820251527,
+     0.01040924480019709,
+     0.0,
+     0.025443868894291486,
+     0.026936169416037655
+    ],
+    "fixed": [
+     false,
+     false,
+     false,
+     true,
+     false,
+     false
+    ],
+    "rms": 0.0004993176282130731,
+    "stability_status": "excellent",
+    "errors_tab": {
+     "se": [
+      0.030120983058524797,
+      0.017150127486241465,
+      0.022664530916622044,
+      0.0,
+      0.04416946225624205,
+      0.03789841110622424
+     ],
+     "sigma": 0.000542569479886731,
+     "dof": 210,
+     "nobs": 255,
+     "n_linear": 40,
+     "corr": [
+      [
+       1.0,
+       0.5860736252802197,
+       0.8655012252782396,
+       NaN,
+       0.8064258691259422,
+       0.4185040098838764
+      ],
+      [
+       0.5860736252802197,
+       1.0,
+       0.6830837858367053,
+       NaN,
+       0.5847608034784012,
+       0.4577685604854653
+      ],
+      [
+       0.8655012252782396,
+       0.6830837858367053,
+       1.0,
+       NaN,
+       0.8151143656568528,
+       0.30045991997102617
+      ],
+      [
+       NaN,
+       NaN,
+       NaN,
+       NaN,
+       NaN,
+       NaN
+      ],
+      [
+       0.8064258691259424,
+       0.5847608034784012,
+       0.8151143656568527,
+       NaN,
+       1.0,
+       0.32407228836333746
+      ],
+      [
+       0.4185040098838763,
+       0.4577685604854654,
+       0.30045991997102617,
+       NaN,
+       0.32407228836333757,
+       1.0
+      ]
+     ]
+    },
+    "limiting_shifts": {
+     "NH-2": {
+      "P": 9.95631759632668,
+      "PQX": 10.213659262348186,
+      "PX": 10.850088821171987,
+      "P2": 11.353691080463042,
+      "P2X": 10.1899465117972,
+      "P2QX": 10.277422846787555
+     },
+     "CH-B": {
+      "P": 6.722497577225059,
+      "PQX": 6.691215069055693,
+      "PX": 6.656034272710547,
+      "P2": 6.587406324864978,
+      "P2X": 6.737556088478162,
+      "P2QX": 6.658737586924623
+     },
+     "CH-C": {
+      "P": 6.469483242938828,
+      "PQX": 6.689044751925883,
+      "PX": 7.0991920342639,
+      "P2": 6.471671070164281,
+      "P2X": 6.780330850313426,
+      "P2QX": 6.626207858623806
+     },
+     "NH-1": {
+      "P": 6.308206351305556,
+      "PQX": 7.008519461929276,
+      "PX": 8.43323172181791,
+      "P2": 6.892442732591061,
+      "P2X": 7.228946295318774,
+      "P2QX": 6.790052245380126
+     },
+     "CH2-Bn": {
+      "P": 5.175722964362922,
+      "PQX": 5.156706082682439,
+      "PX": 5.157523619315395,
+      "P2": 4.980490436117141,
+      "P2X": 5.202891785605562,
+      "P2QX": 5.135064932307174
+     },
+     "CH2N": {
+      "P": 4.503077576056561,
+      "PQX": 4.480658633582191,
+      "PX": 4.4867338703745325,
+      "P2": 4.274942739119237,
+      "P2X": 4.556824588096549,
+      "P2QX": 4.4557668480533374
+     },
+     "Me": {
+      "Q": 3.008159094762994,
+      "PQX": 3.0062910760134556,
+      "QX": 3.2224860313079127,
+      "P2QX": 2.8932412318607525
+     }
+    }
+   },
+   "levels": {
+    "L1": {
+     "pass": true,
+     "rms_hm": 0.0004993176282130731,
+     "rms_ref": 0.00049356395,
+     "rel": 0.011657411796532458,
+     "sigma_hm": 0.000542569479886731,
+     "sigma_ref": 0.00054342807,
+     "sigma_rel": -0.0015799517188522794
+    },
+    "L2": {
+     "pass": false,
+     "items": [
+      {
+       "name": "PQX",
+       "hm": 7.173709719109068,
+       "ref": 7.1888,
+       "delta": -0.015090280890931673,
+       "tol": 0.022611944641335164,
+       "pass": true
+      },
+      {
+       "name": "PX",
+       "hm": 3.596861415561381,
+       "ref": 3.5777,
+       "delta": 0.019161415561380846,
+       "tol": 0.005,
+       "pass": false
+      },
+      {
+       "name": "QX",
+       "hm": 4.060430460716096,
+       "ref": 4.0632,
+       "delta": -0.002769539283904443,
+       "tol": 0.005,
+       "pass": true
+      },
+      {
+       "name": "P2X",
+       "hm": 6.238710668132484,
+       "ref": 6.2558,
+       "delta": -0.017089331867516044,
+       "tol": 0.03698377343886734,
+       "pass": true
+      },
+      {
+       "name": "P2QX",
+       "hm": 9.512709144239286,
+       "ref": 9.4656,
+       "delta": 0.04710914423928614,
+       "tol": 0.045740773984985814,
+       "pass": false
+      }
+     ]
+    },
+    "L3": {
+     "pass": false,
+     "items": [
+      {
+       "name": "PQX",
+       "hm": 0.015917149455837998,
+       "ref": 0.0205,
+       "rel": -0.22355368508107332,
+       "tol": 0.15,
+       "pass": false
+      },
+      {
+       "name": "PX",
+       "hm": 0.010006351820251527,
+       "ref": 0.0137,
+       "rel": -0.26960935618602,
+       "tol": 0.15,
+       "pass": false
+      },
+      {
+       "name": "QX",
+       "hm": 0.01040924480019709,
+       "ref": 0.0144,
+       "rel": -0.27713577776409093,
+       "tol": 0.15,
+       "pass": false
+      },
+      {
+       "name": "P2X",
+       "hm": 0.025443868894291486,
+       "ref": 0.0353,
+       "rel": -0.27921051290958954,
+       "tol": 0.15,
+       "pass": false
+      },
+      {
+       "name": "P2QX",
+       "hm": 0.026936169416037655,
+       "ref": 0.0376,
+       "rel": -0.2836125155309135,
+       "tol": 0.15,
+       "pass": false
+      }
+     ]
+    },
+    "L4": {
+     "shifts_pass": 34,
+     "shifts_n": 40,
+     "corr_pass": 0,
+     "corr_n": 10,
+     "shifts": [
+      {
+       "nucleus": "NH-2",
+       "species": "P",
+       "hm": 9.95631759632668,
+       "ref": 9.9566,
+       "err": 0.0009,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-2",
+       "species": "PQX",
+       "hm": 10.213659262348186,
+       "ref": 10.2155,
+       "err": 0.0091,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-2",
+       "species": "PX",
+       "hm": 10.850088821171987,
+       "ref": 10.8743,
+       "err": 0.0168,
+       "pass": false
+      },
+      {
+       "nucleus": "NH-2",
+       "species": "P2",
+       "hm": 11.353691080463042,
+       "ref": 11.3464,
+       "err": 0.0198,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-2",
+       "species": "P2X",
+       "hm": 10.1899465117972,
+       "ref": 10.1788,
+       "err": 0.0255,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-2",
+       "species": "P2QX",
+       "hm": 10.277422846787555,
+       "ref": 10.3061,
+       "err": 0.035,
+       "pass": true
+      },
+      {
+       "nucleus": "CH-B",
+       "species": "P",
+       "hm": 6.722497577225059,
+       "ref": 6.7225,
+       "err": 0.0009,
+       "pass": true
+      },
+      {
+       "nucleus": "CH-B",
+       "species": "PQX",
+       "hm": 6.691215069055693,
+       "ref": 6.6914,
+       "err": 0.0078,
+       "pass": true
+      },
+      {
+       "nucleus": "CH-B",
+       "species": "PX",
+       "hm": 6.656034272710547,
+       "ref": 6.6542,
+       "err": 0.0061,
+       "pass": true
+      },
+      {
+       "nucleus": "CH-B",
+       "species": "P2",
+       "hm": 6.587406324864978,
+       "ref": 6.5868,
+       "err": 0.0196,
+       "pass": true
+      },
+      {
+       "nucleus": "CH-B",
+       "species": "P2X",
+       "hm": 6.737556088478162,
+       "ref": 6.7348,
+       "err": 0.0212,
+       "pass": true
+      },
+      {
+       "nucleus": "CH-B",
+       "species": "P2QX",
+       "hm": 6.658737586924623,
+       "ref": 6.656,
+       "err": 0.0298,
+       "pass": true
+      },
+      {
+       "nucleus": "CH-C",
+       "species": "P",
+       "hm": 6.469483242938828,
+       "ref": 6.4698,
+       "err": 0.0009,
+       "pass": true
+      },
+      {
+       "nucleus": "CH-C",
+       "species": "PQX",
+       "hm": 6.689044751925883,
+       "ref": 6.6893,
+       "err": 0.0089,
+       "pass": true
+      },
+      {
+       "nucleus": "CH-C",
+       "species": "PX",
+       "hm": 7.0991920342639,
+       "ref": 7.1155,
+       "err": 0.0129,
+       "pass": false
+      },
+      {
+       "nucleus": "CH-C",
+       "species": "P2",
+       "hm": 6.471671070164281,
+       "ref": 6.4665,
+       "err": 0.0202,
+       "pass": true
+      },
+      {
+       "nucleus": "CH-C",
+       "species": "P2X",
+       "hm": 6.780330850313426,
+       "ref": 6.7652,
+       "err": 0.0242,
+       "pass": true
+      },
+      {
+       "nucleus": "CH-C",
+       "species": "P2QX",
+       "hm": 6.626207858623806,
+       "ref": 6.6409,
+       "err": 0.0332,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "P",
+       "hm": 6.308206351305556,
+       "ref": 6.3092,
+       "err": 0.0013,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "PQX",
+       "hm": 7.008519461929276,
+       "ref": 7.0096,
+       "err": 0.0163,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "PX",
+       "hm": 8.43323172181791,
+       "ref": 8.4901,
+       "err": 0.0392,
+       "pass": false
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "P2",
+       "hm": 6.892442732591061,
+       "ref": 6.8746,
+       "err": 0.0252,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "P2X",
+       "hm": 7.228946295318774,
+       "ref": 7.1818,
+       "err": 0.0416,
+       "pass": false
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "P2QX",
+       "hm": 6.790052245380126,
+       "ref": 6.8357,
+       "err": 0.0566,
+       "pass": true
+      },
+      {
+       "nucleus": "CH2-Bn",
+       "species": "P",
+       "hm": 5.175722964362922,
+       "ref": 5.1758,
+       "err": 0.0008,
+       "pass": true
+      },
+      {
+       "nucleus": "CH2-Bn",
+       "species": "PQX",
+       "hm": 5.156706082682439,
+       "ref": 5.1571,
+       "err": 0.0074,
+       "pass": true
+      },
+      {
+       "nucleus": "CH2-Bn",
+       "species": "PX",
+       "hm": 5.157523619315395,
+       "ref": 5.157,
+       "err": 0.006,
+       "pass": true
+      },
+      {
+       "nucleus": "CH2-Bn",
+       "species": "P2",
+       "hm": 4.980490436117141,
+       "ref": 4.9797,
+       "err": 0.0187,
+       "pass": true
+      },
+      {
+       "nucleus": "CH2-Bn",
+       "species": "P2X",
+       "hm": 5.202891785605562,
+       "ref": 5.2,
+       "err": 0.0191,
+       "pass": true
+      },
+      {
+       "nucleus": "CH2-Bn",
+       "species": "P2QX",
+       "hm": 5.135064932307174,
+       "ref": 5.1339,
+       "err": 0.0277,
+       "pass": true
+      },
+      {
+       "nucleus": "CH2N",
+       "species": "P",
+       "hm": 4.503077576056561,
+       "ref": 4.5032,
+       "err": 0.0008,
+       "pass": true
+      },
+      {
+       "nucleus": "CH2N",
+       "species": "PQX",
+       "hm": 4.480658633582191,
+       "ref": 4.4813,
+       "err": 0.0074,
+       "pass": true
+      },
+      {
+       "nucleus": "CH2N",
+       "species": "PX",
+       "hm": 4.4867338703745325,
+       "ref": 4.4861,
+       "err": 0.006,
+       "pass": true
+      },
+      {
+       "nucleus": "CH2N",
+       "species": "P2",
+       "hm": 4.274942739119237,
+       "ref": 4.2733,
+       "err": 0.0187,
+       "pass": true
+      },
+      {
+       "nucleus": "CH2N",
+       "species": "P2X",
+       "hm": 4.556824588096549,
+       "ref": 4.5516,
+       "err": 0.0195,
+       "pass": true
+      },
+      {
+       "nucleus": "CH2N",
+       "species": "P2QX",
+       "hm": 4.4557668480533374,
+       "ref": 4.4557,
+       "err": 0.0279,
+       "pass": true
+      },
+      {
+       "nucleus": "Me",
+       "species": "Q",
+       "hm": 3.008159094762994,
+       "ref": 3.0077,
+       "err": 0.0005,
+       "pass": true
+      },
+      {
+       "nucleus": "Me",
+       "species": "PQX",
+       "hm": 3.0062910760134556,
+       "ref": 3.0037,
+       "err": 0.0032,
+       "pass": true
+      },
+      {
+       "nucleus": "Me",
+       "species": "QX",
+       "hm": 3.2224860313079127,
+       "ref": 3.2242,
+       "err": 0.0017,
+       "pass": false
+      },
+      {
+       "nucleus": "Me",
+       "species": "P2QX",
+       "hm": 2.8932412318607525,
+       "ref": 2.8855,
+       "err": 0.0064,
+       "pass": false
+      }
+     ],
+     "corr": [
+      {
+       "pair": "PX/PQX",
+       "hm": 0.5860736252802197,
+       "ref": 0.286,
+       "pass": false
+      },
+      {
+       "pair": "QX/PQX",
+       "hm": 0.8655012252782396,
+       "ref": 0.747,
+       "pass": false
+      },
+      {
+       "pair": "QX/PX",
+       "hm": 0.6830837858367053,
+       "ref": 0.465,
+       "pass": false
+      },
+      {
+       "pair": "P2X/PQX",
+       "hm": 0.8064258691259424,
+       "ref": 0.729,
+       "pass": false
+      },
+      {
+       "pair": "P2X/PX",
+       "hm": 0.5847608034784012,
+       "ref": 0.357,
+       "pass": false
+      },
+      {
+       "pair": "P2X/QX",
+       "hm": 0.8151143656568527,
+       "ref": 0.69,
+       "pass": false
+      },
+      {
+       "pair": "P2QX/PQX",
+       "hm": 0.4185040098838763,
+       "ref": 0.346,
+       "pass": false
+      },
+      {
+       "pair": "P2QX/PX",
+       "hm": 0.4577685604854654,
+       "ref": 0.327,
+       "pass": false
+      },
+      {
+       "pair": "P2QX/QX",
+       "hm": 0.30045991997102617,
+       "ref": 0.088,
+       "pass": false
+      },
+      {
+       "pair": "P2QX/P2X",
+       "hm": 0.32407228836333757,
+       "ref": 0.153,
+       "pass": false
+      }
+     ]
+    }
+   },
+   "classification": "parcial"
+  },
+  "r09a-p2-106": {
+   "source": {
+    "article": "R09a",
+    "citation": "S. Roelens, A. Vacca, C. Venturi, \"Binding of Ionic Species: A General Approach To Measuring Binding Constants and Assessing Affinities\", Chem. Eur. J. 2009, 15, 2635-2644",
+    "doi": "10.1002/chem.200802298",
+    "si_pages": [
+     "S17",
+     "S18",
+     "S19"
+    ],
+    "data_table_page": "S17",
+    "results_pages": [
+     "S18",
+     "S19"
+    ],
+    "article_table": null,
+    "notice": "Data belong to their authors (see SOURCES.md); used only for the internal validation of HM fit."
+   },
+   "supported": true,
+   "forward": {
+    "success": true,
+    "rms_hm": 0.0007515222751900972,
+    "rms_ref": 0.00075152226,
+    "rel": 2.021243816763274e-08
+   },
+   "fit": {
+    "success": true,
+    "elapsed_s": 6.148362293999526,
+    "objective_evaluations": 1143,
+    "names": [
+     "PQX",
+     "PX",
+     "QX",
+     "P2",
+     "P2X",
+     "P2QX"
+    ],
+    "log_beta": [
+     7.191402871534845,
+     3.6073411285167483,
+     4.093718144500294,
+     0.1,
+     6.1245838619474435,
+     9.533483957780364
+    ],
+    "se": [
+     0.01925903392000612,
+     0.015898532624741907,
+     0.008193631500357953,
+     0.0,
+     0.031487085924263726,
+     0.031713201979317054
+    ],
+    "fixed": [
+     false,
+     false,
+     false,
+     true,
+     false,
+     false
+    ],
+    "rms": 0.0008274155435327876,
+    "stability_status": "excellent",
+    "errors_tab": {
+     "se": [
+      0.03634054227520724,
+      0.029902355926454047,
+      0.031452719077000243,
+      0.0,
+      0.06230470137697929,
+      0.03574771544870516
+     ],
+     "sigma": 0.0009137587056527789,
+     "dof": 212,
+     "nobs": 257,
+     "n_linear": 40,
+     "corr": [
+      [
+       1.0,
+       0.33307527212371324,
+       0.8409997411237491,
+       NaN,
+       0.8394917665934427,
+       0.7309522080743525
+      ],
+      [
+       0.3330752721237132,
+       1.0,
+       0.7289429741106724,
+       NaN,
+       0.17185216200781164,
+       -0.05442733256552237
+      ],
+      [
+       0.8409997411237491,
+       0.7289429741106724,
+       1.0,
+       NaN,
+       0.6589554285901341,
+       0.4505715735911972
+      ],
+      [
+       NaN,
+       NaN,
+       NaN,
+       NaN,
+       NaN,
+       NaN
+      ],
+      [
+       0.8394917665934427,
+       0.17185216200781156,
+       0.658955428590134,
+       NaN,
+       1.0,
+       0.6463756658907511
+      ],
+      [
+       0.7309522080743523,
+       -0.054427332565522325,
+       0.4505715735911972,
+       NaN,
+       0.6463756658907511,
+       1.0
+      ]
+     ]
+    },
+    "limiting_shifts": {
+     "NH-2": {
+      "P": 9.963801907891686,
+      "PQX": 10.596231315823397,
+      "PX": 10.70242844624323,
+      "P2": 11.12220697850491,
+      "P2X": 9.926456778302407,
+      "P2QX": 10.671099597844387
+     },
+     "CH-B": {
+      "P": 6.721533912620692,
+      "PQX": 6.663448446927925,
+      "PX": 6.66433619244887,
+      "P2": 6.598483331579429,
+      "P2X": 6.791889833899901,
+      "P2QX": 6.604341306869211
+     },
+     "CH-C": {
+      "P": 6.47137393349771,
+      "PQX": 6.860090916985173,
+      "PX": 7.045892704381294,
+      "P2": 6.420289160904949,
+      "P2X": 6.709134768448377,
+      "P2QX": 6.778129269079764
+     },
+     "NH-1": {
+      "P": 6.317695179181793,
+      "PQX": 7.742603330515031,
+      "PX": 8.18476463906194,
+      "P2": 6.617939829423237,
+      "P2X": 6.851017912031628,
+      "P2QX": 7.534130298745116
+     },
+     "CH2-Bn": {
+      "P": 5.175034327471343,
+      "PQX": 5.141135011819112,
+      "PX": 5.162188640345338,
+      "P2": 4.987790276990906,
+      "P2X": 5.244603296792929,
+      "P2QX": 5.092052856396861
+     },
+     "CH2N": {
+      "P": 4.501401196729264,
+      "PQX": 4.4477440405013695,
+      "PX": 4.4995812824967985,
+      "P2": 4.304893113857468,
+      "P2X": 4.6364018269213725,
+      "P2QX": 4.373202197676245
+     },
+     "Me": {
+      "Q": 3.0111285764162874,
+      "PQX": 2.98625789631734,
+      "QX": 3.2158549148405826,
+      "P2QX": 2.9050156058298215
+     }
+    }
+   },
+   "levels": {
+    "L1": {
+     "pass": false,
+     "rms_hm": 0.0008274155435327876,
+     "rms_ref": 0.00075152226,
+     "rel": 0.10098607529308268,
+     "sigma_hm": 0.0009137587056527789,
+     "sigma_ref": 0.00082677025,
+     "sigma_rel": 0.10521478688036834
+    },
+    "L2": {
+     "pass": false,
+     "items": [
+      {
+       "name": "PQX",
+       "hm": 7.191402871534845,
+       "ref": 7.1419,
+       "delta": 0.04950287153484556,
+       "tol": 0.0061,
+       "pass": false
+      },
+      {
+       "name": "PX",
+       "hm": 3.6073411285167483,
+       "ref": 3.61,
+       "delta": -0.0026588714832516125,
+       "tol": 0.0054,
+       "pass": true
+      },
+      {
+       "name": "QX",
+       "hm": 4.093718144500294,
+       "ref": 4.0724,
+       "delta": 0.021318144500294345,
+       "tol": 0.005,
+       "pass": false
+      },
+      {
+       "name": "P2X",
+       "hm": 6.1245838619474435,
+       "ref": 6.0807,
+       "delta": 0.043883861947443314,
+       "tol": 0.012275,
+       "pass": false
+      },
+      {
+       "name": "P2QX",
+       "hm": 9.533483957780364,
+       "ref": 9.5975,
+       "delta": -0.0640160422196363,
+       "tol": 0.029937924709256485,
+       "pass": false
+      }
+     ]
+    },
+    "L3": {
+     "pass": false,
+     "items": [
+      {
+       "name": "PQX",
+       "hm": 0.01925903392000612,
+       "ref": 0.0244,
+       "rel": -0.2106953311472901,
+       "tol": 0.15,
+       "pass": false
+      },
+      {
+       "name": "PX",
+       "hm": 0.015898532624741907,
+       "ref": 0.0216,
+       "rel": -0.26395682292861544,
+       "tol": 0.15,
+       "pass": false
+      },
+      {
+       "name": "QX",
+       "hm": 0.008193631500357953,
+       "ref": 0.0173,
+       "rel": -0.526379682060234,
+       "tol": 0.15,
+       "pass": false
+      },
+      {
+       "name": "P2X",
+       "hm": 0.031487085924263726,
+       "ref": 0.0491,
+       "rel": -0.3587151542919811,
+       "tol": 0.15,
+       "pass": false
+      },
+      {
+       "name": "P2QX",
+       "hm": 0.031713201979317054,
+       "ref": 0.0274,
+       "rel": 0.1574161306320092,
+       "tol": 0.15,
+       "pass": false
+      }
+     ]
+    },
+    "L4": {
+     "shifts_pass": 32,
+     "shifts_n": 40,
+     "corr_pass": 3,
+     "corr_n": 10,
+     "shifts": [
+      {
+       "nucleus": "NH-2",
+       "species": "P",
+       "hm": 9.963801907891686,
+       "ref": 9.9668,
+       "err": 0.0019,
+       "pass": false
+      },
+      {
+       "nucleus": "NH-2",
+       "species": "PQX",
+       "hm": 10.596231315823397,
+       "ref": 10.606,
+       "err": 0.0145,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-2",
+       "species": "PX",
+       "hm": 10.70242844624323,
+       "ref": 10.6991,
+       "err": 0.019,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-2",
+       "species": "P2",
+       "hm": 11.12220697850491,
+       "ref": 11.0846,
+       "err": 0.036,
+       "pass": false
+      },
+      {
+       "nucleus": "NH-2",
+       "species": "P2X",
+       "hm": 9.926456778302407,
+       "ref": 9.7823,
+       "err": 0.0802,
+       "pass": false
+      },
+      {
+       "nucleus": "NH-2",
+       "species": "P2QX",
+       "hm": 10.671099597844387,
+       "ref": 10.6804,
+       "err": 0.0321,
+       "pass": true
+      },
+      {
+       "nucleus": "CH-B",
+       "species": "P",
+       "hm": 6.721533912620692,
+       "ref": 6.7212,
+       "err": 0.0017,
+       "pass": true
+      },
+      {
+       "nucleus": "CH-B",
+       "species": "PQX",
+       "hm": 6.663448446927925,
+       "ref": 6.6631,
+       "err": 0.0078,
+       "pass": true
+      },
+      {
+       "nucleus": "CH-B",
+       "species": "PX",
+       "hm": 6.66433619244887,
+       "ref": 6.6641,
+       "err": 0.0078,
+       "pass": true
+      },
+      {
+       "nucleus": "CH-B",
+       "species": "P2",
+       "hm": 6.598483331579429,
+       "ref": 6.6009,
+       "err": 0.0347,
+       "pass": true
+      },
+      {
+       "nucleus": "CH-B",
+       "species": "P2X",
+       "hm": 6.791889833899901,
+       "ref": 6.8131,
+       "err": 0.0537,
+       "pass": true
+      },
+      {
+       "nucleus": "CH-B",
+       "species": "P2QX",
+       "hm": 6.604341306869211,
+       "ref": 6.6091,
+       "err": 0.0292,
+       "pass": true
+      },
+      {
+       "nucleus": "CH-C",
+       "species": "P",
+       "hm": 6.47137393349771,
+       "ref": 6.4722,
+       "err": 0.0018,
+       "pass": true
+      },
+      {
+       "nucleus": "CH-C",
+       "species": "PQX",
+       "hm": 6.860090916985173,
+       "ref": 6.8635,
+       "err": 0.0095,
+       "pass": true
+      },
+      {
+       "nucleus": "CH-C",
+       "species": "PX",
+       "hm": 7.045892704381294,
+       "ref": 7.0425,
+       "err": 0.0148,
+       "pass": true
+      },
+      {
+       "nucleus": "CH-C",
+       "species": "P2",
+       "hm": 6.420289160904949,
+       "ref": 6.4116,
+       "err": 0.0364,
+       "pass": true
+      },
+      {
+       "nucleus": "CH-C",
+       "species": "P2X",
+       "hm": 6.709134768448377,
+       "ref": 6.6748,
+       "err": 0.0595,
+       "pass": true
+      },
+      {
+       "nucleus": "CH-C",
+       "species": "P2QX",
+       "hm": 6.778129269079764,
+       "ref": 6.7822,
+       "err": 0.0331,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "P",
+       "hm": 6.317695179181793,
+       "ref": 6.3217,
+       "err": 0.0025,
+       "pass": false
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "PQX",
+       "hm": 7.742603330515031,
+       "ref": 7.76,
+       "err": 0.0255,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "PX",
+       "hm": 8.18476463906194,
+       "ref": 8.1742,
+       "err": 0.0434,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "P2",
+       "hm": 6.617939829423237,
+       "ref": 6.5704,
+       "err": 0.0456,
+       "pass": false
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "P2X",
+       "hm": 6.851017912031628,
+       "ref": 6.6725,
+       "err": 0.0955,
+       "pass": false
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "P2QX",
+       "hm": 7.534130298745116,
+       "ref": 7.5507,
+       "err": 0.049,
+       "pass": true
+      },
+      {
+       "nucleus": "CH2-Bn",
+       "species": "P",
+       "hm": 5.175034327471343,
+       "ref": 5.1748,
+       "err": 0.0016,
+       "pass": true
+      },
+      {
+       "nucleus": "CH2-Bn",
+       "species": "PQX",
+       "hm": 5.141135011819112,
+       "ref": 5.1407,
+       "err": 0.0077,
+       "pass": true
+      },
+      {
+       "nucleus": "CH2-Bn",
+       "species": "PX",
+       "hm": 5.162188640345338,
+       "ref": 5.1616,
+       "err": 0.0076,
+       "pass": true
+      },
+      {
+       "nucleus": "CH2-Bn",
+       "species": "P2",
+       "hm": 4.987790276990906,
+       "ref": 4.9901,
+       "err": 0.0339,
+       "pass": true
+      },
+      {
+       "nucleus": "CH2-Bn",
+       "species": "P2X",
+       "hm": 5.244603296792929,
+       "ref": 5.262,
+       "err": 0.0511,
+       "pass": true
+      },
+      {
+       "nucleus": "CH2-Bn",
+       "species": "P2QX",
+       "hm": 5.092052856396861,
+       "ref": 5.0952,
+       "err": 0.028,
+       "pass": true
+      },
+      {
+       "nucleus": "CH2N",
+       "species": "P",
+       "hm": 4.501401196729264,
+       "ref": 4.5007,
+       "err": 0.0017,
+       "pass": true
+      },
+      {
+       "nucleus": "CH2N",
+       "species": "PQX",
+       "hm": 4.4477440405013695,
+       "ref": 4.4461,
+       "err": 0.008,
+       "pass": true
+      },
+      {
+       "nucleus": "CH2N",
+       "species": "PX",
+       "hm": 4.4995812824967985,
+       "ref": 4.4988,
+       "err": 0.0077,
+       "pass": true
+      },
+      {
+       "nucleus": "CH2N",
+       "species": "P2",
+       "hm": 4.304893113857468,
+       "ref": 4.3131,
+       "err": 0.0344,
+       "pass": true
+      },
+      {
+       "nucleus": "CH2N",
+       "species": "P2X",
+       "hm": 4.6364018269213725,
+       "ref": 4.6723,
+       "err": 0.0571,
+       "pass": true
+      },
+      {
+       "nucleus": "CH2N",
+       "species": "P2QX",
+       "hm": 4.373202197676245,
+       "ref": 4.3744,
+       "err": 0.0295,
+       "pass": true
+      },
+      {
+       "nucleus": "Me",
+       "species": "Q",
+       "hm": 3.0111285764162874,
+       "ref": 3.0125,
+       "err": 0.0006,
+       "pass": false
+      },
+      {
+       "nucleus": "Me",
+       "species": "PQX",
+       "hm": 2.98625789631734,
+       "ref": 2.9847,
+       "err": 0.0038,
+       "pass": true
+      },
+      {
+       "nucleus": "Me",
+       "species": "QX",
+       "hm": 3.2158549148405826,
+       "ref": 3.2165,
+       "err": 0.0015,
+       "pass": true
+      },
+      {
+       "nucleus": "Me",
+       "species": "P2QX",
+       "hm": 2.9050156058298215,
+       "ref": 2.9152,
+       "err": 0.0024,
+       "pass": false
+      }
+     ],
+     "corr": [
+      {
+       "pair": "PX/PQX",
+       "hm": 0.3330752721237132,
+       "ref": -0.039,
+       "pass": false
+      },
+      {
+       "pair": "QX/PQX",
+       "hm": 0.8409997411237491,
+       "ref": 0.693,
+       "pass": false
+      },
+      {
+       "pair": "QX/PX",
+       "hm": 0.7289429741106724,
+       "ref": 0.572,
+       "pass": false
+      },
+      {
+       "pair": "P2X/PQX",
+       "hm": 0.8394917665934427,
+       "ref": 0.791,
+       "pass": true
+      },
+      {
+       "pair": "P2X/PX",
+       "hm": 0.17185216200781156,
+       "ref": -0.053,
+       "pass": false
+      },
+      {
+       "pair": "P2X/QX",
+       "hm": 0.658955428590134,
+       "ref": 0.547,
+       "pass": false
+      },
+      {
+       "pair": "P2QX/PQX",
+       "hm": 0.7309522080743523,
+       "ref": 0.8,
+       "pass": false
+      },
+      {
+       "pair": "P2QX/PX",
+       "hm": -0.054427332565522325,
+       "ref": -0.193,
+       "pass": false
+      },
+      {
+       "pair": "P2QX/QX",
+       "hm": 0.4505715735911972,
+       "ref": 0.459,
+       "pass": true
+      },
+      {
+       "pair": "P2QX/P2X",
+       "hm": 0.6463756658907511,
+       "ref": 0.687,
+       "pass": true
+      }
+     ]
+    }
+   },
+   "classification": "no reproduce"
+  },
+  "r09a-qx-dil": {
+   "source": {
+    "article": "R09a",
+    "citation": "S. Roelens, A. Vacca, C. Venturi, \"Binding of Ionic Species: A General Approach To Measuring Binding Constants and Assessing Affinities\", Chem. Eur. J. 2009, 15, 2635-2644",
+    "doi": "10.1002/chem.200802298",
+    "si_pages": [
+     "S10",
+     "S11"
+    ],
+    "data_table_page": "S10",
+    "results_pages": [
+     "S11"
+    ],
+    "article_table": null,
+    "notice": "Data belong to their authors (see SOURCES.md); used only for the internal validation of HM fit."
+   },
+   "supported": true,
+   "forward": {
+    "success": true,
+    "rms_hm": 0.00101807536579193,
+    "rms_ref": 0.00094385367,
+    "rel": 0.07863686729313657
+   },
+   "fit": {
+    "success": true,
+    "elapsed_s": 0.27627533799386583,
+    "objective_evaluations": 53,
+    "names": [
+     "QX"
+    ],
+    "log_beta": [
+     4.057872733896361
+    ],
+    "se": [
+     0.013345927886459441
+    ],
+    "fixed": [
+     false
+    ],
+    "rms": 0.0010118779140455385,
+    "stability_status": "excellent",
+    "errors_tab": {
+     "se": [
+      0.013345927886459382
+     ],
+     "sigma": 0.0010786654806946572,
+     "dof": 22,
+     "nobs": 25,
+     "n_linear": 2,
+     "corr": [
+      [
+       1.0
+      ]
+     ]
+    },
+    "limiting_shifts": {
+     "Me": {
+      "Q": 3.0218400669920458,
+      "QX": 3.231394001030538
+     }
+    }
+   },
+   "levels": {
+    "L1": {
+     "pass": false,
+     "rms_hm": 0.0010118779140455385,
+     "rms_ref": 0.00094385367,
+     "rel": 0.07207075228678028,
+     "sigma_hm": 0.0010786654806946572,
+     "sigma_ref": 0.00100615139,
+     "sigma_rel": 0.0720707553707769
+    },
+    "L2": {
+     "pass": false,
+     "items": [
+      {
+       "name": "QX",
+       "hm": 4.057872733896361,
+       "ref": 4.0508,
+       "delta": 0.007072733896361427,
+       "tol": 0.005,
+       "pass": false
+      }
+     ]
+    },
+    "L3": {
+     "pass": true,
+     "items": [
+      {
+       "name": "QX",
+       "hm": 0.013345927886459441,
+       "ref": 0.0123,
+       "rel": 0.08503478751702764,
+       "tol": 0.15,
+       "pass": true
+      }
+     ]
+    },
+    "L4": {
+     "shifts_pass": 2,
+     "shifts_n": 2,
+     "corr_pass": 0,
+     "corr_n": 0,
+     "shifts": [
+      {
+       "nucleus": "Me",
+       "species": "Q",
+       "hm": 3.0218400669920458,
+       "ref": 3.0223,
+       "err": 0.0007,
+       "pass": true
+      },
+      {
+       "nucleus": "Me",
+       "species": "QX",
+       "hm": 3.231394001030538,
+       "ref": 3.2318,
+       "err": 0.0012,
+       "pass": true
+      }
+     ],
+     "corr": []
+    }
+   },
+   "classification": "no reproduce"
+  },
+  "r09a-r1-11-3n": {
+   "source": {
+    "article": "R09a",
+    "citation": "S. Roelens, A. Vacca, C. Venturi, \"Binding of Ionic Species: A General Approach To Measuring Binding Constants and Assessing Affinities\", Chem. Eur. J. 2009, 15, 2635-2644",
+    "doi": "10.1002/chem.200802298",
+    "si_pages": [
+     "S4",
+     "S6"
+    ],
+    "data_table_page": "S4",
+    "results_pages": [
+     "S6"
+    ],
+    "article_table": null,
+    "notice": "Data belong to their authors (see SOURCES.md); used only for the internal validation of HM fit."
+   },
+   "supported": true,
+   "forward": {
+    "success": true,
+    "rms_hm": 0.006570201180527504,
+    "rms_ref": 0.00657020133,
+    "rel": -2.2750063277676702e-08
+   },
+   "fit": {
+    "success": true,
+    "elapsed_s": 0.3110553290025564,
+    "objective_evaluations": 98,
+    "names": [
+     "RG"
+    ],
+    "log_beta": [
+     2.5699170013012393
+    ],
+    "se": [
+     0.0030759058961845826
+    ],
+    "fixed": [
+     false
+    ],
+    "rms": 0.006713066317782323,
+    "stability_status": "excellent",
+    "errors_tab": {
+     "se": [
+      0.16834979529562516
+     ],
+     "sigma": 0.00722992242388993,
+     "dof": 50,
+     "nobs": 57,
+     "n_linear": 6,
+     "corr": [
+      [
+       1.0
+      ]
+     ]
+    },
+    "limiting_shifts": {
+     "NH-2": {
+      "R": 4.420777567043216,
+      "RG": 3.5080136467643723
+     },
+     "NH-1": {
+      "R": 4.218380373134212,
+      "RG": 4.190689352444488
+     },
+     "Me": {
+      "G": 3.10695343041894,
+      "RG": 3.003496829249206
+     }
+    }
+   },
+   "levels": {
+    "L1": {
+     "pass": true,
+     "rms_hm": 0.006713066317782323,
+     "rms_ref": 0.00657020133,
+     "rel": 0.021744385081472473,
+     "sigma_hm": 0.00722992242388993,
+     "sigma_ref": 0.00700660423,
+     "sigma_rel": 0.0318725286257433
+    },
+    "L2": {
+     "pass": false,
+     "items": [
+      {
+       "name": "RG",
+       "hm": 2.5699170013012393,
+       "ref": 2.3781,
+       "delta": 0.19181700130123946,
+       "tol": 0.029475,
+       "pass": false
+      }
+     ]
+    },
+    "L3": {
+     "pass": false,
+     "items": [
+      {
+       "name": "RG",
+       "hm": 0.0030759058961845826,
+       "ref": 0.1179,
+       "rel": -0.9739108914657796,
+       "tol": 0.15,
+       "pass": false
+      }
+     ]
+    },
+    "L4": {
+     "shifts_pass": 2,
+     "shifts_n": 6,
+     "corr_pass": 0,
+     "corr_n": 0,
+     "shifts": [
+      {
+       "nucleus": "NH-2",
+       "species": "R",
+       "hm": 4.420777567043216,
+       "ref": 4.4251,
+       "err": 0.0043,
+       "pass": false
+      },
+      {
+       "nucleus": "NH-2",
+       "species": "RG",
+       "hm": 3.5080136467643723,
+       "ref": 2.9561,
+       "err": 0.4585,
+       "pass": false
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "R",
+       "hm": 4.218380373134212,
+       "ref": 4.2196,
+       "err": 0.0036,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "RG",
+       "hm": 4.190689352444488,
+       "ref": 4.095,
+       "err": 0.243,
+       "pass": true
+      },
+      {
+       "nucleus": "Me",
+       "species": "G",
+       "hm": 3.10695343041894,
+       "ref": 3.0996,
+       "err": 0.0054,
+       "pass": false
+      },
+      {
+       "nucleus": "Me",
+       "species": "RG",
+       "hm": 3.003496829249206,
+       "ref": 2.9947,
+       "err": 0.0073,
+       "pass": false
+      }
+     ],
+     "corr": []
+    }
+   },
+   "classification": "parcial"
+  },
+  "r09a-r1-11-me": {
+   "source": {
+    "article": "R09a",
+    "citation": "S. Roelens, A. Vacca, C. Venturi, \"Binding of Ionic Species: A General Approach To Measuring Binding Constants and Assessing Affinities\", Chem. Eur. J. 2009, 15, 2635-2644",
+    "doi": "10.1002/chem.200802298",
+    "si_pages": [
+     "S4",
+     "S5"
+    ],
+    "data_table_page": "S4",
+    "results_pages": [
+     "S5"
+    ],
+    "article_table": null,
+    "notice": "Data belong to their authors (see SOURCES.md); used only for the internal validation of HM fit."
+   },
+   "supported": true,
+   "forward": {
+    "success": true,
+    "rms_hm": 0.00018093019183583828,
+    "rms_ref": 0.00018092984,
+    "rel": 1.944598183811763e-06
+   },
+   "fit": {
+    "success": true,
+    "elapsed_s": 0.27885670799878426,
+    "objective_evaluations": 78,
+    "names": [
+     "RG"
+    ],
+    "log_beta": [
+     2.5699767069322523
+    ],
+    "se": [
+     0.0031284052776200757
+    ],
+    "fixed": [
+     false
+    ],
+    "rms": 0.00018092989324429925,
+    "stability_status": "excellent",
+    "errors_tab": {
+     "se": [
+      0.004225138786658962
+     ],
+     "sigma": 0.0001688201041058371,
+     "dof": 16,
+     "nobs": 19,
+     "n_linear": 2,
+     "corr": [
+      [
+       1.0
+      ]
+     ]
+    },
+    "limiting_shifts": {
+     "Me": {
+      "G": 3.1069570643005213,
+      "RG": 3.0034987940026494
+     }
+    }
+   },
+   "levels": {
+    "L1": {
+     "pass": true,
+     "rms_hm": 0.00018092989324429925,
+     "rms_ref": 0.00018092984,
+     "rel": 2.9428146985921444e-07,
+     "sigma_hm": 0.0001688201041058371,
+     "sigma_ref": 0.00019624596,
+     "sigma_rel": -0.13975246111646267
+    },
+    "L2": {
+     "pass": true,
+     "items": [
+      {
+       "name": "RG",
+       "hm": 2.5699767069322523,
+       "ref": 2.57,
+       "delta": -2.329306774750961e-05,
+       "tol": 0.005,
+       "pass": true
+      }
+     ]
+    },
+    "L3": {
+     "pass": true,
+     "items": [
+      {
+       "name": "RG",
+       "hm": 0.0031284052776200757,
+       "ref": 0.0031,
+       "rel": 0.009162992780669565,
+       "tol": 0.15,
+       "pass": true
+      }
+     ]
+    },
+    "L4": {
+     "shifts_pass": 2,
+     "shifts_n": 2,
+     "corr_pass": 0,
+     "corr_n": 0,
+     "shifts": [
+      {
+       "nucleus": "Me",
+       "species": "G",
+       "hm": 3.1069570643005213,
+       "ref": 3.1068,
+       "err": 0.0002,
+       "pass": true
+      },
+      {
+       "nucleus": "Me",
+       "species": "RG",
+       "hm": 3.0034987940026494,
+       "ref": 3.0036,
+       "err": 0.0002,
+       "pass": true
+      }
+     ],
+     "corr": []
+    }
+   },
+   "classification": "reproduce"
+  },
+  "r09a-r1-3sp": {
+   "source": {
+    "article": "R09a",
+    "citation": "S. Roelens, A. Vacca, C. Venturi, \"Binding of Ionic Species: A General Approach To Measuring Binding Constants and Assessing Affinities\", Chem. Eur. J. 2009, 15, 2635-2644",
+    "doi": "10.1002/chem.200802298",
+    "si_pages": [
+     "S7",
+     "S8"
+    ],
+    "data_table_page": "S7",
+    "results_pages": [
+     "S8"
+    ],
+    "article_table": null,
+    "notice": "Data belong to their authors (see SOURCES.md); used only for the internal validation of HM fit."
+   },
+   "supported": true,
+   "forward": {
+    "success": true,
+    "rms_hm": 0.007330637028648111,
+    "rms_ref": 0.00733063648,
+    "rel": 7.484317521289086e-08
+   },
+   "fit": {
+    "success": true,
+    "elapsed_s": 4.655191373007256,
+    "objective_evaluations": 933,
+    "names": [
+     "RQX",
+     "RX",
+     "QX"
+    ],
+    "log_beta": [
+     6.177782678803984,
+     2.942434460972247,
+     4.112002849087163
+    ],
+    "se": [
+     0.012481489712132867,
+     0.010709266127899263,
+     0.005646963870568343
+    ],
+    "fixed": [
+     false,
+     false,
+     false
+    ],
+    "rms": 0.009381686432843324,
+    "stability_status": "excellent",
+    "errors_tab": {
+     "se": [
+      0.2432262703421549,
+      0.2619266576250304,
+      0.1989964117964815
+     ],
+     "sigma": 0.010003983492270387,
+     "dof": 102,
+     "nobs": 114,
+     "n_linear": 9,
+     "corr": [
+      [
+       1.0,
+       0.2312973671324415,
+       0.8553529825557789
+      ],
+      [
+       0.23129736713244153,
+       1.0,
+       0.5725334758514723
+      ],
+      [
+       0.8553529825557789,
+       0.5725334758514722,
+       1.0
+      ]
+     ]
+    },
+    "limiting_shifts": {
+     "NH-2": {
+      "R": 4.413439285840873,
+      "RQX": 7.913462457876201,
+      "RX": 3.5058238083898083
+     },
+     "NH-1": {
+      "R": 4.211786339049327,
+      "RQX": 6.9131165801497545,
+      "RX": 4.241527629029718
+     },
+     "Me": {
+      "Q": 3.0035821314544044,
+      "RQX": 2.9961297653378884,
+      "QX": 3.2227154283953303
+     }
+    }
+   },
+   "levels": {
+    "L1": {
+     "pass": false,
+     "rms_hm": 0.009381686432843324,
+     "rms_ref": 0.00733063648,
+     "rel": 0.2797915240292099,
+     "sigma_hm": 0.010003983492270387,
+     "sigma_ref": 0.007742015,
+     "sigma_rel": 0.29216792944348313
+    },
+    "L2": {
+     "pass": false,
+     "items": [
+      {
+       "name": "RQX",
+       "hm": 6.177782678803984,
+       "ref": 6.5296,
+       "delta": -0.35181732119601605,
+       "tol": 0.045975,
+       "pass": false
+      },
+      {
+       "name": "RX",
+       "hm": 2.942434460972247,
+       "ref": 2.1429,
+       "delta": 0.799534460972247,
+       "tol": 0.0295,
+       "pass": false
+      },
+      {
+       "name": "QX",
+       "hm": 4.112002849087163,
+       "ref": 4.256,
+       "delta": -0.1439971509128375,
+       "tol": 0.046725,
+       "pass": false
+      }
+     ]
+    },
+    "L3": {
+     "pass": false,
+     "items": [
+      {
+       "name": "RQX",
+       "hm": 0.012481489712132867,
+       "ref": 0.1839,
+       "rel": -0.9321289303309795,
+       "tol": 0.15,
+       "pass": false
+      },
+      {
+       "name": "RX",
+       "hm": 0.010709266127899263,
+       "ref": 0.118,
+       "rel": -0.9092435073906842,
+       "tol": 0.15,
+       "pass": false
+      },
+      {
+       "name": "QX",
+       "hm": 0.005646963870568343,
+       "ref": 0.1869,
+       "rel": -0.9697861751173443,
+       "tol": 0.15,
+       "pass": false
+      }
+     ]
+    },
+    "L4": {
+     "shifts_pass": 2,
+     "shifts_n": 9,
+     "corr_pass": 0,
+     "corr_n": 3,
+     "shifts": [
+      {
+       "nucleus": "NH-2",
+       "species": "R",
+       "hm": 4.413439285840873,
+       "ref": 4.447,
+       "err": 0.0073,
+       "pass": false
+      },
+      {
+       "nucleus": "NH-2",
+       "species": "RQX",
+       "hm": 7.913462457876201,
+       "ref": 7.947,
+       "err": 0.4479,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-2",
+       "species": "RX",
+       "hm": 3.5058238083898083,
+       "ref": -9.5152,
+       "err": 5.5975,
+       "pass": false
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "R",
+       "hm": 4.211786339049327,
+       "ref": 4.2244,
+       "err": 0.0041,
+       "pass": false
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "RQX",
+       "hm": 6.9131165801497545,
+       "ref": 6.5988,
+       "err": 0.229,
+       "pass": false
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "RX",
+       "hm": 4.241527629029718,
+       "ref": -0.7041,
+       "err": 2.0824,
+       "pass": false
+      },
+      {
+       "nucleus": "Me",
+       "species": "Q",
+       "hm": 3.0035821314544044,
+       "ref": 2.953,
+       "err": 0.0245,
+       "pass": false
+      },
+      {
+       "nucleus": "Me",
+       "species": "RQX",
+       "hm": 2.9961297653378884,
+       "ref": 3.0095,
+       "err": 0.0092,
+       "pass": false
+      },
+      {
+       "nucleus": "Me",
+       "species": "QX",
+       "hm": 3.2227154283953303,
+       "ref": 3.2235,
+       "err": 0.0113,
+       "pass": true
+      }
+     ],
+     "corr": [
+      {
+       "pair": "RX/RQX",
+       "hm": 0.23129736713244153,
+       "ref": -0.002,
+       "pass": false
+      },
+      {
+       "pair": "QX/RQX",
+       "hm": 0.8553529825557789,
+       "ref": 0.969,
+       "pass": false
+      },
+      {
+       "pair": "QX/RX",
+       "hm": 0.5725334758514722,
+       "ref": -0.208,
+       "pass": false
+      }
+     ]
+    }
+   },
+   "classification": "no reproduce"
+  },
+  "r09a-r1-5sp": {
+   "source": {
+    "article": "R09a",
+    "citation": "S. Roelens, A. Vacca, C. Venturi, \"Binding of Ionic Species: A General Approach To Measuring Binding Constants and Assessing Affinities\", Chem. Eur. J. 2009, 15, 2635-2644",
+    "doi": "10.1002/chem.200802298",
+    "si_pages": [
+     "S7",
+     "S9"
+    ],
+    "data_table_page": "S7",
+    "results_pages": [
+     "S9"
+    ],
+    "article_table": "R09a Table 1",
+    "notice": "Data belong to their authors (see SOURCES.md); used only for the internal validation of HM fit."
+   },
+   "supported": true,
+   "forward": {
+    "success": true,
+    "rms_hm": 0.00024894645275593983,
+    "rms_ref": 0.00024894597,
+    "rel": 1.939199657741142e-06
+   },
+   "fit": {
+    "success": true,
+    "elapsed_s": 5.013557143000071,
+    "objective_evaluations": 1060,
+    "names": [
+     "RQX",
+     "RX",
+     "R2",
+     "R2X",
+     "QX"
+    ],
+    "log_beta": [
+     6.12249652362623,
+     2.9463323146467153,
+     0.7669856968136972,
+     4.486327088235461,
+     4.090532742468367
+    ],
+    "se": [
+     0.010508949193693202,
+     0.008775491403862502,
+     0.024986516284185547,
+     0.04421716497347413,
+     0.00519317087313404
+    ],
+    "fixed": [
+     false,
+     false,
+     false,
+     false,
+     false
+    ],
+    "rms": 0.00024958778160038447,
+    "stability_status": "excellent",
+    "errors_tab": {
+     "se": [
+      0.00982747889872067,
+      0.014437142246806528,
+      0.030493824457173715,
+      0.04639879092037671,
+      0.008591844972163745
+     ],
+     "sigma": 0.0002506377523881624,
+     "dof": 96,
+     "nobs": 114,
+     "n_linear": 13,
+     "corr": [
+      [
+       1.0,
+       -0.1461381319088303,
+       0.02708380194929319,
+       0.030740572201806468,
+       0.12532741410270076
+      ],
+      [
+       -0.14613813190883027,
+       1.0,
+       -0.7313285431619198,
+       -0.404534149632565,
+       0.8895909948243884
+      ],
+      [
+       0.027083801949293166,
+       -0.7313285431619198,
+       1.0,
+       0.6464926615838215,
+       -0.678865456900338
+      ],
+      [
+       0.030740572201806503,
+       -0.40453414963256507,
+       0.6464926615838217,
+       1.0,
+       -0.4515604900752076
+      ],
+      [
+       0.12532741410270073,
+       0.8895909948243883,
+       -0.6788654569003378,
+       -0.45156049007520754,
+       1.0
+      ]
+     ]
+    },
+    "limiting_shifts": {
+     "NH-2": {
+      "R": 4.342884339109735,
+      "RQX": 5.002391944241402,
+      "RX": 5.47258858198698,
+      "R2": 4.824819999204125,
+      "R2X": 6.399976451089187
+     },
+     "NH-1": {
+      "R": 4.16468155108492,
+      "RQX": 5.220264406640567,
+      "RX": 5.463106562700732,
+      "R2": 4.518095486425204,
+      "R2X": 5.432652887154146
+     },
+     "Me": {
+      "Q": 3.007160082183324,
+      "RQX": 2.9858639160242397,
+      "QX": 3.2226389395712887
+     }
+    }
+   },
+   "levels": {
+    "L1": {
+     "pass": true,
+     "rms_hm": 0.00024958778160038447,
+     "rms_ref": 0.00024894597,
+     "rel": 0.00257811604817082,
+     "sigma_hm": 0.0002506377523881624,
+     "sigma_ref": 0.00027084514,
+     "sigma_rel": -0.07460864024304659
+    },
+    "L2": {
+     "pass": false,
+     "items": [
+      {
+       "name": "RQX",
+       "hm": 6.12249652362623,
+       "ref": 6.1213,
+       "delta": 0.0011965236262305723,
+       "tol": 0.005,
+       "pass": true
+      },
+      {
+       "name": "RX",
+       "hm": 2.9463323146467153,
+       "ref": 2.9461,
+       "delta": 0.00023231464671535917,
+       "tol": 0.005,
+       "pass": true
+      },
+      {
+       "name": "R2",
+       "hm": 0.7669856968136972,
+       "ref": 0.7825,
+       "delta": -0.015514303186302758,
+       "tol": 0.006675,
+       "pass": false
+      },
+      {
+       "name": "R2X",
+       "hm": 4.486327088235461,
+       "ref": 4.5125,
+       "delta": -0.026172911764539286,
+       "tol": 0.03616952146463881,
+       "pass": true
+      },
+      {
+       "name": "QX",
+       "hm": 4.090532742468367,
+       "ref": 4.0897,
+       "delta": 0.0008327424683676199,
+       "tol": 0.005,
+       "pass": true
+      }
+     ]
+    },
+    "L3": {
+     "pass": true,
+     "items": [
+      {
+       "name": "RQX",
+       "hm": 0.010508949193693202,
+       "ref": 0.0101,
+       "rel": 0.0404900191775448,
+       "tol": 0.15,
+       "pass": true
+      },
+      {
+       "name": "RX",
+       "hm": 0.008775491403862502,
+       "ref": 0.0085,
+       "rel": 0.03241075339558841,
+       "tol": 0.15,
+       "pass": true
+      },
+      {
+       "name": "R2",
+       "hm": 0.024986516284185547,
+       "ref": 0.0267,
+       "rel": -0.06417542006795707,
+       "tol": 0.15,
+       "pass": true
+      },
+      {
+       "name": "R2X",
+       "hm": 0.04421716497347413,
+       "ref": 0.0457,
+       "rel": -0.03244715594148506,
+       "tol": 0.15,
+       "pass": true
+      },
+      {
+       "name": "QX",
+       "hm": 0.00519317087313404,
+       "ref": 0.0051,
+       "rel": 0.01826879865373332,
+       "tol": 0.15,
+       "pass": true
+      }
+     ]
+    },
+    "L4": {
+     "shifts_pass": 13,
+     "shifts_n": 13,
+     "corr_pass": 2,
+     "corr_n": 10,
+     "shifts": [
+      {
+       "nucleus": "NH-2",
+       "species": "R",
+       "hm": 4.342884339109735,
+       "ref": 4.3422,
+       "err": 0.0014,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-2",
+       "species": "RQX",
+       "hm": 5.002391944241402,
+       "ref": 4.9673,
+       "err": 0.0775,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-2",
+       "species": "RX",
+       "hm": 5.47258858198698,
+       "ref": 5.4904,
+       "err": 0.0458,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-2",
+       "species": "R2",
+       "hm": 4.824819999204125,
+       "ref": 4.8159,
+       "err": 0.016,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-2",
+       "species": "R2X",
+       "hm": 6.399976451089187,
+       "ref": 6.3471,
+       "err": 0.1001,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "R",
+       "hm": 4.16468155108492,
+       "ref": 4.1642,
+       "err": 0.001,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "RQX",
+       "hm": 5.220264406640567,
+       "ref": 5.1992,
+       "err": 0.0635,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "RX",
+       "hm": 5.463106562700732,
+       "ref": 5.4741,
+       "err": 0.0381,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "R2",
+       "hm": 4.518095486425204,
+       "ref": 4.5111,
+       "err": 0.0121,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "R2X",
+       "hm": 5.432652887154146,
+       "ref": 5.4123,
+       "err": 0.0438,
+       "pass": true
+      },
+      {
+       "nucleus": "Me",
+       "species": "Q",
+       "hm": 3.007160082183324,
+       "ref": 3.0073,
+       "err": 0.0003,
+       "pass": true
+      },
+      {
+       "nucleus": "Me",
+       "species": "RQX",
+       "hm": 2.9858639160242397,
+       "ref": 2.9864,
+       "err": 0.002,
+       "pass": true
+      },
+      {
+       "nucleus": "Me",
+       "species": "QX",
+       "hm": 3.2226389395712887,
+       "ref": 3.2222,
+       "err": 0.0005,
+       "pass": true
+      }
+     ],
+     "corr": [
+      {
+       "pair": "RX/RQX",
+       "hm": -0.14613813190883027,
+       "ref": -0.423,
+       "pass": false
+      },
+      {
+       "pair": "R2/RQX",
+       "hm": 0.027083801949293166,
+       "ref": 0.117,
+       "pass": false
+      },
+      {
+       "pair": "R2/RX",
+       "hm": -0.7313285431619198,
+       "ref": -0.548,
+       "pass": false
+      },
+      {
+       "pair": "R2X/RQX",
+       "hm": 0.030740572201806503,
+       "ref": 0.098,
+       "pass": false
+      },
+      {
+       "pair": "R2X/RX",
+       "hm": -0.40453414963256507,
+       "ref": -0.292,
+       "pass": false
+      },
+      {
+       "pair": "R2X/R2",
+       "hm": 0.6464926615838217,
+       "ref": 0.624,
+       "pass": true
+      },
+      {
+       "pair": "QX/RQX",
+       "hm": 0.12532741410270073,
+       "ref": 0.146,
+       "pass": true
+      },
+      {
+       "pair": "QX/RX",
+       "hm": 0.8895909948243883,
+       "ref": 0.642,
+       "pass": false
+      },
+      {
+       "pair": "QX/R2",
+       "hm": -0.6788654569003378,
+       "ref": -0.434,
+       "pass": false
+      },
+      {
+       "pair": "QX/R2X",
+       "hm": -0.45156049007520754,
+       "ref": -0.388,
+       "pass": false
+      }
+     ]
+    }
+   },
+   "classification": "parcial"
+  },
+  "r09b-b-qx": {
+   "source": {
+    "article": "R09b",
+    "citation": "S. Roelens, A. Vacca, O. Francesconi, C. Venturi, \"Ion-Pair Binding: Is Binding Both Binding Better?\", Chem. Eur. J. 2009, 15, 8296-8302",
+    "doi": "10.1002/chem.200900342",
+    "si_pages": [
+     "S13",
+     "S14"
+    ],
+    "data_table_page": "S13",
+    "results_pages": [
+     "S14"
+    ],
+    "article_table": "R09b Table 2",
+    "notice": "Data belong to their authors (see SOURCES.md); used only for the internal validation of HM fit."
+   },
+   "supported": true,
+   "forward": {
+    "success": true,
+    "rms_hm": 0.0005135348690684908,
+    "rms_ref": 0.00051353491,
+    "rel": -7.970540727431086e-08
+   },
+   "fit": {
+    "success": true,
+    "elapsed_s": 1.3489694860036252,
+    "objective_evaluations": 214,
+    "names": [
+     "BQX",
+     "BQ",
+     "QX"
+    ],
+    "log_beta": [
+     4.766751509705757,
+     1.373318281763353,
+     4.0897
+    ],
+    "se": [
+     0.02084732685327837,
+     0.007093549113934764,
+     0.0
+    ],
+    "fixed": [
+     false,
+     false,
+     true
+    ],
+    "rms": 0.000513534828877081,
+    "stability_status": "excellent",
+    "errors_tab": {
+     "se": [
+      0.020267834224647147,
+      0.006940433902107817,
+      0.0
+     ],
+     "sigma": 0.0005148420092138826,
+     "dof": 37,
+     "nobs": 43,
+     "n_linear": 4,
+     "corr": [
+      [
+       1.0,
+       -0.8944342680822421,
+       NaN
+      ],
+      [
+       -0.8944342680822422,
+       1.0,
+       NaN
+      ],
+      [
+       NaN,
+       NaN,
+       NaN
+      ]
+     ]
+    },
+    "limiting_shifts": {
+     "Me": {
+      "Q": 3.0191475920093236,
+      "BQX": 2.11283886567088,
+      "BQ": 1.710906620635611,
+      "QX": 3.2229835404645235
+     }
+    }
+   },
+   "levels": {
+    "L1": {
+     "pass": true,
+     "rms_hm": 0.000513534828877081,
+     "rms_ref": 0.00051353491,
+     "rel": -1.5796962871128528e-07,
+     "sigma_hm": 0.0005148420092138826,
+     "sigma_ref": 0.00055162499,
+     "sigma_rel": -0.06668113564999534
+    },
+    "L2": {
+     "pass": true,
+     "items": [
+      {
+       "name": "BQX",
+       "hm": 4.766751509705757,
+       "ref": 4.7668,
+       "delta": -4.8490294243030974e-05,
+       "tol": 0.017441371539626323,
+       "pass": true
+      },
+      {
+       "name": "BQ",
+       "hm": 1.373318281763353,
+       "ref": 1.3733,
+       "delta": 1.828176335294529e-05,
+       "tol": 0.005,
+       "pass": true
+      }
+     ]
+    },
+    "L3": {
+     "pass": true,
+     "items": [
+      {
+       "name": "BQX",
+       "hm": 0.02084732685327837,
+       "ref": 0.0208,
+       "rel": 0.0022753294845370142,
+       "tol": 0.15,
+       "pass": true
+      },
+      {
+       "name": "BQ",
+       "hm": 0.007093549113934764,
+       "ref": 0.0071,
+       "rel": -0.0009085755021459585,
+       "tol": 0.15,
+       "pass": true
+      }
+     ]
+    },
+    "L4": {
+     "shifts_pass": 4,
+     "shifts_n": 4,
+     "corr_pass": 1,
+     "corr_n": 1,
+     "shifts": [
+      {
+       "nucleus": "Me",
+       "species": "Q",
+       "hm": 3.0191475920093236,
+       "ref": 3.0187,
+       "err": 0.001,
+       "pass": true
+      },
+      {
+       "nucleus": "Me",
+       "species": "BQX",
+       "hm": 2.11283886567088,
+       "ref": 2.1108,
+       "err": 0.0387,
+       "pass": true
+      },
+      {
+       "nucleus": "Me",
+       "species": "BQ",
+       "hm": 1.710906620635611,
+       "ref": 1.7115,
+       "err": 0.0159,
+       "pass": true
+      },
+      {
+       "nucleus": "Me",
+       "species": "QX",
+       "hm": 3.2229835404645235,
+       "ref": 3.2234,
+       "err": 0.0005,
+       "pass": true
+      }
+     ],
+     "corr": [
+      {
+       "pair": "BQ/BQX",
+       "hm": -0.8944342680822422,
+       "ref": -0.894,
+       "pass": true
+      }
+     ]
+    }
+   },
+   "classification": "reproduce"
+  },
+  "r09b-d-qx": {
+   "source": {
+    "article": "R09b",
+    "citation": "S. Roelens, A. Vacca, O. Francesconi, C. Venturi, \"Ion-Pair Binding: Is Binding Both Binding Better?\", Chem. Eur. J. 2009, 15, 8296-8302",
+    "doi": "10.1002/chem.200900342",
+    "si_pages": [
+     "S15",
+     "S16",
+     "S17"
+    ],
+    "data_table_page": "S15",
+    "results_pages": [
+     "S16",
+     "S17"
+    ],
+    "article_table": "R09b Table 3",
+    "notice": "Data belong to their authors (see SOURCES.md); used only for the internal validation of HM fit."
+   },
+   "supported": false,
+   "reason": "fixed limiting shifts are not supported by HM fit (NH-1 in DQ); docs/LITERATURE_BENCHMARK.md \u00a76",
+   "classification": "no soportado"
+  },
+  "r09b-r-qx": {
+   "source": {
+    "article": "R09b",
+    "citation": "S. Roelens, A. Vacca, O. Francesconi, C. Venturi, \"Ion-Pair Binding: Is Binding Both Binding Better?\", Chem. Eur. J. 2009, 15, 8296-8302",
+    "doi": "10.1002/chem.200900342",
+    "si_pages": [
+     "S9",
+     "S10"
+    ],
+    "data_table_page": "S9",
+    "results_pages": [
+     "S10"
+    ],
+    "article_table": "R09b Table 1",
+    "notice": "Data belong to their authors (see SOURCES.md); used only for the internal validation of HM fit."
+   },
+   "supported": true,
+   "forward": {
+    "success": true,
+    "rms_hm": 0.00024894645275593983,
+    "rms_ref": 0.00024894597,
+    "rel": 1.939199657741142e-06
+   },
+   "fit": {
+    "success": true,
+    "elapsed_s": 5.05955069900665,
+    "objective_evaluations": 1060,
+    "names": [
+     "RQX",
+     "RX",
+     "R2",
+     "R2X",
+     "QX"
+    ],
+    "log_beta": [
+     6.12249652362623,
+     2.9463323146467153,
+     0.7669856968136972,
+     4.486327088235461,
+     4.090532742468367
+    ],
+    "se": [
+     0.010508949193693202,
+     0.008775491403862502,
+     0.024986516284185547,
+     0.04421716497347413,
+     0.00519317087313404
+    ],
+    "fixed": [
+     false,
+     false,
+     false,
+     false,
+     false
+    ],
+    "rms": 0.00024958778160038447,
+    "stability_status": "excellent",
+    "errors_tab": {
+     "se": [
+      0.00982747889872067,
+      0.014437142246806528,
+      0.030493824457173715,
+      0.04639879092037671,
+      0.008591844972163745
+     ],
+     "sigma": 0.0002506377523881624,
+     "dof": 96,
+     "nobs": 114,
+     "n_linear": 13,
+     "corr": [
+      [
+       1.0,
+       -0.1461381319088303,
+       0.02708380194929319,
+       0.030740572201806468,
+       0.12532741410270076
+      ],
+      [
+       -0.14613813190883027,
+       1.0,
+       -0.7313285431619198,
+       -0.404534149632565,
+       0.8895909948243884
+      ],
+      [
+       0.027083801949293166,
+       -0.7313285431619198,
+       1.0,
+       0.6464926615838215,
+       -0.678865456900338
+      ],
+      [
+       0.030740572201806503,
+       -0.40453414963256507,
+       0.6464926615838217,
+       1.0,
+       -0.4515604900752076
+      ],
+      [
+       0.12532741410270073,
+       0.8895909948243883,
+       -0.6788654569003378,
+       -0.45156049007520754,
+       1.0
+      ]
+     ]
+    },
+    "limiting_shifts": {
+     "NH-2": {
+      "R": 4.342884339109735,
+      "RQX": 5.002391944241402,
+      "RX": 5.47258858198698,
+      "R2": 4.824819999204125,
+      "R2X": 6.399976451089187
+     },
+     "NH-1": {
+      "R": 4.16468155108492,
+      "RQX": 5.220264406640567,
+      "RX": 5.463106562700732,
+      "R2": 4.518095486425204,
+      "R2X": 5.432652887154146
+     },
+     "Me": {
+      "Q": 3.007160082183324,
+      "RQX": 2.9858639160242397,
+      "QX": 3.2226389395712887
+     }
+    }
+   },
+   "levels": {
+    "L1": {
+     "pass": true,
+     "rms_hm": 0.00024958778160038447,
+     "rms_ref": 0.00024894597,
+     "rel": 0.00257811604817082,
+     "sigma_hm": 0.0002506377523881624,
+     "sigma_ref": 0.00027084514,
+     "sigma_rel": -0.07460864024304659
+    },
+    "L2": {
+     "pass": false,
+     "items": [
+      {
+       "name": "RQX",
+       "hm": 6.12249652362623,
+       "ref": 6.1213,
+       "delta": 0.0011965236262305723,
+       "tol": 0.005,
+       "pass": true
+      },
+      {
+       "name": "RX",
+       "hm": 2.9463323146467153,
+       "ref": 2.9461,
+       "delta": 0.00023231464671535917,
+       "tol": 0.005,
+       "pass": true
+      },
+      {
+       "name": "R2",
+       "hm": 0.7669856968136972,
+       "ref": 0.7825,
+       "delta": -0.015514303186302758,
+       "tol": 0.006675,
+       "pass": false
+      },
+      {
+       "name": "R2X",
+       "hm": 4.486327088235461,
+       "ref": 4.5125,
+       "delta": -0.026172911764539286,
+       "tol": 0.03465493758955851,
+       "pass": true
+      },
+      {
+       "name": "QX",
+       "hm": 4.090532742468367,
+       "ref": 4.0897,
+       "delta": 0.0008327424683676199,
+       "tol": 0.005,
+       "pass": true
+      }
+     ]
+    },
+    "L3": {
+     "pass": true,
+     "items": [
+      {
+       "name": "RQX",
+       "hm": 0.010508949193693202,
+       "ref": 0.0101,
+       "rel": 0.0404900191775448,
+       "tol": 0.15,
+       "pass": true
+      },
+      {
+       "name": "RX",
+       "hm": 0.008775491403862502,
+       "ref": 0.0085,
+       "rel": 0.03241075339558841,
+       "tol": 0.15,
+       "pass": true
+      },
+      {
+       "name": "R2",
+       "hm": 0.024986516284185547,
+       "ref": 0.0267,
+       "rel": -0.06417542006795707,
+       "tol": 0.15,
+       "pass": true
+      },
+      {
+       "name": "R2X",
+       "hm": 0.04421716497347413,
+       "ref": 0.0457,
+       "rel": -0.03244715594148506,
+       "tol": 0.15,
+       "pass": true
+      },
+      {
+       "name": "QX",
+       "hm": 0.00519317087313404,
+       "ref": 0.0051,
+       "rel": 0.01826879865373332,
+       "tol": 0.15,
+       "pass": true
+      }
+     ]
+    },
+    "L4": {
+     "shifts_pass": 13,
+     "shifts_n": 13,
+     "corr_pass": 2,
+     "corr_n": 10,
+     "shifts": [
+      {
+       "nucleus": "NH-2",
+       "species": "R",
+       "hm": 4.342884339109735,
+       "ref": 4.3422,
+       "err": 0.0014,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-2",
+       "species": "RQX",
+       "hm": 5.002391944241402,
+       "ref": 4.9673,
+       "err": 0.0775,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-2",
+       "species": "RX",
+       "hm": 5.47258858198698,
+       "ref": 5.4904,
+       "err": 0.0458,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-2",
+       "species": "R2",
+       "hm": 4.824819999204125,
+       "ref": 4.8159,
+       "err": 0.016,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-2",
+       "species": "R2X",
+       "hm": 6.399976451089187,
+       "ref": 6.3471,
+       "err": 0.1001,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "R",
+       "hm": 4.16468155108492,
+       "ref": 4.1642,
+       "err": 0.001,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "RQX",
+       "hm": 5.220264406640567,
+       "ref": 5.1992,
+       "err": 0.0635,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "RX",
+       "hm": 5.463106562700732,
+       "ref": 5.4741,
+       "err": 0.0381,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "R2",
+       "hm": 4.518095486425204,
+       "ref": 4.5111,
+       "err": 0.0121,
+       "pass": true
+      },
+      {
+       "nucleus": "NH-1",
+       "species": "R2X",
+       "hm": 5.432652887154146,
+       "ref": 5.4123,
+       "err": 0.0438,
+       "pass": true
+      },
+      {
+       "nucleus": "Me",
+       "species": "Q",
+       "hm": 3.007160082183324,
+       "ref": 3.0073,
+       "err": 0.0003,
+       "pass": true
+      },
+      {
+       "nucleus": "Me",
+       "species": "RQX",
+       "hm": 2.9858639160242397,
+       "ref": 2.9864,
+       "err": 0.002,
+       "pass": true
+      },
+      {
+       "nucleus": "Me",
+       "species": "QX",
+       "hm": 3.2226389395712887,
+       "ref": 3.2222,
+       "err": 0.0005,
+       "pass": true
+      }
+     ],
+     "corr": [
+      {
+       "pair": "RX/RQX",
+       "hm": -0.14613813190883027,
+       "ref": -0.423,
+       "pass": false
+      },
+      {
+       "pair": "R2/RQX",
+       "hm": 0.027083801949293166,
+       "ref": 0.117,
+       "pass": false
+      },
+      {
+       "pair": "R2/RX",
+       "hm": -0.7313285431619198,
+       "ref": -0.548,
+       "pass": false
+      },
+      {
+       "pair": "R2X/RQX",
+       "hm": 0.030740572201806503,
+       "ref": 0.098,
+       "pass": false
+      },
+      {
+       "pair": "R2X/RX",
+       "hm": -0.40453414963256507,
+       "ref": -0.292,
+       "pass": false
+      },
+      {
+       "pair": "R2X/R2",
+       "hm": 0.6464926615838217,
+       "ref": 0.624,
+       "pass": true
+      },
+      {
+       "pair": "QX/RQX",
+       "hm": 0.12532741410270073,
+       "ref": 0.146,
+       "pass": true
+      },
+      {
+       "pair": "QX/RX",
+       "hm": 0.8895909948243883,
+       "ref": 0.642,
+       "pass": false
+      },
+      {
+       "pair": "QX/R2",
+       "hm": -0.6788654569003378,
+       "ref": -0.434,
+       "pass": false
+      },
+      {
+       "pair": "QX/R2X",
+       "hm": -0.45156049007520754,
+       "ref": -0.388,
+       "pass": false
+      }
+     ]
+    }
+   },
+   "classification": "parcial"
+  }
+ }
+}
