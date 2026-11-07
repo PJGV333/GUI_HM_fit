@@ -680,13 +680,60 @@ def unit_weight_model_check(case) -> dict[str, Any]:
             "sd_ref": [case["reference"]["log_beta"][n]["sd"] for n in names]}
 
 
+def analytic_errors_at_reference(case) -> dict[str, Any]:
+    """DIAGNOSTIC: HM fit's analytic error function (compute_errors_nmr_varpro, unit
+    weights) at the PUBLISHED constants, with (a) the Errors-tab mask (parent column
+    guessed from the signal name, |D_cols| > 0) and (b) every observed value. Compares
+    SE and correlations with HypNMR's SD and correlation matrix."""
+    from hmfit_core.processors.nmr_processor import build_D_cols
+    from hmfit_core.solvers import NewtonRaphson
+    from hmfit_core.utils.errors import compute_errors_nmr_varpro, correlation_from_covariance
+
+    conc, d = numeric_table(case)
+    M, S = model_matrices(case)
+    names = [s["name"] for s in case["species"]]
+    fixed = np.array([s["status"] == "fixed" for s in case["species"]])
+    k = np.array([s["log_beta"] if s["status"] == "fixed" else case["reference"]["log_beta"][s["name"]]["log_beta"]
+                  for s in case["species"]], float)
+    res = NewtonRaphson(conc, np.asarray(M, float).T, nas=[], model_sett="Free")
+    Dc, _ = build_D_cols(conc, [f"T_{r}" for r in case["reagents"]], [n["name"] for n in case["nuclei"]])
+    masks = {"errors_tab_mask": np.isfinite(d) & np.isfinite(Dc) & (np.abs(Dc) > 0), "all_observed": np.isfinite(d)}
+    out: dict[str, Any] = {}
+    cref = case["reference"].get("correlation_x1000")
+    for label, mask in masks.items():
+        m = compute_errors_nmr_varpro(k, res, d, np.ones_like(d), np.asarray(M, float).T, [],
+                                      stoichiometry=np.asarray(S, float), mask=mask, fixed_mask=fixed,
+                                      rcond=1e-10, rcond_cov=1e-10, ridge=1e-8, ridge_cov=0.0)
+        p = k.size
+        cov = np.zeros((p, p))
+        fi = np.asarray(m["free_idx"], int)
+        cov[np.ix_(fi, fi)] = m["Cov_log10K_free"]
+        corr = correlation_from_covariance(cov, m.get("nonidentifiable"))
+        se_rel = {n: float(m["SE_log10K"][i] / case["reference"]["log_beta"][n]["sd"] - 1.0)
+                  for i, n in enumerate(names) if not fixed[i]}
+        dcorr = []
+        if cref:
+            idx = {n: i for i, n in enumerate(names)}
+            dcorr = [float(abs(corr[idx[cref["names"][i]], idx[cref["names"][j]]] - v / 1000.0))
+                     for i, row in enumerate(cref["lower_x1000"]) for j, v in enumerate(row)]
+        out[label] = {"nobs": int(m["nobs"]), "dof": int(m["dof"]), "se_rel": se_rel,
+                      "max_abs_se_rel": max(abs(v) for v in se_rel.values()),
+                      "max_abs_dcorr": max(dcorr) if dcorr else None}
+    return out
+
+
 def diagnose_main(cids, out_path: Path | None) -> dict[str, Any]:
     out = {"environment": environment(), "cases": {}}
     for cid in cids:
         case = load_case(cid)
         if not supported(case)[0]:
             continue
-        out["cases"][cid] = {"weights_vs_optimizer": diagnose(case), "unit_weight_model_check": unit_weight_model_check(case)}
+        out["cases"][cid] = {"weights_vs_optimizer": diagnose(case), "unit_weight_model_check": unit_weight_model_check(case),
+                             "analytic_errors_at_reference": analytic_errors_at_reference(case)}
+        a = out["cases"][cid]["analytic_errors_at_reference"]
+        print(f"{'':15s} analytic SE at ref: Errors-tab mask max|dSE| {a['errors_tab_mask']['max_abs_se_rel']:.1%}"
+              f" (corr {a['errors_tab_mask']['max_abs_dcorr']}), all observed max|dSE| "
+              f"{a['all_observed']['max_abs_se_rel']:.1%} (corr {a['all_observed']['max_abs_dcorr']})")
         d, u = out["cases"][cid]["weights_vs_optimizer"], out["cases"][cid]["unit_weight_model_check"]
         print(f"{cid:15s} weighted obj HM/ref = {d['weighted_obj_hm']:.4f}/{d['weighted_obj_ref']:.4f}; "
               f"ref-start -> max|dlogb vs HM| = {np.max(np.abs(np.subtract(d['log_beta_hm_from_ref_start'], d['log_beta_hm']))):.4f}; "
