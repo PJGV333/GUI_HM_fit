@@ -512,6 +512,50 @@ def _stability_classification(diag: Mapping[str, Any]) -> str:
     return status or "unknown"
 
 
+def residual_serial_correlation(context: Mapping[str, Any]) -> tuple[dict[str, Any] | None, str]:
+    """
+    Lag-1 autocorrelation of the fit residuals along the titration order (titrant volume
+    for potentiometry, pH for spectroscopy/NMR) and its warning text ("" if none).
+
+    Uses the observed and calculated values stored in the errors context, so the Errors tab,
+    the fit report and the export all describe the same residuals.
+    """
+    from hmfit_core.utils.residual_diagnostics import lag1_autocorrelation, serial_correlation_note
+
+    dataset = dict(context.get("dataset") or {})
+    kind = str(context.get("analysis_kind") or "").strip().lower()
+    try:
+        if kind == "potentiometry":
+            use_emf = str(dataset.get("observed_kind") or "ph") == "emf"
+            observed = dataset.get("E_mV_observed") if use_emf else dataset.get("pH_observed")
+            fitted = dataset.get("E_mV_calculated") if use_emf else dataset.get("pH_calculated")
+            order, label = dataset.get("volume_mL"), "the titrant volume"
+        elif kind == "spectroscopy":
+            observed, fitted = dataset.get("signal_observed"), dataset.get("signal_calculated")
+            order, label = dataset.get("pH"), "pH"
+        elif kind == "nmr":
+            observed, fitted = dataset.get("shifts_observed"), dataset.get("shifts_calculated")
+            order, label = dataset.get("pH"), "pH"
+        else:
+            return None, ""
+        if observed is None or fitted is None:
+            return None, ""
+        obs = np.asarray(observed, dtype=float)
+        fit = np.asarray(fitted, dtype=float)
+        if obs.size == 0 or obs.size != fit.size:
+            return None, ""
+        resid = obs - fit.reshape(obs.shape)
+        order_arr = None
+        if order is not None:
+            order_arr = np.asarray(order, dtype=float).reshape(-1)
+            if order_arr.size != resid.shape[0] or not np.all(np.isfinite(order_arr)):
+                order_arr = None
+        diag = lag1_autocorrelation(resid, order=order_arr)
+    except Exception:
+        return None, ""
+    return diag, serial_correlation_note(diag, label)
+
+
 def _acid_base_notes(
     context: Mapping[str, Any],
     *,
@@ -577,6 +621,9 @@ def _acid_base_notes(
                         notes.append(
                             f"High-pH pKa{idx + 1} is strongly correlated with pKw (|r|={corr_val:.3f})."
                         )
+    _diag, serial_note = residual_serial_correlation(context)
+    if serial_note:
+        notes.append(serial_note)
     return notes
 
 
@@ -1353,6 +1400,7 @@ def compute_errors_acid_base_from_context(
 
 
 __all__ = [
+    "residual_serial_correlation",
     "compute_errors_acid_base",
     "compute_errors_acid_base_from_context",
     "propagate_log_beta_to_pka",

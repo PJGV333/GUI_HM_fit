@@ -493,6 +493,13 @@ def _base_result_payload(
         "bic": result.bic,
         "analysis_kind": analysis_kind,
     }
+    serial_diag, serial_note = (None, "")
+    if errors_context is not None:
+        from hmfit_core.acid_base_errors import residual_serial_correlation
+
+        serial_diag, serial_note = residual_serial_correlation(errors_context)
+        if serial_diag is not None and np.isfinite(serial_diag.get("r1", np.nan)):
+            stats["residual_lag1_autocorrelation"] = float(serial_diag["r1"])
     if error_output is not None:
         core_metrics = dict(error_output.get("core_metrics") or {})
         stability_diag = dict(core_metrics.get("stability_diag") or {})
@@ -514,6 +521,10 @@ def _base_result_payload(
     lines.append(f"chi_square: {result.chi_square:.8g}")
     if result.reduced_chi_square is not None:
         lines.append(f"reduced_chi_square: {result.reduced_chi_square:.8g}")
+    if serial_diag is not None and np.isfinite(serial_diag.get("r1", np.nan)):
+        lines.append(f"residual lag-1 autocorrelation: {float(serial_diag['r1']):+.3f}")
+    if serial_note:
+        lines.append("Warning: " + serial_note)
     export_data = dict(export_data)
     export_data["analysis_type"] = "acid_base"
     export_data["analysis_kind"] = analysis_kind
@@ -538,6 +549,7 @@ def _base_result_payload(
         "constants": constants,
         "statistics": stats,
         "results_text": "\n".join(lines),
+        "warnings": [serial_note] if serial_note else [],
         "graphs": graphs,
         "legacy_graphs": graphs,
         "availablePlots": [
@@ -890,6 +902,7 @@ def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[
     warnings_out: list[str] = []
     if fit_pkw:
         warnings_out.append("pKw_app fitted as an apparent medium parameter.")
+    warnings_out.extend(str(w) for w in (payload.get("warnings") or []))
     if warnings_out:
         summary_lines.append("")
         summary_lines.append("Warnings:")
