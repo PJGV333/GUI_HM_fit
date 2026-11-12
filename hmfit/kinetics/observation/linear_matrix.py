@@ -8,6 +8,31 @@ import numpy as np
 from scipy.optimize import nnls
 
 
+# Relative singular-value cutoff of the concentration matrix C in the projection D ~= C @ A.
+#
+# Conservation laws make C structurally rank deficient whenever a mechanism has more dynamic
+# species than independent reactions + 1 (e.g. A + B -> C -> D: [B] - [A] and [A] + [C] + [D]
+# are constant, so 4 columns span a 3-dimensional space). The integrator preserves those
+# invariants only to round-off, which leaves a singular value of ~1e-13 relative to the
+# largest one. NumPy's default cutoff (machine epsilon x max(shape) ~ 1e-14) sometimes keeps
+# that direction and sometimes drops it, depending on the parameters: the projected
+# residual then jumps erratically, its finite-difference Jacobian is noise and the optimiser
+# stops at the initial guess. A direction below 1e-10 of the largest singular value is far
+# beneath the accuracy of the ODE solution (rtol = 1e-8) and carries no chemical information.
+RANK_RCOND = 1.0e-10
+
+
+def effective_rank(C: np.ndarray, rcond: float = RANK_RCOND) -> int:
+    """Numerical rank of C with the same cutoff the projection uses."""
+    C = np.asarray(C, dtype=float)
+    if C.ndim != 2 or C.size == 0:
+        return 0
+    sv = np.linalg.svd(C, compute_uv=False)
+    if sv.size == 0 or not np.isfinite(sv[0]) or sv[0] <= 0.0:
+        return 0
+    return int(np.count_nonzero(sv > float(rcond) * sv[0]))
+
+
 def prepare_weights(
     weights: np.ndarray | None, n_time: int, n_channels: int
 ) -> np.ndarray | None:
@@ -59,20 +84,20 @@ def solve_linear_matrix(
 
 def _solve_ls(C: np.ndarray, D: np.ndarray, weights: np.ndarray | None) -> np.ndarray:
     if weights is None:
-        return np.linalg.lstsq(C, D, rcond=None)[0]
+        return np.linalg.lstsq(C, D, rcond=RANK_RCOND)[0]
 
     if weights.shape[1] == 1:
         w = weights[:, 0]
         Cw = C * w[:, None]
         Dw = D * w[:, None]
-        return np.linalg.lstsq(Cw, Dw, rcond=None)[0]
+        return np.linalg.lstsq(Cw, Dw, rcond=RANK_RCOND)[0]
 
     A = np.zeros((C.shape[1], D.shape[1]), dtype=float)
     for j in range(D.shape[1]):
         w = weights[:, j]
         Cw = C * w[:, None]
         Dw = D[:, j] * w
-        A[:, j] = np.linalg.lstsq(Cw, Dw, rcond=None)[0]
+        A[:, j] = np.linalg.lstsq(Cw, Dw, rcond=RANK_RCOND)[0]
     return A
 
 

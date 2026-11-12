@@ -8,6 +8,7 @@ from typing import Mapping, Sequence
 import numpy as np
 from scipy.optimize import OptimizeResult, least_squares
 
+from ..observation.linear_matrix import effective_rank
 from .objective import GlobalKineticsObjective
 
 
@@ -91,6 +92,271 @@ def resolve_fixed_parameters(
     return x_full0, fixed
 
 
+def residual_scale(objective: GlobalKineticsObjective) -> float:
+    """
+    Characteristic magnitude of the (weighted) observed signal, used only to make the
+    optimiser's termination tests independent of the units of the data.
+
+    SciPy's ``gtol`` is an *absolute* tolerance on the gradient J^T r, which scales with the
+    square of the signal. With signals of the order of 1e-3 (concentrations in M, weak
+    absorbances) the default ``gtol = 1e-8`` could be met at the initial values or before the
+    minimum, so the same experiment gave different "converged" parameters in different
+    units. Dividing the residuals by this constant leaves the minimum, the parameters and
+    (after scaling back) SSQ, Jacobian and covariance unchanged.
+    """
+    from .objective import _dataset_weights
+
+    total = 0.0
+    count = 0
+    for dataset in objective.datasets:
+        D = getattr(dataset, "D", None)
+        if D is None:
+            continue
+        D = np.asarray(D, dtype=float)
+        try:
+            weights = _dataset_weights(dataset)
+        except Exception:
+            weights = None
+        if weights is not None:
+            D = D * weights
+        finite = np.isfinite(D)
+        total += float(np.sum(np.square(D[finite])))
+        count += int(np.count_nonzero(finite))
+    if count == 0:
+        return 1.0
+    scale = float(np.sqrt(total / count))
+    if not np.isfinite(scale) or scale <= 0.0:
+        return 1.0
+    return scale
+
+
+def scaled_least_squares(residual_fn, x0, *, scale: float = 1.0, jac=None, **kwargs) -> OptimizeResult:
+    """
+    ``scipy.optimize.least_squares`` on ``residual_fn(x) / scale``.
+
+    The returned ``fun``, ``jac``, ``cost``, ``grad`` and ``optimality`` are expressed in the
+    original units of ``residual_fn`` (as if no scaling had been applied); ``residual_scale``
+    is stored on the result. ``jac`` may be a callable returning the Jacobian of
+    ``residual_fn`` (it is scaled consistently) or any value accepted by SciPy.
+    """
+    scale = float(scale)
+    if not np.isfinite(scale) or scale <= 0.0:
+        scale = 1.0
+    inv = 1.0 / scale
+
+    def fun(x):
+        return np.asarray(residual_fn(x), dtype=float) * inv
+
+    if callable(jac):
+        user_jac = jac
+
+        def jac_scaled(x):
+            return np.asarray(user_jac(x), dtype=float) * inv
+
+        kwargs["jac"] = jac_scaled
+    elif jac is not None:
+        kwargs["jac"] = jac
+    result = least_squares(fun, x0, **kwargs)
+    if result.fun is not None:
+        result.fun = np.asarray(result.fun, dtype=float) * scale
+    if result.jac is not None:
+        result.jac = np.asarray(result.jac, dtype=float) * scale
+    result.cost = float(result.cost) * scale * scale
+    if getattr(result, "grad", None) is not None:
+        result.grad = np.asarray(result.grad, dtype=float) * scale * scale
+    result.optimality_scaled = float(getattr(result, "optimality", np.nan))
+    result.residual_scale = scale
+    return result
+
+
+def convergence_notes(result: OptimizeResult, x_start, x_end, param_names: Sequence[str]) -> list[str]:
+    """
+    Plain-language warnings about how the optimiser stopped (never raises).
+
+    * status 0  -> the evaluation budget ran out: the values are not a minimum.
+    * status < 0 -> the optimiser failed.
+    * the parameters did not move from their initial values -> the residuals are insensitive
+      to them there (typically a rate constant far from the time scale of the data); the
+      "result" is the initial guess, not a fit.
+    """
+    notes: list[str] = []
+    try:
+        status = int(getattr(result, "status", 1))
+    except Exception:
+        status = 1
+    message = str(getattr(result, "message", "") or "").strip()
+    if status == 0:
+        notes.append(
+            "The optimiser stopped at the evaluation limit before converging: the reported "
+            "parameters are NOT a minimum. Improve the initial estimates (or use Multi-start) "
+            "and fit again."
+            + (f" [{message}]" if message else "")
+        )
+    elif status < 0:
+        notes.append("The optimiser reported a failure" + (f": {message}" if message else "."))
+    try:
+        a = np.asarray(x_start, dtype=float).reshape(-1)
+        b = np.asarray(x_end, dtype=float).reshape(-1)
+        if a.size and a.shape == b.shape:
+            unmoved = np.isclose(a, b, rtol=1e-9, atol=0.0)
+            if np.all(unmoved):
+                names = ", ".join(str(n) for n in param_names) if param_names else "all parameters"
+                notes.append(
+                    f"The optimiser did not move from the initial values ({names}): the data are "
+                    "insensitive to the parameters at that starting point, so these numbers are "
+                    "the initial guess, not a fit. Start from rate constants of the order of "
+                    "1/(time span of the data), tick Log10 for constants of unknown magnitude, "
+                    "or use Multi-start."
+                )
+    except Exception:
+        pass
+    return notes
+
+
+def exchange_equivalent_parameters(
+    objective: GlobalKineticsObjective,
+    x_opt: np.ndarray,
+    param_names: Sequence[str],
+    *,
+    fixed_mask: Sequence[bool] | None = None,
+    bounds: tuple[np.ndarray, np.ndarray] | None = None,
+    ssq: float | None = None,
+    rtol: float = 1e-3,
+    min_relative_difference: float = 0.01,
+    max_free: int = 8,
+) -> list[dict[str, object]]:
+    """
+    Pairs of free parameters whose *values can be exchanged* without changing the fit.
+
+    Consecutive first-order steps (A -> B -> C with free species profiles) have two exact
+    solutions, (k1, k2) and (k2, k1): the data cannot tell which step is the fast one, and the
+    optimiser returns whichever is closer to the starting point. One residual evaluation per
+    pair is enough to detect it: if SSQ at the exchanged values equals SSQ at the optimum
+    (within ``rtol``) the exchange is an equivalent solution.
+
+    ``x_opt`` is the optimisation vector (log10 for ``objective.log_params``); the exchange is
+    done on the physical values. Pairs whose exchanged values violate ``bounds`` are skipped:
+    bounds express prior knowledge that already selects one solution.
+    Returns a list of {"a", "b", "value_a", "value_b", "ssq_ratio"}; never raises.
+    """
+    names = [str(n) for n in param_names]
+    x_opt = np.asarray(x_opt, dtype=float).reshape(-1)
+    n = x_opt.size
+    if n != len(names) or n < 2:
+        return []
+    fixed = np.zeros(n, dtype=bool)
+    if fixed_mask is not None and len(fixed_mask) == n:
+        fixed = np.asarray(list(fixed_mask), dtype=bool)
+    free = [i for i in range(n) if not fixed[i]]
+    if len(free) < 2 or len(free) > int(max_free):
+        return []
+    log_params = set(getattr(objective, "log_params", set()) or set())
+    is_log = np.array([name in log_params for name in names], dtype=bool)
+    physical = np.where(is_log, 10.0 ** x_opt, x_opt)
+    lower = upper = None
+    if bounds is not None:
+        lower, upper = _bounds_arrays(bounds, n)
+    try:
+        if ssq is None:
+            r0 = np.asarray(objective.residuals(x_opt), dtype=float)
+            ssq = float(r0 @ r0)
+    except Exception:
+        return []
+    if not np.isfinite(ssq) or ssq <= 0.0:
+        return []
+    found: list[dict[str, object]] = []
+    for pos, i in enumerate(free):
+        for j in free[pos + 1:]:
+            vi, vj = float(physical[i]), float(physical[j])
+            scale = max(abs(vi), abs(vj))
+            if scale == 0.0 or abs(vi - vj) <= float(min_relative_difference) * scale:
+                continue
+            if (is_log[i] and vj <= 0.0) or (is_log[j] and vi <= 0.0):
+                continue
+            x_swap = x_opt.copy()
+            x_swap[i] = np.log10(vj) if is_log[i] else vj
+            x_swap[j] = np.log10(vi) if is_log[j] else vi
+            if lower is not None and (
+                x_swap[i] < lower[i] or x_swap[i] > upper[i] or x_swap[j] < lower[j] or x_swap[j] > upper[j]
+            ):
+                continue
+            try:
+                with np.errstate(all="ignore"):
+                    r = np.asarray(objective.residuals(x_swap), dtype=float)
+                ssq_swap = float(r @ r)
+            except Exception:
+                continue
+            if np.isfinite(ssq_swap) and abs(ssq_swap - ssq) <= float(rtol) * ssq:
+                found.append({"a": names[i], "b": names[j], "value_a": vi, "value_b": vj,
+                              "ssq_ratio": ssq_swap / ssq})
+    return found
+
+
+def exchange_equivalence_notes(pairs: Sequence[Mapping[str, object]]) -> list[str]:
+    """Readable warning for every pair reported by ``exchange_equivalent_parameters``."""
+    notes = []
+    for pair in pairs:
+        notes.append(
+            f"Two equivalent solutions: exchanging {pair['a']} = {float(pair['value_a']):.6g} and "
+            f"{pair['b']} = {float(pair['value_b']):.6g} gives the same fit (SSQ ratio "
+            f"{float(pair['ssq_ratio']):.6f}). The data alone cannot tell which of the two steps is "
+            "the fast one (slow-fast ambiguity); the solutions differ only in the fitted profiles "
+            "(A) of the intermediates. Decide with chemical knowledge, known spectra, NNLS or "
+            "bounds, and report which solution was chosen."
+        )
+    return notes
+
+
+def randomize_start(
+    x0: np.ndarray,
+    bounds: tuple[np.ndarray, np.ndarray],
+    rng: np.random.Generator,
+    fixed_mask: Sequence[bool] | None = None,
+    log_mask: Sequence[bool] | None = None,
+) -> np.ndarray:
+    """
+    Random starting point for multi-start, always inside the bounds.
+
+    * both bounds finite: uniform between them, or log-uniform when the parameter is positive
+      and spans more than one decade (a uniform draw on [1e-5, 1e3] practically never tries a
+      small rate constant);
+    * otherwise: one decade (1 sigma) around the initial value, multiplicative for positive
+      parameters and additive in log10 space for log-fitted ones, then clipped to the bounds.
+      The previous additive N(0, 0.2) step ignored the magnitude of the parameter: with the
+      default table (min = 0, no max) it produced negative rate constants and the fit aborted.
+    * fixed parameters are never moved.
+    """
+    x0 = np.asarray(x0, dtype=float).reshape(-1)
+    n = x0.size
+    lower, upper = _bounds_arrays(bounds, n)
+    fixed = np.zeros(n, dtype=bool)
+    if fixed_mask is not None and len(fixed_mask) == n:
+        fixed = np.asarray(list(fixed_mask), dtype=bool)
+    in_log = np.zeros(n, dtype=bool)
+    if log_mask is not None and len(log_mask) == n:
+        in_log = np.asarray(list(log_mask), dtype=bool)
+    x = x0.copy()
+    for idx in range(n):
+        if fixed[idx]:
+            continue
+        lo, hi, start = float(lower[idx]), float(upper[idx]), float(x0[idx])
+        if np.isfinite(lo) and np.isfinite(hi):
+            if hi <= lo:
+                continue
+            if not in_log[idx] and lo > 0.0 and hi / lo > 10.0:
+                value = 10.0 ** rng.uniform(np.log10(lo), np.log10(hi))
+            else:
+                value = rng.uniform(lo, hi)
+        elif in_log[idx]:
+            value = start + rng.normal(0.0, 1.0)
+        elif start > 0.0 and lo >= 0.0:
+            value = start * 10.0 ** rng.normal(0.0, 1.0)
+        else:
+            value = start + rng.normal(0.0, max(abs(start), 1.0))
+        x[idx] = min(max(value, lo), hi)
+    return x
+
+
 def fit_global(
     objective: GlobalKineticsObjective,
     params0: Mapping[str, float] | Sequence[float] | np.ndarray,
@@ -138,14 +404,16 @@ def fit_global(
             raise ValueError(
                 "Initial value outside its bounds for parameter(s): " + ", ".join(names)
             )
-        result = least_squares(
+        result = scaled_least_squares(
             lambda xf: objective.residuals(_expand(xf)),
-            x0=x_start,
+            x_start,
+            scale=residual_scale(objective),
             bounds=(lower[free], upper[free]),
             method=method,
             loss=loss,
             **kwargs,
         )
+        result.x_start = _expand(np.asarray(x_start, dtype=float))
         jac_free = None if result.jac is None else np.asarray(result.jac, dtype=float)
         result.x = _expand(np.asarray(result.x, dtype=float))
         if jac_free is not None:
@@ -206,6 +474,15 @@ def fit_global(
             result.dof = dof
             result.n_linear = n_linear
             result.sigma2 = sigma2
+    if free.size:
+        x_begin = getattr(result, "x_start", None)
+        if x_begin is not None:
+            conv = convergence_notes(
+                result, np.asarray(x_begin)[free], np.asarray(result.x)[free],
+                [param_names[i] for i in free],
+            )
+            result.convergence_notes = tuple(conv)
+            notes.extend(conv)
     if np.any(fixed):
         notes.append(
             "Fixed (not estimated) parameters: "
@@ -254,7 +531,7 @@ def _count_linear_parameters(objective: GlobalKineticsObjective, x: np.ndarray) 
     try:
         for dataset in objective.datasets:
             C, A, _ = objective.predict_dataset(x, dataset)
-            rank = int(np.linalg.matrix_rank(np.asarray(C, dtype=float)))
+            rank = effective_rank(np.asarray(C, dtype=float))
             total += rank * int(np.asarray(A).shape[1])
     except Exception:
         return 0
