@@ -109,5 +109,7 @@ Lectura:
 | Esta rama | 520 | 17 | 1 |
 
 20 pruebas nuevas (`tests/test_kinetics_reliability.py`, `tests/test_residual_diagnostics.py`,
-`tests/test_kinetics_gui_reliability.py`); cada una falla en `277b255` por el motivo que indica.
+`tests/test_kinetics_gui_reliability.py`), una por fila de la tabla de §2. Los defectos se
+reprodujeron sobre `277b255` con scripts de la revisión antes de corregirlos; las pruebas usan
+funciones nuevas, así que en `277b255` fallan al importar.
 Ninguna prueba existente se modificó, salvo retirar el `xfail` de la que ahora pasa (A1).

@@ -1,7 +1,7 @@
 """
 Reliability of the kinetics core (no GUI): defects found in the November 2026 review.
 
-Each test fails on the code before the fix (commit 277b255) for the reason given.
+Each defect was reproduced on commit 277b255 before the fix; the docstrings give the old behaviour.
 """
 import numpy as np
 import pytest
