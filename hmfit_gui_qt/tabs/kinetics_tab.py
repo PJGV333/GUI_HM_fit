@@ -52,6 +52,23 @@ from hmfit_gui_qt.widgets.mpl_canvas import MplCanvas, NavigationToolbar
 from hmfit_gui_qt.workers.fit_worker import FitWorker
 
 
+def _jax_solve_linear_matrix(C, D, weights=None):
+    """Project with the same relative rank cutoff as the SciPy observation model."""
+    import jax.numpy as jnp
+    from hmfit.kinetics.observation.linear_matrix import RANK_RCOND
+
+    if weights is None:
+        return jnp.linalg.pinv(C, rtol=RANK_RCOND) @ D
+    if weights.ndim == 1 or weights.shape[1] == 1:
+        w = weights.reshape(-1, 1)
+        return jnp.linalg.pinv(C * w, rtol=RANK_RCOND) @ (D * w)
+    return jnp.concatenate([
+        jnp.linalg.pinv(C * weights[:, j:j + 1], rtol=RANK_RCOND)
+        @ (D[:, j:j + 1] * weights[:, j:j + 1])
+        for j in range(D.shape[1])
+    ], axis=1)
+
+
 def _shared_rate_order_error(model: KineticsModel) -> str | None:
     """Reject shared rate constants whose reactions require incompatible units."""
     groups: dict[str, list] = {}
@@ -544,7 +561,7 @@ class KineticsTab(QWidget):
 
         params0, bounds, param_names, log_params, fixed_mask = self._read_params_from_table()
         method = str(self.model_opt_plots.combo_algorithm.currentData() or "trust-region")
-        backend = self.model_opt_plots.combo_backend.currentText().strip().lower()
+        backend = str(self.model_opt_plots.combo_backend.currentData() or "scipy")
         nnls = self.model_opt_plots.chk_nnls.isChecked()
         if backend == "jax" and nnls:
             raise ValueError("NNLS is not supported with JAX backend.")
@@ -792,7 +809,7 @@ class KineticsTab(QWidget):
             "mechanism_text": self.model_opt_plots.mechanism_text(),
             "params": params,
             "algorithm": str(self.model_opt_plots.combo_algorithm.currentData() or "trust-region"),
-            "backend": self.model_opt_plots.combo_backend.currentText(),
+            "backend": str(self.model_opt_plots.combo_backend.currentData() or "scipy"),
             "nnls": self.model_opt_plots.chk_nnls.isChecked(),
             "multi_start_runs": runs,
             "multi_start_seeds": seeds,
@@ -876,7 +893,7 @@ class KineticsTab(QWidget):
 
         backend = str(config.get("backend") or "")
         if backend:
-            ix = self.model_opt_plots.combo_backend.findText(backend)
+            ix = self.model_opt_plots.combo_backend.findData(backend.strip().lower())
             if ix >= 0:
                 self.model_opt_plots.combo_backend.setCurrentIndex(ix)
 
@@ -1320,6 +1337,12 @@ def _run_kinetics_fit(
 
     if nnls and backend == "jax":
         raise ValueError("NNLS is not supported with JAX backend.")
+    jax_warning = (
+        "JAX is experimental: one RK4 step per sampling interval without error control; "
+        "SciPy is the reference engine."
+    ) if backend == "jax" else None
+    if jax_warning and progress_cb is not None:
+        progress_cb("WARNING: " + jax_warning)
 
     # Bounded trust-region reflective is the only algorithm the kinetics tab runs; legacy
     # method names ("least_squares", "multistart") map to it (they always did).
@@ -1399,30 +1422,13 @@ def _run_kinetics_fit(
                     params[name] = value
             return params
 
-        def _solve_A_ls(C, D, weights=None):
-            if weights is None:
-                A = jnp.linalg.pinv(C) @ D
-                return A
-            if weights.ndim == 1 or weights.shape[1] == 1:
-                w = weights.reshape(-1, 1)
-                Cw = C * w
-                Dw = D * w
-                return jnp.linalg.pinv(Cw) @ Dw
-            cols = []
-            for j in range(D.shape[1]):
-                w = weights[:, j : j + 1]
-                Cw = C * w
-                Dw = D[:, j : j + 1] * w
-                cols.append(jnp.linalg.pinv(Cw) @ Dw)
-            return jnp.concatenate(cols, axis=1)
-
         def residuals_jax(x_vec):
             params = _params_from_vector(x_vec)
             resid_list = []
             for entry in jax_datasets:
                 ds = entry["dataset"]
                 C = model.solve_concentrations_jax(ds.t, ds.y0, params, ds)
-                A = _solve_A_ls(C, entry["D"], weights=entry["weights"])
+                A = _jax_solve_linear_matrix(C, entry["D"], weights=entry["weights"])
                 D_hat = C @ A
                 resid = entry["D"] - D_hat
                 if entry["weights"] is not None:
@@ -1673,8 +1679,8 @@ def _run_kinetics_fit(
     serial_note = serial_correlation_note(serial_diag or {}, "time")
     residual_warnings = [serial_note] if serial_note else []
     diagnostics_warnings = (
-        convergence_warnings + equivalence_warnings + multistart_warnings + residual_warnings
-        + list(parameter_error_warnings)
+        ([jax_warning] if jax_warning else []) + convergence_warnings + equivalence_warnings
+        + multistart_warnings + residual_warnings + list(parameter_error_warnings)
     )
     if stability_diag:
         status = str(stability_diag.get("status") or "")

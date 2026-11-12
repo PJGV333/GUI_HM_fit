@@ -212,7 +212,7 @@ class KineticsModel:
             y_next = y_val + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
             return y_next, y_next
 
-        ys, _ = lax.scan(rk4_step, y0_j, (t[:-1], t[1:]))
+        _, ys = lax.scan(rk4_step, y0_j, (t[:-1], t[1:]))
         return jnp.vstack([y0_j, ys])
 
     def _validate_species_lists(self) -> None:

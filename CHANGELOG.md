@@ -36,6 +36,15 @@ All notable user-visible changes. Versions follow the GitHub releases
   shape mismatch when a constant is not identifiable.
 - Kinetics graph API: `KineticGraph.add_kinetic_reaction` failed on Python < 3.14.
 
+### Fixed (Phase 3, kinetics JAX)
+- The experimental JAX integrator returned only the initial and final concentrations instead
+  of one row per sample; it now returns the complete RK4 trajectory. JAX fits that previously
+  failed on ordinary grids can now run, and their results change.
+- JAX linear projection now uses the same rank cutoff as SciPy; fitted constants and errors
+  may change for rank-deficient concentration matrices.
+- JAX is labeled experimental, with a warning that it uses one RK4 step per sampling interval
+  without error control; SciPy remains the reference and default.
+
 ### Fixed (kinetics and acid-base review, November 2026 — details in `docs/REVIEW_KINETICS_POTENTIOMETRY.md`)
 - **Kinetics: mechanisms with conservation laws no longer return the initial guess as a fit.**
   With more dynamic species than independent reactions + 1 (e.g. `A + B -> C -> D` at unequal
