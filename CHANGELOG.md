@@ -33,6 +33,36 @@ All notable user-visible changes. Versions follow the GitHub releases
   shape mismatch when a constant is not identifiable.
 - Kinetics graph API: `KineticGraph.add_kinetic_reaction` failed on Python < 3.14.
 
+### Fixed (kinetics and acid-base review, November 2026 — details in `docs/REVIEW_KINETICS_POTENTIOMETRY.md`)
+- **Kinetics: mechanisms with conservation laws no longer return the initial guess as a fit.**
+  With more dynamic species than independent reactions + 1 (e.g. `A + B -> C -> D` at unequal
+  concentrations) the projection kept or dropped a round-off direction erratically; the
+  optimiser stopped at the starting values ("Fit complete", k1 = 20.000 for a true 30). The
+  projection and the count of linear parameters now use a rank cutoff of 1e-10.
+  **Fitted constants and standard errors of such mechanisms change.**
+- **Kinetics: the result no longer depends on the units of the signal.** With small signals
+  (concentrations in M, weak absorbances) the fit could stop early or at the initial values.
+- Kinetics: a fit that did not converge or did not move from the initial values is reported as
+  not reliable instead of "Fit complete".
+- **Kinetics (GUI): a global fit keeps the concentrations of each dataset.** Pressing Process
+  copied the concentrations of the displayed dataset to all datasets.
+- **Kinetics (GUI): initial and fixed concentrations are no longer rounded to 6 decimals**
+  (2.5e-7 M became 0); scientific notation is accepted.
+- Kinetics: Multi-start with the default bounds (min 0, no max) aborted with "Initial value
+  outside its bounds"; random starts are now drawn in decades around the initial value, or
+  log-uniformly between wide positive bounds, and a failed random start is discarded and
+  counted. Seeds therefore give different starting points than before.
+- Acid-base (GUI): the Data type selector is visible again and is guessed from the column names;
+  spectroscopy-vs-pH and NMR-vs-pH analyses could not be selected in the interface.
+
+### Added
+- Kinetics: warning when exchanging two rate constants gives the same fit (slow-fast ambiguity
+  of consecutive steps).
+- Kinetics and acid-base: lag-1 autocorrelation of the residuals in the report, with a warning
+  when it shows unexplained structure (all uncertainty estimates are too small in that case).
+- Kinetics (GUI): mechanism examples, concentrations used per dataset in the report, left panel
+  sized to its content (also in Acid-base), readable fit-summary table.
+
 ### Infrastructure
 - CI (`tests` workflow) on Linux (GUI offscreen) and Windows (non-GUI), Python 3.11 and 3.14;
   release builds require the test job; exact tested versions in `constraints.txt`; minimum
