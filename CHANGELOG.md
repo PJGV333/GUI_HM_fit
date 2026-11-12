@@ -7,6 +7,9 @@ All notable user-visible changes. Versions follow the GitHub releases
 ## [Unreleased]
 
 ### Changed
+- Kinetics: a mechanism sharing a rate constant across reactions of different orders is
+  rejected during validation because its units are inconsistent. Saved configurations still
+  open and display the validation error; such fits can no longer run.
 - **Acid-base: default initial pKa guesses are now a descending ladder** (diprotic 7, 5;
   triprotic 9, 7, 5; previously 5, 7, 9). In HM Fit's convention pKa1 = log β1 is the most
   basic site, so a non-cooperative ligand has pKa1 > pKa2 > …; the old ascending defaults

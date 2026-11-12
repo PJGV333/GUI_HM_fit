@@ -52,6 +52,28 @@ from hmfit_gui_qt.widgets.mpl_canvas import MplCanvas, NavigationToolbar
 from hmfit_gui_qt.workers.fit_worker import FitWorker
 
 
+def _shared_rate_order_error(model: KineticsModel) -> str | None:
+    """Reject shared rate constants whose reactions require incompatible units."""
+    groups: dict[str, list] = {}
+    for reaction in model.reactions:
+        groups.setdefault(reaction.k_name, []).append(reaction)
+    for name, reactions in groups.items():
+        orders = {sum(reaction.reactants.values()) for reaction in reactions}
+        if len(orders) < 2:
+            continue
+
+        def side(species):
+            return " + ".join(f"{n} {s}" if n != 1 else s for s, n in species.items()) or "∅"
+
+        descriptions = []
+        for reaction in reactions:
+            order = sum(reaction.reactants.values())
+            units = "s⁻¹" if order == 1 else f"M^{1 - order} s⁻¹"
+            descriptions.append(f"{side(reaction.reactants)} -> {side(reaction.products)} (order {order}, {units})")
+        return f"Rate constant {name} is shared by reactions of different orders: " + "; ".join(descriptions)
+    return None
+
+
 class KineticsTab(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -433,7 +455,14 @@ class KineticsTab(QWidget):
             self._update_fit_state()
             return
 
-        self._model = KineticsModel(ast)
+        model = KineticsModel(ast)
+        order_error = _shared_rate_order_error(model)
+        if order_error:
+            self.model_opt_plots.set_summary_text(order_error)
+            self._model = None
+            self._update_fit_state()
+            return
+        self._model = model
         params = _extract_param_names(ast)
         self.model_opt_plots.set_params(params)
         self._param_defaults = self.model_opt_plots.get_params_state()
