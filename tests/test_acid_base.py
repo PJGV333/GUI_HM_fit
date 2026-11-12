@@ -933,4 +933,4 @@ def test_gui_potentiometry_validation_warns_for_operational_ph(tmp_path, monkeyp
 
     assert payload["signal_type"] == "pH"
     assert any("operational pH" in warning for warning in payload["potentiometry_warnings"])
-    assert "Initial volume is zero." in payload["potentiometry_warnings"]
+    assert "The first titrant volume is zero (normal at the start of a titration)." in payload["potentiometry_warnings"]

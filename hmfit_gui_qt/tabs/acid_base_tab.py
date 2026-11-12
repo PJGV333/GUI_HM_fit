@@ -3445,7 +3445,7 @@ class AcidBaseTab(QWidget):
         if finite_volume.size >= 2 and np.any(np.diff(finite_volume) < 0.0):
             errors.append("Volume should be non-decreasing.")
         if finite_volume.size and abs(float(finite_volume[0])) <= 1.0e-15:
-            warnings.append("Initial volume is zero.")
+            warnings.append("The first titrant volume is zero (normal at the start of a titration).")
         if finite_volume.size:
             vmax = float(np.nanmax(np.abs(finite_volume)))
             if vmax > 10000.0:

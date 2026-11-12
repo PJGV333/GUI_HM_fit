@@ -123,6 +123,7 @@ def write_results_xlsx(
                 return pd.DataFrame(data)
 
             acid_sheets = {
+                "Fit_summary": acid_frame("fit_summary"),
                 "Parameters": acid_frame("error_parameters", "parameter_table"),
                 "pKa": acid_frame("error_pka_table", "pka_table"),
                 "log_beta": acid_frame("error_log_beta_table", "log_beta_table"),

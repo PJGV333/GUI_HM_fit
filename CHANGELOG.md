@@ -21,6 +21,10 @@ All notable user-visible changes. Versions follow the GitHub releases
   started fits in the inverted (cooperative) ordering. Approved by the author (Phase 2).
 - Acid-base: every pKa label names its equilibrium, e.g. `pKa1 (HL ⇌ L + H⁺)` (pKa table,
   fit report, error table). The equation-editor examples now use pKa1 > pKa2.
+- Potentiometry reports and the new XLSX `Fit_summary` sheet show pKa equilibria and analytic
+  standard errors (or `fixed`), signal-unit RMS, point count, degrees of freedom and residual
+  autocorrelation before additional statistics. With σ = 1, chi-square is the SSE. The first
+  zero titrant volume is now described as normal; fitted numbers are unchanged.
 - Acid-base exports: `Equilibrium` column in the `pKa` sheet and a `pKa_convention` sheet.
 - Kinetics: the "Algorithm" combo offers only the method that actually runs
   ("Trust-region reflective (bounded)"); saved configurations with "multistart" keep their

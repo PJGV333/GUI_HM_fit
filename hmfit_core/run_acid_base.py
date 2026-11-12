@@ -855,59 +855,58 @@ def _run_potentiometry(cfg: dict[str, Any], log: Callable[[str], None]) -> dict[
         ),
     }
     payload["constants"].append({"parameter": pkw_row["parameter"], "value": pkw_row["value"]})
-    payload["results_text"] = (
-        str(payload.get("results_text") or "")
-        + f"\n{pkw_row['parameter']}: {pkw_row['value']:.8g} "
-        + ("(fitted apparent medium parameter)" if fit_pkw else "(fixed)")
-    )
     payload["export_data"]["medium_parameters"] = [pkw_row]
     if fit_pkw:
         payload["export_data"]["potentiometry_note"] = "pKw was fitted as an apparent medium parameter."
-    species_names = []
-    try:
-        species_names = [str(sp.name) for comp in fitted_system.components for sp in comp.species]
-    except Exception:
-        species_names = []
-    summary_lines = [
-        "Acid-base fit summary",
-        "",
-        "Model:",
-        f"- Species: {', '.join(species_names) if species_names else 'n/a'}",
-        f"- Titrant: {str(experiment.titrant_type)}",
-        f"- Initial volume: {float(experiment.initial_volume):.8g}",
-        f"- Analyte concentration: {float(experiment.analyte_concentration or 0.0):.8g}",
-        f"- Titrant concentration: {float(experiment.titrant_concentration or 0.0):.8g}",
-        f"- Points included: {int(volumes.size)}",
-        "",
-        "Fitted parameters:",
-    ]
+    # The optimiser stores residuals divided by sigma; RMS must be in the measured
+    # pH/mV units, not the weighted objective.  Fixed pKa may be absent from theta_hat.
+    fit_signal = str(fit_options.get("fit_signal", "auto")).lower()
+    use_emf = fit_signal in {"emf", "e", "potential"} or (fit_signal == "auto" and measured_pH is None)
+    unit = "mV" if use_emf else "pH"
+    sigma = float(fit_options["sigma_E" if use_emf else "sigma_pH"])
+    raw_residuals = np.asarray(result.residuals, dtype=float) * sigma
+    n = int(raw_residuals.size)
+    rms = float(np.sqrt(np.mean(raw_residuals ** 2))) if n else float("nan")
+    dof = int(error_output["dof"]) if error_output is not None else n - len(result.parameter_names or [])
+    param_errors = {str(row[0]): row[2] for row in (error_output or {}).get("results_rows", [])}
+    fixed = {entry["name"] for entry in errors_context.get("fixed_constants", [])}
+    fixed.update(str(row[0]) for row in (error_output or {}).get("results_rows", []) if row[-1] == "Yes")
+    summary_lines = ["Acid-base fit summary", ""]
     for row in payload.get("constants") or []:
         name = str(row.get("parameter") or "")
-        if name.startswith("pKa") or name == "pKw_app":
-            eq = f" ({row['equilibrium']})" if row.get("equilibrium") else ""
-            summary_lines.append(f"- {name}{eq} = {float(row.get('value')):.8g}")
-    summary_lines.extend(
-        [
-            "",
-            "Statistics:",
-            f"- chi_square = {float(result.chi_square):.8g}",
-        ]
-    )
-    if result.reduced_chi_square is not None:
-        summary_lines.append(f"- reduced_chi_square = {float(result.reduced_chi_square):.8g}")
-    if result.aic is not None:
-        summary_lines.append(f"- AIC = {float(result.aic):.8g}")
-    if result.bic is not None:
-        summary_lines.append(f"- BIC = {float(result.bic):.8g}")
-    warnings_out: list[str] = []
-    if fit_pkw:
-        warnings_out.append("pKw_app fitted as an apparent medium parameter.")
-    warnings_out.extend(str(w) for w in (payload.get("warnings") or []))
+        if not name.startswith("pKa"):
+            continue
+        eq = f" ({row['equilibrium']})" if row.get("equilibrium") else ""
+        if name in fixed:
+            suffix = "fixed"
+        else:
+            se = param_errors.get(name, float("nan"))
+            suffix = f"± {float(se):.6g}" if np.isfinite(se) else "± unavailable (analytic SE)"
+        summary_lines.append(f"{name}{eq} = {float(row['value']):.8g} {suffix}")
+    summary_lines.append(f"RMS = {rms:.6g} {unit}; N = {n}; g.l. = {dof}")
+    payload["statistics"].update({"RMS": rms, "RMS_unit": unit, "N": n, "dof": dof})
+    r1 = payload["statistics"].get("residual_lag1_autocorrelation")
+    if r1 is not None:
+        summary_lines.append(f"Residual lag-1 autocorrelation: {float(r1):+.3f}")
+    warnings_out = list(dict.fromkeys(
+        [str(w) for w in (cfg.get("potentiometry_warnings") or [])]
+        + [str(w) for w in (payload.get("warnings") or [])]
+        + (["pKw_app fitted as an apparent medium parameter."] if fit_pkw else [])
+    ))
+    inverted = inverted_pka_warning(result.fitted_pka, errors_context.get("pka_equilibria") or [])
+    if inverted:
+        warnings_out.append(inverted)
     if warnings_out:
-        summary_lines.append("")
         summary_lines.append("Warnings:")
         summary_lines.extend(f"- {warning}" for warning in warnings_out)
-    payload["results_text"] = "\n".join(summary_lines) + "\n\n" + str(payload.get("results_text") or "")
+    summary_lines += ["", "Estadísticos adicionales:",
+                      f"chi_square = {float(result.chi_square):.8g} (with σ = 1, SSE in {unit}²)"]
+    for label, value in (("reduced_chi_square", result.reduced_chi_square), ("AIC", result.aic), ("BIC", result.bic)):
+        if value is not None:
+            summary_lines.append(f"{label} = {float(value):.8g}")
+    summary_lines += ["", f"{pkw_row['parameter']} = {pkw_row['value']:.8g} "
+                      + ("(fitted apparent medium parameter)" if fit_pkw else "(fixed)"), PKA_CONVENTION_NOTE]
+    payload["results_text"] = "\n".join(summary_lines)
     payload["export_data"]["fit_summary"] = {"line": summary_lines}
     return payload
 

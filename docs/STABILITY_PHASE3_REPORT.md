@@ -22,7 +22,9 @@ sin JAX: 548 recolectadas, 523 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5
  deseleccionadas; 366.01 s. Validación de unidades: 550 recolectadas, 525 aprobadas,
 0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas; 326.27 s. Etapa 1.2:
 568 recolectadas, 543 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas;
-329.81 s. Pruebas focalizadas con JAX aislado: 21 aprobadas.
+329.81 s. Pruebas focalizadas con JAX aislado: 21 aprobadas. Etapa 1.3: 570
+recolectadas, 545 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas;
+335.45 s.
 
 ## Problemas y estado
 
@@ -35,7 +37,7 @@ sin JAX: 548 recolectadas, 523 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5
 | [Defecto comprobado] | Ajustes globales mezclaban unidades temporales sin convertir | Reproducido con datos sintéticos: k real 0.025 s⁻¹ (1.5 min⁻¹), ajuste global sin conversión k = 0.02550756, SSQ = 0.20123 con datos sin ruido. Ahora se rechazan unidades conocidas distintas y se avisa si faltan o no se reconocen; prueba `tests/test_phase3_units.py`. Implementado y probado con datos sintéticos, no validado con datos publicados. |
 | [Limitación metodológica] | Valores iniciales de cinética y escala | Propuesta automática y Log10 por defecto para k y A de Arrhenius; se conservan las celdas y escalas del usuario. Implementado y probado con datos sintéticos, no validado con datos publicados. |
 | [Defecto comprobado] | Eyring aplicaba kBT/h sin convertir unidades de tiempo o concentración | Corregido en Eyring para unidades reconocidas; pruebas de equivalencia y de factores de unidad en `tests/test_phase3_auto_rates.py`. |
-| [Limitación metodológica] | Presentación de resultados de potenciometría | Pendiente 1.3. |
+| [Limitación metodológica] | Presentación de resultados de potenciometría | Informe y hoja `Fit_summary`: cada pKa con equilibrio y SE analítico o `fixed`, RMS en unidades de señal, N y g.l., autocorrelación y avisos; estadísticos adicionales separados. Probado con pH y mV sintéticos; no validado con datos publicados. |
 
 ## Evidencia de JAX
 
@@ -76,8 +78,19 @@ plantilla es segundos por unidad temporal × (M por unidad de concentración)^(o
 trayectorias equivalentes en s/M y min/mM se prueban numéricamente. Texto vacío supone
 s/M con aviso; texto no reconocido se rechaza. Datos publicados: no validados.
 
+## Informe de potenciometría (1.3)
+
+`tests/test_phase3_potentiometry_report.py` prueba, en datos sintéticos pH y mV con
+σ = 0.1, pKa libre con ± y fijo con `fixed`, RMS no ponderado en unidades de señal,
+N, g.l. y hoja `Fit_summary`. El aviso de primer volumen cero se conserva con texto
+explícito: se refiere al titulante y es normal, no al volumen inicial de la celda. La
+presentación resuelve el abierto 6 de la Fase 1. La diferencia de terminología `fixed`
+frente a `const` en otros módulos queda para la Fase 4.
+
 ## Cambios esperados en resultados
 
+- Potenciometría: presentación y exportación de resumen cambian; no cambia el ajuste ni los
+  errores numéricos. El RMS se calcula en unidades de señal, deshaciendo la división por σ.
 - Arranques automáticos y Log10 pueden cambiar mínimos o convergencia respecto a los valores
   anteriores; parámetros y escala escritos por el usuario o cargados no se sustituyen.
 - Eyring con unidades reconocidas distintas de s y M cambia constantes numéricas y valores
@@ -101,4 +114,4 @@ s/M con aviso; texto no reconocido se rechaza. Datos publicados: no validados.
   cambian por esta validación de interfaz.
 - [Sospecha] En JAX con precisión de 32 bits, un corte de rango de 10⁻¹⁰ está por debajo de
   la precisión de máquina; no se ha validado el comportamiento para matrices mal condicionadas.
-- La etapa 1.3 y su validación siguen pendientes.
+- `fixed` frente a `const` se deja para unificar en Fase 4; no se cambian métodos de error.
