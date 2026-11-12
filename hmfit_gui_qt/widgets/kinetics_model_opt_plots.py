@@ -35,6 +35,32 @@ from PySide6.QtWidgets import (
 
 from hmfit_gui_qt.workers.errors_worker import ErrorsWorker
 
+from hmfit_gui_qt.widgets.scientific_spinbox import ScientificDoubleSpinBox
+
+
+MECHANISM_PLACEHOLDER = (
+    "One reaction per line, rate constants after ';'. Example:\n"
+    "species: A, B, C\n"
+    "A -> B ; k1\n"
+    "B -> C ; k2\n"
+    "\n"
+    "Reversible step:  A + B <-> C ; kf, kr\n"
+    "Constant species: fixed: H2O      Comments: # text\n"
+    "Use 'Insert example...' above for complete mechanisms."
+)
+
+MECHANISM_TEMPLATES = [
+    ("First order: A -> B", "species: A, B\nA -> B ; k1\n"),
+    ("Consecutive: A -> B -> C", "species: A, B, C\nA -> B ; k1\nB -> C ; k2\n"),
+    ("Reversible: A <-> B", "species: A, B\nA <-> B ; kf, kr\n"),
+    ("Second order: A + B -> P", "species: A, B, P\nA + B -> P ; k\n"),
+    ("Pseudo-first order (B constant): A + B -> P", "species: A, B, P\nfixed: B\nA + B -> P ; k\n"),
+    ("Binding then reaction: A + B <-> C -> D", "species: A, B, C, D\nA + B <-> C ; kf, kr\nC -> D ; k2\n"),
+    ("Michaelis-Menten: E + S <-> ES -> E + P",
+     "species: E, S, ES, P\nE + S <-> ES ; k1, km1\nES -> E + P ; kcat\n"),
+    ("Arrhenius (datasets at several temperatures)",
+     "species: A, B\nA -> B ; k1\narrhenius: k1(A=A1, Ea=Ea1)\n"),
+]
 
 def _coerce_float(value: object, *, default: float = 0.0) -> float:
     try:
@@ -103,8 +129,21 @@ class KineticsModelOptPlotsWidget(QWidget):
         self.tabs.addTab(model_tab, "Model")
         model_layout = QVBoxLayout(model_tab)
 
+        template_row = QHBoxLayout()
+        template_row.addWidget(QLabel("Mechanism", model_tab))
+        self.combo_mechanism_template = QComboBox(model_tab)
+        self.combo_mechanism_template.addItem("Insert example...", "")
+        for label, text in MECHANISM_TEMPLATES:
+            self.combo_mechanism_template.addItem(label, text)
+        self.combo_mechanism_template.setToolTip(
+            "Replace the mechanism text with a worked example, then edit it and press Validate."
+        )
+        self.combo_mechanism_template.activated.connect(self._on_mechanism_template_chosen)
+        template_row.addWidget(self.combo_mechanism_template, 1)
+        model_layout.addLayout(template_row)
+
         self.mechanism_edit = QPlainTextEdit(model_tab)
-        self.mechanism_edit.setPlaceholderText("Enter kinetic mechanism...")
+        self.mechanism_edit.setPlaceholderText(MECHANISM_PLACEHOLDER)
         model_layout.addWidget(self.mechanism_edit, 2)
 
         validate_row = QHBoxLayout()
@@ -136,7 +175,7 @@ class KineticsModelOptPlotsWidget(QWidget):
         fixed_layout = QVBoxLayout(fixed_group)
         self.fixed_table = QTableWidget(fixed_group)
         self.fixed_table.setColumnCount(2)
-        self.fixed_table.setHorizontalHeaderLabels(["Species", "Initial conc."])
+        self.fixed_table.setHorizontalHeaderLabels(["Species", "Concentration (constant)"])
         self.fixed_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.fixed_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.fixed_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
@@ -257,6 +296,10 @@ class KineticsModelOptPlotsWidget(QWidget):
         self.btn_export_csv.setToolTip("Plot export not available yet.")
         export_row.addWidget(self.btn_export_png)
         export_row.addWidget(self.btn_export_csv)
+        # Not implemented yet: hidden instead of shown permanently disabled (the plot toolbar
+        # already saves images).
+        self.btn_export_png.setVisible(False)
+        self.btn_export_csv.setVisible(False)
         export_row.addStretch(1)
         plots_layout.addLayout(export_row)
         plots_layout.addStretch(1)
@@ -301,6 +344,12 @@ class KineticsModelOptPlotsWidget(QWidget):
 
         outer.addWidget(actions_group)
 
+    def _on_mechanism_template_chosen(self, index: int) -> None:
+        text = str(self.combo_mechanism_template.itemData(index) or "")
+        if text:
+            self.mechanism_edit.setPlainText(text)
+        self.combo_mechanism_template.setCurrentIndex(0)
+
     # ---- Model helpers ----
     def set_mechanism_text(self, text: str) -> None:
         self.mechanism_edit.setPlainText(str(text or ""))
@@ -323,10 +372,11 @@ class KineticsModelOptPlotsWidget(QWidget):
             item = QTableWidgetItem(str(name))
             item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
             table.setItem(row, 0, item)
-            value_spin = QDoubleSpinBox(table)
-            value_spin.setDecimals(6)
-            value_spin.setRange(-1e12, 1e12)
-            value_spin.setSingleStep(0.1)
+            # Unrounded value, scientific notation accepted: the former 6-decimal spin box
+            # silently turned 2.5e-7 M into 0 and 1.5e-6 M into 2e-6 M.
+            value_spin = ScientificDoubleSpinBox(table)
+            value_spin.setSingleStep(1e-3)
+            value_spin.setToolTip("Concentration, e.g. 0.001 or 2.5e-6 (decimal point).")
             value_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
             value_spin.setKeyboardTracking(False)
             value_spin.valueChanged.connect(lambda _value=None: self.metadata_changed.emit())
@@ -1285,6 +1335,9 @@ class KineticsModelOptPlotsWidget(QWidget):
             for note in bootstrap_quality_notes(int(n_success or 0), int(n_fail or 0), B):
                 extra.append(f"WARNING: {note}")
         extra.extend(f"WARNING: {note}" for note in conv_notes)
+        # Conditions of the fit under which no error method is trustworthy (not converged,
+        # serially correlated residuals): repeated here so they travel with the numbers.
+        extra.extend(f"WARNING: {note}" for note in (ctx.get("fit_warnings") or []))
         summary = summary + "\n" + "\n".join(extra)
 
         return {

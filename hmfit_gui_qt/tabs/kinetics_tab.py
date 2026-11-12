@@ -206,9 +206,11 @@ class KineticsTab(QWidget):
         for col in range(1, self.table_fit_summary.columnCount()):
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
         self.table_fit_summary.setStyleSheet(
-            "QTableWidget { background: #11141d; color: #e8ecf1; border: 1px solid #303648; } "
+            "QTableWidget { background: #11141d; alternate-background-color: #1a1f2c; "
+            "color: #e8ecf1; border: 1px solid #303648; } "
             "QHeaderView::section { background: #1f2433; color: #e8ecf1; }"
         )
+        self.table_fit_summary.setMinimumHeight(120)
         summary_layout.addWidget(self.table_fit_summary, 1)
         diag_layout.addWidget(summary_group, 1)
 
@@ -244,8 +246,19 @@ class KineticsTab(QWidget):
 
         self._main_split.setStretchFactor(0, 0)
         self._main_split.setStretchFactor(1, 1)
+        self._left_scroll = left_scroll
+        self._left_panel_fitted = False
 
         self._update_plot_nav()
+
+    def showEvent(self, event) -> None:  # noqa: N802 (Qt API)
+        super().showEvent(event)
+        if not self._left_panel_fitted:
+            self._left_panel_fitted = True
+            from PySide6.QtCore import QTimer
+            from hmfit_gui_qt.widgets.layout_utils import fit_left_panel
+
+            QTimer.singleShot(0, lambda: fit_left_panel(self._main_split, self._left_scroll))
 
     # ---- Plot navigation ----
     def _plot_title_for_key(self, key: str) -> str:
@@ -304,7 +317,8 @@ class KineticsTab(QWidget):
             f"SSQ: {self._format_summary_number(result.get('ssq'))}   "
             f"nfev: {self._format_summary_number(result.get('nfev'))}   "
             f"stability: {stability.get('label', diagnostics.get('stability_status', '-'))}   "
-            f"cond: {self._format_summary_number(result.get('condition_number'))}"
+            f"cond: {self._format_summary_number(result.get('condition_number'))}   "
+            f"resid. r1: {self._format_summary_number((diagnostics.get('residual_serial_correlation') or {}).get('r1'))}"
         )
         self.lbl_fit_metrics.setText(metrics_text)
 
@@ -384,6 +398,8 @@ class KineticsTab(QWidget):
                     "Initial concentrations (y0) are required. "
                     "Edit y0/fixed in the Model tab."
                 )
+            else:
+                item.setToolTip(_dataset_concentration_summary(dataset))
             self._dataset_list.addItem(item)
         self._dataset_list.blockSignals(False)
         for idx in selected_indices:
@@ -650,9 +666,7 @@ class KineticsTab(QWidget):
         results_text = result.get("results_text") or ""
         if results_text:
             self.log.append_text("\n" + str(results_text).rstrip() + "\n")
-        diagnostics = result.get("diagnostics") or {}
-        for warning in diagnostics.get("warnings") or []:
-            self.log.append_text(f"WARNING: {warning}")
+        # (the warnings are already part of results_text: not repeated here)
 
         stats = result.get("statistics") or {}
         rms = stats.get("RMS")
@@ -717,6 +731,11 @@ class KineticsTab(QWidget):
             "fixed_mask": list(result.get("fixed_mask") or []),
             "n_linear": int(result.get("n_linear") or 0),
             "dof": result.get("dof"),
+            "fit_warnings": [
+                str(w)
+                for key in ("convergence_warnings", "residual_warnings")
+                for w in ((result.get("diagnostics") or {}).get(key) or [])
+            ],
         }
         self.model_opt_plots.set_errors_context(errors_ctx, auto_compute=False)
 
@@ -989,9 +1008,20 @@ class KineticsTab(QWidget):
             return
         y0_values = self.model_opt_plots.get_y0_values()
         fixed_values = self.model_opt_plots.get_fixed_conc_values()
+        # The tables show the selected dataset: write them to the selected dataset(s) only.
+        # Writing them to every dataset (previous behaviour) replaced the per-dataset
+        # concentrations of a global fit by those of whichever dataset was displayed, at the
+        # moment Process was pressed. Datasets that have no values yet are still filled, so
+        # one edit is enough when all datasets share the same concentrations.
+        selected = self._selected_datasets()
+        current = self._selected_dataset()
+        if not selected and current is not None:
+            selected = [current]
+        selected_ids = {id(ds) for ds in selected}
         for dataset in datasets:
-            dataset.y0 = dict(y0_values)
-            dataset.fixed_conc = dict(fixed_values)
+            if id(dataset) in selected_ids or not self._dataset_is_complete(dataset):
+                dataset.y0 = dict(y0_values)
+                dataset.fixed_conc = dict(fixed_values)
 
     def _on_metadata_table_changed(self, _item: object | None = None) -> None:
         if self._in_metadata_update:
@@ -999,6 +1029,18 @@ class KineticsTab(QWidget):
         self._sync_selected_metadata_from_tables()
         self._refresh_dataset_list()
         self._update_fit_state()
+
+
+def _dataset_concentration_summary(dataset) -> str:
+    """'y0: A=0.001, B=0.002 | fixed: H2O=55.5' for tooltips and the fit log."""
+    parts = []
+    y0 = getattr(dataset, "y0", None)
+    if isinstance(y0, dict) and y0:
+        parts.append("y0: " + ", ".join(f"{k}={float(v):.6g}" for k, v in y0.items()))
+    fixed = getattr(dataset, "fixed_conc", None)
+    if isinstance(fixed, dict) and fixed:
+        parts.append("fixed: " + ", ".join(f"{k}={float(v):.6g}" for k, v in fixed.items()))
+    return " | ".join(parts)
 
 
 def _extract_param_names(ast) -> list[str]:
@@ -1092,21 +1134,12 @@ def _randomize_params(
     bounds: tuple[np.ndarray, np.ndarray],
     rng: np.random.Generator,
     fixed_mask: Sequence[bool] | None = None,
+    log_mask: Sequence[bool] | None = None,
 ) -> np.ndarray:
-    lower, upper = (np.broadcast_to(np.asarray(b, dtype=float), np.shape(x0)) for b in bounds)
-    x = np.array(x0, dtype=float)
-    fixed = list(fixed_mask) if fixed_mask is not None else []
-    for idx in range(x.size):
-        if idx < len(fixed) and fixed[idx]:
-            continue  # multi-start must never move a fixed parameter
-        lo = lower[idx] if idx < lower.size else -np.inf
-        hi = upper[idx] if idx < upper.size else np.inf
-        if np.isfinite(lo) and np.isfinite(hi):
-            x[idx] = rng.uniform(lo, hi)
-        else:
-            scale = 0.2 if x0[idx] != 0 else 1.0
-            x[idx] = x0[idx] + rng.normal(0.0, scale)
-    return x
+    """Random multi-start point inside the bounds (see ``randomize_start``)."""
+    from hmfit.kinetics.fit.optimizer import randomize_start
+
+    return randomize_start(x0, bounds, rng, fixed_mask=fixed_mask, log_mask=log_mask)
 
 
 def _build_parameter_error_summary(
@@ -1294,6 +1327,7 @@ def _run_kinetics_fit(
             "correlations": result.correlations,
             "condition_number": result.condition_number,
             "raw_result": result.result,
+            "convergence_notes": list(getattr(result.result, "convergence_notes", ()) or ()),
         }
         return payload
 
@@ -1392,15 +1426,22 @@ def _run_kinetics_fit(
             x_full[free_arr] = xf
             return x_full
 
-        result = least_squares(
+        from hmfit.kinetics.fit.optimizer import convergence_notes, residual_scale, scaled_least_squares
+
+        result = scaled_least_squares(
             lambda xf: residuals_np(_expand(xf)),
-            x0=x_base[free_arr],
+            x_base[free_arr],
+            scale=residual_scale(objective),
             bounds=(lower_b[free_arr], upper_b[free_arr]),
             method=ls_method,
             jac=lambda xf: jac_np(_expand(xf))[:, free_arr],
             max_nfev=300,
         )
         jac_free_res = np.asarray(result.jac, dtype=float)
+        result.convergence_notes = tuple(
+            convergence_notes(result, x_base[free_arr], np.asarray(result.x, dtype=float),
+                              [param_names[i] for i in free_arr])
+        )
         result.x = _expand(np.asarray(result.x, dtype=float))
         jac_full_res = np.zeros((jac_free_res.shape[0], x0.size), dtype=float)
         jac_full_res[:, free_arr] = jac_free_res
@@ -1426,6 +1467,7 @@ def _run_kinetics_fit(
             "correlations": correlations,
             "condition_number": condition_number,
             "raw_result": result,
+            "convergence_notes": list(getattr(result, "convergence_notes", ()) or ()),
         }
         return payload
 
@@ -1440,15 +1482,28 @@ def _run_kinetics_fit(
     else:
         run_seeds = [None] * total_runs
 
+    log_mask = [name in log_params for name in param_names]
+    failed_starts: list[str] = []
     for run_idx in range(total_runs):
         if cancel is not None and cancel():
             raise FitCancelled("Fit cancelled.")
         seed = run_seeds[run_idx] if run_idx < len(run_seeds) else None
         rng = np.random.default_rng(seed)
-        x0 = params0 if run_idx == 0 else _randomize_params(params0, bounds, rng, fixed_mask)
+        x0 = params0 if run_idx == 0 else _randomize_params(params0, bounds, rng, fixed_mask, log_mask)
         if progress_cb is not None:
             progress_cb(f"Run {run_idx + 1}/{total_runs}...")
-        payload = _run_once(x0)
+        if run_idx == 0:
+            payload = _run_once(x0)
+        else:
+            # A random start that cannot be integrated or fitted is discarded and counted;
+            # it must not abort the starts that work (the user's own start always raises).
+            try:
+                payload = _run_once(x0)
+            except FitCancelled:
+                raise
+            except Exception as exc:
+                failed_starts.append(f"run {run_idx + 1}: {exc}")
+                continue
         try:
             nfev_total += int(payload.get("nfev") or 0)
         except Exception:
@@ -1457,7 +1512,10 @@ def _run_kinetics_fit(
             njev_total += int(payload.get("njev") or 0)
         except Exception:
             pass
-        if payload["ssq"] < best_ssq:
+        # A later start replaces the best one only if it is really better: equivalent minima
+        # (same SSQ to round-off) keep the solution found from the user's own start, so the
+        # reported parameters do not flip between runs.
+        if best_payload is None or payload["ssq"] < best_ssq * (1.0 - 1e-9):
             best_ssq = payload["ssq"]
             best_payload = payload
 
@@ -1549,7 +1607,46 @@ def _run_kinetics_fit(
             "Parameter error analysis disabled by config (auto_parameter_errors=False)."
         ]
 
-    diagnostics_warnings = list(parameter_error_warnings)
+    convergence_warnings = [str(n) for n in (best_payload.get("convergence_notes") or [])]
+    equivalent_solutions: list[dict[str, Any]] = []
+    equivalence_warnings: list[str] = []
+    if not convergence_warnings:
+        from hmfit.kinetics.fit.optimizer import exchange_equivalence_notes, exchange_equivalent_parameters
+
+        x_best = np.asarray(
+            [np.log10(max(float(params[n]), 1e-300)) if n in log_params else float(params[n]) for n in param_names],
+            dtype=float,
+        )
+        equivalent_solutions = exchange_equivalent_parameters(
+            objective, x_best, param_names, fixed_mask=fixed_mask, bounds=bounds,
+            ssq=float(best_payload["ssq"]),
+        )
+        equivalence_warnings = exchange_equivalence_notes(equivalent_solutions)
+    multistart_warnings: list[str] = []
+    if failed_starts:
+        multistart_warnings.append(
+            f"Multi-start: {len(failed_starts)} of {total_runs} starting points failed and were "
+            f"discarded (first: {failed_starts[0]})."
+        )
+    # Serial correlation of the residuals along time: the symptom of an inadequate mechanism
+    # or correlated noise, under which every reported uncertainty is too small.
+    from hmfit_core.utils.residual_diagnostics import lag1_autocorrelation, serial_correlation_note
+
+    residual_blocks = [
+        np.asarray(info["residuals"], dtype=float)
+        for info in fit_results
+        if info.get("residuals") is not None
+    ]
+    try:
+        serial_diag = lag1_autocorrelation(residual_blocks) if residual_blocks else None
+    except Exception:
+        serial_diag = None
+    serial_note = serial_correlation_note(serial_diag or {}, "time")
+    residual_warnings = [serial_note] if serial_note else []
+    diagnostics_warnings = (
+        convergence_warnings + equivalence_warnings + multistart_warnings + residual_warnings
+        + list(parameter_error_warnings)
+    )
     if stability_diag:
         status = str(stability_diag.get("status") or "")
         summary = str(stability_diag.get("diag_summary") or "").strip()
@@ -1567,6 +1664,11 @@ def _run_kinetics_fit(
         "condition_number": best_payload.get("condition_number"),
         "method_requested": method,
         "method_used": ls_method,
+        "convergence_warnings": list(convergence_warnings),
+        "equivalent_solutions": list(equivalent_solutions),
+        "residual_serial_correlation": dict(serial_diag) if serial_diag else None,
+        "residual_warnings": list(residual_warnings),
+        "multi_start_failed": list(failed_starts),
         "backend": backend,
         "nnls": nnls,
         "weighted_fit": any(
@@ -1582,12 +1684,21 @@ def _run_kinetics_fit(
         diagnostics["optimizer_message"] = str(getattr(raw_result, "message", "") or "")
 
     results_lines = [
-        "Fit complete.",
+        "Fit complete." if not convergence_warnings else
+        ">>> FIT NOT RELIABLE: the optimiser did not reach a minimum (see the warnings below).",
         f"SSQ: {best_payload['ssq']:.6g}",
         f"nfev: {best_payload['nfev']}",
     ]
     for name, value in params.items():
         results_lines.append(f"{name} = {value:.6g}")
+    conc_lines = [
+        f"  {getattr(ds, 'name', None) or 'dataset'}: {_dataset_concentration_summary(ds)}"
+        for ds in datasets
+        if _dataset_concentration_summary(ds)
+    ]
+    if conc_lines:
+        results_lines.append("Concentrations used:")
+        results_lines.extend(conc_lines)
     if stability_diag:
         status = str(stability_diag.get("status") or "")
         summary = str(stability_diag.get("diag_summary") or "")
@@ -1651,7 +1762,7 @@ def _run_kinetics_fit(
         for run_idx in range(run_total):
             seed = seed_list[run_idx] if run_idx < len(seed_list) else None
             rng = np.random.default_rng(seed)
-            x0 = x0_opt if run_idx == 0 else _randomize_params(x0_opt, bounds, rng, fixed_mask)
+            x0 = x0_opt if run_idx == 0 else _randomize_params(x0_opt, bounds, rng, fixed_mask, log_mask)
             try:
                 # max_iter counts optimizer iterations; each finite-difference
                 # Jacobian costs (p_free + 1) evaluations, so budget accordingly.

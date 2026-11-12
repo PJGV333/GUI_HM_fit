@@ -210,8 +210,10 @@ class DatasetEditorDialog(QDialog):
 
 
 def _make_spinbox(parent: QWidget) -> QDoubleSpinBox:
-    spin = QDoubleSpinBox(parent)
-    spin.setDecimals(6)
-    spin.setRange(-1e9, 1e9)
+    # Concentrations: unrounded value, scientific notation accepted (a 6-decimal spin box
+    # turned 2.5e-7 M into 0).
+    from hmfit_gui_qt.widgets.scientific_spinbox import ScientificDoubleSpinBox
+
+    spin = ScientificDoubleSpinBox(parent)
     spin.setValue(0.0)
     return spin
