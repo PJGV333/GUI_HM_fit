@@ -19,7 +19,8 @@ sin instalarlo en el entorno normal.
 Validación de constantes compartidas, sin JAX: 545 recolectadas, 522 aprobadas,
 0 fallidas, 17 xfail, 1 omitida y 5 deseleccionadas; 443.85 s. Etapa 1.1,
 sin JAX: 548 recolectadas, 523 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5
- deseleccionadas; 366.01 s.
+ deseleccionadas; 366.01 s. Validación de unidades: 550 recolectadas, 525 aprobadas,
+0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas; 326.27 s.
 
 ## Problemas y estado
 
@@ -29,6 +30,7 @@ sin JAX: 548 recolectadas, 523 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5
 | [Limitación metodológica] | JAX integra un solo paso RK4 por intervalo sin control de error | Marcado experimental, aviso en informe y registro; SciPy sigue como referencia. Implementado y probado con datos sintéticos, no validado con datos publicados. |
 | [Defecto comprobado] | JAX devolvía solo dos filas por intercambiar las salidas de `lax.scan` | Corregido con autorización del autor; `test_jax_rk4_fine_and_coarse_grid` fallaba por forma (2, 3) frente a (401, 3). |
 | [Defecto comprobado] | JAX usaba el corte predeterminado de `pinv` | Corregido con `RANK_RCOND`; una matriz de rango casi deficiente daba coeficientes ~10¹² con el corte predeterminado en float64. Prueba con y sin pesos. |
+| [Defecto comprobado] | Ajustes globales mezclaban unidades temporales sin convertir | Reproducido con datos sintéticos: k real 0.025 s⁻¹ (1.5 min⁻¹), ajuste global sin conversión k = 0.02550756, SSQ = 0.20123 con datos sin ruido. Ahora se rechazan unidades conocidas distintas y se avisa si faltan o no se reconocen; prueba `tests/test_phase3_units.py`. Implementado y probado con datos sintéticos, no validado con datos publicados. |
 | [Limitación metodológica] | Valores iniciales de cinética y escala | Pendiente 1.2. |
 | [Limitación metodológica] | Presentación de resultados de potenciometría | Pendiente 1.3. |
 
@@ -42,6 +44,8 @@ sin JAX se omiten los dos casos JAX mediante `importorskip`.
 
 ## Cambios esperados en resultados
 
+- Ajustes globales con unidades temporales o de concentración reconocidas y distintas se
+  rechazan en vez de entregar constantes inconsistentes. No se convierten los datos.
 - JAX: la trayectoria tiene ahora todos los tiempos; antes los ajustes ordinarios fallaban por
   dimensiones. El corte de rango cambia los coeficientes y puede cambiar parámetros y SE en
   mecanismos con matrices casi deficientes.
@@ -51,6 +55,9 @@ sin JAX se omiten los dos casos JAX mediante `importorskip`.
 
 ## Riesgos y cuestiones abiertas
 
+- Las concentraciones no tenían campo de unidades; se añade un campo opcional vacío por
+  defecto para conservar configuraciones existentes. Una unidad vacía o desconocida en un
+  ajuste global solo produce aviso y no garantiza compatibilidad de unidades.
 - Configuraciones antiguas que compartan una constante entre órdenes distintos se seguirán
   abriendo, pero no podrán ajustarse hasta corregir el mecanismo. Las APIs del núcleo no se
   cambian por esta validación de interfaz.

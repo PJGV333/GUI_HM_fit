@@ -36,6 +36,12 @@ All notable user-visible changes. Versions follow the GitHub releases
   shape mismatch when a constant is not identifiable.
 - Kinetics graph API: `KineticGraph.add_kinetic_reaction` failed on Python < 3.14.
 
+### Fixed (Phase 3, kinetics dataset units)
+- Global kinetics fits reject incompatible recognized time or concentration units; no numerical
+  conversion is performed. Unknown or empty units generate a warning. Older projects still open.
+  Dataset metadata now has an optional concentration unit; previously it was not recorded.
+  Previously accepted mixed-unit fits may no longer run.
+
 ### Fixed (Phase 3, kinetics JAX)
 - The experimental JAX integrator returned only the initial and final concentrations instead
   of one row per sample; it now returns the complete RK4 trajectory. JAX fits that previously

@@ -559,6 +559,8 @@ class KineticsTab(QWidget):
         if self._model is None:
             raise ValueError("Validate a mechanism first.")
 
+        from hmfit.kinetics.data.units import validate_dataset_units
+        validate_dataset_units(list(datasets))
         params0, bounds, param_names, log_params, fixed_mask = self._read_params_from_table()
         method = str(self.model_opt_plots.combo_algorithm.currentData() or "trust-region")
         backend = str(self.model_opt_plots.combo_backend.currentData() or "scipy")
@@ -1320,6 +1322,11 @@ def _run_kinetics_fit(
 
     model = config["model"]
     datasets = list(config["datasets"] or [])
+    from hmfit.kinetics.data.units import validate_dataset_units
+    unit_warnings = validate_dataset_units(datasets)
+    if progress_cb is not None:
+        for warning in unit_warnings:
+            progress_cb("WARNING: " + warning)
     params0 = np.asarray(config["params0"], dtype=float)
     bounds = config["bounds"]
     param_names = list(config["param_names"] or [])
@@ -1679,7 +1686,7 @@ def _run_kinetics_fit(
     serial_note = serial_correlation_note(serial_diag or {}, "time")
     residual_warnings = [serial_note] if serial_note else []
     diagnostics_warnings = (
-        ([jax_warning] if jax_warning else []) + convergence_warnings + equivalence_warnings
+        unit_warnings + ([jax_warning] if jax_warning else []) + convergence_warnings + equivalence_warnings
         + multistart_warnings + residual_warnings + list(parameter_error_warnings)
     )
     if stability_diag:

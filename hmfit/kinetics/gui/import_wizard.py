@@ -342,6 +342,7 @@ class ImportWizard(QDialog):
             for dataset in self._datasets:
                 dataset.temperature = updated.temperature
                 dataset.time_unit = updated.time_unit
+                dataset.concentration_unit = updated.concentration_unit
                 dataset.x_unit = updated.x_unit
                 dataset.signal_unit = updated.signal_unit
                 dataset.y0 = dict(updated.y0) if updated.y0 is not None else None

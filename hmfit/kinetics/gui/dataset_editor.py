@@ -56,6 +56,10 @@ class DatasetEditorWidget(QWidget):
         self.time_unit_edit.setToolTip("Time unit: typically seconds (s).")
         self._form.addRow("Time unit", self.time_unit_edit)
 
+        self.concentration_unit_edit = QLineEdit(self)
+        self.concentration_unit_edit.setToolTip("Units of initial and fixed concentrations, e.g. M or mM.")
+        self._form.addRow("Concentration unit", self.concentration_unit_edit)
+
         self.x_unit_edit = QLineEdit(self)
         self.x_unit_edit.setToolTip("X unit: wavelength (nm) or ppm for NMR.")
         self._form.addRow("X unit", self.x_unit_edit)
@@ -96,6 +100,7 @@ class DatasetEditorWidget(QWidget):
         self.name_edit.setText(dataset.name)
         self.temperature_spin.setValue(float(dataset.temperature))
         self.time_unit_edit.setText(dataset.time_unit)
+        self.concentration_unit_edit.setText(getattr(dataset, "concentration_unit", ""))
         self.x_unit_edit.setText(dataset.x_unit)
         self.signal_unit_edit.setText(dataset.signal_unit)
 
@@ -111,6 +116,7 @@ class DatasetEditorWidget(QWidget):
         dataset.name = self.name_edit.text().strip() or dataset.name
         dataset.temperature = float(self.temperature_spin.value())
         dataset.time_unit = self.time_unit_edit.text().strip()
+        dataset.concentration_unit = self.concentration_unit_edit.text().strip()
         dataset.x_unit = self.x_unit_edit.text().strip()
         dataset.signal_unit = self.signal_unit_edit.text().strip()
 

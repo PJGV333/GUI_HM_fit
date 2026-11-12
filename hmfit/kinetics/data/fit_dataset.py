@@ -42,3 +42,5 @@ class KineticsFitDataset(KineticsDataset):
     fit_residuals: np.ndarray | None = None
     efa_enabled: bool = False
     efa_eigen: int = 0
+    # Empty preserves old projects: the original format did not record concentration units.
+    concentration_unit: str = ""
