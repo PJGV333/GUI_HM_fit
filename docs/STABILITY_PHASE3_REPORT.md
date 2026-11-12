@@ -1,6 +1,7 @@
 # HM fit — Fase 3: informe intermedio
 
-Rama `fix/stable-phase3-optimizers`, base `0634b93`. Estado: etapa 3.0 en curso.
+Rama `fix/stable-phase3-optimizers`, base `0634b93`. Estado: etapa 3.0 implementada,
+probada con datos sintéticos y pendiente de revisión del autor; no validada con datos publicados.
 
 ## Entorno y línea base
 
@@ -104,6 +105,12 @@ frente a `const` en otros módulos queda para la Fase 4.
   la GUI: antes se aceptaba pese a la incompatibilidad dimensional. Los casos válidos no
   cambian por esta validación.
 
+## CI
+
+El código de la etapa 3.0 en `e41a018` pasó el workflow `tests` en Linux y Windows,
+Python 3.11 y 3.14: <https://github.com/PJGV333/GUI_HM_fit/actions/runs/43306960036>.
+Windows ejecuta el subconjunto no GUI; Linux ejecuta la suite normal y el banco de literatura.
+
 ## Riesgos y cuestiones abiertas
 
 - Las concentraciones no tenían campo de unidades; se añade un campo opcional vacío por
@@ -114,4 +121,8 @@ frente a `const` en otros módulos queda para la Fase 4.
   cambian por esta validación de interfaz.
 - [Sospecha] En JAX con precisión de 32 bits, un corte de rango de 10⁻¹⁰ está por debajo de
   la precisión de máquina; no se ha validado el comportamiento para matrices mal condicionadas.
+- [Defecto comprobado por inspección] Tras optimizar con JAX, `_run_kinetics_fit` genera las
+  curvas y residuos mostrados mediante `objective.predict_dataset`, que integra con SciPy;
+  pueden no coincidir con el objetivo JAX en rejillas gruesas. No corregido ni cuantificado
+  en esta etapa: SciPy sigue siendo la referencia y JAX queda marcado experimental.
 - `fixed` frente a `const` se deja para unificar en Fase 4; no se cambian métodos de error.
