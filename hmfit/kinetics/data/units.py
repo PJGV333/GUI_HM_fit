@@ -23,6 +23,26 @@ def canonical_concentration_unit(value: str | None) -> str | None:
     return _CONCENTRATION.get(str(value or "").strip())
 
 
+def eyring_unit_factors(dataset, order: int) -> tuple[float, list[str]]:
+    """Convert an Eyring rate in M and seconds to the dataset's numeric units."""
+    raw_t = str(getattr(dataset, "time_unit", "") or "").strip()
+    raw_c = str(getattr(dataset, "concentration_unit", "") or "").strip()
+    t = canonical_time_unit(raw_t)
+    c = canonical_concentration_unit(raw_c)
+    if raw_t and t is None:
+        raise ValueError(f"Unrecognized time unit for Eyring: {raw_t!r}.")
+    if raw_c and c is None:
+        raise ValueError(f"Unrecognized concentration unit for Eyring: {raw_c!r}.")
+    warnings = []
+    if not raw_t:
+        warnings.append("Eyring: empty time unit; assuming s.")
+    if not raw_c:
+        warnings.append("Eyring: empty concentration unit; assuming M.")
+    seconds = {"s": 1., "ms": .001, "min": 60., "h": 3600.}[t or "s"]
+    molar = {"M": 1., "mM": 1e-3, "µM": 1e-6, "nM": 1e-9}[c or "M"]
+    return seconds * molar ** (order - 1), warnings
+
+
 def validate_dataset_units(datasets) -> list[str]:
     """Reject incompatible known units and warn on unknowns in global fits."""
     if len(datasets) < 2:

@@ -444,6 +444,30 @@ class KineticsTab(QWidget):
         for idx in selected_indices:
             if 0 <= idx < self._dataset_list.count():
                 self._dataset_list.item(idx).setSelected(True)
+        self._recalculate_automatic_params()
+
+    def _recalculate_automatic_params(self) -> None:
+        if self._model is None or not self._datasets:
+            return
+        table = self.model_opt_plots.params_table
+        values = {table.item(i, 0).text(): table.item(i, 1) for i in range(table.rowCount())}
+        current = {name: float(item.text()) for name, item in values.items()
+                   if item.data(Qt.ItemDataRole.UserRole) == "user" and _is_float(item.text())}
+        proposals = _automatic_rate_parameters(self._model, self._datasets, current)
+        units = _rate_parameter_units(self._model, self._datasets)
+        table.blockSignals(True)
+        try:
+            for row in range(table.rowCount()):
+                name = table.item(row, 0).text()
+                item = QTableWidgetItem(units.get(name, ""))
+                item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+                table.setItem(row, 6, item)
+            for name, value in proposals.items():
+                item = values.get(name)
+                if item is not None and item.data(Qt.ItemDataRole.UserRole) != "user":
+                    item.setText(format(value, ".17g"))
+        finally:
+            table.blockSignals(False)
 
     def _selected_indices(self) -> list[int]:
         return [idx.row() for idx in self._dataset_list.selectionModel().selectedRows()]
@@ -481,7 +505,18 @@ class KineticsTab(QWidget):
             return
         self._model = model
         params = _extract_param_names(ast)
-        self.model_opt_plots.set_params(params)
+        temp = ast.temp_models
+        log_names = {r.k_name for r in model.reactions if r.k_name not in temp}
+        log_names.update(t.params.get("A") for t in temp.values() if t.kind == "arrhenius")
+        self.model_opt_plots.set_params(params, log_names)
+        temp_linear = {v for t in temp.values() for k, v in t.params.items() if k in ("Ea", "dH", "dS")}
+        for row, name in enumerate(params):
+            item = self.model_opt_plots.params_table.item(row, 2)
+            if name in temp_linear and item.data(Qt.ItemDataRole.UserRole) != "user":
+                self.model_opt_plots.params_table.blockSignals(True)
+                item.setText("")
+                self.model_opt_plots.params_table.blockSignals(False)
+        self._recalculate_automatic_params()
         self._param_defaults = self.model_opt_plots.get_params_state()
 
         summary = [
@@ -561,6 +596,7 @@ class KineticsTab(QWidget):
 
         from hmfit.kinetics.data.units import validate_dataset_units
         validate_dataset_units(list(datasets))
+        _eyring_dataset_warnings(self._model, datasets)
         params0, bounds, param_names, log_params, fixed_mask = self._read_params_from_table()
         method = str(self.model_opt_plots.combo_algorithm.currentData() or "trust-region")
         backend = str(self.model_opt_plots.combo_backend.currentData() or "scipy")
@@ -632,12 +668,12 @@ class KineticsTab(QWidget):
             if log_flag:
                 if value <= 0:
                     raise ValueError(f"Parameter '{name}' must be > 0 for log10.")
-                if min_val is not None and min_val <= 0:
-                    raise ValueError(f"Min for '{name}' must be > 0 for log10.")
+                if min_val is not None and min_val < 0:
+                    raise ValueError(f"Min for '{name}' must be >= 0 for log10.")
                 if max_val is not None and max_val <= 0:
                     raise ValueError(f"Max for '{name}' must be > 0 for log10.")
                 opt_value = float(np.log10(value))
-                opt_min = float(np.log10(min_val)) if min_val is not None else -np.inf
+                opt_min = float(np.log10(min_val)) if min_val is not None and min_val > 0 else -np.inf
                 opt_max = float(np.log10(max_val)) if max_val is not None else np.inf
                 log_params.add(name)
 
@@ -1091,6 +1127,107 @@ def _dataset_concentration_summary(dataset) -> str:
     return " | ".join(parts)
 
 
+def _rate_parameter_units(model, datasets):
+    from hmfit.kinetics.data.units import canonical_time_unit, canonical_concentration_unit
+    times = {canonical_time_unit(getattr(ds, "time_unit", "")) for ds in datasets}
+    concs = {canonical_concentration_unit(getattr(ds, "concentration_unit", "")) for ds in datasets}
+    t = next(iter(times)) if len(times) == 1 and None not in times else "time unit unspecified"
+    c = next(iter(concs)) if len(concs) == 1 and None not in concs else "concentration unit unspecified"
+    units = {}
+    for r in model.reactions:
+        order = sum(r.reactants.values())
+        prefix = "" if order == 1 else (f"{c}⁻¹·" if order == 2 else f"{c}^({1-order})·")
+        unit = f"{prefix}{t}⁻¹"
+        temp = model.mechanism.temp_models.get(r.k_name)
+        if temp is None:
+            units[r.k_name] = unit
+        elif temp.kind == "arrhenius":
+            units[temp.params["A"]] = unit
+            units[temp.params["Ea"]] = "J·mol⁻¹"
+        else:
+            units[temp.params["dH"]] = "J·mol⁻¹"
+            units[temp.params["dS"]] = "J·mol⁻¹·K⁻¹"
+    return units
+
+
+def _eyring_dataset_warnings(model, datasets):
+    from hmfit.kinetics.data.units import eyring_unit_factors
+    warnings = []
+    for reaction in model.reactions:
+        temp = model.mechanism.temp_models.get(reaction.k_name)
+        if temp and temp.kind == "eyring":
+            for dataset in datasets:
+                _, messages = eyring_unit_factors(dataset, sum(reaction.reactants.values()))
+                warnings.extend(messages)
+    return list(dict.fromkeys(warnings))
+
+
+def _is_float(text: str) -> bool:
+    try:
+        return bool(np.isfinite(float(text)))
+    except (ValueError, TypeError):
+        return False
+
+
+def _automatic_rate_parameters(model, datasets, user_values=None):
+    """Scale rates to the experiment, in its numeric units (no dataset conversion).
+
+    t_total is the largest last-minus-first time. For each distinct rate in first
+    declaration order, k0 = 1/(t_total*c_typical**(n-1))/3**index, where n is
+    reaction order and c_typical is the largest positive starting concentration of
+    any reactant in any reaction using that rate. For intermediates use the median
+    of all positive initial concentrations. Shared rates use the fastest channel,
+    independently of reaction declaration order. Thermodynamic parameters are
+    obtained by inverting the actual rate laws at the median dataset temperature.
+    """
+    from hmfit.kinetics.model.temperature import arrhenius, eyring, R_GAS
+    from hmfit.kinetics.data.units import eyring_unit_factors
+    user_values = user_values or {}
+    spans = [float(ds.t[-1] - ds.t[0]) for ds in datasets if len(ds.t) >= 2]
+    if not spans or not np.isfinite(max(spans)) or max(spans) <= 0:
+        return {}
+    duration = max(spans)
+    concentrations = []
+    per_dataset = []
+    for ds in datasets:
+        initial = dict(ds.y0) if isinstance(ds.y0, dict) else dict(zip(model.dynamic_species, ds.y0 if ds.y0 is not None else []))
+        initial.update(dict(ds.fixed_conc or {}))
+        per_dataset.append(initial)
+        concentrations.extend(float(v) for v in initial.values() if np.isfinite(v) and v > 0)
+    groups = {}
+    for reaction in model.reactions:
+        groups.setdefault(reaction.k_name, []).append(reaction)
+    temperatures = [float(ds.temperature) for ds in datasets if not callable(ds.temperature) and np.isfinite(ds.temperature) and ds.temperature > 0]
+    tref = float(np.median(temperatures)) if temperatures else None
+    proposals = {}
+    for idx, (name, reactions) in enumerate(groups.items()):
+        order = sum(reactions[0].reactants.values())
+        candidates = [float(initial.get(s, 0)) for initial in per_dataset for reaction in reactions
+                      for s in reaction.reactants if np.isfinite(initial.get(s, 0)) and initial.get(s, 0) > 0]
+        typical = max(candidates) if candidates else (float(np.median(concentrations)) if concentrations else None)
+        if order > 1 and typical is None:
+            continue
+        k0 = 1.0 / (duration * (typical ** (order - 1) if order > 1 else 1.0) * 3.0 ** idx)
+        temp = model.mechanism.temp_models.get(name)
+        if temp is None:
+            proposals[name] = k0
+        elif tref is not None and temp.kind == "arrhenius":
+            A, Ea = temp.params["A"], temp.params["Ea"]
+            ea = user_values.get(Ea, 0.0)
+            proposals[Ea] = 0.0
+            proposals[A] = k0 / arrhenius(1.0, ea, tref)
+        elif tref is not None and temp.kind == "eyring":
+            H, S = temp.params["dH"], temp.params["dS"]
+            h = user_values.get(H, 0.0)
+            try:
+                factor, _ = eyring_unit_factors(datasets[0], order)
+                proposals[H] = 0.0
+                proposals[S] = R_GAS * np.log(k0 / (factor * eyring(h, 0., tref)))
+            except ValueError:
+                continue
+    return proposals
+
+
 def _extract_param_names(ast) -> list[str]:
     params = set()
     for reaction in ast.reactions:
@@ -1323,7 +1460,8 @@ def _run_kinetics_fit(
     model = config["model"]
     datasets = list(config["datasets"] or [])
     from hmfit.kinetics.data.units import validate_dataset_units
-    unit_warnings = validate_dataset_units(datasets)
+    unit_warnings = validate_dataset_units(datasets) + _eyring_dataset_warnings(config["model"], datasets)
+    unit_warnings = list(dict.fromkeys(unit_warnings))
     if progress_cb is not None:
         for warning in unit_warnings:
             progress_cb("WARNING: " + warning)
@@ -1731,8 +1869,10 @@ def _run_kinetics_fit(
         f"SSQ: {best_payload['ssq']:.6g}",
         f"nfev: {best_payload['nfev']}",
     ]
+    parameter_units = _rate_parameter_units(model, datasets)
     for name, value in params.items():
-        results_lines.append(f"{name} = {value:.6g}")
+        units = parameter_units.get(name, "")
+        results_lines.append(f"{name} = {value:.6g}" + (f" {units}" if units else ""))
     conc_lines = [
         f"  {getattr(ds, 'name', None) or 'dataset'}: {_dataset_concentration_summary(ds)}"
         for ds in datasets

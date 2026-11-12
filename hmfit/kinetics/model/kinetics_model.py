@@ -50,10 +50,14 @@ class KineticsModel:
         params: Mapping[str, float],
         fixed_conc: Mapping[str, float],
         temperature: TemperatureType,
+        *,
+        eyring_factors: Mapping[str, float] | None = None,
     ) -> np.ndarray:
         temp_value = temperature(t) if callable(temperature) else temperature
         temp_value = float(temp_value)
         k_values = self.param_resolver.resolve(params, temp_value)
+        if eyring_factors:
+            k_values.update({name: k_values[name] * factor for name, factor in eyring_factors.items()})
 
         rates = np.empty(len(self.reactions), dtype=float)
         for idx, reaction in enumerate(self.reactions):
@@ -92,8 +96,10 @@ class KineticsModel:
         fixed_conc = _extract_fixed_conc(context)
         temperature = _extract_temperature(context)
 
+        eyring_factors = self._eyring_unit_factors(context)
         sol = solve_ivp(
-            lambda t, y: self.rhs(t, y, params, fixed_conc, temperature),
+            lambda t, y: self.rhs(t, y, params, fixed_conc, temperature,
+                                  eyring_factors=eyring_factors),
             t_span=(float(t_grid[0]), float(t_grid[-1])),
             y0=y0_vec,
             t_eval=t_grid,
@@ -143,6 +149,7 @@ class KineticsModel:
         y0_j = jnp.asarray(y0_vec, dtype=float)
         S = jnp.asarray(self.S, dtype=float)
         fixed_conc = {str(k): float(v) for k, v in (fixed_conc or {}).items()}
+        eyring_factors = self._eyring_unit_factors(context)
 
         def resolve_params(temp_val):
             if not self.param_resolver.temp_models:
@@ -173,6 +180,7 @@ class KineticsModel:
                         / 6.62607015e-34
                         * jnp.exp(resolved[dS_key] / 8.314462618)
                         * jnp.exp(-resolved[dH_key] / (8.314462618 * temp))
+                        * eyring_factors[k_name]
                     )
                 else:
                     raise ValueError(f"Unknown temperature model '{model.kind}'.")
@@ -214,6 +222,16 @@ class KineticsModel:
 
         _, ys = lax.scan(rk4_step, y0_j, (t[:-1], t[1:]))
         return jnp.vstack([y0_j, ys])
+
+    def _eyring_unit_factors(self, context) -> dict[str, float]:
+        from ..data.units import eyring_unit_factors
+        result = {}
+        for reaction in self.reactions:
+            spec = self.mechanism.temp_models.get(reaction.k_name)
+            if spec is not None and spec.kind == "eyring":
+                factor, _ = eyring_unit_factors(context, sum(reaction.reactants.values()))
+                result[reaction.k_name] = factor
+        return result
 
     def _validate_species_lists(self) -> None:
         species_set = set(self.mechanism.species)

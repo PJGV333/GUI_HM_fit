@@ -7,6 +7,11 @@ All notable user-visible changes. Versions follow the GitHub releases
 ## [Unreleased]
 
 ### Changed
+- Kinetics: automatic initial rate estimates now use the experiment duration and reactant
+  concentrations in the data's units; rate constants and Arrhenius A use Log10 by default.
+  Existing user entries and saved settings are retained. Initial guesses can change fitted
+  results when the previous start reached another minimum. The parameter table and fit report
+  display the dataset units.
 - Kinetics: a mechanism sharing a rate constant across reactions of different orders is
   rejected during validation because its units are inconsistent. Saved configurations still
   open and display the validation error; such fits can no longer run.
@@ -35,6 +40,11 @@ All notable user-visible changes. Versions follow the GitHub releases
   non-identifiable parameters are NaN (were 0 or 1). NMR error analysis no longer fails with a
   shape mismatch when a constant is not identifiable.
 - Kinetics graph API: `KineticGraph.add_kinetic_reaction` failed on Python < 3.14.
+
+### Fixed (Phase 3, Eyring units)
+- Eyring rates now account for recognized time and concentration units, including the 1 M
+  standard state: ΔS and fitted results can change for minutes or non-molar concentrations.
+  Empty units retain the previous s/M assumption with a warning; unrecognized units are rejected.
 
 ### Fixed (Phase 3, kinetics dataset units)
 - Global kinetics fits reject incompatible recognized time or concentration units; no numerical

@@ -234,8 +234,8 @@ class KineticsModelOptPlotsWidget(QWidget):
 
         opt_layout.addWidget(QLabel("Parameters (Initial Estimates)", opt_tab))
         self.params_table = QTableWidget(opt_tab)
-        self.params_table.setColumnCount(6)
-        self.params_table.setHorizontalHeaderLabels(["Name", "Value", "Min", "Max", "Fixed", "Log10?"])
+        self.params_table.setColumnCount(7)
+        self.params_table.setHorizontalHeaderLabels(["Name", "Value", "Min", "Max", "Fixed", "Log10?", "Units"])
         self.params_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.params_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.params_table.setAlternatingRowColors(True)
@@ -445,8 +445,15 @@ class KineticsModelOptPlotsWidget(QWidget):
         return output
 
     # ---- Parameters ----
-    def set_params(self, params: Iterable[str]) -> None:
+    def set_params(self, params: Iterable[str], default_log: Iterable[str] = ()) -> None:
         names = [str(p) for p in (params or [])]
+        default_log = set(default_log)
+        previous = {}
+        for row in range(self.params_table.rowCount()):
+            name_item = self.params_table.item(row, 0)
+            if name_item:
+                previous[name_item.text()] = [self.params_table.item(row, col).clone() for col in range(1, 6)]
+        self.params_table.blockSignals(True)
         self.params_table.setRowCount(len(names))
         for row, name in enumerate(names):
             name_item = QTableWidgetItem(name)
@@ -473,8 +480,13 @@ class KineticsModelOptPlotsWidget(QWidget):
                 | Qt.ItemFlag.ItemIsEnabled
                 | Qt.ItemFlag.ItemIsSelectable
             )
-            log_item.setCheckState(Qt.CheckState.Unchecked)
+            log_item.setCheckState(Qt.CheckState.Checked if name in default_log else Qt.CheckState.Unchecked)
             self.params_table.setItem(row, 5, log_item)
+            if name in previous:
+                for col, item in enumerate(previous[name], 1):
+                    if col in (2, 3, 4) or item.data(Qt.ItemDataRole.UserRole) == "user":
+                        self.params_table.setItem(row, col, item)
+        self.params_table.blockSignals(False)
 
         self.params_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for col in range(1, self.params_table.columnCount()):
@@ -553,6 +565,8 @@ class KineticsModelOptPlotsWidget(QWidget):
                 self.params_table.item(row, 5).setCheckState(
                     Qt.CheckState.Checked if log_flag else Qt.CheckState.Unchecked
                 )
+                for col in range(1, 6):
+                    self.params_table.item(row, col).setData(Qt.ItemDataRole.UserRole, "user")
         finally:
             self._in_table_update = False
 
@@ -560,6 +574,12 @@ class KineticsModelOptPlotsWidget(QWidget):
         if self._in_table_update:
             return
         row = item.row()
+        if item.column() in (1, 2, 3, 4, 5):
+            self._in_table_update = True
+            try:
+                item.setData(Qt.ItemDataRole.UserRole, "user")
+            finally:
+                self._in_table_update = False
         if item.column() != 4:
             return
         fixed = item.checkState() == Qt.CheckState.Checked
