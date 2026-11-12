@@ -179,6 +179,28 @@ def _signal_column_score(name: str) -> tuple[int, str | None]:
     return 0, None
 
 
+def _guess_data_type(columns: list[str]) -> str | None:
+    """
+    "potentiometry", "spectroscopy" or "nmr" from the column names; None when undecided.
+
+    * a titrant-volume column                      -> potentiometry
+    * a pH column, no volume, nuclei-like columns   -> nmr (H1, H2a, C3, "delta ...", "... ppm")
+    * a pH column, no volume, any other columns     -> spectroscopy (signal or wavelengths)
+    """
+    keys = [_normalise_column_name(col) for col in columns]
+    if any(_volume_column_score(col) > 0 for col in columns):
+        return "potentiometry"
+    if "ph" not in keys:
+        return None
+    others = [key for key in keys if key != "ph"]
+    if not others:
+        return None
+    nucleus = re.compile(r"^(?:\d{0,3}[hcnfp]\d+[a-z]?|.*(?:ppm|delta|shift).*)$")
+    if all(nucleus.match(key) for key in others):
+        return "nmr"
+    return "spectroscopy"
+
+
 class AcidBaseTab(QWidget):
     COMPONENT_COLUMNS = [
         "Role",
@@ -282,6 +304,17 @@ class AcidBaseTab(QWidget):
 
         self._main_split.setStretchFactor(0, 0)
         self._main_split.setStretchFactor(1, 1)
+        self._left_scroll = left_scroll
+        self._left_panel_fitted = False
+
+    def showEvent(self, event) -> None:  # noqa: N802 (Qt API)
+        super().showEvent(event)
+        if not self._left_panel_fitted:
+            self._left_panel_fitted = True
+            from PySide6.QtCore import QTimer
+            from hmfit_gui_qt.widgets.layout_utils import fit_left_panel
+
+            QTimer.singleShot(0, lambda: fit_left_panel(self._main_split, self._left_scroll))
 
     def _build_data_input_group(self, parent: QWidget, layout: QVBoxLayout) -> None:
         self._data_group = QGroupBox("Experimental data", parent)
@@ -294,9 +327,14 @@ class AcidBaseTab(QWidget):
         self.combo_data_type.addItem("Spectroscopy signal vs pH", "spectroscopy")
         self.combo_data_type.addItem("1H NMR shifts vs pH", "nmr")
         self.combo_data_type.currentIndexChanged.connect(self._on_data_type_changed)
+        self.combo_data_type.setToolTip(
+            "Kind of experiment in the file. It is guessed from the column names when a file "
+            "is chosen (volume + pH/EMF: potentiometry; pH + signals: spectroscopy; pH + "
+            "nuclei such as H1, H2: NMR) and can be changed here."
+        )
         form.addRow(self.lbl_data_type, self.combo_data_type)
-        self.lbl_data_type.setVisible(False)
-        self.combo_data_type.setVisible(False)
+        # Always visible: it used to be hidden, which left the spectroscopy-vs-pH and
+        # NMR-vs-pH analyses unreachable from the interface (only a saved config selected them).
 
         self.lbl_sheet = QLabel("Data sheet", self._data_group)
         self.combo_sheet = QComboBox(self._data_group)
@@ -3180,6 +3218,22 @@ class AcidBaseTab(QWidget):
             self.lbl_sheet.setVisible(False)
         self.combo_sheet.blockSignals(False)
         self._preview_selected_sheet()
+        self._auto_select_data_type()
+
+    def _auto_select_data_type(self) -> None:
+        """Select the data type suggested by the column names of the file just chosen."""
+        if self._current_data_frame is None:
+            return
+        guess = _guess_data_type([str(col) for col in self._current_data_frame.columns])
+        if not guess or guess == str(self.combo_data_type.currentData() or ""):
+            return
+        idx = self.combo_data_type.findData(guess)
+        if idx >= 0:
+            self.combo_data_type.setCurrentIndex(idx)
+            self.log.append_text(
+                f"Data type set to '{self.combo_data_type.currentText()}' from the column names "
+                "(change it in 'Data type' if this is not right)."
+            )
 
     def _on_sheet_changed(self) -> None:
         self._preview_selected_sheet()

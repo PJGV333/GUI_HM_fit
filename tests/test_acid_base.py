@@ -786,13 +786,6 @@ def test_initial_pka_input_lives_in_optimization_table(tmp_path, monkeypatch):
     assert cfg["pka_fit_mask"] == [False]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Pre-existing baseline failure (before Phase 2): the GUI validation rejects the test project with 'Select a valid volume column.' "
-        "Resolution deferred to Phase 4 (acid-base GUI), pending author decision on the expected behaviour."
-    ),
-)
 def test_gui_equation_editor_generates_canonical_model(tmp_path, monkeypatch):
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
     qt_widgets = pytest.importorskip("PySide6.QtWidgets")
