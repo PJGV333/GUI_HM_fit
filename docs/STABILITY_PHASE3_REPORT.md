@@ -53,8 +53,8 @@ ESTADO: ETAPA 3.6 COMPLETA
 ## Etapa 3.6 — diagnóstico antes de modificar LM
 
 Suite final local sin JAX: 606 aprobadas, 0 fallidas, 16 xfail, 3 omitidas y
-5 deseleccionadas (176.25 s). Con JAX aislado: 608 aprobadas, 0 fallidas,
-16 xfail, 1 omitida y 5 deseleccionadas (179.47 s). El CI del commit de la
+5 deseleccionadas (177.34 s). Con JAX aislado: 608 aprobadas, 0 fallidas,
+16 xfail, 1 omitida y 5 deseleccionadas (175.73 s). El CI del commit de la
 máscara, con cinco jobs, terminó en verde:
 <https://github.com/PJGV333/GUI_HM_fit/actions/runs/43481798557>.
 
@@ -282,6 +282,7 @@ causa física ni una calibración válida de sus SE. No se cambia el defecto IRL
 | D-14 | Nivel numérico de residuo nulo | Umbral absoluto; múltiplo de ε relativo a datos | 10 ε ‖Y ponderada‖ | Mantiene independencia de unidades y evita 0/0 | `test_roundoff_residual_stops_without_undefined_scaled_gradient` | Ajustar el multiplicador en `explicit_lm` |
 | D-15 | Rechazos sucesivos y paso mínimo | Marcar xtol como éxito; seguir hasta λ máximo y verificar gradiente | `no_progress` no exitoso salvo gradiente pequeño o residuo nulo | Evita éxito espurio observado en golden | Diagnóstico cruzado y `test_repeated_rejections_at_maximum_damping_are_not_success` | Revertir la rama de rechazos en `explicit_lm` |
 | D-16 | Solver interior golden no convergido | Cambiar estimador; conservar y preguntar | Conservar 300 pasos | El autor prohíbe cambiarlo sin autorización | `phase36_golden_smoothness.json` | Sin cambio que revertir |
+| D-17 | CI Windows tras endurecer no_progress | Forzar éxito o comprobar el aviso conservando la comparación numérica | Admitir no_progress solo con gradiente ≥ gtol y aviso de no fiabilidad | El redondeo Windows puede impedir reducción con gradiente > gtol; no debe declararse éxito | CI `43486154310`, pruebas sintéticas de RMN y espectroscopía | Revertir las aserciones condicionales; no cambia el algoritmo |
 
 ### Inventario del residuo y Jacobiano espectral
 

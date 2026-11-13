@@ -32,7 +32,10 @@ def test_nmr_lm_with_irls_matches_powell(tmp_path, monkeypatch):
     out = _fit(tmp_path, monkeypatch, [[1., 5.]])
     ref = _fit(tmp_path, monkeypatch, [[1., 5.]], optimizer='powell')
     assert out['success'], out
-    assert out['optimizer_result']['success'], out['optimizer_result']
+    diag = out['optimizer_result']
+    if not diag['success']:
+        assert diag['message'] == 'no_progress' and diag['scaled_gradient'] >= 1e-8
+        assert '>>> FIT NOT RELIABLE' in out['results_text']
     assert abs(out['export_data']['k'][0] - ref['export_data']['k'][0]) < 1e-3
     assert ref['optimizer_result']['success']
     ed = out['export_data']
