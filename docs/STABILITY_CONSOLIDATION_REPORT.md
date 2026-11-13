@@ -14,7 +14,7 @@
 
 | Ruta | Situación de partida | Decisión solicitada / estado |
 |---|---|---|
-| `explicit_lm` | `hmfit_core/utils/explicit_lm.py`; procesadores de RMN y espectroscopía y full-refit GUI; pruebas y scripts de comparación | Retirado de selectores y rechazado al importar configuraciones GUI; rutas programáticas y full-refit aún lo ejecutan: retirada de producción **pendiente** |
+| `explicit_lm` | `hmfit_core/utils/explicit_lm.py`; procesadores de RMN y espectroscopía y full-refit GUI; pruebas y scripts de comparación | Retirado de selectores y full-refit GUI con rechazo explícito; los procesadores aún lo ejecutan: retirada de producción **pendiente** |
 | SciPy/Powell | En producción | Conservar; regresión por completar |
 | JAX | Cinética: `hmfit/kinetics/model/kinetics_model.py`, `hmfit_gui_qt/tabs/kinetics_tab.py` y selector; importaciones opcionales en `hmfit_core/utils/errors.py`; job CI separado | Selector retirado y ajuste de cinética rechaza backend JAX; código JAX y dependencias indirectas **pendientes de retirar o aislar**. No está instalado aquí |
 | IRLS RMN | Histórico; selección de pesos y diagnósticos parciales en Fase 3 | Conservar para configuraciones antiguas; coherencia con Errors y último ciclo **pendiente de auditoría** |
@@ -54,9 +54,9 @@ Tras retirar el código inaccesible del ajuste, las pruebas específicas de cin�
 
 ## Retirada parcial de `explicit_lm` de los selectores
 
-Las pestañas RMN y espectroscopía ya no ofrecen `explicit_lm`. Al importar un proyecto que lo solicite, ambas rechazan la configuración antes de modificar el estado e indican Powell como alternativa que el usuario debe elegir explícitamente. Se conserva la prueba de persistencia de pesos RMN con Powell. Esto no constituye la retirada completa: los procesadores y el full-refit todavía admiten `explicit_lm`, y las pruebas experimentales se mantienen. No se ha demostrado aún la equivalencia completa de resultados con los optimizadores conservados.
+Las pestañas RMN y espectroscopía ya no ofrecen `explicit_lm`. Al importar un proyecto que lo solicite, ambas rechazan la configuración antes de modificar el estado e indican Powell como alternativa que el usuario debe elegir explícitamente. Los dos full-refit también rechazan ese optimizador con `unsupported_optimizer`, sin reajuste ni alternativa automática, y se han eliminado sus ramas de ejecución LM; no se alteró el objetivo de los métodos conservados. Se conserva la prueba de persistencia de pesos RMN con Powell. Esto no constituye la retirada completa: los procesadores todavía admiten `explicit_lm`, y las pruebas experimentales se mantienen. No se ha demostrado aún la equivalencia completa de resultados con los optimizadores conservados.
 
-La suite local dio 615 aprobadas, 3 omitidas, 5 deseleccionadas, 16 xfail y 284 advertencias en 179,07 s; no se ha ejecutado CI multiplataforma.
+Tras la retirada de full-refit, 163 pruebas dirigidas aprobaron; la suite local dio 615 aprobadas, 3 omitidas, 5 deseleccionadas, 16 xfail y 282 advertencias en 179,26 s. No se ha ejecutado CI multiplataforma.
 
 ## Pendiente y límites
 

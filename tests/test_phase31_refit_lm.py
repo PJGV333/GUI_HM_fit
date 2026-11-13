@@ -4,7 +4,7 @@ import pytest
 
 @pytest.mark.gui
 @pytest.mark.parametrize('technique', ['spectro', 'nmr'])
-def test_lm_full_refit_does_not_silently_switch_optimizer(technique):
+def test_retired_lm_full_refit_is_rejected_without_fallback(technique):
     from tests.test_phase2_invariants_matrix import _fake_tab, _nmr_case, _spectro_case
     if technique == 'spectro':
         from hmfit_gui_qt.tabs.spectroscopy_tab import SpectroscopyTab
@@ -19,10 +19,13 @@ def test_lm_full_refit_does_not_silently_switch_optimizer(technique):
     ctx['optimizer'] = 'explicit_lm'
     tab = _fake_tab(cls, ctx)
     estimate, ok, info = tab._refit_from_data(data, np.asarray(ctx['k_hat']), max_iter=150, tol=1e-8)
-    assert ok, info
-    assert info['optimizer_used'] == 'explicit_lm'
+    assert not ok
+    assert info['failure_reason'] == 'unsupported_optimizer'
+    assert 'explicit_lm' in info['error'] and 'powell' in info['error']
+    assert info['optimizer_requested'] == 'explicit_lm'
+    assert info['optimizer_used'] is None
     assert not info['fallback_used']
-    assert np.all(np.isfinite(estimate))
+    np.testing.assert_array_equal(estimate, np.asarray(ctx['k_hat']))
 
 
 @pytest.mark.gui

@@ -1659,6 +1659,13 @@ class SpectroscopyTab(QWidget):
             ctx = self._last_fit_context or {}
             if not ctx:
                 return np.asarray(theta0, dtype=float), False, {"error": "Missing fit context."}
+            if str(ctx.get("optimizer") or "").strip().lower() == "explicit_lm":
+                return np.asarray(theta0, dtype=float), False, {
+                    "error": "explicit_lm is retired; select an optimizer such as powell explicitly.",
+                    "failure_reason": "unsupported_optimizer",
+                    "optimizer_requested": "explicit_lm", "optimizer_used": None,
+                    "fallback_used": False,
+                }
 
             from scipy import optimize
             from scipy.optimize import differential_evolution, dual_annealing, basinhopping
@@ -1668,7 +1675,6 @@ class SpectroscopyTab(QWidget):
                 _build_smoothness_laplacian,
                 _solve_spectral_model,
                 _spectral_profile_objective,
-                _spectral_profile_residual,
             )
             from hmfit_core.solvers import NewtonRaphson, LevenbergMarquardt
             from hmfit_core.utils.solver_param_transform import (
@@ -1758,7 +1764,7 @@ class SpectroscopyTab(QWidget):
                     k_full[free_idx] = np.asarray(theta_free, dtype=float).ravel()
                 return k_full
 
-            def f_m(theta_free: np.ndarray, *, return_residual=False):
+            def f_m(theta_free: np.ndarray):
                 k_curr_full = pack(theta_free)
                 if not np.all(np.isfinite(k_curr_full)):
                     raise RefitFailure("nonfinite_result", "Non-finite parameters")
@@ -1795,10 +1801,6 @@ class SpectroscopyTab(QWidget):
                     raise RefitFailure("linear_solver_failed", str(exc)) from exc
                 if not np.isfinite(rms):
                     raise RefitFailure("nonfinite_result", "Non-finite objective")
-                if return_residual:
-                    return _spectral_profile_residual(
-                        fit, Y_star.T, weights_row, eps_mu, alpha_smooth, smooth_matrix,
-                        ctx.get("weight_regularization_mode", "legacy"))
                 return rms
 
             n_iter = 0
@@ -1817,16 +1819,6 @@ class SpectroscopyTab(QWidget):
                     return True
 
                 def _run_optimizer(method_name: str):
-                    if method_name == "explicit_lm":
-                        from hmfit_core.utils.explicit_lm import centered_residual_jacobian, explicit_lm
-                        threshold = float(tol) if tol is not None else 1e-8
-                        result = explicit_lm(
-                            lambda x: centered_residual_jacobian(lambda y: f_m(y, return_residual=True), x),
-                            k_free0, bounds_free, maxiter=int(max_iter), ftol=threshold,
-                            xtol=threshold, gtol=threshold,
-                            residual_scale=float(np.linalg.norm(Y_star.T * weights_row) / np.sqrt(Y_star.size)))
-                        return optimize.OptimizeResult(x=result.x, success=result.success,
-                                                       message=result.reason, nit=result.nit)
                     options = {"maxiter": int(max_iter)}
                     if tol is not None:
                         options.update(
