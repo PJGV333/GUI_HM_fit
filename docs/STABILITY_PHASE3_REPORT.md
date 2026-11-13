@@ -9,8 +9,9 @@
   566 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas
   (591 recogidas; 586 seleccionadas), 190.94 s. Antes: 556 aprobadas,
   0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas (581 recogidas).
-- 3.2, 3.3, 3.4 y 3.5 pendientes. Este documento es provisional; no
-  constituye validación de la fase completa.
+- 3.2, 3.3 y 3.5 pendientes. 3.4: auditoría del workflow completada;
+  no requiere cambio de CI, pues la suite completa ya incluye el banco.
+  Este documento es provisional; no constituye validación de la fase completa.
 
 ## Decisiones del agente
 
@@ -18,6 +19,7 @@
 |---|---|---|---|---|---|---|
 | D-1 | Objetivo espectral | Añadir penalización a legacy; respetar el objetivo de Powell | Respetar cada modo | No cambiar estimador | `_spectral_profile_objective`; `test_general_profile_residual_matches_existing_objective` | Retirar el constructor de residuo, sin cambiar Powell |
 | D-2 | Jacobiano para modos generales | Fórmula analítica supuesta; diferencias centradas del residuo real | Diferencias centradas con paso relativo | Evita aplicar fórmulas no verificadas a modos acoplados | `centered_residual_jacobian`; prueba sintética con grupos, pesos, cotas y suavidad | Retirar la función auxiliar; no está integrada |
+| D-3 | Humo del banco en CI | Añadir subconjunto; conservar suite completa | Conservar suite completa | Ya corre en cada push y no necesita selección adicional | `.github/workflows/tests.yml`, `pytest.ini`, ejecución local del banco 57 aprobadas y 14 xfail en 50.84 s | No hubo cambio de workflow |
 
 
 Rama `fix/stable-phase3-optimizers`, base `0634b93`. Estado: etapa 3.0 implementada,
@@ -155,6 +157,12 @@ Eyring; son cambios independientes, separados a continuación para su revisión.
 El código de la etapa 3.0 en `e41a018` pasó el workflow `tests` en Linux y Windows,
 Python 3.11 y 3.14: <https://github.com/PJGV333/GUI_HM_fit/actions/runs/43306960036>.
 Windows ejecuta el subconjunto no GUI; Linux ejecuta la suite normal y el banco de literatura.
+El workflow se dispara en todos los pushes; `test_literature_benchmark.py`,
+`test_literature_speciation.py`, `test_literature_bc50.py` y la prueba GUI se
+incluyen en la suite normal. Los cuatro archivos tardaron 50.84 s localmente
+(57 aprobadas, 14 xfail), dentro del presupuesto de cinco minutos. JAX no
+figura en los requisitos instalados por el workflow. La ejecución de `4647f58`
+fue verde: <https://github.com/PJGV333/GUI_HM_fit/actions/runs/43446398678>.
 
 ## Riesgos y cuestiones abiertas
 
