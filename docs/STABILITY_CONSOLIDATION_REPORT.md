@@ -19,7 +19,7 @@
 | JAX | Cinética: `hmfit/kinetics/model/kinetics_model.py`, `hmfit_gui_qt/tabs/kinetics_tab.py` y selector; importaciones opcionales en `hmfit_core/utils/errors.py`; job CI separado | Selector retirado y ajuste de cinética rechaza backend JAX; código JAX y dependencias indirectas **pendientes de retirar o aislar**. No está instalado aquí |
 | IRLS RMN | Histórico; selección de pesos y diagnósticos parciales en Fase 3 | Conservar para configuraciones antiguas; coherencia con Errors y último ciclo **pendiente de auditoría** |
 | HC2/HC3 experimental | `validation/uncertainty_methods.py` usaba suma de cuadrados de concentraciones como leverage | Cálculo inválido desactivado en la campaña: HC2/HC3 se declaran no aplicables para OLS, NNLS y penalización; la corrección fundamentada y repetición de campañas **pendientes** |
-| Grados de libertad | Truncamientos a 1 en `kinetics_tab.py:779,1624` y `hmfit_core/utils/errors.py:198` | Revisar contexto y sustituir solo con pruebas; **pendiente** |
+| Grados de libertad | Truncamientos a 1 en `kinetics_tab.py` y `hmfit_core/utils/errors.py` | Eliminados los dos de la pestaña cinética; auditoría y corrección del núcleo y otras rutas **pendientes** |
 | Solver interior espectral | Diferencia 300/3000 iteraciones documentada en Fase 3 | Diagnóstico independiente y KKT **pendientes** |
 | Sensibilidades implícitas y cinéticas | Véase `DERIVATIVES_DESIGN.md` | Implementación y validación **pendientes** |
 
@@ -57,6 +57,12 @@ Tras retirar el código inaccesible del ajuste, las pruebas específicas de cin�
 Las pestañas RMN y espectroscopía ya no ofrecen `explicit_lm`. Al importar un proyecto que lo solicite, ambas rechazan la configuración antes de modificar el estado e indican Powell como alternativa que el usuario debe elegir explícitamente. Las API `run_nmr_fit` y `run_spectroscopy_fit` también rechazan la selección antes de ejecutar el procesamiento, tanto con diccionarios como con dataclasses. Los dos full-refit rechazan ese optimizador con `unsupported_optimizer`, sin reajuste ni alternativa automática, y se han eliminado sus ramas de ejecución LM; no se alteró el objetivo de los métodos conservados. Se conserva la prueba de persistencia de pesos RMN con Powell. Esto no constituye la retirada completa: los procesadores y las entradas directas `run_nmr`/`run_spectroscopy` todavía admiten `explicit_lm`, y las pruebas experimentales se mantienen. No se ha demostrado aún la equivalencia completa de resultados con los optimizadores conservados.
 
 Tras añadir la validación en las API, la suite local dio 619 aprobadas, 3 omitidas, 5 deseleccionadas, 16 xfail y 283 advertencias en 179,06 s. No se ha ejecutado CI multiplataforma.
+
+## Varianza residual y grados de libertad en cinética
+
+La pestaña cinética ya no trunca los grados de libertad a uno. El resultado de ajuste reutiliza la varianza calculada por `fit_global` mediante `linearized_covariance`; Errors utiliza los grados de libertad del resultado y, cuando son insuficientes, no presenta una varianza estimable. En el caso sintético de dos tiempos con parámetros lineales y no lineales, antes llegaba a Errors `sigma2=1.9721522630525293e-31` pese a tener grados de libertad negativos; ahora queda no disponible. Las pruebas cubren además casos con parámetros libres, fijos y mixtos, y comprueban SSE/dof positivo. Esto no certifica aún todos los cálculos de incertidumbre ni los demás truncamientos del programa.
+
+Suite local: 624 aprobadas, 3 omitidas, 5 deseleccionadas, 16 xfail, 283 advertencias en 175,88 s. No es CI multiplataforma.
 
 ## Pendiente y límites
 

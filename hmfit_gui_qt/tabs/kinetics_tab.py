@@ -773,8 +773,10 @@ class KineticsTab(QWidget):
             jac_arr = np.asarray(jac, dtype=float)
         covariance = result.get("covariance")
         sigma2 = result.get("sigma2")
-        if sigma2 is None and residuals.size and k_hat.size:
-            dof = max(residuals.size - k_hat.size, 1)
+        dof = result.get("dof")
+        if dof is not None and dof <= 0:
+            sigma2 = None
+        elif sigma2 is None and residuals.size and dof is not None and dof > 0:
             sigma2 = float(np.sum(residuals**2) / float(dof))
 
         datasets = result.get("datasets") or []
@@ -1483,15 +1485,12 @@ def _run_kinetics_fit(
     ).ravel()
     jac = best_payload.get("jac")
     jac_arr = np.asarray(jac, dtype=float) if jac is not None else None
-    sigma2 = None
     raw_best = best_payload.get("raw_result")
+    sigma2 = getattr(raw_best, "sigma2", None)
     n_linear_fit = int(getattr(raw_best, "n_linear", 0) or 0)
     free_cols = np.asarray(
         [i for i in range(len(param_names)) if not (i < len(fixed_mask) and fixed_mask[i])], dtype=int
     )
-    if residuals.size and jac_arr is not None and jac_arr.size:
-        dof = max(residuals.size - int(free_cols.size) - n_linear_fit, 1)
-        sigma2 = float(np.sum(residuals**2) / float(dof))
 
     stability_indicator = None
     stability_diag = None
