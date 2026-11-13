@@ -14,7 +14,7 @@
 
 | Ruta | Situación de partida | Decisión solicitada / estado |
 |---|---|---|
-| `explicit_lm` | `hmfit_core/utils/explicit_lm.py`; procesadores de RMN y espectroscopía, selectores y full-refit GUI; pruebas y scripts de comparación | Retirar de producción sin sustitución silenciosa; **pendiente** |
+| `explicit_lm` | `hmfit_core/utils/explicit_lm.py`; procesadores de RMN y espectroscopía y full-refit GUI; pruebas y scripts de comparación | Retirado de selectores y rechazado al importar configuraciones GUI; rutas programáticas y full-refit aún lo ejecutan: retirada de producción **pendiente** |
 | SciPy/Powell | En producción | Conservar; regresión por completar |
 | JAX | Cinética: `hmfit/kinetics/model/kinetics_model.py`, `hmfit_gui_qt/tabs/kinetics_tab.py` y selector; importaciones opcionales en `hmfit_core/utils/errors.py`; job CI separado | Selector retirado y ajuste de cinética rechaza backend JAX; código JAX y dependencias indirectas **pendientes de retirar o aislar**. No está instalado aquí |
 | IRLS RMN | Histórico; selección de pesos y diagnósticos parciales en Fase 3 | Conservar para configuraciones antiguas; coherencia con Errors y último ciclo **pendiente de auditoría** |
@@ -51,6 +51,12 @@ El generador `validation.make_unc_report` identifica como invalidados los HC2/HC
 El selector normal solo ofrece SciPy. Los archivos de configuración que solicitan JAX u otro backend no reconocido se rechazan antes de modificar el mecanismo o parámetros, indicando que la migración a SciPy debe ser explícita; los archivos sin clave de backend mantienen SciPy. La entrada programática del ajuste también rechaza cualquier backend distinto de SciPy antes de cargar el modelo. Se retiró la implementación JAX previamente inaccesible del ajuste; permanece en la historia Git. No se han eliminado todavía `solve_concentrations_jax`, la proyección JAX de las pruebas ni las importaciones opcionales en otras rutas: su aislamiento/eliminación y la auditoría de dependencias están pendientes. No se han repetido las comparaciones JAX, pues JAX no está instalado.
 
 Tras retirar el código inaccesible del ajuste, las pruebas específicas de cinética dieron 27 aprobadas y 2 omitidas; la suite local completa dio 613 aprobadas, 3 omitidas, 5 deseleccionadas, 16 xfail y 283 advertencias en 179,11 s. No es CI multiplataforma.
+
+## Retirada parcial de `explicit_lm` de los selectores
+
+Las pestañas RMN y espectroscopía ya no ofrecen `explicit_lm`. Al importar un proyecto que lo solicite, ambas rechazan la configuración antes de modificar el estado e indican Powell como alternativa que el usuario debe elegir explícitamente. Se conserva la prueba de persistencia de pesos RMN con Powell. Esto no constituye la retirada completa: los procesadores y el full-refit todavía admiten `explicit_lm`, y las pruebas experimentales se mantienen. No se ha demostrado aún la equivalencia completa de resultados con los optimizadores conservados.
+
+La suite local dio 615 aprobadas, 3 omitidas, 5 deseleccionadas, 16 xfail y 284 advertencias en 179,07 s; no se ha ejecutado CI multiplataforma.
 
 ## Pendiente y límites
 

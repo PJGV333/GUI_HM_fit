@@ -172,7 +172,6 @@ class NMRTab(QWidget):
 
         # Model-definition area inside Model tab: matrix or equations.
         self.model_opt_plots = ModelOptPlotsWidget(left_container, enable_equation_editor=True)
-        self.model_opt_plots.combo_optimizer.addItem("explicit_lm")
         self.equation_editor = self.model_opt_plots.equation_editor
         if self.equation_editor is not None:
             self.equation_editor.model_parsed.connect(self._on_equation_model_parsed)
@@ -1054,6 +1053,8 @@ class NMRTab(QWidget):
     def load_config(self, config: dict[str, Any]) -> None:
         if self._worker is not None:
             raise RuntimeError("Cancel the running fit before importing config.")
+        if str(config.get("optimizer") or "").strip().lower() == "explicit_lm":
+            raise ValueError("explicit_lm is retired; choose a supported optimizer such as powell explicitly.")
 
         file_path = str(config.get("file_path") or "")
         if not file_path:

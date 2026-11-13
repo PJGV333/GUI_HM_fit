@@ -13,10 +13,10 @@ def test_nmr_weight_selection_roundtrips_and_legacy_defaults_to_irls(tmp_path):
     cfg = lit.gui_config(case, str(tmp_path / 'case.xlsx'), conc, shifts)
     tab = NMRTab()
     try:
-        tab.load_config(dict(cfg, weights_mode='unit', optimizer='explicit_lm'))
+        tab.load_config(dict(cfg, weights_mode='unit', optimizer='powell'))
         assert tab.combo_weights.currentData() == 'unit'
         assert tab._collect_config()['weights_mode'] == 'unit'
-        assert tab._collect_config()['optimizer'] == 'explicit_lm'
+        assert tab._collect_config()['optimizer'] == 'powell'
         tab.load_config(cfg)  # old saved configuration has no weight setting
         assert tab._collect_config()['weights_mode'] == 'irls'
         assert tab._collect_config()['optimizer'] == 'powell'

@@ -341,7 +341,6 @@ class SpectroscopyTab(QWidget):
 
         # Sub-tabs: Model / Optimization / Plots
         self.model_opt_plots = ModelOptPlotsWidget(left_container, enable_equation_editor=True)
-        self.model_opt_plots.combo_optimizer.addItem("explicit_lm")
         self.model_opt_plots.model_defined.connect(self._on_model_defined)
         self.equation_editor = self.model_opt_plots.equation_editor
         if self.equation_editor is not None:
@@ -1377,6 +1376,8 @@ class SpectroscopyTab(QWidget):
     def load_config(self, config: dict[str, Any]) -> None:
         if self._worker is not None:
             raise RuntimeError("Cancel the running fit before importing config.")
+        if str(config.get("optimizer") or "").strip().lower() == "explicit_lm":
+            raise ValueError("explicit_lm is retired; choose a supported optimizer such as powell explicitly.")
 
         file_path = str(config.get("file_path") or "")
         if not file_path:
