@@ -31,7 +31,8 @@ def f(v, nd=4):
 
 def main() -> None:
     FIGS.mkdir(parents=True, exist_ok=True)
-    lines = []
+    lines = ["HC2/HC3 históricos invalidados: leverage incorrecto; "
+             "no usar como evidencia. Los datos originales se conservan.\n"]
     for sp in sorted(RES.glob("*/summary.json")):
         d = json.loads(sp.read_text())
         s, scen = d["summary"], d["scen"]
@@ -47,13 +48,18 @@ def main() -> None:
             m = s.get(k)
             if not m:
                 continue
+            if k in ("hc2", "hc3"):
+                label = "no aplicable" if m.get("status") == "not_applicable" else "INVALIDADO"
+                lines.append(f"| {k} ({label}) | — | — | — | — | — | — | — | — |")
+                continue
             lines.append(f"| {k} | {f(m.get('mean_se'))} | {f(m.get('se_over_mc_sd'),3)} | "
                          f"{f(m.get('cov95'),3)} | {f(m.get('cov68'),3)} | "
                          f"{f(m.get('mean_width95'))} | {f(m.get('cov95_basic'),3)} | "
                          f"{f(m.get('cov95_bca'),3)} | {f(m.get('mean_boot_bias'))} |")
         # figure: coverage vs width scatter
         pts = [(s[k]["mean_width95"], s[k]["cov95"], k) for k in METHODS
-               if s.get(k) and s[k].get("cov95") is not None and s[k].get("mean_width95")]
+               if k not in ("hc2", "hc3") and s.get(k)
+               and s[k].get("cov95") is not None and s[k].get("mean_width95")]
         if pts:
             fig, ax = plt.subplots(figsize=(5.2, 4))
             for x, y, k in pts:
