@@ -1422,6 +1422,7 @@ def _run_kinetics_fit(
     def _run_once_jax(x0: np.ndarray) -> dict[str, Any]:
         try:
             import jax
+            jax.config.update("jax_enable_x64", True)
             import jax.numpy as jnp
         except Exception as exc:
             raise ValueError("JAX backend is not available.") from exc

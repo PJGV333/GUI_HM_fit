@@ -86,6 +86,28 @@ empeoró la SSQ. La comparación de Jacobianos usa pasos relativos
 RMN la discrepancia relativa es ≤ 2.91e-8. Esto es sensibilidad a paso/solver
 o cambios de conjunto activo, no prueba de cuál aproximación es la correcta.
 
+### 3.6 — aislamiento de JAX
+
+[Defecto comprobado] `hmfit_core/utils/np_backend.py` seleccionaba JAX por
+mera disponibilidad y suministraba `xp` a `nr_conc.py`, `lm_conc.py`,
+`nnls_utils.py` y `errors.py`. Al instalar JAX, `NewtonRaphson.concentraciones`
+devolvía `jaxlib` en vez de NumPy, provocando las cinco fallas documentadas en
+Evidencia de JAX. Ahora el motor compartido usa NumPy siempre; JAX se selecciona
+exclusivamente en cinética. La variable histórica `HMFIT_USE_JAX` ya no cambia
+el backend de equilibrio. `tests/test_phase36_backend_isolation.py` comprueba
+el resultado incluso con esa variable a 0 o 1. Antes, con JAX importable, el
+código ejecutaba `jax_enable_x64=True`: el dtype observado fue **float64**, no
+float32; por ello no procede cuantificar un efecto float32 en el banco. El
+backend JAX de cinética habilita ahora explícitamente x64 al seleccionarse;
+`test_jax_rk4_fine_and_coarse_grid` comprueba `float64`. JAX sigue visible y
+experimental.
+
+Con JAX 0.12.0.1 aislado, NumPy 2.4.2 y SciPy 1.17.1: suite completa
+605 aprobadas, 0 fallidas, 17 xfail, 1 omitida y 5 deseleccionadas (179.10 s),
+incluidas las cinco pruebas que antes fallaban. Sin JAX: 603 aprobadas,
+0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas (178.36 s). Se añadió un
+job Linux/Python 3.14 separado con JAX CPU; los jobs principales siguen sin JAX.
+
 ## Decisiones del agente
 
 | N.º | Contexto | Alternativas | Elección | Justificación | Evidencia | Cómo revertirla |
@@ -187,7 +209,7 @@ por `pytest.ini`. Recogidas incluye deseleccionadas.
 | [Limitación metodológica] | LM puede converger a SSQ mayor o agotar iteraciones | Implementado y probado con datos sintéticos; evaluado en banco publicado pero no supera los criterios para defecto. Powell se conserva. Tabla 3.1.g. |
 | [Limitación metodológica] | Pesos unitarios e IRLS producen estimaciones distintas | Selector implementado y probado con datos sintéticos; comparado con HypNMR publicado en tabla 3.2, sin cambiar el defecto IRLS. |
 | [Limitación metodológica] | El solver escalar de pH limita el rendimiento | Vectorizado con respaldo; implementado y probado frente a Brent en casos sintéticos, sin validación con datos publicados. 8.96× en una réplica de bootstrap, no 10×. |
-| [Defecto comprobado] | Máscara de Errors RMN y comportamiento inmutable al importar JAX | Reproducidos y documentados; no corregidos por la restricción del autor y por no incorporar JAX al entorno principal. |
+| [Defecto comprobado] | Máscara de Errors RMN y comportamiento inmutable al importar JAX | JAX corregido en 3.6 con suite aislada; máscara RMN aprobada para corrección en commit separado. |
 | [Sospecha] | Corte de rango JAX en precisión simple | Riesgo identificado, aún no validado en matrices mal condicionadas ni con datos publicados. |
 
 ## Comparación 3.1.g (cinco ejecuciones)

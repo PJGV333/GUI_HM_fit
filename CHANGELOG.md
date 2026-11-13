@@ -50,6 +50,11 @@ All notable user-visible changes. Versions follow the GitHub releases
   shown as "—" with the reason in the tooltip; exports keep NaN plus a `Note` column.
 
 ### Fixed
+- Equilibrium and uncertainty solvers now use NumPy regardless of whether JAX is
+  installed; formerly JAX availability silently changed arrays to immutable JAX
+  arrays, breaking five regression tests. Kinetics selects JAX explicitly and enables
+  float64 there. Evidence: `tests/test_phase36_backend_isolation.py`, the five
+  existing regression tests, and the separate full-suite JAX CI job.
 - LM full-refit uncertainty dispatch now uses the selected optimizer instead of silently
   falling back to Nelder–Mead; parameters at an active bound also have undefined SE
   in the Errors tab and export. Existing Powell/default error methods are unchanged.

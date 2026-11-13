@@ -29,6 +29,7 @@ def test_jax_rk4_fine_and_coarse_grid():
     params = {"k1": 1.0, "k2": 0.2}
     fine = np.linspace(0, 8, 401)
     a = np.asarray(model.solve_concentrations_jax(fine, y0, params))
+    assert a.dtype == np.float64
     b = model.solve_concentrations(fine, y0, params)
     assert np.max(np.abs(a - b)) < 2e-5
     coarse = np.linspace(0, 8, 5)
