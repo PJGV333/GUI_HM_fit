@@ -189,14 +189,11 @@ def jacobian_cs(fun, x, delta=1e-20):
     return np.asarray(rows)  # (p, m)
 
 def sigma2_reduced(r, p, dof=None):
-    """
-    Varianza reducida: s^2 = SSE / (m - p)
-    """
+    """Varianza residual SSE/dof; NaN si no hay grados de libertad positivos."""
     r = np.asarray(r).ravel()
     m = r.size
-    dof = (m - p) if dof is None else dof
-    dof = max(int(dof), 1)
-    return np.sum(r*r) / dof
+    dof = int((m - p) if dof is None else dof)
+    return np.sum(r*r) / dof if dof > 0 else float("nan")
 
 def cov_params(J, s2, weights=None, rcond=1e-12):
     """
@@ -1122,20 +1119,24 @@ def linearized_covariance(J_free, sse, n_obs, n_linear=0, *, rank_tol=None):
     zero_col = norms <= 0.0
     scale = _onp.where(zero_col, 1.0, norms)
     Js = J / scale[None, :]
-    U, sv, Vt = _onp.linalg.svd(Js, full_matrices=False)
+    # For a wide matrix, the reduced SVD omits p - n_obs right-null vectors.
+    # Request the complete right basis only in that case (avoids an n_obs² U
+    # allocation for the usual tall Jacobian).
+    U, sv, Vt = _onp.linalg.svd(Js, full_matrices=J.shape[0] < p)
     if rank_tol is None:
         rank_tol = max(J.shape) * _onp.finfo(float).eps * (sv[0] if sv.size else 0.0)
     keep = sv > rank_tol
     rank = int(_onp.count_nonzero(keep))
     if rank < p:
-        V_null = Vt[~keep, :].T  # (p, p-rank)
+        V_null = Vt[rank:, :].T  # (p, p-rank), including implicit wide nullspace
         nonid = (_onp.linalg.norm(V_null, axis=1) > 1e-6) | zero_col
         names = ", ".join(str(i + 1) for i in _onp.where(nonid)[0])
         notes.append(
             f"Jacobian is rank deficient (rank {rank} < {p} free parameters): parameter(s) "
             f"#{names} are not identifiable from these data; their uncertainty is undefined (NaN)."
         )
-    inv = Vt[keep, :].T @ _onp.diag(1.0 / sv[keep] ** 2) @ Vt[keep, :]
+    V_ident = Vt[:sv.size, :][keep, :]
+    inv = V_ident.T @ _onp.diag(1.0 / sv[keep] ** 2) @ V_ident
     cov_s = s2 * inv
     cov = cov_s / scale[:, None] / scale[None, :]
     cov[nonid, :] = _onp.nan

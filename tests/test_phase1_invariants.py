@@ -226,6 +226,37 @@ def test_acid_base_empty_parameter_vector_is_rejected():
 # Step 5 — dof and identifiability are never hidden
 # --------------------------------------------------------------------------------------
 
+def test_wide_jacobian_identifies_all_nullspace_affected_parameters():
+    # n_obs < p: the reduced SVD does not contain the implicit right-null vector.
+    J = np.array([[1., 0., 1.], [0., 1., 1.]])
+    result = linearized_covariance(J, sse=1.0, n_obs=2)
+    assert result["rank"] == 2
+    assert result["dof"] == -1
+    np.testing.assert_array_equal(result["nonidentifiable"], [True, True, True])
+    assert np.isnan(result["cov"]).all()
+
+
+def test_wide_jacobian_preserves_individually_identifiable_parameter():
+    J = np.array([[1., 0., 0.], [0., 2., 2.]])
+    for scale in ([1., 1., 1.], [1e-8, 1e4, 1e-3]):
+        result = linearized_covariance(J * scale, sse=1.0, n_obs=2)
+        np.testing.assert_array_equal(result["nonidentifiable"], [False, True, True])
+        assert result["rank"] == 2
+        assert result["dof"] == -1
+
+
+def test_sigma2_reduced_never_clamps_nonpositive_degrees_of_freedom():
+    from hmfit_core.utils.errors import sigma2_reduced
+
+    residual = np.array([1., 2.])
+    assert np.isnan(sigma2_reduced(residual, p=2))
+    assert np.isnan(sigma2_reduced(residual, p=3))
+    assert np.isnan(sigma2_reduced(residual, p=0, dof=0))
+    assert np.isnan(sigma2_reduced(residual, p=0, dof=-2))
+    assert sigma2_reduced(residual, p=1) == pytest.approx(5.0)
+    assert sigma2_reduced(residual, p=0, dof=4) == pytest.approx(1.25)
+
+
 def test_linearized_covariance_reference_and_degenerate_cases():
     rng = np.random.default_rng(3)
     J = rng.normal(size=(40, 2))

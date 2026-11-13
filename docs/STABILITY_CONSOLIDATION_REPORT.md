@@ -19,7 +19,7 @@
 | JAX | Cinética: `hmfit/kinetics/model/kinetics_model.py`, `hmfit_gui_qt/tabs/kinetics_tab.py` y selector; importaciones opcionales en `hmfit_core/utils/errors.py`; job CI separado | Selector retirado y ajuste de cinética rechaza backend JAX; código JAX y dependencias indirectas **pendientes de retirar o aislar**. No está instalado aquí |
 | IRLS RMN | Histórico; selección de pesos y diagnósticos parciales en Fase 3 | Conservar para configuraciones antiguas; coherencia con Errors y último ciclo **pendiente de auditoría** |
 | HC2/HC3 experimental | `validation/uncertainty_methods.py` usaba suma de cuadrados de concentraciones como leverage | Cálculo inválido desactivado en la campaña: HC2/HC3 se declaran no aplicables para OLS, NNLS y penalización; la corrección fundamentada y repetición de campañas **pendientes** |
-| Grados de libertad | Truncamientos a 1 en `kinetics_tab.py` y `hmfit_core/utils/errors.py` | Eliminados los dos de la pestaña cinética; auditoría y corrección del núcleo y otras rutas **pendientes** |
+| Grados de libertad | Truncamientos a 1 en `kinetics_tab.py` y `hmfit_core/utils/errors.py` | Eliminados en esas rutas; auditoría de todos los usos y convenciones **pendiente** |
 | Solver interior espectral | Diferencia 300/3000 iteraciones documentada en Fase 3 | Diagnóstico independiente y KKT **pendientes** |
 | Sensibilidades implícitas y cinéticas | Véase `DERIVATIVES_DESIGN.md` | Implementación y validación **pendientes** |
 
@@ -63,6 +63,12 @@ Tras añadir la validación en las API, la suite local dio 619 aprobadas, 3 omit
 La pestaña cinética ya no trunca los grados de libertad a uno. El resultado de ajuste reutiliza la varianza calculada por `fit_global` mediante `linearized_covariance`; Errors utiliza los grados de libertad del resultado y, cuando son insuficientes, no presenta una varianza estimable. En el caso sintético de dos tiempos con parámetros lineales y no lineales, antes llegaba a Errors `sigma2=1.9721522630525293e-31` pese a tener grados de libertad negativos; ahora queda no disponible. Las pruebas cubren además casos con parámetros libres, fijos y mixtos, y comprueban SSE/dof positivo. Esto no certifica aún todos los cálculos de incertidumbre ni los demás truncamientos del programa.
 
 Suite local: 624 aprobadas, 3 omitidas, 5 deseleccionadas, 16 xfail, 283 advertencias en 175,88 s. No es CI multiplataforma.
+
+## Identificabilidad con Jacobianos anchos
+
+`linearized_covariance` usaba SVD reducida incluso con menos observaciones que parámetros libres, omitiendo vectores del espacio nulo derecho. Para `J=[[1,0,1],[0,1,1]]`, antes informaba `[False, False, False]` como máscara de no identificabilidad; ahora devuelve `[True, True, True]`. Se conserva la SVD reducida en matrices altas para evitar un coste cuadrático en observaciones y se usa la base derecha completa solo en matrices anchas. También se verificó un caso con un parámetro identificable y dos no identificables bajo cambios de escala. La función auxiliar `sigma2_reduced`, sin usos internos encontrados, devuelve NaN para grados de libertad no positivos en lugar de truncarlos a uno. La auditoría estadística global sigue pendiente.
+
+Suite local posterior: 627 aprobadas, 3 omitidas, 5 deseleccionadas, 16 xfail, 283 advertencias en 179,26 s. No es CI multiplataforma.
 
 ## Pendiente y límites
 
