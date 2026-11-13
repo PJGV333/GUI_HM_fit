@@ -37,7 +37,8 @@ def eyring_unit_factors(dataset, order: int) -> tuple[float, list[str]]:
     if not raw_t:
         warnings.append("Eyring: empty time unit; assuming s.")
     if not raw_c:
-        warnings.append("Eyring: empty concentration unit; assuming M.")
+        warnings.append("Eyring: empty concentration unit; assuming M. If the data are in mM, "
+                        "bimolecular ΔS‡ is shifted by about 57 J·mol⁻¹·K⁻¹; set the correct unit.")
     seconds = {"s": 1., "ms": .001, "min": 60., "h": 3600.}[t or "s"]
     molar = {"M": 1., "mM": 1e-3, "µM": 1e-6, "nM": 1e-9}[c or "M"]
     return seconds * molar ** (order - 1), warnings

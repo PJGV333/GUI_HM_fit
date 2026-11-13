@@ -1,13 +1,10 @@
 """Automatic kinetics starts, unit metadata and temperature laws."""
 import numpy as np
 import pytest
-pytest.importorskip("PySide6.QtWidgets")
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication
 from hmfit.kinetics.data.fit_dataset import KineticsFitDataset
 from hmfit.kinetics.mechanism_editor.parser import parse_mechanism
 from hmfit.kinetics.model.kinetics_model import KineticsModel
-from hmfit_gui_qt.tabs.kinetics_tab import KineticsTab, _automatic_rate_parameters, _eyring_dataset_warnings
+from hmfit.kinetics.fit.rate_parameters import _automatic_rate_parameters, _eyring_dataset_warnings
 
 
 def ds(tmax=100, temp=298.15, time="s", conc="M"):
@@ -16,6 +13,10 @@ def ds(tmax=100, temp=298.15, time="s", conc="M"):
 
 
 def test_automatic_values_refresh_preserve_user_and_legacy_config():
+    pytest.importorskip("PySide6.QtWidgets")
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
+    from hmfit_gui_qt.tabs.kinetics_tab import KineticsTab
     app = QApplication.instance() or QApplication([])
     tab = KineticsTab()
     tab.model_opt_plots.set_mechanism_text("species: A, B, C\nA -> B ; k1\nB -> C ; k2\n")
@@ -45,7 +46,9 @@ def test_automatic_values_refresh_preserve_user_and_legacy_config():
 
 
 def test_units_displayed_in_table_and_fit_results():
-    from hmfit_gui_qt.tabs.kinetics_tab import _run_kinetics_fit
+    pytest.importorskip("PySide6.QtWidgets")
+    from PySide6.QtWidgets import QApplication
+    from hmfit_gui_qt.tabs.kinetics_tab import KineticsTab, _run_kinetics_fit
     app = QApplication.instance() or QApplication([])
     tab = KineticsTab()
     text = "species: A, B, P\nA + B -> P ; k\n"
@@ -62,6 +65,11 @@ def test_units_displayed_in_table_and_fit_results():
     assert "mM⁻¹·min⁻¹" in result["results_text"]
     tab.deleteLater()
     assert app
+
+
+def test_first_order_start_and_factor_three_without_gui():
+    m = KineticsModel(parse_mechanism("species: A, B, C\nA -> B ; k1\nB -> C ; k2\n"))
+    assert _automatic_rate_parameters(m, [ds()]) == pytest.approx({"k1": .01, "k2": .01 / 3})
 
 
 def test_shared_rate_uses_max_and_intermediate_fallback():
@@ -99,7 +107,9 @@ def test_eyring_unit_scaling_and_warnings():
     assert R_GAS * np.log(fmm) == pytest.approx(-57.4342730)
     m = KineticsModel(parse_mechanism("species: A, B\nA -> B ; k\neyring: k(dH=H, dS=S)\n"))
     empty = ds(time="", conc="")
-    assert len(_eyring_dataset_warnings(m, [empty])) == 2
+    warnings = _eyring_dataset_warnings(m, [empty])
+    assert len(warnings) == 2
+    assert all(part in warnings[1] for part in ("assuming M", "mM", "57", "bimolecular"))
     with pytest.raises(ValueError, match="Unrecognized time"):
         _eyring_dataset_warnings(m, [ds(time="fortnight")])
     with pytest.raises(ValueError, match="Unrecognized concentration"):

@@ -13,7 +13,10 @@ a la campaña de cobertura aplazada. JAX 0.12.0.1 se instaló posteriormente sol
 entorno local para las pruebas opcionales; no es una dependencia del proyecto. Con JAX
 instalado, la suite dio 517 aprobadas, 5 fallidas, 17 xfail, 1 omitida y 5 deseleccionadas:
 las cinco fallas eran asignaciones in-place a arreglos JAX inmutables en pruebas de RMN,
-espectroscopía y caché. Se retira JAX del entorno para mantener la línea base de CI; la
+espectroscopía y caché. La causa observada es el cambio de comportamiento al importar:
+la disponibilidad de JAX activa el backend JAX de esos módulos y produce arreglos inmutables;
+no se identificó un cambio de versiones de NumPy/SciPy como causa. Se retira JAX del
+entorno para mantener la línea base de CI; la
 comparación opcional de cinética se ejecutó después con JAX aislado mediante `PYTHONPATH`,
 sin instalarlo en el entorno normal.
 
@@ -25,13 +28,15 @@ sin JAX: 548 recolectadas, 523 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5
 568 recolectadas, 543 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas;
 329.81 s. Pruebas focalizadas con JAX aislado: 21 aprobadas. Etapa 1.3: 570
 recolectadas, 545 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas;
-335.45 s.
+335.45 s. Revisión previa a 3.1: suite normal 547 aprobadas, 3 omitidas, 17 xfail y
+5 deseleccionadas (361.46 s); 9 pruebas del núcleo aprobadas también con importaciones Qt
+bloqueadas.
 
 ## Problemas y estado
 
 | Etiqueta | Problema | Estado y evidencia |
 |---|---|---|
-| [Defecto comprobado por inspección] | Una constante de velocidad compartida entre reacciones de distintos órdenes requiere unidades incompatibles | Rechazada en la validación de la GUI; `tests/test_kinetics_shared_rate_order.py`. Configuraciones guardadas se abren y muestran el error. Implementado y probado con ejemplos sintéticos; no validado con datos publicados. |
+| [Defecto comprobado por inspección] | Una constante de velocidad compartida entre reacciones de distintos órdenes requiere unidades incompatibles | Rechazada en la validación de la GUI y en `fit_global` del núcleo con el mismo mensaje; `tests/test_kinetics_shared_rate_order.py` y `tests/test_phase3_core_rates.py`. Configuraciones guardadas se abren y muestran el error. Implementado y probado con ejemplos sintéticos; no validado con datos publicados. |
 | [Limitación metodológica] | JAX integra un solo paso RK4 por intervalo sin control de error | Marcado experimental, aviso en informe y registro; SciPy sigue como referencia. Implementado y probado con datos sintéticos, no validado con datos publicados. |
 | [Defecto comprobado] | JAX devolvía solo dos filas por intercambiar las salidas de `lax.scan` | Corregido con autorización del autor; `test_jax_rk4_fine_and_coarse_grid` fallaba por forma (2, 3) frente a (401, 3). |
 | [Defecto comprobado] | JAX usaba el corte predeterminado de `pinv` | Corregido con `RANK_RCOND`; una matriz de rango casi deficiente daba coeficientes ~10¹² con el corte predeterminado en float64. Prueba con y sin pesos. |
@@ -64,7 +69,20 @@ En el caso A → B → C probado antes del cambio, el arranque igual 1/600 produ
 se adopta la separación por 3 según la instrucción posterior del autor, no como efecto
 universal demostrado. Las nueve plantillas (ocho existentes más Eyring) pasan el criterio
 SSQ ≤ 1.05 × SSQ del ruido en el diseño sintético de `tests/test_phase3_templates.py`;
-esto no demuestra convergencia global para datos arbitrarios.
+esto no demuestra convergencia global para datos arbitrarios. Reejecución de la misma
+prueba, razón SSQ/SSQ_ruido por plantilla (semilla 73):
+
+| Plantilla | Razón |
+|---|---:|
+| Primer orden | 0.970712 |
+| Consecutiva | 0.931732 |
+| Reversible | 0.971327 |
+| Segundo orden | 0.956339 |
+| Pseudo-primer orden | 0.970712 |
+| Unión y reacción | 0.905562 |
+| Michaelis-Menten | 0.911581 |
+| Arrhenius | 0.943746 |
+| Eyring | 0.943754 |
 
 Comparación Arrhenius sintética, tres temperaturas 285/300/315 K, semilla 73, mismo
 inicio automático: con A en Log10, éxito `gtol`, 11 evaluaciones, SSQ/ruido = 0.943746;
@@ -85,24 +103,31 @@ s/M con aviso; texto no reconocido se rechaza. Datos publicados: no validados.
 σ = 0.1, pKa libre con ± y fijo con `fixed`, RMS no ponderado en unidades de señal,
 N, g.l. y hoja `Fit_summary`. El aviso de primer volumen cero se conserva con texto
 explícito: se refiere al titulante y es normal, no al volumen inicial de la celda. La
-presentación resuelve el abierto 6 de la Fase 1. La diferencia de terminología `fixed`
+presentación resuelve el abierto 6 de la Fase 1. La modificación de una línea en
+`tests/test_acid_base.py` actualiza la expectativa del aviso: el volumen cero es el primer
+volumen de titulante, normal al comenzar, no el volumen inicial de la celda; no cambia el ajuste.
+La diferencia de terminología `fixed`
 frente a `const` en otros módulos queda para la Fase 4.
 
 ## Cambios esperados en resultados
+
+El commit `3caecff` mezcla la función nueva de valores iniciales y la corrección de unidades
+Eyring; son cambios independientes, separados a continuación para su revisión.
 
 - Potenciometría: presentación y exportación de resumen cambian; no cambia el ajuste ni los
   errores numéricos. El RMS se calcula en unidades de señal, deshaciendo la división por σ.
 - Arranques automáticos y Log10 pueden cambiar mínimos o convergencia respecto a los valores
   anteriores; parámetros y escala escritos por el usuario o cargados no se sustituyen.
 - Eyring con unidades reconocidas distintas de s y M cambia constantes numéricas y valores
-  ajustados de ΔH/ΔS; con s/M la fórmula no cambia. Texto desconocido ya no permite ajustar.
+  ajustados de ΔS‡ por los desplazamientos indicados arriba, sin cambiar ΔH‡ por los factores
+  constantes de unidad; con s/M la fórmula no cambia. Texto desconocido ya no permite ajustar.
 - Ajustes globales con unidades temporales o de concentración reconocidas y distintas se
   rechazan en vez de entregar constantes inconsistentes. No se convierten los datos.
 - JAX: la trayectoria tiene ahora todos los tiempos; antes los ajustes ordinarios fallaban por
   dimensiones. El corte de rango cambia los coeficientes y puede cambiar parámetros y SE en
   mecanismos con matrices casi deficientes.
 - Un mecanismo con la misma constante en reacciones de distinto orden ya no se ajusta desde
-  la GUI: antes se aceptaba pese a la incompatibilidad dimensional. Los casos válidos no
+  la GUI ni desde `fit_global`: antes se aceptaba pese a la incompatibilidad dimensional. Los casos válidos no
   cambian por esta validación.
 
 ## CI
@@ -117,12 +142,14 @@ Windows ejecuta el subconjunto no GUI; Linux ejecuta la suite normal y el banco 
   defecto para conservar configuraciones existentes. Una unidad vacía o desconocida en un
   ajuste global solo produce aviso y no garantiza compatibilidad de unidades.
 - Configuraciones antiguas que compartan una constante entre órdenes distintos se seguirán
-  abriendo, pero no podrán ajustarse hasta corregir el mecanismo. Las APIs del núcleo no se
-  cambian por esta validación de interfaz.
+  abriendo, pero no podrán ajustarse hasta corregir el mecanismo, tampoco mediante el núcleo.
 - [Sospecha] En JAX con precisión de 32 bits, un corte de rango de 10⁻¹⁰ está por debajo de
   la precisión de máquina; no se ha validado el comportamiento para matrices mal condicionadas.
 - [Defecto comprobado por inspección] Tras optimizar con JAX, `_run_kinetics_fit` genera las
   curvas y residuos mostrados mediante `objective.predict_dataset`, que integra con SciPy;
   pueden no coincidir con el objetivo JAX en rejillas gruesas. No corregido ni cuantificado
-  en esta etapa: SciPy sigue siendo la referencia y JAX queda marcado experimental.
+  en esta etapa: SciPy sigue siendo la referencia y JAX queda marcado experimental. SSQ,
+  RMS, residuos del optimizador, Jacobiano y covarianza/errores se calculan con el objetivo
+  JAX minimizado; el número de parámetros lineales para los grados de libertad se determina
+  con la matriz SciPy. Las curvas y el diagnóstico de autocorrelación usan residuos SciPy.
 - `fixed` frente a `const` se deja para unificar en Fase 4; no se cambian métodos de error.

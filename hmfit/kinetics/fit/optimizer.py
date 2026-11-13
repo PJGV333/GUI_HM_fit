@@ -378,6 +378,11 @@ def fit_global(
     get zero variance *by definition* (``result.fixed_mask`` marks them as not estimated).
     Inverted bounds (lower > upper), NaN bounds and NaN initial values raise ValueError.
     """
+    from .rate_parameters import _shared_rate_order_error
+
+    order_error = _shared_rate_order_error(objective.model)
+    if order_error:
+        raise ValueError(order_error)
     x0, param_names = _coerce_params0(objective, params0)
     lower, upper = _bounds_arrays(_coerce_bounds(bounds, param_names), x0.size)
     x_full0, fixed = resolve_fixed_parameters(

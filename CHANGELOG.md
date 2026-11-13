@@ -47,8 +47,10 @@ All notable user-visible changes. Versions follow the GitHub releases
 
 ### Fixed (Phase 3, Eyring units)
 - Eyring rates now account for recognized time and concentration units, including the 1 M
-  standard state: ΔS and fitted results can change for minutes or non-molar concentrations.
-  Empty units retain the previous s/M assumption with a warning; unrecognized units are rejected.
+  standard state. Previously, ΔS‡ was shifted by +R·ln 60 ≈ 34 J·mol⁻¹·K⁻¹ for
+  times in minutes and −R·ln 1000 ≈ −57 J·mol⁻¹·K⁻¹ for bimolecular reactions with
+  concentrations in mM; ΔH‡ does not change from these unit factors. Empty units retain
+  the previous s/M assumption with a warning; unrecognized units are rejected.
 
 ### Fixed (Phase 3, kinetics dataset units)
 - Global kinetics fits reject incompatible recognized time or concentration units; no numerical
