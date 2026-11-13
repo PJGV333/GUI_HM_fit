@@ -38,7 +38,12 @@
   585 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas,
   186.40 s; antes 607 recogidas y 582 aprobadas. Falta revisión de rutas de
   errores de la GUI, sin corregir el problema fuera de alcance §6.4(c).
-- 3.3 y 3.5 pendientes. 3.4: auditoría del workflow completada;
+- 3.3: resuelto vectorizado de pH con Brent de referencia y respaldo;
+  comparaciones extremas y full-refit sintético añadidas. Suite: 621 recogidas,
+  596 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas,
+  172.50 s; antes 610 recogidas y 585 aprobadas. Pendiente perfilar banco y
+  demás bootstrap y tabla de perfiles; 3.5 pendiente.
+  3.4: auditoría del workflow completada;
   no requiere cambio de CI, pues la suite completa ya incluye el banco.
   Este documento es provisional; no constituye validación de la fase completa.
 
@@ -55,6 +60,7 @@
 | D-7 | Optimización predeterminada | LM; Powell | Powell | LM empeora SSQ en casos de regresión y agota iteraciones en el sintético sin ruido | Tabla 3.1.g y `validation/results/phase31_comparison.json` | Elegir LM explícitamente en la configuración |
 | D-8 | Pesos para comparar IRLS | Comparar solo SSQ ponderada; mostrar también SSQ sin ponderar | Mostrar ambas y los pesos usados | Los métodos pueden terminar con pesos distintos, por lo que las SSQ ponderadas no comparten escala | `weights_used_for_fit` y `weighted_ssq_fit` en los resultados | Ignorar campos adicionales, sin cambiar el ajuste |
 | D-9 | Configuraciones RMN sin pesos | Unitarios; IRLS previo | IRLS | Compatibilidad y decisión expresa del autor | `test_nmr_weight_selection_roundtrips_and_legacy_defaults_to_irls` y pruebas de regresión | Seleccionar `unit` expresamente |
+| D-10 | Resolver pH sin intervalo válido o modelo no monótono | Forzar Newton; usar Brent y respaldo previos | Mantener referencia escalar | Preservar comportamiento en casos sin garantía de monotonía o sin bracket | `test_unbracketed_points_use_reference_fallback` y pruebas extremas | Sustituir llamada vectorizada por `_simulate_pH_titration_reference` |
 
 ### Inventario del residuo y Jacobiano espectral
 
@@ -202,6 +208,29 @@ basada en la concentración del progenitor y omite titulaciones donde ésta es
 cero, incluso si la señal tiene población válida por su estequiometría. ¿Se
 aprueba sustituir esa máscara por la del denominador `C·S_j`? No se ha cambiado.
 
+## Potenciometría vectorizada 3.3
+
+El balance monótono de los componentes ordinarios se resuelve en paralelo sobre
+pH (= −log[H]), con Newton protegido por el intervalo y bisección. Se conserva
+`_simulate_pH_titration_reference`; los extremos con balance < 1e-14 preservan
+la elección previa, y los puntos sin intervalo o modelos no monótonos recurren
+al solver previo. `tests/test_phase33_potentiometry_vectorized.py` compara con
+Brent a 1e-10 absoluto: soluciones desde pH < 2 hasta > 12, tres pKa, cuatro
+concentraciones (1e-12 a 1 M), cargas fuertes positivas/negativas y entorno de
+los puntos de equivalencia; también verifica puntos sin bracket y parámetros de
+un refit dentro de 1e-3·SE. La suite previa de potenciometría se conserva.
+
+Una réplica full-refit de bootstrap sintético (semilla 20261113, 60 puntos,
+dos pKa), cinco ejecuciones en la misma máquina, mediana: Brent 0.28321 s,
+vectorizado 0.03161 s, **8.96×**, por debajo del objetivo 10×. θ fue
+[6.99987442939, 4.00033862087] frente a [6.99987442927, 4.00033862340];
+SE de referencia [0.00047441, 0.00052385]. El cambio máximo es 4.82e-6·SE.
+Las cinco mediciones y semillas están en
+`validation/results/phase33_potentiometry_benchmark.json`; reproducir con
+`OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 .venv/bin/python -m
+validation.phase33_potentiometry_benchmark --output RUTA`. La mejora medida
+no garantiza 10× para otros experimentos ni es una campaña de cobertura.
+
 ## Evidencia de JAX
 
 Con JAX 0.12.0.1 en CPU y datos sintéticos A → B → C (k1 = 1 s⁻¹,
@@ -305,6 +334,8 @@ y <https://github.com/PJGV333/GUI_HM_fit/actions/runs/43459085101>. El push de
 verde: <https://github.com/PJGV333/GUI_HM_fit/actions/runs/43458138060>.
 El CI de `f0afeca` también terminó en verde:
 <https://github.com/PJGV333/GUI_HM_fit/actions/runs/43463381745>.
+El CI de `8e5342c` terminó en verde:
+<https://github.com/PJGV333/GUI_HM_fit/actions/runs/43464692714>.
 
 ## Riesgos y cuestiones abiertas
 

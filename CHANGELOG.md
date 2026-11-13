@@ -7,6 +7,10 @@ All notable user-visible changes. Versions follow the GitHub releases
 ## [Unreleased]
 
 ### Changed
+- Potentiometry: pH titrations use a safeguarded vectorized Newton/bisection solver;
+  unsupported or unbracketed cases fall back to the previous scalar implementation.
+  Differences are numerical only within the tested tolerances. Evidence:
+  `tests/test_phase33_potentiometry_vectorized.py` and the phase 3 report.
 - Spectroscopy: `explicit_lm` is an opt-in optimizer with convergence diagnostics and
   active-bound uncertainty warnings. Powell remains the default for new and saved
   configurations without an optimizer. Depending on the start and convergence, LM

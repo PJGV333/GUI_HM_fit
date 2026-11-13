@@ -276,11 +276,12 @@ def solve_pH_for_totals(
     return float(opt.x[0])
 
 
-def simulate_pH_titration(
+def _simulate_pH_titration_reference(
     experiment: PotentiometryExperiment,
     system: AcidBaseSystem,
     fit_options: Mapping[str, Any] | None = None,
 ) -> np.ndarray:
+    """Original scalar Brent implementation, retained as reference and fallback."""
     opts = dict(fit_options or {})
     totals = _component_totals_for_experiment(experiment, system, opts)
     strong = _strong_ion_charge(experiment, opts)
@@ -293,14 +294,105 @@ def simulate_pH_titration(
     for i in range(volumes.size):
         point_totals = {name: float(vals[i]) for name, vals in totals.items()}
         pH[i] = solve_pH_for_totals(
-            system,
-            point_totals,
-            strong_ion_charge=float(strong[i]),
-            pH_bounds=(float(bounds[0]), float(bounds[1])),
-            previous_pH=prev,
+            system, point_totals, strong_ion_charge=float(strong[i]),
+            pH_bounds=(float(bounds[0]), float(bounds[1])), previous_pH=prev,
         )
         prev = float(pH[i])
     return pH
+
+
+def simulate_pH_titration(
+    experiment: PotentiometryExperiment,
+    system: AcidBaseSystem,
+    fit_options: Mapping[str, Any] | None = None,
+) -> np.ndarray:
+    """Solve the charge balance together with safeguarded Newton/bisection.
+
+    Exotic non-monotone charge models and points without a bracket retain the
+    scalar reference semantics, including its previous-point fallback.
+    """
+    opts = dict(fit_options or {})
+    totals = _component_totals_for_experiment(experiment, system, opts)
+    strong = _strong_ion_charge(experiment, opts)
+    volumes = _effective_titrant_volumes(experiment, opts)
+    if strong.size != volumes.size:
+        raise ValueError("Strong-ion charge vector length mismatch.")
+    if volumes.size == 0:
+        return np.empty(0, dtype=float)
+    lo, hi = map(float, opts.get("pH_bounds", (-2.0, 16.0)))
+    if lo >= hi:
+        raise ValueError("pH_bounds must be increasing.")
+    if not np.isfinite(system.kw) or system.kw <= 0:
+        return _simulate_pH_titration_reference(experiment, system, opts)
+    components = []
+    for comp in system.components:
+        charges = component_charges(comp)
+        total = np.asarray(totals[str(comp.name)], dtype=float)
+        if not np.all(np.diff(charges) == 1) or np.any(total < 0):
+            return _simulate_pH_titration_reference(experiment, system, opts)
+        counts = np.arange(charges.size, dtype=float)
+        log_beta = np.asarray([0.0, *component_log_beta(comp)], dtype=float)
+        components.append((total, log_beta, counts, counts * counts, float(charges[0])))
+
+    ln10 = np.log(10.0)
+    def balance(ph):
+        h = np.exp(-ln10 * ph)
+        oh = float(system.kw) / np.maximum(h, 1e-300)
+        value = h - oh + strong
+        deriv = -ln10 * (h + oh)
+        for total, log_beta, counts, counts2, charge0 in components:
+            log_terms = log_beta[None, :] - ph[:, None] * counts[None, :]
+            log_terms -= np.max(log_terms, axis=1, keepdims=True)
+            terms = np.exp(np.maximum(log_terms, -300.0) * ln10)
+            frac = terms / np.sum(terms, axis=1, keepdims=True)
+            mean = frac @ counts
+            variance = np.maximum(frac @ counts2 - mean * mean, 0.0)
+            value = value + total * (charge0 + mean)
+            deriv = deriv - ln10 * total * variance
+        return value, deriv
+
+    left = np.full(volumes.size, lo)
+    right = np.full(volumes.size, hi)
+    flo, _ = balance(left)
+    fhi, _ = balance(right)
+    answer = np.full(volumes.size, np.nan)
+    at_left = np.isfinite(flo) & (np.abs(flo) < 1e-14)
+    at_right = ~at_left & np.isfinite(fhi) & (np.abs(fhi) < 1e-14)
+    answer[at_left] = lo
+    answer[at_right] = hi
+    active = (~at_left & ~at_right & np.isfinite(flo) & np.isfinite(fhi) &
+              (np.signbit(flo) != np.signbit(fhi)))
+    x = np.full(volumes.size, (lo + hi) / 2)
+    for _ in range(100):
+        if not np.any(active):
+            break
+        f, derivative = balance(x)
+        valid = active & np.isfinite(f) & np.isfinite(derivative)
+        active &= valid
+        same = valid & (np.signbit(f) == np.signbit(flo))
+        left[same], flo[same] = x[same], f[same]
+        other = valid & ~same
+        right[other] = x[other]
+        done = valid & ((f == 0) | ((right - left) < 1e-12))
+        answer[done] = x[done]
+        active[done] = False
+        with np.errstate(divide="ignore", invalid="ignore"):
+            proposal = x - f / derivative
+        midpoint = (left + right) / 2
+        proposal = np.where(np.isfinite(proposal) & (proposal > left) & (proposal < right),
+                            proposal, midpoint)
+        done_step = active & (np.abs(proposal - x) <= 1e-13 * (1 + np.abs(x)))
+        answer[done_step] = proposal[done_step]
+        active[done_step] = False
+        x[active] = proposal[active]
+    # Preserve the exact reference behavior for unbracketed or failed points.
+    for i in np.flatnonzero(~np.isfinite(answer)):
+        point_totals = {name: float(vals[i]) for name, vals in totals.items()}
+        answer[i] = solve_pH_for_totals(
+            system, point_totals, strong_ion_charge=float(strong[i]), pH_bounds=(lo, hi),
+            previous_pH=float(answer[i - 1]) if i else None,
+        )
+    return answer
 
 
 def simulate_species_vs_volume(
