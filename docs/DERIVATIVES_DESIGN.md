@@ -1,6 +1,6 @@
 # Derivadas especializadas: diseño inicial
 
-**Implementación experimental parcial:** existe una sensibilidad implícita 1:1 probada con casos sintéticos; no está integrada en los ajustes productivos. Las sensibilidades cinéticas y la cobertura de los demás modelos siguen pendientes. La Fase 4 está fuera de alcance.
+**Implementación experimental parcial:** existen sensibilidades probadas para equilibrio 1:1 y cinética irreversible de primer orden; no están integradas en los ajustes productivos. La cobertura de los demás modelos sigue pendiente. La Fase 4 está fuera de alcance.
 
 ## Equilibrio
 
@@ -15,6 +15,12 @@ Para `F(c, θ)=0`, resolver `F_c S = -F_θ` mediante un sistema lineal, sin inve
 ## Cinética
 
 Integrar con SciPy el sistema aumentado `c'=f(c,θ)`, `S'=f_c S+f_θ`, con `S(0)=∂c(0)/∂θ`. Documentar tolerancias, condiciones iniciales, parámetros compartidos y fijos. Contrastar contra diferencias centradas de **la misma** integración y revisar convergencia al reducir paso y tolerancias. Incluir modelos de primer y segundo orden, reversibles y consecutivos antes de proponer integración en producción.
+
+### Primer orden implementado
+
+`hmfit_core.derivatives.kinetics.solve_first_order_sensitivity` integra con SciPy `A'=-kA`, `B'=kA` y `S_A'=-A-kS_A`, `S_B'=A+kS_A`, respecto a la constante física k (no log10 k). Admite sensibilidades iniciales no nulas y reporta método, tolerancias y evaluaciones; rechaza datos físicos, tiempos y tolerancias inválidos. Las pruebas contrastan soluciones analíticas y diferencias centradas usando BDF del modelo cinético existente, para k=0, 0.8 y 10, incluyendo condiciones iniciales dependientes de k. En k=0 la diferencia centrada usa una extensión matemática al valor negativo de k para referencia, no un ajuste físico negativo.
+
+En un caso exploratorio con k=0.7, 25 tiempos y BDF (rtol=1e-10, atol=1e-13), el error absoluto máximo fue 4.00e-10 frente a la solución analítica y 6.43e-9 frente a diferencias centradas con paso 1e-4. En 20 llamadas locales, el sistema ampliado tomó 9.58 ms/llamada frente a 12.21 ms para dos integraciones de referencia: medición puntual, no evidencia de rendimiento en un ajuste. No se ha validado aún segundo orden, reacciones reversibles o consecutivas, parámetros compartidos/fijos ni múltiples experimentos. No se sustituye ningún Jacobiano productivo.
 
 ## Proyección variable
 

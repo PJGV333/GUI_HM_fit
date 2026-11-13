@@ -21,7 +21,7 @@
 | HC2/HC3 experimental | `validation/uncertainty_methods.py` usaba suma de cuadrados de concentraciones como leverage | Cálculo inválido desactivado en la campaña: HC2/HC3 se declaran no aplicables para OLS, NNLS y penalización; la corrección fundamentada y repetición de campañas **pendientes** |
 | Grados de libertad | Truncamientos a 1 en `kinetics_tab.py` y `hmfit_core/utils/errors.py` | Eliminados en esas rutas; auditoría de todos los usos y convenciones **pendiente** |
 | Solver interior espectral | Diferencia 300/3000 iteraciones documentada en Fase 3 | Diagnóstico independiente y KKT **pendientes** |
-| Sensibilidades implícitas y cinéticas | Véase `DERIVATIVES_DESIGN.md` | Sensibilidad 1:1 experimental probada; cinética y otros modelos **pendientes**, sin integración productiva |
+| Sensibilidades implícitas y cinéticas | Véase `DERIVATIVES_DESIGN.md` | Sensibilidades experimentales 1:1 y cinética irreversible de primer orden probadas; otros modelos **pendientes**, sin integración productiva |
 
 `hmfit_confignmrT2.json` configura Powell; la auditoría de migración de todos los formatos antiguos no está completada. La búsqueda de rutas usa `rg 'explicit_lm|\\bjax\\b|jaxlib'` sobre código, GUI, pruebas, configuración y CI; los resultados históricos no deben borrarse.
 
@@ -78,9 +78,15 @@ Suite local posterior: 630 aprobadas, 3 omitidas, 5 deseleccionadas, 16 xfail y 
 
 ## Sensibilidad de equilibrio 1:1
 
-Se añadió una implementación experimental de diferenciación implícita para asociación 1:1, sin cambiar Jacobianos productivos. Se ha contrastado con una solución escalar independiente, una derivada analítica y diferencias finitas en tres escalas, además de un caso del solver existente y un rechazo por mal condicionamiento. Alcance, tolerancias y medición exploratoria de rendimiento en `DERIVATIVES_DESIGN.md`. Quedan pendientes cinética, otros modelos, integración en producción y validación más amplia.
+Se añadió una implementación experimental de diferenciación implícita para asociación 1:1, sin cambiar Jacobianos productivos. Se ha contrastado con una solución escalar independiente, una derivada analítica y diferencias finitas en tres escalas, además de un caso del solver existente y un rechazo por mal condicionamiento. Alcance, tolerancias y medición exploratoria de rendimiento en `DERIVATIVES_DESIGN.md`. Quedan pendientes la ampliación a otros modelos, la integración en producción y una validación más amplia.
 
 Suite local: 636 aprobadas, 3 omitidas, 5 deseleccionadas, 16 xfail y 284 advertencias en 177,16 s. No es CI multiplataforma.
+
+## Sensibilidad cinética experimental
+
+Se añadió la integración ampliada de sensibilidades directas para A → B de primer orden. Coincide en los casos probados con referencias analíticas y diferencias centradas usando el integrador BDF del modelo cinético existente; incluye una condición inicial que depende del parámetro. Las limitaciones, resultados y medición exploratoria de tiempo figuran en `DERIVATIVES_DESIGN.md`. No se ha integrado en producción ni validado para otros mecanismos o ajustes globales.
+
+Suite local: 641 aprobadas, 3 omitidas, 5 deseleccionadas, 16 xfail y 283 advertencias en 181,52 s; CI multiplataforma pendiente.
 
 ## Pendiente y límites
 
