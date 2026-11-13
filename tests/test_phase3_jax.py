@@ -12,12 +12,36 @@ def test_backend_key_and_legacy_configuration():
     tab = KineticsTab()
     combo = tab.model_opt_plots.combo_backend
     assert combo.currentData() == "scipy"
-    tab._apply_config({"backend": "JAX"})
-    assert combo.currentData() == "jax"
-    assert "experimental" in combo.currentText().lower()
-    assert "without error control" in combo.toolTip()
+    assert combo.findData("jax") == -1
+    original_mechanism = tab.model_opt_plots.mechanism_text()
+    with pytest.raises(ValueError, match="(?i)jax.*scipy"):
+        tab._apply_config({"backend": "JAX", "mechanism_text": "must not be applied"})
+    assert tab.model_opt_plots.mechanism_text() == original_mechanism
+    assert combo.currentData() == "scipy"
+    tab._apply_config({"backend": "SciPy"})
+    assert combo.currentData() == "scipy"
+    tab._apply_config({})
+    assert combo.currentData() == "scipy"
     tab.deleteLater()
     assert app is not None
+
+
+def test_import_rejects_unknown_backend_without_mutating_tab():
+    app = QApplication.instance() or QApplication([])
+    tab = KineticsTab()
+    original = tab.model_opt_plots.mechanism_text()
+    with pytest.raises(ValueError, match="(?i)unknown.*scipy"):
+        tab._apply_config({"backend": "unknown", "mechanism_text": "must not be applied"})
+    assert tab.model_opt_plots.mechanism_text() == original
+    tab.deleteLater()
+    assert app is not None
+
+
+def test_fit_rejects_legacy_jax_backend_before_loading_model():
+    from hmfit_gui_qt.tabs.kinetics_tab import _run_kinetics_fit
+
+    with pytest.raises(ValueError, match="(?i)jax.*scipy"):
+        _run_kinetics_fit({"backend": "JAX"})
 
 
 def test_jax_rk4_fine_and_coarse_grid():

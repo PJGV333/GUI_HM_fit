@@ -876,6 +876,9 @@ class KineticsTab(QWidget):
             QMessageBox.critical(self, "Config error", str(exc))
 
     def _apply_config(self, config: dict[str, Any]) -> None:
+        backend = str(config.get("backend") or "").strip().lower()
+        if backend not in ("", "scipy"):
+            raise ValueError(f"Kinetics backend {backend!r} is unsupported; choose SciPy explicitly to migrate this configuration.")
         mech_text = str(config.get("mechanism_text") or "")
         if mech_text:
             self.model_opt_plots.set_mechanism_text(mech_text)
@@ -1345,6 +1348,10 @@ def _run_kinetics_fit(
     from hmfit_core.api import FitCancelled
     from hmfit_core.utils.errors import build_identifiability_report
 
+    backend = str(config.get("backend") or "scipy").strip().lower()
+    if backend != "scipy":
+        raise ValueError(f"Kinetics backend {backend!r} is unsupported; use SciPy explicitly.")
+
     model = config["model"]
     order_error = _shared_rate_order_error(model)
     if order_error:
@@ -1362,7 +1369,6 @@ def _run_kinetics_fit(
     log_params = set(config.get("log_params") or [])
     fixed_mask = list(config.get("fixed_mask") or [])
     method = str(config.get("method") or "trust-region")
-    backend = str(config.get("backend") or "scipy")
     nnls = bool(config.get("nnls", False))
     show_stability_diagnostics = bool(config.get("show_stability_diagnostics", False))
     auto_parameter_errors = bool(config.get("auto_parameter_errors", True))

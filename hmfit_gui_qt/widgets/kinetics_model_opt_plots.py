@@ -205,14 +205,7 @@ class KineticsModelOptPlotsWidget(QWidget):
 
         self.combo_backend = QComboBox(opt_tab)
         self.combo_backend.addItem("SciPy", "scipy")
-        self.combo_backend.addItem("JAX (experimental)", "jax")
-        self.combo_backend.setItemData(
-            1, "One RK4 step per sampling interval, without error control. SciPy is the reference engine.",
-            Qt.ItemDataRole.ToolTipRole,
-        )
-        self.combo_backend.setToolTip(
-            "JAX is experimental: one RK4 step per sampling interval, without error control; SciPy is the reference."
-        )
+        self.combo_backend.setToolTip("SciPy is the supported kinetics backend.")
         opt_form.addRow("Backend", self.combo_backend)
 
         self.chk_multistart = QCheckBox("Multi-start", opt_tab)
