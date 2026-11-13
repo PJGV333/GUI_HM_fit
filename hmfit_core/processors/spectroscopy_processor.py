@@ -1477,7 +1477,76 @@ def _run_spectro_single_start(
         return True
 
     try:
-        if optimizer == "differential_evolution":
+        if optimizer == "explicit_lm":
+            from ..utils.explicit_lm import centered_residual_jacobian, explicit_lm
+
+            def residual(theta):
+                _raise_if_cancelled()
+                state["eval_count"] += 1
+                C = solver.concentraciones(onp.asarray(theta, dtype=float))[0]
+                fit = _solve_spectral_model(
+                    C, y_transposed, group_map=abs_group_map,
+                    eps_solver_mode=eps_solver_mode, mu=eps_mu,
+                    delta_mode=delta_mode, delta_rel=delta_rel,
+                    alpha_smooth=alpha_smooth, smooth_matrix=smooth_matrix,
+                    max_iters=300, weights_row=weights_row,
+                    weight_regularization_mode=weight_regularization_mode,
+                )
+                return _spectral_profile_residual(
+                    fit, y_transposed, weights_row, eps_mu, alpha_smooth,
+                    smooth_matrix, weight_regularization_mode,
+                )
+
+            def residual_jacobian(theta):
+                # Only the independent-column model has a verified analytic
+                # profile derivative. Coupled modes use the actual residual.
+                weights = onp.broadcast_to(onp.asarray(weights_row, float), y_transposed.shape)
+                identity_group = (abs_group_map is None or
+                    (onp.asarray(abs_group_map).shape[0] == onp.asarray(abs_group_map).shape[1]
+                     and onp.array_equal(abs_group_map, onp.eye(onp.asarray(abs_group_map).shape[0]))))
+                independent = (identity_group and eps_solver_mode in ("soft_penalty", "nnls_hard")
+                               and delta_mode == "off" and alpha_smooth <= 0
+                               and onp.all(weights == weights[0:1, :]))
+                if not independent:
+                    return centered_residual_jacobian(residual, theta)
+                from ..utils.profile_jacobian import spectral_profile_jacobian
+                _raise_if_cancelled()
+                def concentrations(x):
+                    _raise_if_cancelled()
+                    return onp.asarray(solver.concentraciones(x)[0], dtype=float).ravel()
+                flat_c, dc = centered_residual_jacobian(concentrations, theta)
+                C = flat_c.reshape(y_transposed.shape[0], -1)
+                dC = dc.T.reshape(len(theta), *C.shape)
+                fit = _solve_spectral_model(
+                    C, y_transposed, group_map=abs_group_map, eps_solver_mode=eps_solver_mode,
+                    mu=eps_mu, delta_mode=delta_mode, delta_rel=delta_rel,
+                    alpha_smooth=alpha_smooth, smooth_matrix=smooth_matrix, max_iters=300,
+                    weights_row=weights_row, weight_regularization_mode=weight_regularization_mode,
+                )
+                state["eval_count"] += 1
+                A = fit["E_group"]
+                if eps_solver_mode == "soft_penalty" and onp.any(onp.abs(A) < 1e-12):
+                    return centered_residual_jacobian(residual, theta)
+                try:
+                    jac = spectral_profile_jacobian(
+                        C, dC, y_transposed, A, weights, solver_mode=eps_solver_mode,
+                        mu=eps_mu, regularization_mode=weight_regularization_mode,
+                    ) / onp.sqrt(y_transposed.size)
+                except ValueError:  # Rank-deficient active systems require finite differences.
+                    return centered_residual_jacobian(residual, theta)
+                r = _spectral_profile_residual(fit, y_transposed, weights_row, eps_mu,
+                                               alpha_smooth, smooth_matrix, weight_regularization_mode)
+                if jac.shape[0] < r.size:
+                    jac = onp.vstack((jac, onp.zeros((r.size - jac.shape[0], len(theta)))))
+                return r, jac
+
+            lm = explicit_lm(residual_jacobian, start_k, processed_bounds)
+            opt_result_obj = optimize.OptimizeResult(
+                x=lm.x, fun=float(onp.linalg.norm(lm.fun)), success=lm.success,
+                message=lm.reason, nit=lm.nit, scaled_gradient=lm.scaled_gradient,
+                nfev=state["eval_count"], active_bounds=lm.active_bounds,
+            )
+        elif optimizer == "differential_evolution":
             opt_result_obj = differential_evolution(
                 f_m,
                 processed_bounds,
@@ -1575,6 +1644,9 @@ def _run_spectro_single_start(
         "nfev": int(getattr(opt_result_obj, "nfev", 0) or 0),
         "success": bool(getattr(opt_result_obj, "success", onp.isfinite(run_rms))),
         "message": str(getattr(opt_result_obj, "message", "")),
+        "nit": int(getattr(opt_result_obj, "nit", 0) or 0),
+        "scaled_gradient": getattr(opt_result_obj, "scaled_gradient", None),
+        "active_bounds": onp.asarray(getattr(opt_result_obj, "active_bounds", []), dtype=bool).tolist(),
         "callback_logs": callback_logs[-5:],
     }
 
@@ -2242,6 +2314,9 @@ def process_spectroscopy_data(
                     optimizer_summary["success"] = bool(run_result.get("success", True))
                     optimizer_summary["message"] = str(run_result.get("message", ""))
                     optimizer_summary["nfev"] = int(run_result.get("nfev", 0) or 0)
+                    optimizer_summary["nit"] = int(run_result.get("nit", 0) or 0)
+                    optimizer_summary["scaled_gradient"] = run_result.get("scaled_gradient")
+                    optimizer_summary["active_bounds"] = run_result.get("active_bounds", [])
         if ms_runs > 1:
             best_msg = f"{best_result['rms']:.6e}" if onp.isfinite(best_result["rms"]) else "inf"
             log_progress(f"[MS] run {ms_idx+1}/{ms_runs} best={best_msg}")
@@ -2326,8 +2401,21 @@ def process_spectroscopy_data(
     A_species = metrics.get("A_species")
     yfit = metrics["yfit"]
     stability_diag = metrics.get("stability_diag", {})
+    bound_hits = onp.asarray(optimizer_summary.get("active_bounds", []), dtype=bool)
+    if optimizer == "explicit_lm" and bound_hits.size == len(k):
+        bound_hits &= ~onp.asarray(fixed_from_bounds, dtype=bool)
+        if onp.any(bound_hits):
+            SE_log10K = onp.asarray(SE_log10K, dtype=float).copy()
+            SE_K = onp.asarray(SE_K, dtype=float).copy()
+            percK = onp.asarray(percK, dtype=float).copy()
+            SE_log10K[bound_hits] = onp.nan
+            SE_K[bound_hits] = onp.nan
+            percK[bound_hits] = onp.nan
+            warnings_list.append("Parámetro en el límite; su SE no es válido: " +
+                                 ", ".join(k_names[i] for i in onp.flatnonzero(bound_hits)))
+    if optimizer == "explicit_lm" and not optimizer_summary.get("success", False):
+        warnings_list.append(">>> FIT NOT RELIABLE: " + str(optimizer_summary.get("message", "LM failed")))
 
-    
     k_final = _normalize_param_length(k, getattr(res, "n_constants", None))
     C, Co = res.concentraciones(k_final)
     species_labels = abs_species_labels if C is not None else []
@@ -2550,6 +2638,14 @@ def process_spectroscopy_data(
         k, SE_log10K, percK, rms, covfit, lof=lof, param_names=k_names,
         fixed_mask=fixed_from_bounds if len(fixed_from_bounds) == len(k) else None,
     )
+    if optimizer == "explicit_lm":
+        results_text += (f"\n\nLM: success={optimizer_summary.get('success')}, "
+                         f"reason={optimizer_summary.get('message')}, "
+                         f"iterations={optimizer_summary.get('nit')}, "
+                         f"scaled gradient={optimizer_summary.get('scaled_gradient')}")
+        for warning in warnings_list:
+            if 'límite' in warning or 'FIT NOT RELIABLE' in warning:
+                results_text += f"\n\n>>> {warning}"
     for _note in list(metrics.get("notes") or []):
         results_text += f"\n\n>>> WARNING: {_note}"
     if constraint_report["note"]:
@@ -2678,7 +2774,8 @@ def process_spectroscopy_data(
         "eps_solver_mode": eps_solver_mode,
         "eps_constraint_active": int(constraint_report["n_active"]),
         "eps_constraint_total": int(constraint_report["n_total"]),
-        "uncertainty_notes": [n for n in (list(metrics.get("notes") or []) + [constraint_report["note"]]) if n],
+        "uncertainty_notes": [n for n in (list(metrics.get("notes") or []) + [constraint_report["note"]] +
+                                              [w for w in warnings_list if 'límite' in w]) if n],
         "mu": float(eps_mu),
         "delta_mode": delta_mode,
         "delta_rel": float(delta_rel),
@@ -2695,7 +2792,12 @@ def process_spectroscopy_data(
             ["covfit", float(covfit)],
             ["optimizer", optimizer],
             ["objective_evaluations", int(objective_eval_count)],
-        ],
+        ] + ([
+            ["LM success", bool(optimizer_summary.get("success"))],
+            ["LM stop reason", str(optimizer_summary.get("message", ""))],
+            ["LM iterations", optimizer_summary.get("nit")],
+            ["LM scaled gradient", optimizer_summary.get("scaled_gradient")],
+        ] if optimizer == "explicit_lm" else []),
         "non_abs_species": non_abs_species,
         "render_graphs": bool(render_graphs),
         "render_quality": render_quality,
@@ -2849,6 +2951,9 @@ def process_spectroscopy_data(
             "message": str(optimizer_summary.get("message", "")),
             "nfev": int(optimizer_summary.get("nfev", 0) or 0),
             "objective_evaluations": int(objective_eval_count),
+            "iterations": optimizer_summary.get("nit"),
+            "scaled_gradient": optimizer_summary.get("scaled_gradient"),
+            "active_bounds": optimizer_summary.get("active_bounds", []),
         },
         "timings": dict(stage_times),
         "render_graphs": bool(render_graphs),

@@ -341,6 +341,7 @@ class SpectroscopyTab(QWidget):
 
         # Sub-tabs: Model / Optimization / Plots
         self.model_opt_plots = ModelOptPlotsWidget(left_container, enable_equation_editor=True)
+        self.model_opt_plots.combo_optimizer.addItem("explicit_lm")
         self.model_opt_plots.model_defined.connect(self._on_model_defined)
         self.equation_editor = self.model_opt_plots.equation_editor
         if self.equation_editor is not None:

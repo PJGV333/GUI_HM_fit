@@ -9,9 +9,15 @@
   566 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas
   (591 recogidas; 586 seleccionadas), 190.94 s. Antes: 556 aprobadas,
   0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas (581 recogidas).
+- 3.1.e: LM disponible como `explicit_lm` en Espectroscopía (API y selector),
+  sin alterar el predeterminado Powell. Diagnósticos y notas de límite están en
+  el resultado y exportación. Validación inicial sintética en
+  `tests/test_phase31_spectro_lm.py`; comparación extensa pendiente. Suite:
+  602 recogidas, 577 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5
+  deseleccionadas, 185.11 s; antes 598 recogidas y 573 aprobadas.
 - 3.1.c–d: núcleo LM reforzado para cotas iguales, controles inválidos,
   paso que entra desde un límite y agotamiento de iteraciones; sigue pendiente
-  propagar diagnósticos y SE a los ajustes integrados. Suite: 598 recogidas,
+  propagar diagnósticos y SE al ajuste RMN. Suite: 598 recogidas,
   573 aprobadas, 0 fallidas, 17 xfail, 3 omitidas, 5 deseleccionadas,
   191.94 s (antes: 591 recogidas, 566 aprobadas, las demás cifras iguales).
 - 3.2, 3.3 y 3.5 pendientes. 3.4: auditoría del workflow completada;
@@ -26,6 +32,23 @@
 | D-2 | Jacobiano para modos generales | Fórmula analítica supuesta; diferencias centradas del residuo real | Diferencias centradas con paso relativo | Evita aplicar fórmulas no verificadas a modos acoplados | `centered_residual_jacobian`; prueba sintética con grupos, pesos, cotas y suavidad | Retirar la función auxiliar; no está integrada |
 | D-3 | Humo del banco en CI | Añadir subconjunto; conservar suite completa | Conservar suite completa | Ya corre en cada push y no necesita selección adicional | `.github/workflows/tests.yml`, `pytest.ini`, ejecución local del banco 57 aprobadas y 14 xfail en 50.84 s | No hubo cambio de workflow |
 | D-4 | Cota inferior igual a superior en LM | Contabilizar el gradiente de un parámetro inmóvil; excluirlo | Excluirlo del gradiente proyectado | Ningún paso factible puede mover ese parámetro | `test_fixed_bound_is_excluded_from_projected_gradient` | Revertir el cambio en `_gradient` |
+| D-5 | Derivadas del ajuste espectral | Perfil analítico en todas las rutas; perfil analítico solo con hipótesis verificadas y diferencias centradas en las demás | Analítico para columnas independientes; centradas para el resto y sistemas de rango deficiente | No usar una fórmula no validada con regularización acoplada | `tests/test_explicit_lm.py` y `tests/test_phase31_spectro_lm.py` | Seleccionar Powell o revertir la rama `explicit_lm` |
+
+### Inventario del residuo y Jacobiano espectral
+
+| Modo | Residuo | Jacobiano | Prueba |
+|---|---|---|---|
+| legacy, soft_penalty/nnls_hard independientes | Datos ponderados; ε resuelta por el solver existente | Perfil analítico; diferencias centradas para C | `test_profile_jacobian_matches_actual_residual` |
+| absolute, soft_penalty/nnls_hard independientes | Datos y penalización exterior | Perfil analítico; diferencias centradas para C | `test_profile_jacobian_matches_actual_residual` |
+| Grupos, pesos por punto, soft_bound, delta, suavidad o rango deficiente | Datos en legacy; datos y regularización en absolute | Diferencias centradas del residuo real | `test_general_profile_residual_matches_existing_objective` |
+
+Los modos `legacy` y `absolute` difieren en el objetivo exterior: solo el
+segundo añade penalización de ε y suavidad. Esa diferencia preexistente no se
+modifica. Cada Jacobiano centrado requiere 2p+1 evaluaciones del residuo para
+p parámetros, frente a una evaluación del problema interior y 2p+1 cálculos de
+concentraciones en la ruta analítica. Los umbrales LM son ftol=xtol=1e-10,
+gtol=1e-8, máximo 200 iteraciones y amortiguamiento inicial 1e-3; las normas
+son relativas y el gradiente es proyectado.
 
 
 Rama `fix/stable-phase3-optimizers`, base `0634b93`. Estado: etapa 3.0 implementada,
