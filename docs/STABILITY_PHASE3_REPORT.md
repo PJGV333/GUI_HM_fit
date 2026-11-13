@@ -15,9 +15,15 @@
   `tests/test_phase31_spectro_lm.py`; comparación extensa pendiente. Suite:
   602 recogidas, 577 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5
   deseleccionadas, 185.11 s; antes 598 recogidas y 573 aprobadas.
+- 3.1.f: LM optativo en RMN dentro del IRLS anterior, sin cambiar sus pesos.
+  Probado sintéticamente con Powell, límite activo, parámetro fijo,
+  no convergencia y multistart paralelo en `tests/test_phase31_nmr_lm.py`.
+  La comparación de literatura y la decisión sobre defecto siguen pendientes.
+  Suite posterior: 607 recogidas, 582 aprobadas, 0 fallidas, 17 xfail,
+  3 omitidas y 5 deseleccionadas, 186.40 s; antes 602 recogidas y 577 aprobadas.
 - 3.1.c–d: núcleo LM reforzado para cotas iguales, controles inválidos,
   paso que entra desde un límite y agotamiento de iteraciones; sigue pendiente
-  propagar diagnósticos y SE al ajuste RMN. Suite: 598 recogidas,
+  propagar diagnósticos y SE a todas las rutas de análisis adicionales. Suite: 598 recogidas,
   573 aprobadas, 0 fallidas, 17 xfail, 3 omitidas, 5 deseleccionadas,
   191.94 s (antes: 591 recogidas, 566 aprobadas, las demás cifras iguales).
 - 3.2, 3.3 y 3.5 pendientes. 3.4: auditoría del workflow completada;
@@ -33,6 +39,7 @@
 | D-3 | Humo del banco en CI | Añadir subconjunto; conservar suite completa | Conservar suite completa | Ya corre en cada push y no necesita selección adicional | `.github/workflows/tests.yml`, `pytest.ini`, ejecución local del banco 57 aprobadas y 14 xfail en 50.84 s | No hubo cambio de workflow |
 | D-4 | Cota inferior igual a superior en LM | Contabilizar el gradiente de un parámetro inmóvil; excluirlo | Excluirlo del gradiente proyectado | Ningún paso factible puede mover ese parámetro | `test_fixed_bound_is_excluded_from_projected_gradient` | Revertir el cambio en `_gradient` |
 | D-5 | Derivadas del ajuste espectral | Perfil analítico en todas las rutas; perfil analítico solo con hipótesis verificadas y diferencias centradas en las demás | Analítico para columnas independientes; centradas para el resto y sistemas de rango deficiente | No usar una fórmula no validada con regularización acoplada | `tests/test_explicit_lm.py` y `tests/test_phase31_spectro_lm.py` | Seleccionar Powell o revertir la rama `explicit_lm` |
+| D-6 | Jacobiano RMN en IRLS | Derivar la proyección con ridge; diferenciar el residuo real | Diferencias centradas | Reproduce la proyección, máscara y pesos por señal existentes sin suponer un Jacobiano de proyección inexacto | `test_nmr_lm_with_irls_matches_powell`, `test_nmr_lm_parallel_multistart` | Seleccionar Powell |
 
 ### Inventario del residuo y Jacobiano espectral
 

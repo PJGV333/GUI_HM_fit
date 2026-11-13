@@ -12,6 +12,10 @@ All notable user-visible changes. Versions follow the GitHub releases
   configurations without an optimizer. Depending on the start and convergence, LM
   may produce a different optimum; see `tests/test_phase31_spectro_lm.py` and the
   phase 3 report. The absorptivity estimator is unchanged.
+- NMR: `explicit_lm` is an opt-in optimizer inside the existing IRLS cycle; Powell
+  and the current IRLS weighting remain the defaults. Convergence and active-bound
+  uncertainty warnings are reported. Different optimizers may reach different minima;
+  see `tests/test_phase31_nmr_lm.py` and the phase 3 report.
 - Kinetics: automatic initial rate estimates now use the experiment duration and reactant
   concentrations in the data's units; rate constants and Arrhenius A use Log10 by default.
   Existing user entries and saved settings are retained. Initial guesses can change fitted

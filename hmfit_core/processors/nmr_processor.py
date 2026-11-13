@@ -237,6 +237,35 @@ def _build_nmr_solver(algorithm: str, c_t_array, modelo, nas, model_settings):
     raise ValueError(f"Unknown algorithm: {algorithm}")
 
 
+def _run_nmr_lm(solver, pack, start, bounds, dq, d_cols, mask, stoich, weights):
+    """Minimize the same weighted RMS as Powell for one fixed IRLS cycle."""
+    from ..utils.explicit_lm import centered_residual_jacobian, explicit_lm
+
+    evaluations = 0
+    def residual(theta):
+        nonlocal evaluations
+        _raise_if_cancelled()
+        evaluations += 1
+        C = solver.concentraciones(pack(theta))[0]
+        calculated = project_coeffs_block_onp_frac(
+            dq, C, d_cols, mask, stoichiometry=stoich, rcond=1e-10, ridge=1e-8)
+        valid = mask & np.isfinite(calculated)
+        if not np.array_equal(valid, mask) or np.count_nonzero(valid) <= len(theta):
+            raise ValueError("LM requires a stable finite NMR residual mask")
+        residuals = (dq - calculated)[valid]
+        w = np.broadcast_to(np.asarray(weights)[None, :], dq.shape)[valid]
+        result = residuals * np.sqrt(w / residuals.size)
+        if not np.all(np.isfinite(result)):
+            raise ValueError("non-finite NMR residual")
+        return result
+
+    lm = explicit_lm(lambda x: centered_residual_jacobian(residual, x), start, bounds)
+    return optimize.OptimizeResult(
+        x=lm.x, fun=float(np.linalg.norm(lm.fun)), success=lm.success,
+        message=lm.reason, nit=lm.nit, nfev=evaluations,
+        scaled_gradient=lm.scaled_gradient, active_bounds=lm.active_bounds.tolist())
+
+
 def _run_nmr_single_start(payload: dict[str, Any]) -> dict[str, Any]:
     algorithm = str(payload["algorithm"])
     optimizer = str(payload["optimizer"])
@@ -336,7 +365,11 @@ def _run_nmr_single_start(payload: dict[str, Any]) -> dict[str, Any]:
         return True
 
     try:
-        if optimizer == "differential_evolution" and cycle_count == 1:
+        if optimizer == "explicit_lm":
+            opt_res = _run_nmr_lm(solver, _pack, start_free, bounds_free, dq, d_cols,
+                                  mask, stoich_mat, weights_per_signal)
+            objective_state["eval_count"] += opt_res.nfev
+        elif optimizer == "differential_evolution" and cycle_count == 1:
             opt_res = differential_evolution(
                 _eval,
                 bounds_free,
@@ -404,6 +437,9 @@ def _run_nmr_single_start(payload: dict[str, Any]) -> dict[str, Any]:
         "run_full": np.asarray(run_full, dtype=float).ravel().tolist(),
         "success": bool(getattr(opt_res, "success", np.isfinite(run_rms))),
         "message": str(getattr(opt_res, "message", "")),
+        "nit": int(getattr(opt_res, "nit", 0) or 0),
+        "scaled_gradient": getattr(opt_res, "scaled_gradient", None),
+        "active_bounds": getattr(opt_res, "active_bounds", []),
     }
 
 
@@ -688,6 +724,7 @@ def process_nmr_data(
     k_opt_full = p0_full.copy()
     old_best_rms = np.inf
     param_opt_failed = False
+    lm_summary = None
     while cycle_count < MAX_IRLS_CYCLES:
         cycle_count += 1
         _raise_if_cancelled()
@@ -709,6 +746,12 @@ def process_nmr_data(
                     return True
 
                 def _run_optimizer(start_free, seed):
+                    if optimizer == "explicit_lm":
+                        result = _run_nmr_lm(res, pack, start_free, bounds_free, dq, D_cols,
+                                             mask, stoich_mat, weights_per_signal)
+                        iter_state["cnt"] += result.nfev
+                        iter_state["best"] = min(iter_state["best"], result.fun)
+                        return result
                     if optimizer == "differential_evolution" and cycle_count == 1:
                         return differential_evolution(
                             f_m,
@@ -834,6 +877,9 @@ def process_nmr_data(
                                         if np.isfinite(fval) and current_full is not None and fval < best_rms_val:
                                             best_rms_val = fval
                                             best_full_params = current_full
+                                            if optimizer == "explicit_lm":
+                                                lm_summary = dict(run_result)
+                                                iter_state["best"] = min(iter_state["best"], fval)
                                     else:
                                         log_progress(
                                             f"[DEBUG] optimization run {ms_iter+1}/{ms_runs} failed: "
@@ -865,6 +911,10 @@ def process_nmr_data(
                             if np.isfinite(fval) and fval < best_rms_val:
                                 best_rms_val = fval
                                 best_full_params = current_full
+                                if optimizer == "explicit_lm":
+                                    lm_summary = {"success": bool(opt_res.success), "message": str(opt_res.message),
+                                                  "nit": int(opt_res.nit), "scaled_gradient": opt_res.scaled_gradient,
+                                                  "active_bounds": opt_res.active_bounds}
                         except Exception as run_exc:
                             if _is_fit_cancelled(run_exc):
                                 raise
@@ -884,6 +934,10 @@ def process_nmr_data(
                     opt_res = _run_optimizer(k_free0, seed_list[0] if seed_list else None)
                     objective_eval_count_total += int(iter_state.get("cnt", 0))
                     k_opt_full = pack(opt_res.x)
+                    if optimizer == "explicit_lm":
+                        lm_summary = {"success": bool(opt_res.success), "message": str(opt_res.message),
+                                      "nit": int(opt_res.nit), "scaled_gradient": opt_res.scaled_gradient,
+                                      "active_bounds": opt_res.active_bounds}
                 p0_full = k_opt_full
         except Exception as e:
             if _is_fit_cancelled(e):
@@ -986,6 +1040,14 @@ def process_nmr_data(
             covfit_val = np.nan
         SE_log10K_full[fixed_mask] = 0.0
         percK_full[fixed_mask] = 0.0
+        bound_names = []
+        if optimizer == "explicit_lm" and lm_summary is not None:
+            hits = np.asarray(lm_summary.get("active_bounds", []), dtype=bool)
+            if hits.size == free_idx.size:
+                bound_indices = free_idx[hits]
+                SE_log10K_full[bound_indices] = np.nan
+                percK_full[bound_indices] = np.nan
+                bound_names = [f"K{i+1}" for i in bound_indices]
         rms = np.sqrt(np.mean(residuals_vec**2)) if residuals_vec.size > 0 else 0.0
         dq_vec = dq.ravel()
         dq_fit_vec = dq_fit.ravel()
@@ -1008,6 +1070,13 @@ def process_nmr_data(
             lof=lof,
             fixed_mask=fixed_mask,
         )
+        if optimizer == "explicit_lm" and lm_summary is not None:
+            results_text += (f"\n\nLM: success={lm_summary['success']}, reason={lm_summary['message']}, "
+                             f"iterations={lm_summary['nit']}, scaled gradient={lm_summary['scaled_gradient']}")
+            if not lm_summary["success"]:
+                results_text += f"\n\n>>> FIT NOT RELIABLE: {lm_summary['message']}"
+            if bound_names:
+                results_text += "\n\n>>> WARNING: parámetro en el límite; SE no válido: " + ", ".join(bound_names)
         if 'stability_diag' in locals() and stability_diag:
             status = stability_diag.get("status")
             summary = stability_diag.get("diag_summary", "")
@@ -1083,7 +1152,13 @@ def process_nmr_data(
                 ["optimizer", optimizer],
                 ["algorithm", algorithm],
                 ["objective_evaluations", int(objective_eval_count_total)],
-            ],
+            ] + ([
+                ["LM success", lm_summary["success"]],
+                ["LM stop reason", lm_summary["message"]],
+                ["LM iterations", lm_summary["nit"]],
+                ["LM scaled gradient", lm_summary["scaled_gradient"]],
+            ] if optimizer == "explicit_lm" and lm_summary is not None else []),
+            "uncertainty_notes": (["parámetro en el límite: " + ", ".join(bound_names)] if bound_names else []),
             "non_absorbent_species": non_absorbent_species,
             "objective_evaluations": int(objective_eval_count_total),
         }
@@ -1170,6 +1245,7 @@ def process_nmr_data(
             "export_data": export_data,
             "timings": dict(stage_times),
             "objective_evaluations": int(objective_eval_count_total),
+            "optimizer_result": lm_summary if optimizer == "explicit_lm" else None,
             "constants": constants,
             "derived_noncoop": export_data.get("derived_noncoop"),
             "stability_status": stability_diag.get("status") if 'stability_diag' in locals() else None,
