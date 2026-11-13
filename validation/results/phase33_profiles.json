@@ -1,158 +1,344 @@
 {
   "literature_bank": {
-    "profiled_total_s": 47.17042667699981,
-    "top_project_functions": [
-      {
-        "function": "phase33_profiles.py:56:<lambda>",
-        "calls": 1,
-        "self_s": 9.946e-05,
-        "cumulative_s": 47.172539812000004
-      },
-      {
-        "function": "literature_benchmark.py:437:run_all",
-        "calls": 1,
-        "self_s": 0.000461332,
-        "cumulative_s": 47.172440222000006
-      },
-      {
-        "function": "literature_benchmark.py:250:fit_case",
-        "calls": 18,
-        "self_s": 0.000529438,
-        "cumulative_s": 47.165550773
-      },
-      {
-        "function": "api.py:90:run_nmr_fit",
-        "calls": 18,
-        "self_s": 0.00011716800000000001,
-        "cumulative_s": 46.814245897000006
-      },
-      {
-        "function": "run_nmr.py:18:run_nmr",
-        "calls": 18,
-        "self_s": 0.001291494,
-        "cumulative_s": 46.813973271
-      },
-      {
-        "function": "nmr_processor.py:446:process_nmr_data",
-        "calls": 18,
-        "self_s": 0.004759862,
-        "cumulative_s": 46.812053664000004
-      },
-      {
-        "function": "nmr_processor.py:754:_run_optimizer",
-        "calls": 28,
-        "self_s": 0.00010854,
-        "cumulative_s": 41.001576539000006
-      },
-      {
-        "function": "nmr_processor.py:691:f_m",
-        "calls": 5407,
-        "self_s": 0.068252766,
-        "cumulative_s": 40.918875064000005
-      },
-      {
-        "function": "nr_conc.py:331:concentraciones",
-        "calls": 5498,
-        "self_s": 0.303766927,
-        "cumulative_s": 40.187552782000004
-      },
-      {
-        "function": "nr_conc.py:169:_solve_single_nr",
-        "calls": 216473,
-        "self_s": 7.755548203000001,
-        "cumulative_s": 39.850034116
-      },
-      {
-        "function": "nr_conc.py:206:eval_state",
-        "calls": 1341039,
-        "self_s": 4.921075473,
-        "cumulative_s": 7.619939127
-      },
-      {
-        "function": "nr_conc.py:222:fill_jacobian",
-        "calls": 1122380,
-        "self_s": 3.9013070630000004,
-        "cumulative_s": 6.103600965
+    "before": {
+      "profiled_total_s": 46.11490494800001,
+      "top_project_functions": [
+        {
+          "function": "phase33_profiles.py:69:literature",
+          "calls": 1,
+          "self_s": 3.1975000000000005e-05,
+          "cumulative_s": 46.117000992
+        },
+        {
+          "function": "literature_benchmark.py:437:run_all",
+          "calls": 1,
+          "self_s": 0.00045481300000000004,
+          "cumulative_s": 46.116965073
+        },
+        {
+          "function": "literature_benchmark.py:250:fit_case",
+          "calls": 18,
+          "self_s": 0.0005217560000000001,
+          "cumulative_s": 46.109934636000006
+        },
+        {
+          "function": "api.py:90:run_nmr_fit",
+          "calls": 18,
+          "self_s": 0.000116169,
+          "cumulative_s": 45.761181266
+        },
+        {
+          "function": "run_nmr.py:18:run_nmr",
+          "calls": 18,
+          "self_s": 0.001304777,
+          "cumulative_s": 45.760900972
+        },
+        {
+          "function": "nmr_processor.py:446:process_nmr_data",
+          "calls": 18,
+          "self_s": 0.004730038000000001,
+          "cumulative_s": 45.758965344
+        },
+        {
+          "function": "nmr_processor.py:754:_run_optimizer",
+          "calls": 28,
+          "self_s": 0.000108702,
+          "cumulative_s": 39.968539828000004
+        },
+        {
+          "function": "nmr_processor.py:691:f_m",
+          "calls": 5407,
+          "self_s": 0.06625233500000001,
+          "cumulative_s": 39.887555307
+        },
+        {
+          "function": "nr_conc.py:331:concentraciones",
+          "calls": 5498,
+          "self_s": 0.298096238,
+          "cumulative_s": 39.162936809
+        },
+        {
+          "function": "nr_conc.py:169:_solve_single_nr",
+          "calls": 216473,
+          "self_s": 7.501884303000001,
+          "cumulative_s": 38.83165205
+        },
+        {
+          "function": "nr_conc.py:206:eval_state",
+          "calls": 1341039,
+          "self_s": 4.690211764000001,
+          "cumulative_s": 7.27003688
+        },
+        {
+          "function": "nr_conc.py:222:fill_jacobian",
+          "calls": 1122380,
+          "self_s": 3.882993378,
+          "cumulative_s": 5.985032148
+        }
+      ],
+      "result": {
+        "case_count": 10,
+        "estimates": {
+          "r09a-p2-058": [
+            7.173709719109068,
+            3.596861415561381,
+            4.060430460716096,
+            0.1,
+            6.238710668132484,
+            9.512709144239286
+          ],
+          "r09a-p2-106": [
+            7.191402871534845,
+            3.6073411285167483,
+            4.093718144500294,
+            0.1,
+            6.1245838619474435,
+            9.533483957780364
+          ],
+          "r09a-qx-dil": [
+            4.057872733896361
+          ],
+          "r09a-r1-11-3n": [
+            2.5699170013012393
+          ],
+          "r09a-r1-11-me": [
+            2.5699767069322523
+          ],
+          "r09a-r1-3sp": [
+            6.177782678803984,
+            2.942434460972247,
+            4.112002849087163
+          ],
+          "r09a-r1-5sp": [
+            6.12249652362623,
+            2.9463323146467153,
+            0.7669856968136972,
+            4.486327088235461,
+            4.090532742468367
+          ],
+          "r09b-b-qx": [
+            4.766751509705757,
+            1.373318281763353,
+            4.0897
+          ],
+          "r09b-d-qx": null,
+          "r09b-r-qx": [
+            6.12249652362623,
+            2.9463323146467153,
+            0.7669856968136972,
+            4.486327088235461,
+            4.090532742468367
+          ]
+        }
       }
-    ],
-    "result": {
-      "case_count": 10
+    },
+    "after": {
+      "profiled_total_s": 46.244629550999946,
+      "top_project_functions": [
+        {
+          "function": "phase33_profiles.py:69:literature",
+          "calls": 1,
+          "self_s": 3.0771e-05,
+          "cumulative_s": 46.24634315
+        },
+        {
+          "function": "literature_benchmark.py:437:run_all",
+          "calls": 1,
+          "self_s": 0.000509861,
+          "cumulative_s": 46.246308634
+        },
+        {
+          "function": "literature_benchmark.py:250:fit_case",
+          "calls": 18,
+          "self_s": 0.000517601,
+          "cumulative_s": 46.240115306
+        },
+        {
+          "function": "api.py:90:run_nmr_fit",
+          "calls": 18,
+          "self_s": 0.000116891,
+          "cumulative_s": 45.992326946000006
+        },
+        {
+          "function": "run_nmr.py:18:run_nmr",
+          "calls": 18,
+          "self_s": 0.001309564,
+          "cumulative_s": 45.992043755000005
+        },
+        {
+          "function": "nmr_processor.py:446:process_nmr_data",
+          "calls": 18,
+          "self_s": 0.0046449840000000004,
+          "cumulative_s": 45.990129255
+        },
+        {
+          "function": "nmr_processor.py:754:_run_optimizer",
+          "calls": 28,
+          "self_s": 0.000101481,
+          "cumulative_s": 40.202892983000005
+        },
+        {
+          "function": "nmr_processor.py:691:f_m",
+          "calls": 5407,
+          "self_s": 0.06588084000000001,
+          "cumulative_s": 40.122658932
+        },
+        {
+          "function": "nr_conc.py:331:concentraciones",
+          "calls": 5498,
+          "self_s": 0.29891716700000004,
+          "cumulative_s": 39.398764805
+        },
+        {
+          "function": "nr_conc.py:169:_solve_single_nr",
+          "calls": 216473,
+          "self_s": 7.576389011000001,
+          "cumulative_s": 39.066603107000006
+        },
+        {
+          "function": "nr_conc.py:206:eval_state",
+          "calls": 1341039,
+          "self_s": 4.703839115,
+          "cumulative_s": 7.297157698
+        },
+        {
+          "function": "nr_conc.py:222:fill_jacobian",
+          "calls": 1122380,
+          "self_s": 3.863959506,
+          "cumulative_s": 5.971498136
+        }
+      ],
+      "result": {
+        "case_count": 10,
+        "estimates": {
+          "r09a-p2-058": [
+            7.173709719109068,
+            3.596861415561381,
+            4.060430460716096,
+            0.1,
+            6.238710668132484,
+            9.512709144239286
+          ],
+          "r09a-p2-106": [
+            7.191402871534845,
+            3.6073411285167483,
+            4.093718144500294,
+            0.1,
+            6.1245838619474435,
+            9.533483957780364
+          ],
+          "r09a-qx-dil": [
+            4.057872733896361
+          ],
+          "r09a-r1-11-3n": [
+            2.5699170013012393
+          ],
+          "r09a-r1-11-me": [
+            2.5699767069322523
+          ],
+          "r09a-r1-3sp": [
+            6.177782678803984,
+            2.942434460972247,
+            4.112002849087163
+          ],
+          "r09a-r1-5sp": [
+            6.12249652362623,
+            2.9463323146467153,
+            0.7669856968136972,
+            4.486327088235461,
+            4.090532742468367
+          ],
+          "r09b-b-qx": [
+            4.766751509705757,
+            1.373318281763353,
+            4.0897
+          ],
+          "r09b-d-qx": null,
+          "r09b-r-qx": [
+            6.12249652362623,
+            2.9463323146467153,
+            0.7669856968136972,
+            4.486327088235461,
+            4.090532742468367
+          ]
+        }
+      }
     }
   },
   "bootstrap_potentiometry_before": {
-    "profiled_total_s": 0.5058769760000001,
+    "profiled_total_s": 0.5022370319999997,
     "top_project_functions": [
       {
-        "function": "phase33_profiles.py:71:<lambda>",
+        "function": "phase33_profiles.py:89:<lambda>",
         "calls": 1,
-        "self_s": 2.8850000000000003e-06,
-        "cumulative_s": 0.505899915
+        "self_s": 2.425e-06,
+        "cumulative_s": 0.502254447
       },
       {
-        "function": "phase33_profiles.py:42:_boot",
+        "function": "phase33_profiles.py:55:_boot",
         "calls": 1,
-        "self_s": 9.777000000000001e-06,
-        "cumulative_s": 0.5058970300000001
+        "self_s": 8.877e-06,
+        "cumulative_s": 0.5022520220000001
       },
       {
         "function": "errors.py:1455:bootstrap_full_refit",
         "calls": 1,
-        "self_s": 4.0527e-05,
-        "cumulative_s": 0.505886841
+        "self_s": 3.8884e-05,
+        "cumulative_s": 0.502242735
       },
       {
-        "function": "phase33_profiles.py:64:refit_pot",
+        "function": "phase33_profiles.py:82:refit_pot",
         "calls": 1,
-        "self_s": 7.886e-06,
-        "cumulative_s": 0.505461149
+        "self_s": 7.2050000000000005e-06,
+        "cumulative_s": 0.5018349470000001
       },
       {
         "function": "potentiometry.py:516:fit_potentiometry",
         "calls": 1,
-        "self_s": 1.5319e-05,
-        "cumulative_s": 0.505437463
+        "self_s": 1.6623e-05,
+        "cumulative_s": 0.501811522
       },
       {
         "function": "potentiometry.py:572:residual",
         "calls": 17,
-        "self_s": 1.8505e-05,
-        "cumulative_s": 0.5027689390000001
+        "self_s": 1.5882e-05,
+        "cumulative_s": 0.49926306000000004
       },
       {
         "function": "potentiometry.py:474:potentiometry_residuals",
         "calls": 17,
-        "self_s": 0.000143883,
-        "cumulative_s": 0.5027504340000001
+        "self_s": 0.00012888,
+        "cumulative_s": 0.499247178
       },
       {
         "function": "potentiometry.py:279:_simulate_pH_titration_reference",
         "calls": 17,
-        "self_s": 0.001276646,
-        "cumulative_s": 0.501553168
+        "self_s": 0.0012635300000000001,
+        "cumulative_s": 0.498105699
       },
       {
         "function": "potentiometry.py:227:solve_pH_for_totals",
         "calls": 1020,
-        "self_s": 0.003338792,
-        "cumulative_s": 0.499459107
+        "self_s": 0.003236947,
+        "cumulative_s": 0.496044258
       },
       {
         "function": "potentiometry.py:239:f",
         "calls": 16562,
-        "self_s": 0.004573505,
-        "cumulative_s": 0.47817926400000005
+        "self_s": 0.004568629,
+        "cumulative_s": 0.47520279400000004
       },
       {
         "function": "potentiometry.py:209:charge_balance_at_pH",
         "calls": 16562,
-        "self_s": 0.039474145,
-        "cumulative_s": 0.473605759
+        "self_s": 0.039730658,
+        "cumulative_s": 0.47063416500000005
       },
       {
         "function": "acid_base.py:144:distribution_fractions_from_pH",
         "calls": 16562,
-        "self_s": 0.125685713,
-        "cumulative_s": 0.348255091
+        "self_s": 0.12495703100000001,
+        "cumulative_s": 0.34527966000000004
       }
     ],
     "result": {
@@ -167,79 +353,79 @@
     }
   },
   "bootstrap_potentiometry_after": {
-    "profiled_total_s": 0.04109829100000005,
+    "profiled_total_s": 0.03986671299999997,
     "top_project_functions": [
       {
-        "function": "phase33_profiles.py:71:<lambda>",
+        "function": "phase33_profiles.py:89:<lambda>",
         "calls": 1,
-        "self_s": 1.4220000000000001e-06,
-        "cumulative_s": 0.041116373000000005
+        "self_s": 1.653e-06,
+        "cumulative_s": 0.039883073000000005
       },
       {
-        "function": "phase33_profiles.py:42:_boot",
+        "function": "phase33_profiles.py:55:_boot",
         "calls": 1,
-        "self_s": 3.5280000000000004e-06,
-        "cumulative_s": 0.041114951000000004
+        "self_s": 3.406e-06,
+        "cumulative_s": 0.03988142
       },
       {
         "function": "errors.py:1455:bootstrap_full_refit",
         "calls": 1,
-        "self_s": 4.61e-05,
-        "cumulative_s": 0.041110953000000006
+        "self_s": 4.6835e-05,
+        "cumulative_s": 0.039877572
       },
       {
-        "function": "phase33_profiles.py:64:refit_pot",
+        "function": "phase33_profiles.py:82:refit_pot",
         "calls": 1,
-        "self_s": 3.5960000000000004e-06,
-        "cumulative_s": 0.040759672000000004
+        "self_s": 3.6170000000000003e-06,
+        "cumulative_s": 0.039507857
       },
       {
         "function": "potentiometry.py:516:fit_potentiometry",
         "calls": 1,
-        "self_s": 8.978000000000001e-06,
-        "cumulative_s": 0.040745986000000005
+        "self_s": 9.498000000000001e-06,
+        "cumulative_s": 0.039494812000000004
       },
       {
         "function": "potentiometry.py:572:residual",
         "calls": 17,
-        "self_s": 2.0125e-05,
-        "cumulative_s": 0.038780503
+        "self_s": 2.1913000000000002e-05,
+        "cumulative_s": 0.037461102
       },
       {
         "function": "potentiometry.py:474:potentiometry_residuals",
         "calls": 17,
-        "self_s": 0.000128768,
-        "cumulative_s": 0.038760378000000005
+        "self_s": 0.00013089000000000002,
+        "cumulative_s": 0.037439189000000005
       },
       {
         "function": "potentiometry.py:304:simulate_pH_titration",
         "calls": 17,
-        "self_s": 0.014626464,
-        "cumulative_s": 0.037636872
+        "self_s": 0.013894105,
+        "cumulative_s": 0.036305284
       },
       {
         "function": "potentiometry.py:338:balance",
         "calls": 926,
-        "self_s": 0.013204968000000001,
-        "cumulative_s": 0.019016246
+        "self_s": 0.012532155000000001,
+        "cumulative_s": 0.018369099
       },
       {
         "function": "acid_base.py:436:update_system_from_parameter_vector",
         "calls": 18,
-        "self_s": 0.00010420500000000001,
-        "cumulative_s": 0.000782996
+        "self_s": 0.000104166,
+        "cumulative_s": 0.0007852200000000001
       },
       {
         "function": "acid_base.py:716:_build_fit_result",
         "calls": 1,
-        "self_s": 2.1708000000000003e-05,
-        "cumulative_s": 0.00041374900000000004
+        "self_s": 2.3695000000000003e-05,
+        "cumulative_s": 0.000473714
       },
       {
         "function": "potentiometry.py:126:_component_totals_for_experiment",
         "calls": 17,
-        "self_s": 5.0972000000000006e-05,
-        "cumulative_s": 0.000339737
+        "self_s": 4.8779e-05,
+        "cumulative_s": 0.00033625200000000005
       }
     ],
     "result": {
@@ -254,436 +440,879 @@
     }
   },
   "bootstrap_acid_base_nmr": {
-    "profiled_total_s": 0.005161288000000004,
-    "top_project_functions": [
-      {
-        "function": "phase33_profiles.py:82:<lambda>",
-        "calls": 1,
-        "self_s": 1.4730000000000001e-06,
-        "cumulative_s": 0.0051603790000000005
-      },
-      {
-        "function": "phase33_profiles.py:42:_boot",
-        "calls": 1,
-        "self_s": 2.635e-06,
-        "cumulative_s": 0.005158906
-      },
-      {
-        "function": "errors.py:1455:bootstrap_full_refit",
-        "calls": 1,
-        "self_s": 2.718e-05,
-        "cumulative_s": 0.00515584
-      },
-      {
-        "function": "phase33_profiles.py:79:refit_ab",
-        "calls": 1,
-        "self_s": 6.934e-06,
-        "cumulative_s": 0.004854496000000001
-      },
-      {
-        "function": "acid_base.py:901:fit_nmr_acid_base",
-        "calls": 1,
-        "self_s": 1.5529e-05,
-        "cumulative_s": 0.00484649
-      },
-      {
-        "function": "acid_base.py:801:_least_squares_with_fixed",
-        "calls": 1,
-        "self_s": 2.2404e-05,
-        "cumulative_s": 0.0041021090000000005
-      },
-      {
-        "function": "acid_base.py:912:residual",
-        "calls": 19,
-        "self_s": 1.9260000000000002e-05,
-        "cumulative_s": 0.002717749
-      },
-      {
-        "function": "acid_base.py:657:nmr_acid_base_residuals",
-        "calls": 19,
-        "self_s": 5.0769e-05,
-        "cumulative_s": 0.002698489
-      },
-      {
-        "function": "acid_base.py:836:<lambda>",
-        "calls": 18,
-        "self_s": 9.824000000000001e-06,
-        "cumulative_s": 0.002610161
-      },
-      {
-        "function": "acid_base.py:625:predict_nmr_acid_base",
-        "calls": 20,
-        "self_s": 9.510600000000001e-05,
-        "cumulative_s": 0.001961853
-      },
-      {
-        "function": "acid_base.py:532:_linear_observable_prediction",
-        "calls": 20,
-        "self_s": 0.00037290500000000004,
-        "cumulative_s": 0.0010827270000000001
-      },
-      {
-        "function": "acid_base.py:436:update_system_from_parameter_vector",
-        "calls": 19,
-        "self_s": 9.950700000000001e-05,
-        "cumulative_s": 0.000768255
-      }
-    ],
-    "result": {
-      "n_success": 1,
-      "n_fail": 0,
-      "samples": [
-        [
-          6.993356879122286,
-          3.998928073791251
+    "before": {
+      "profiled_total_s": 0.005170010000000003,
+      "top_project_functions": [
+        {
+          "function": "phase33_profiles.py:100:<lambda>",
+          "calls": 1,
+          "self_s": 1.4730000000000001e-06,
+          "cumulative_s": 0.005167392000000001
+        },
+        {
+          "function": "phase33_profiles.py:55:_boot",
+          "calls": 1,
+          "self_s": 2.796e-06,
+          "cumulative_s": 0.005165919000000001
+        },
+        {
+          "function": "errors.py:1455:bootstrap_full_refit",
+          "calls": 1,
+          "self_s": 2.6851e-05,
+          "cumulative_s": 0.005162723
+        },
+        {
+          "function": "phase33_profiles.py:97:refit_ab",
+          "calls": 1,
+          "self_s": 7.034000000000001e-06,
+          "cumulative_s": 0.004860556
+        },
+        {
+          "function": "acid_base.py:901:fit_nmr_acid_base",
+          "calls": 1,
+          "self_s": 1.4048000000000002e-05,
+          "cumulative_s": 0.004852601000000001
+        },
+        {
+          "function": "acid_base.py:801:_least_squares_with_fixed",
+          "calls": 1,
+          "self_s": 2.1732e-05,
+          "cumulative_s": 0.00411859
+        },
+        {
+          "function": "acid_base.py:912:residual",
+          "calls": 19,
+          "self_s": 1.7454000000000003e-05,
+          "cumulative_s": 0.002738837
+        },
+        {
+          "function": "acid_base.py:657:nmr_acid_base_residuals",
+          "calls": 19,
+          "self_s": 4.8960000000000006e-05,
+          "cumulative_s": 0.002721383
+        },
+        {
+          "function": "acid_base.py:836:<lambda>",
+          "calls": 18,
+          "self_s": 9.837000000000001e-06,
+          "cumulative_s": 0.0026308910000000002
+        },
+        {
+          "function": "acid_base.py:625:predict_nmr_acid_base",
+          "calls": 20,
+          "self_s": 0.00010097,
+          "cumulative_s": 0.00198004
+        },
+        {
+          "function": "acid_base.py:532:_linear_observable_prediction",
+          "calls": 20,
+          "self_s": 0.00036953,
+          "cumulative_s": 0.0010818350000000002
+        },
+        {
+          "function": "acid_base.py:436:update_system_from_parameter_vector",
+          "calls": 19,
+          "self_s": 0.00010212100000000001,
+          "cumulative_s": 0.0007765630000000001
+        }
+      ],
+      "result": {
+        "n_success": 1,
+        "n_fail": 0,
+        "samples": [
+          [
+            6.993356879122286,
+            3.998928073791251
+          ]
         ]
-      ]
+      }
+    },
+    "after": {
+      "profiled_total_s": 0.005216003000000003,
+      "top_project_functions": [
+        {
+          "function": "phase33_profiles.py:100:<lambda>",
+          "calls": 1,
+          "self_s": 1.292e-06,
+          "cumulative_s": 0.005213639
+        },
+        {
+          "function": "phase33_profiles.py:55:_boot",
+          "calls": 1,
+          "self_s": 2.826e-06,
+          "cumulative_s": 0.005212347
+        },
+        {
+          "function": "errors.py:1455:bootstrap_full_refit",
+          "calls": 1,
+          "self_s": 3.0402e-05,
+          "cumulative_s": 0.005209081
+        },
+        {
+          "function": "phase33_profiles.py:97:refit_ab",
+          "calls": 1,
+          "self_s": 4.288e-06,
+          "cumulative_s": 0.00489962
+        },
+        {
+          "function": "acid_base.py:901:fit_nmr_acid_base",
+          "calls": 1,
+          "self_s": 9.029000000000001e-06,
+          "cumulative_s": 0.004894911
+        },
+        {
+          "function": "acid_base.py:801:_least_squares_with_fixed",
+          "calls": 1,
+          "self_s": 2.0901000000000002e-05,
+          "cumulative_s": 0.004181099000000001
+        },
+        {
+          "function": "acid_base.py:912:residual",
+          "calls": 19,
+          "self_s": 2.0067000000000003e-05,
+          "cumulative_s": 0.002712267
+        },
+        {
+          "function": "acid_base.py:657:nmr_acid_base_residuals",
+          "calls": 19,
+          "self_s": 4.8811000000000004e-05,
+          "cumulative_s": 0.0026922
+        },
+        {
+          "function": "acid_base.py:836:<lambda>",
+          "calls": 18,
+          "self_s": 1.0817e-05,
+          "cumulative_s": 0.002606091
+        },
+        {
+          "function": "acid_base.py:625:predict_nmr_acid_base",
+          "calls": 20,
+          "self_s": 9.2156e-05,
+          "cumulative_s": 0.0019371590000000001
+        },
+        {
+          "function": "acid_base.py:532:_linear_observable_prediction",
+          "calls": 20,
+          "self_s": 0.000366163,
+          "cumulative_s": 0.001054356
+        },
+        {
+          "function": "acid_base.py:436:update_system_from_parameter_vector",
+          "calls": 19,
+          "self_s": 0.00010200600000000001,
+          "cumulative_s": 0.0007875730000000001
+        }
+      ],
+      "result": {
+        "n_success": 1,
+        "n_fail": 0,
+        "samples": [
+          [
+            6.993356879122286,
+            3.998928073791251
+          ]
+        ]
+      }
     }
   },
   "bootstrap_acid_base_spectroscopy": {
-    "profiled_total_s": 0.006308817999999998,
-    "top_project_functions": [
-      {
-        "function": "phase33_profiles.py:91:<lambda>",
-        "calls": 1,
-        "self_s": 1.223e-06,
-        "cumulative_s": 0.006307138
-      },
-      {
-        "function": "phase33_profiles.py:42:_boot",
-        "calls": 1,
-        "self_s": 2.7150000000000003e-06,
-        "cumulative_s": 0.0063059150000000005
-      },
-      {
-        "function": "errors.py:1455:bootstrap_full_refit",
-        "calls": 1,
-        "self_s": 2.7563e-05,
-        "cumulative_s": 0.0063027890000000005
-      },
-      {
-        "function": "phase33_profiles.py:87:refit_ab_spec",
-        "calls": 1,
-        "self_s": 5.8410000000000005e-06,
-        "cumulative_s": 0.006002897
-      },
-      {
-        "function": "acid_base.py:867:fit_spectroscopy_acid_base",
-        "calls": 1,
-        "self_s": 9.309e-06,
-        "cumulative_s": 0.005996144
-      },
-      {
-        "function": "acid_base.py:801:_least_squares_with_fixed",
-        "calls": 1,
-        "self_s": 2.2362e-05,
-        "cumulative_s": 0.005078843
-      },
-      {
-        "function": "acid_base.py:878:residual",
-        "calls": 18,
-        "self_s": 1.7968e-05,
-        "cumulative_s": 0.0037390130000000002
-      },
-      {
-        "function": "acid_base.py:609:spectroscopy_acid_base_residuals",
-        "calls": 18,
-        "self_s": 4.8911e-05,
-        "cumulative_s": 0.003721045
-      },
-      {
-        "function": "acid_base.py:836:<lambda>",
-        "calls": 17,
-        "self_s": 9.984000000000001e-06,
-        "cumulative_s": 0.003563652
-      },
-      {
-        "function": "acid_base.py:580:predict_spectroscopy_acid_base",
-        "calls": 19,
-        "self_s": 7.6934e-05,
-        "cumulative_s": 0.003064724
-      },
-      {
-        "function": "acid_base.py:532:_linear_observable_prediction",
-        "calls": 19,
-        "self_s": 0.000814481,
-        "cumulative_s": 0.002227629
-      },
-      {
-        "function": "acid_base.py:436:update_system_from_parameter_vector",
-        "calls": 18,
-        "self_s": 9.704100000000001e-05,
-        "cumulative_s": 0.000751455
-      }
-    ],
-    "result": {
-      "n_success": 1,
-      "n_fail": 0,
-      "samples": [
-        [
-          6.997111229602003,
-          4.002839901838304
+    "before": {
+      "profiled_total_s": 0.006194435999999998,
+      "top_project_functions": [
+        {
+          "function": "phase33_profiles.py:109:<lambda>",
+          "calls": 1,
+          "self_s": 1.153e-06,
+          "cumulative_s": 0.006191536
+        },
+        {
+          "function": "phase33_profiles.py:55:_boot",
+          "calls": 1,
+          "self_s": 2.855e-06,
+          "cumulative_s": 0.006190383000000001
+        },
+        {
+          "function": "errors.py:1455:bootstrap_full_refit",
+          "calls": 1,
+          "self_s": 2.6942e-05,
+          "cumulative_s": 0.006187107000000001
+        },
+        {
+          "function": "phase33_profiles.py:105:refit_ab_spec",
+          "calls": 1,
+          "self_s": 5.822e-06,
+          "cumulative_s": 0.005887196000000001
+        },
+        {
+          "function": "acid_base.py:867:fit_spectroscopy_acid_base",
+          "calls": 1,
+          "self_s": 9.788e-06,
+          "cumulative_s": 0.005880272000000001
+        },
+        {
+          "function": "acid_base.py:801:_least_squares_with_fixed",
+          "calls": 1,
+          "self_s": 1.9135000000000002e-05,
+          "cumulative_s": 0.004989412
+        },
+        {
+          "function": "acid_base.py:878:residual",
+          "calls": 18,
+          "self_s": 1.6398e-05,
+          "cumulative_s": 0.003675952
+        },
+        {
+          "function": "acid_base.py:609:spectroscopy_acid_base_residuals",
+          "calls": 18,
+          "self_s": 4.6405e-05,
+          "cumulative_s": 0.003659554
+        },
+        {
+          "function": "acid_base.py:836:<lambda>",
+          "calls": 17,
+          "self_s": 9.459e-06,
+          "cumulative_s": 0.003505283
+        },
+        {
+          "function": "acid_base.py:580:predict_spectroscopy_acid_base",
+          "calls": 19,
+          "self_s": 7.4134e-05,
+          "cumulative_s": 0.003021026
+        },
+        {
+          "function": "acid_base.py:532:_linear_observable_prediction",
+          "calls": 19,
+          "self_s": 0.0007754340000000001,
+          "cumulative_s": 0.0021898
+        },
+        {
+          "function": "acid_base.py:436:update_system_from_parameter_vector",
+          "calls": 18,
+          "self_s": 9.626e-05,
+          "cumulative_s": 0.0007353570000000001
+        }
+      ],
+      "result": {
+        "n_success": 1,
+        "n_fail": 0,
+        "samples": [
+          [
+            6.997111229602003,
+            4.002839901838304
+          ]
         ]
-      ]
+      }
+    },
+    "after": {
+      "profiled_total_s": 0.006178751000000001,
+      "top_project_functions": [
+        {
+          "function": "phase33_profiles.py:109:<lambda>",
+          "calls": 1,
+          "self_s": 1.182e-06,
+          "cumulative_s": 0.006175715
+        },
+        {
+          "function": "phase33_profiles.py:55:_boot",
+          "calls": 1,
+          "self_s": 2.865e-06,
+          "cumulative_s": 0.006174533
+        },
+        {
+          "function": "errors.py:1455:bootstrap_full_refit",
+          "calls": 1,
+          "self_s": 2.9866000000000002e-05,
+          "cumulative_s": 0.006171287
+        },
+        {
+          "function": "phase33_profiles.py:105:refit_ab_spec",
+          "calls": 1,
+          "self_s": 3.356e-06,
+          "cumulative_s": 0.005834214000000001
+        },
+        {
+          "function": "acid_base.py:867:fit_spectroscopy_acid_base",
+          "calls": 1,
+          "self_s": 9.409000000000001e-06,
+          "cumulative_s": 0.0058303370000000005
+        },
+        {
+          "function": "acid_base.py:801:_least_squares_with_fixed",
+          "calls": 1,
+          "self_s": 1.9067000000000002e-05,
+          "cumulative_s": 0.004951279
+        },
+        {
+          "function": "acid_base.py:878:residual",
+          "calls": 18,
+          "self_s": 1.5939e-05,
+          "cumulative_s": 0.0036353360000000003
+        },
+        {
+          "function": "acid_base.py:609:spectroscopy_acid_base_residuals",
+          "calls": 18,
+          "self_s": 4.3985e-05,
+          "cumulative_s": 0.0036193970000000003
+        },
+        {
+          "function": "acid_base.py:836:<lambda>",
+          "calls": 17,
+          "self_s": 9.824000000000001e-06,
+          "cumulative_s": 0.0034679510000000004
+        },
+        {
+          "function": "acid_base.py:580:predict_spectroscopy_acid_base",
+          "calls": 19,
+          "self_s": 6.98e-05,
+          "cumulative_s": 0.0029840530000000004
+        },
+        {
+          "function": "acid_base.py:532:_linear_observable_prediction",
+          "calls": 19,
+          "self_s": 0.000770788,
+          "cumulative_s": 0.002166002
+        },
+        {
+          "function": "acid_base.py:436:update_system_from_parameter_vector",
+          "calls": 18,
+          "self_s": 9.6147e-05,
+          "cumulative_s": 0.0007340900000000001
+        }
+      ],
+      "result": {
+        "n_success": 1,
+        "n_fail": 0,
+        "samples": [
+          [
+            6.997111229602003,
+            4.002839901838304
+          ]
+        ]
+      }
     }
   },
   "bootstrap_kinetics": {
-    "profiled_total_s": 0.2091304200000002,
-    "top_project_functions": [
-      {
-        "function": "phase33_profiles.py:104:<lambda>",
-        "calls": 1,
-        "self_s": 1.3830000000000001e-06,
-        "cumulative_s": 0.20912511
-      },
-      {
-        "function": "phase33_profiles.py:42:_boot",
-        "calls": 1,
-        "self_s": 3.3860000000000003e-06,
-        "cumulative_s": 0.209123727
-      },
-      {
-        "function": "errors.py:1455:bootstrap_full_refit",
-        "calls": 1,
-        "self_s": 2.6110000000000002e-05,
-        "cumulative_s": 0.20911987
-      },
-      {
-        "function": "phase33_profiles.py:100:refit_kin",
-        "calls": 1,
-        "self_s": 1.4016000000000001e-05,
-        "cumulative_s": 0.208816411
-      },
-      {
-        "function": "optimizer.py:360:fit_global",
-        "calls": 1,
-        "self_s": 8.565100000000001e-05,
-        "cumulative_s": 0.208796644
-      },
-      {
-        "function": "kinetics_model.py:76:solve_concentrations",
-        "calls": 16,
-        "self_s": 7.6692e-05,
-        "cumulative_s": 0.20600331300000002
-      },
-      {
-        "function": "optimizer.py:133:scaled_least_squares",
-        "calls": 1,
-        "self_s": 1.1079e-05,
-        "cumulative_s": 0.1948369
-      },
-      {
-        "function": "optimizer.py:147:fun",
-        "calls": 15,
-        "self_s": 2.7472e-05,
-        "cumulative_s": 0.19352856400000001
-      },
-      {
-        "function": "optimizer.py:413:<lambda>",
-        "calls": 15,
-        "self_s": 1.6501e-05,
-        "cumulative_s": 0.19349891700000002
-      },
-      {
-        "function": "objective.py:48:residuals",
-        "calls": 15,
-        "self_s": 8.3946e-05,
-        "cumulative_s": 0.19346749700000002
-      },
-      {
-        "function": "kinetics_model.py:101:<lambda>",
-        "calls": 4652,
-        "self_s": 0.0015096390000000001,
-        "cumulative_s": 0.019861144
-      },
-      {
-        "function": "kinetics_model.py:46:rhs",
-        "calls": 4652,
-        "self_s": 0.010712395000000001,
-        "cumulative_s": 0.018351505
-      }
-    ],
-    "result": {
-      "n_success": 1,
-      "n_fail": 0,
-      "samples": [
-        [
-          1.3268077476300093,
-          0.4429596989221721
+    "before": {
+      "profiled_total_s": 0.20525294600000002,
+      "top_project_functions": [
+        {
+          "function": "phase33_profiles.py:122:<lambda>",
+          "calls": 1,
+          "self_s": 1.4730000000000001e-06,
+          "cumulative_s": 0.205247817
+        },
+        {
+          "function": "phase33_profiles.py:55:_boot",
+          "calls": 1,
+          "self_s": 3.507e-06,
+          "cumulative_s": 0.20524634400000002
+        },
+        {
+          "function": "errors.py:1455:bootstrap_full_refit",
+          "calls": 1,
+          "self_s": 2.9235e-05,
+          "cumulative_s": 0.20524239600000002
+        },
+        {
+          "function": "phase33_profiles.py:118:refit_kin",
+          "calls": 1,
+          "self_s": 1.4328e-05,
+          "cumulative_s": 0.20492622300000002
+        },
+        {
+          "function": "optimizer.py:360:fit_global",
+          "calls": 1,
+          "self_s": 8.327200000000001e-05,
+          "cumulative_s": 0.20490582400000001
+        },
+        {
+          "function": "kinetics_model.py:76:solve_concentrations",
+          "calls": 16,
+          "self_s": 7.3792e-05,
+          "cumulative_s": 0.202117561
+        },
+        {
+          "function": "optimizer.py:133:scaled_least_squares",
+          "calls": 1,
+          "self_s": 1.026e-05,
+          "cumulative_s": 0.191221519
+        },
+        {
+          "function": "optimizer.py:147:fun",
+          "calls": 15,
+          "self_s": 2.7222e-05,
+          "cumulative_s": 0.18989402500000002
+        },
+        {
+          "function": "optimizer.py:413:<lambda>",
+          "calls": 15,
+          "self_s": 1.7471000000000003e-05,
+          "cumulative_s": 0.18986455000000002
+        },
+        {
+          "function": "objective.py:48:residuals",
+          "calls": 15,
+          "self_s": 7.9294e-05,
+          "cumulative_s": 0.18983235
+        },
+        {
+          "function": "kinetics_model.py:101:<lambda>",
+          "calls": 4652,
+          "self_s": 0.001483425,
+          "cumulative_s": 0.019585584
+        },
+        {
+          "function": "kinetics_model.py:46:rhs",
+          "calls": 4652,
+          "self_s": 0.010452496,
+          "cumulative_s": 0.018102159
+        }
+      ],
+      "result": {
+        "n_success": 1,
+        "n_fail": 0,
+        "samples": [
+          [
+            1.3268077476300093,
+            0.4429596989221721
+          ]
         ]
-      ]
+      }
+    },
+    "after": {
+      "profiled_total_s": 0.2023411099999999,
+      "top_project_functions": [
+        {
+          "function": "phase33_profiles.py:122:<lambda>",
+          "calls": 1,
+          "self_s": 1.333e-06,
+          "cumulative_s": 0.20233436700000001
+        },
+        {
+          "function": "phase33_profiles.py:55:_boot",
+          "calls": 1,
+          "self_s": 3.1450000000000004e-06,
+          "cumulative_s": 0.20233303400000002
+        },
+        {
+          "function": "errors.py:1455:bootstrap_full_refit",
+          "calls": 1,
+          "self_s": 2.9967000000000003e-05,
+          "cumulative_s": 0.202329438
+        },
+        {
+          "function": "phase33_profiles.py:118:refit_kin",
+          "calls": 1,
+          "self_s": 7.575e-06,
+          "cumulative_s": 0.202020518
+        },
+        {
+          "function": "optimizer.py:360:fit_global",
+          "calls": 1,
+          "self_s": 6.5076e-05,
+          "cumulative_s": 0.202009386
+        },
+        {
+          "function": "kinetics_model.py:76:solve_concentrations",
+          "calls": 16,
+          "self_s": 6.6689e-05,
+          "cumulative_s": 0.199603306
+        },
+        {
+          "function": "optimizer.py:133:scaled_least_squares",
+          "calls": 1,
+          "self_s": 1.06e-05,
+          "cumulative_s": 0.188841006
+        },
+        {
+          "function": "optimizer.py:147:fun",
+          "calls": 15,
+          "self_s": 2.5897000000000003e-05,
+          "cumulative_s": 0.18756424100000002
+        },
+        {
+          "function": "optimizer.py:413:<lambda>",
+          "calls": 15,
+          "self_s": 1.4510000000000002e-05,
+          "cumulative_s": 0.18753629800000002
+        },
+        {
+          "function": "objective.py:48:residuals",
+          "calls": 15,
+          "self_s": 7.1807e-05,
+          "cumulative_s": 0.18750728
+        },
+        {
+          "function": "kinetics_model.py:101:<lambda>",
+          "calls": 4652,
+          "self_s": 0.0014227760000000002,
+          "cumulative_s": 0.019302179000000003
+        },
+        {
+          "function": "kinetics_model.py:46:rhs",
+          "calls": 4652,
+          "self_s": 0.010388351,
+          "cumulative_s": 0.017879403000000002
+        }
+      ],
+      "result": {
+        "n_success": 1,
+        "n_fail": 0,
+        "samples": [
+          [
+            1.3268077476300093,
+            0.4429596989221721
+          ]
+        ]
+      }
     }
   },
   "bootstrap_spectroscopy": {
-    "profiled_total_s": 0.1458404610000003,
-    "top_project_functions": [
-      {
-        "function": "phase33_profiles.py:126:<lambda>",
-        "calls": 1,
-        "self_s": 1.884e-06,
-        "cumulative_s": 0.145840948
-      },
-      {
-        "function": "phase33_profiles.py:42:_boot",
-        "calls": 1,
-        "self_s": 1.0591e-05,
-        "cumulative_s": 0.14583906400000002
-      },
-      {
-        "function": "errors.py:1455:bootstrap_full_refit",
-        "calls": 1,
-        "self_s": 6.4745e-05,
-        "cumulative_s": 0.145828053
-      },
-      {
-        "function": "phase33_profiles.py:117:refit_spec",
-        "calls": 1,
-        "self_s": 1.6744e-05,
-        "cumulative_s": 0.144126215
-      },
-      {
-        "function": "run_spectroscopy.py:18:run_spectroscopy",
-        "calls": 1,
-        "self_s": 7.595800000000001e-05,
-        "cumulative_s": 0.131822502
-      },
-      {
-        "function": "spectroscopy_processor.py:1657:process_spectroscopy_data",
-        "calls": 1,
-        "self_s": 0.000531318,
-        "cumulative_s": 0.13173462500000002
-      },
-      {
-        "function": "spectroscopy_processor.py:1403:_run_spectro_single_start",
-        "calls": 1,
-        "self_s": 1.9277000000000002e-05,
-        "cumulative_s": 0.10344051300000001
-      },
-      {
-        "function": "spectroscopy_processor.py:1441:f_m",
-        "calls": 60,
-        "self_s": 5.7607000000000006e-05,
-        "cumulative_s": 0.102217235
-      },
-      {
-        "function": "spectroscopy_processor.py:1258:_evaluate_spectro_objective",
-        "calls": 60,
-        "self_s": 0.000520533,
-        "cumulative_s": 0.102159628
-      },
-      {
-        "function": "nr_conc.py:331:concentraciones",
-        "calls": 58,
-        "self_s": 0.0009690940000000001,
-        "cumulative_s": 0.079628715
-      },
-      {
-        "function": "nr_conc.py:169:_solve_single_nr",
-        "calls": 580,
-        "self_s": 0.015721094,
-        "cumulative_s": 0.078336794
-      },
-      {
-        "function": "spectroscopy_processor.py:872:_solve_spectral_model",
-        "calls": 57,
-        "self_s": 0.00022861200000000003,
-        "cumulative_s": 0.028164474000000002
-      }
-    ],
-    "result": {
-      "n_success": 1,
-      "n_fail": 0,
-      "samples": [
-        [
-          3.0074674402568724
+    "before": {
+      "profiled_total_s": 0.1423581779999999,
+      "top_project_functions": [
+        {
+          "function": "phase33_profiles.py:144:<lambda>",
+          "calls": 1,
+          "self_s": 2.015e-06,
+          "cumulative_s": 0.14235651500000002
+        },
+        {
+          "function": "phase33_profiles.py:55:_boot",
+          "calls": 1,
+          "self_s": 1.2472e-05,
+          "cumulative_s": 0.14235450000000002
+        },
+        {
+          "function": "errors.py:1455:bootstrap_full_refit",
+          "calls": 1,
+          "self_s": 6.6766e-05,
+          "cumulative_s": 0.142341626
+        },
+        {
+          "function": "phase33_profiles.py:135:refit_spec",
+          "calls": 1,
+          "self_s": 1.5431000000000002e-05,
+          "cumulative_s": 0.140637424
+        },
+        {
+          "function": "run_spectroscopy.py:18:run_spectroscopy",
+          "calls": 1,
+          "self_s": 7.8331e-05,
+          "cumulative_s": 0.128753093
+        },
+        {
+          "function": "spectroscopy_processor.py:1657:process_spectroscopy_data",
+          "calls": 1,
+          "self_s": 0.000523424,
+          "cumulative_s": 0.128663623
+        },
+        {
+          "function": "spectroscopy_processor.py:1403:_run_spectro_single_start",
+          "calls": 1,
+          "self_s": 1.8184e-05,
+          "cumulative_s": 0.10008346100000001
+        },
+        {
+          "function": "spectroscopy_processor.py:1441:f_m",
+          "calls": 60,
+          "self_s": 5.7813000000000004e-05,
+          "cumulative_s": 0.098865461
+        },
+        {
+          "function": "spectroscopy_processor.py:1258:_evaluate_spectro_objective",
+          "calls": 60,
+          "self_s": 0.000513249,
+          "cumulative_s": 0.09880764800000001
+        },
+        {
+          "function": "nr_conc.py:331:concentraciones",
+          "calls": 58,
+          "self_s": 0.000954307,
+          "cumulative_s": 0.07687925100000001
+        },
+        {
+          "function": "nr_conc.py:169:_solve_single_nr",
+          "calls": 580,
+          "self_s": 0.015226340000000001,
+          "cumulative_s": 0.07560820700000001
+        },
+        {
+          "function": "spectroscopy_processor.py:872:_solve_spectral_model",
+          "calls": 57,
+          "self_s": 0.00022057400000000002,
+          "cumulative_s": 0.02739841
+        }
+      ],
+      "result": {
+        "n_success": 1,
+        "n_fail": 0,
+        "samples": [
+          [
+            3.0074674402568724
+          ]
         ]
-      ]
+      }
+    },
+    "after": {
+      "profiled_total_s": 0.14086948500000018,
+      "top_project_functions": [
+        {
+          "function": "phase33_profiles.py:144:<lambda>",
+          "calls": 1,
+          "self_s": 1.903e-06,
+          "cumulative_s": 0.14086800300000002
+        },
+        {
+          "function": "phase33_profiles.py:55:_boot",
+          "calls": 1,
+          "self_s": 1.0379e-05,
+          "cumulative_s": 0.14086610000000002
+        },
+        {
+          "function": "errors.py:1455:bootstrap_full_refit",
+          "calls": 1,
+          "self_s": 7.2401e-05,
+          "cumulative_s": 0.14085529000000002
+        },
+        {
+          "function": "phase33_profiles.py:135:refit_spec",
+          "calls": 1,
+          "self_s": 1.1223e-05,
+          "cumulative_s": 0.13931485000000002
+        },
+        {
+          "function": "run_spectroscopy.py:18:run_spectroscopy",
+          "calls": 1,
+          "self_s": 4.2832000000000006e-05,
+          "cumulative_s": 0.12772576300000002
+        },
+        {
+          "function": "spectroscopy_processor.py:1657:process_spectroscopy_data",
+          "calls": 1,
+          "self_s": 0.00044465000000000005,
+          "cumulative_s": 0.12767229100000002
+        },
+        {
+          "function": "spectroscopy_processor.py:1403:_run_spectro_single_start",
+          "calls": 1,
+          "self_s": 1.6775e-05,
+          "cumulative_s": 0.100274335
+        },
+        {
+          "function": "spectroscopy_processor.py:1441:f_m",
+          "calls": 60,
+          "self_s": 7.443e-05,
+          "cumulative_s": 0.099115883
+        },
+        {
+          "function": "spectroscopy_processor.py:1258:_evaluate_spectro_objective",
+          "calls": 60,
+          "self_s": 0.00049892,
+          "cumulative_s": 0.099041453
+        },
+        {
+          "function": "nr_conc.py:331:concentraciones",
+          "calls": 58,
+          "self_s": 0.000921206,
+          "cumulative_s": 0.076898118
+        },
+        {
+          "function": "nr_conc.py:169:_solve_single_nr",
+          "calls": 580,
+          "self_s": 0.015212938,
+          "cumulative_s": 0.07566462800000001
+        },
+        {
+          "function": "spectroscopy_processor.py:872:_solve_spectral_model",
+          "calls": 57,
+          "self_s": 0.00022783000000000002,
+          "cumulative_s": 0.02746991
+        }
+      ],
+      "result": {
+        "n_success": 1,
+        "n_fail": 0,
+        "samples": [
+          [
+            3.0074674402568724
+          ]
+        ]
+      }
     }
   },
   "bootstrap_nmr": {
-    "profiled_total_s": 0.46643767000000047,
-    "top_project_functions": [
-      {
-        "function": "phase33_profiles.py:146:<lambda>",
-        "calls": 1,
-        "self_s": 2.384e-06,
-        "cumulative_s": 0.46651137000000004
-      },
-      {
-        "function": "phase33_profiles.py:42:_boot",
-        "calls": 1,
-        "self_s": 1.2845000000000002e-05,
-        "cumulative_s": 0.466508986
-      },
-      {
-        "function": "errors.py:1455:bootstrap_full_refit",
-        "calls": 1,
-        "self_s": 4.6066e-05,
-        "cumulative_s": 0.46649564000000004
-      },
-      {
-        "function": "phase33_profiles.py:137:refit_nmr",
-        "calls": 1,
-        "self_s": 7.947e-06,
-        "cumulative_s": 0.46529114200000005
-      },
-      {
-        "function": "api.py:90:run_nmr_fit",
-        "calls": 1,
-        "self_s": 5.39e-06,
-        "cumulative_s": 0.459440695
-      },
-      {
-        "function": "run_nmr.py:18:run_nmr",
-        "calls": 1,
-        "self_s": 5.7941000000000006e-05,
-        "cumulative_s": 0.45942750000000004
-      },
-      {
-        "function": "nmr_processor.py:446:process_nmr_data",
-        "calls": 1,
-        "self_s": 0.00026446200000000003,
-        "cumulative_s": 0.459363658
-      },
-      {
-        "function": "nmr_processor.py:754:_run_optimizer",
-        "calls": 4,
-        "self_s": 6.292e-06,
-        "cumulative_s": 0.18740524600000003
-      },
-      {
-        "function": "nmr_processor.py:691:f_m",
-        "calls": 104,
-        "self_s": 0.001111149,
-        "cumulative_s": 0.185460113
-      },
-      {
-        "function": "nr_conc.py:331:concentraciones",
-        "calls": 110,
-        "self_s": 0.002149453,
-        "cumulative_s": 0.184412881
-      },
-      {
-        "function": "nr_conc.py:169:_solve_single_nr",
-        "calls": 1320,
-        "self_s": 0.036161464000000004,
-        "cumulative_s": 0.18082081800000002
-      },
-      {
-        "function": "spectroscopy_processor.py:958:generate_figure_base64",
-        "calls": 2,
-        "self_s": 4.3854000000000004e-05,
-        "cumulative_s": 0.16228013400000002
-      }
-    ],
-    "result": {
-      "n_success": 1,
-      "n_fail": 0,
-      "samples": [
-        [
-          3.0232042521163556
+    "before": {
+      "profiled_total_s": 0.4603132579999996,
+      "top_project_functions": [
+        {
+          "function": "phase33_profiles.py:164:<lambda>",
+          "calls": 1,
+          "self_s": 1.8730000000000001e-06,
+          "cumulative_s": 0.46038840900000005
+        },
+        {
+          "function": "phase33_profiles.py:55:_boot",
+          "calls": 1,
+          "self_s": 1.1541e-05,
+          "cumulative_s": 0.460386536
+        },
+        {
+          "function": "errors.py:1455:bootstrap_full_refit",
+          "calls": 1,
+          "self_s": 4.3544e-05,
+          "cumulative_s": 0.46037458400000003
+        },
+        {
+          "function": "phase33_profiles.py:155:refit_nmr",
+          "calls": 1,
+          "self_s": 8.317e-06,
+          "cumulative_s": 0.45917376200000004
+        },
+        {
+          "function": "api.py:90:run_nmr_fit",
+          "calls": 1,
+          "self_s": 5.4910000000000005e-06,
+          "cumulative_s": 0.453351761
+        },
+        {
+          "function": "run_nmr.py:18:run_nmr",
+          "calls": 1,
+          "self_s": 5.7783000000000006e-05,
+          "cumulative_s": 0.45333966800000003
+        },
+        {
+          "function": "nmr_processor.py:446:process_nmr_data",
+          "calls": 1,
+          "self_s": 0.000262406,
+          "cumulative_s": 0.453275866
+        },
+        {
+          "function": "nmr_processor.py:754:_run_optimizer",
+          "calls": 4,
+          "self_s": 6.7720000000000006e-06,
+          "cumulative_s": 0.182771612
+        },
+        {
+          "function": "nmr_processor.py:691:f_m",
+          "calls": 104,
+          "self_s": 0.0010880100000000001,
+          "cumulative_s": 0.18086749600000002
+        },
+        {
+          "function": "nr_conc.py:331:concentraciones",
+          "calls": 110,
+          "self_s": 0.00215125,
+          "cumulative_s": 0.179527913
+        },
+        {
+          "function": "nr_conc.py:169:_solve_single_nr",
+          "calls": 1320,
+          "self_s": 0.03507976,
+          "cumulative_s": 0.175988423
+        },
+        {
+          "function": "spectroscopy_processor.py:958:generate_figure_base64",
+          "calls": 2,
+          "self_s": 4.4178e-05,
+          "cumulative_s": 0.16458561700000002
+        }
+      ],
+      "result": {
+        "n_success": 1,
+        "n_fail": 0,
+        "samples": [
+          [
+            3.0232042521163556
+          ]
         ]
-      ]
+      }
+    },
+    "after": {
+      "profiled_total_s": 0.4613061879999997,
+      "top_project_functions": [
+        {
+          "function": "phase33_profiles.py:164:<lambda>",
+          "calls": 1,
+          "self_s": 1.9540000000000003e-06,
+          "cumulative_s": 0.46137794800000004
+        },
+        {
+          "function": "phase33_profiles.py:55:_boot",
+          "calls": 1,
+          "self_s": 1.2052e-05,
+          "cumulative_s": 0.461375994
+        },
+        {
+          "function": "errors.py:1455:bootstrap_full_refit",
+          "calls": 1,
+          "self_s": 6.1327e-05,
+          "cumulative_s": 0.461363501
+        },
+        {
+          "function": "phase33_profiles.py:155:refit_nmr",
+          "calls": 1,
+          "self_s": 7.554000000000001e-06,
+          "cumulative_s": 0.460133212
+        },
+        {
+          "function": "api.py:90:run_nmr_fit",
+          "calls": 1,
+          "self_s": 5.4910000000000005e-06,
+          "cumulative_s": 0.45428499200000005
+        },
+        {
+          "function": "run_nmr.py:18:run_nmr",
+          "calls": 1,
+          "self_s": 5.6628e-05,
+          "cumulative_s": 0.454271325
+        },
+        {
+          "function": "nmr_processor.py:446:process_nmr_data",
+          "calls": 1,
+          "self_s": 0.000264069,
+          "cumulative_s": 0.45420817500000005
+        },
+        {
+          "function": "nmr_processor.py:754:_run_optimizer",
+          "calls": 4,
+          "self_s": 6.622e-06,
+          "cumulative_s": 0.183832868
+        },
+        {
+          "function": "nmr_processor.py:691:f_m",
+          "calls": 104,
+          "self_s": 0.001098856,
+          "cumulative_s": 0.18189074000000002
+        },
+        {
+          "function": "nr_conc.py:331:concentraciones",
+          "calls": 110,
+          "self_s": 0.002237274,
+          "cumulative_s": 0.18092070700000001
+        },
+        {
+          "function": "nr_conc.py:169:_solve_single_nr",
+          "calls": 1320,
+          "self_s": 0.035425554000000005,
+          "cumulative_s": 0.177254181
+        },
+        {
+          "function": "spectroscopy_processor.py:958:generate_figure_base64",
+          "calls": 2,
+          "self_s": 4.2579e-05,
+          "cumulative_s": 0.16398499
+        }
+      ],
+      "result": {
+        "n_success": 1,
+        "n_fail": 0,
+        "samples": [
+          [
+            3.0232042521163556
+          ]
+        ]
+      }
     }
   }
 }

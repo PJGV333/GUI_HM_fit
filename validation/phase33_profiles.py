@@ -39,6 +39,19 @@ def profile(fn):
             'result': result}
 
 
+def paired(fn):
+    """Profile identical workload with scalar and vector potentiometry paths."""
+    current = pot.simulate_pH_titration
+    try:
+        pot.simulate_pH_titration = pot._simulate_pH_titration_reference
+        before = profile(fn)
+        pot.simulate_pH_titration = current
+        after = profile(fn)
+    finally:
+        pot.simulate_pH_titration = current
+    return {'before': before, 'after': after}
+
+
 def _boot(make_data, refit, initial):
     out = bootstrap_full_refit(initial, make_data, refit, 1, seed=20261113)
     return {'n_success': int(out['n_success']), 'n_fail': int(out['n_fail']),
@@ -53,7 +66,12 @@ def run():
     from hmfit.kinetics.model.kinetics_model import KineticsModel
 
     results = {}
-    results['literature_bank'] = profile(lambda: {'case_count': len(lit.run_all()['cases'])})
+    def literature():
+        cases = lit.run_all()['cases']
+        return {'case_count': len(cases), 'estimates': {
+            key: value.get('fit', {}).get('log_beta') for key, value in cases.items()
+        }}
+    results['literature_bank'] = paired(literature)
     system = make_simple_acid_base_system(analytical_concentration=.01, pka=[7., 4.], base_charge=-2)
     volumes = np.linspace(0, 35., 60)
     exp = pot.PotentiometryExperiment(initial_volume=10., titrant_volumes=volumes,
@@ -79,7 +97,7 @@ def run():
     def refit_ab(data, theta, **kwargs):
         fit = fit_nmr_acid_base(NMRAcidBaseDataset(pH=ph, shifts=data[:, None], nuclei_labels=['H1']), system, initial_pka=theta)
         return fit.theta_hat, fit.success, {}
-    results['bootstrap_acid_base_nmr'] = profile(lambda: _boot(make_ab, refit_ab, [6.5, 4.5]))
+    results['bootstrap_acid_base_nmr'] = paired(lambda: _boot(make_ab, refit_ab, [6.5, 4.5]))
     fractions = distribution_fractions_from_pH(ph, pka_to_log_beta([7., 4.]))
     signals = fractions @ np.array([[.1, .3, .7], [.6, .8, .4], [1., .5, .2]])
     signal_noise = np.random.default_rng(3).normal(0, .002, signals.shape)
@@ -88,7 +106,7 @@ def run():
         dataset = SpectroscopicAcidBaseDataset(pH=ph, signal=data)
         fit = fit_spectroscopy_acid_base(dataset, system, initial_pka=theta)
         return fit.theta_hat, fit.success, {}
-    results['bootstrap_acid_base_spectroscopy'] = profile(lambda: _boot(make_ab_spec, refit_ab_spec, [6.5, 4.5]))
+    results['bootstrap_acid_base_spectroscopy'] = paired(lambda: _boot(make_ab_spec, refit_ab_spec, [6.5, 4.5]))
 
     model = KineticsModel(parse_mechanism(pc.FIRST_ORDER))
     t = np.linspace(0, 4, 40)
@@ -101,7 +119,7 @@ def run():
         obj = GlobalKineticsObjective(model, [KineticsDataset(t=t, y0=y0, D=data)], param_names=['k1', 'k2'])
         fit = fit_global(obj, theta, bounds=(0., np.inf))
         return np.array([fit.params['k1'], fit.params['k2']]), fit.result.success, {}
-    results['bootstrap_kinetics'] = profile(lambda: _boot(make_kin, refit_kin, [1., .5]))
+    results['bootstrap_kinetics'] = paired(lambda: _boot(make_kin, refit_kin, [1., .5]))
 
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -123,7 +141,7 @@ def run():
             cfg['render_graphs'] = False
             out = run_spectroscopy(cfg)
             return out['export_data']['k'], out['optimizer_result']['success'], {}
-        results['bootstrap_spectroscopy'] = profile(lambda: _boot(make_spec, refit_spec, [2.5]))
+        results['bootstrap_spectroscopy'] = paired(lambda: _boot(make_spec, refit_spec, [2.5]))
 
         _nmr_phase1(truepath, model11, [3.], noise=0.)
         _nmr_phase1(noisypath, model11, [3.])
@@ -143,7 +161,7 @@ def run():
                    'model_settings': 'Free', 'initial_k': theta.tolist(), 'bounds': [{'min': 0., 'max': 8.}]}
             out = run_nmr_fit(cfg, progress_cb=lambda _: None)
             return out['export_data']['k'], out['optimizer_result']['success'], {}
-        results['bootstrap_nmr'] = profile(lambda: _boot(make_nmr, refit_nmr, [2.5]))
+        results['bootstrap_nmr'] = paired(lambda: _boot(make_nmr, refit_nmr, [2.5]))
     return results
 
 

@@ -1,6 +1,8 @@
-# HM fit — Fase 3: informe intermedio
+# HM fit — Fase 3: informe de cierre
 
 ## Estado de avance
+
+ESTADO: FASE 3 COMPLETA
 
 - 3.0 aprobada por el autor. 3.1: núcleo LM y Jacobiano espectral independiente
   en `4647f58`, posteriormente integrados; Powell sigue por defecto. Suite
@@ -43,17 +45,17 @@
   comparaciones extremas y full-refit sintético añadidas. Suite: 621 recogidas,
   596 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas,
   172.50 s; antes 610 recogidas y 585 aprobadas. Banco y una réplica de
-  bootstrap full-refit por técnica perfilados; resultados más abajo. 3.5 pendiente.
-  3.4: auditoría del workflow completada;
-  no requiere cambio de CI, pues la suite completa ya incluye el banco.
-  Este documento es provisional; no constituye validación de la fase completa.
+  bootstrap full-refit por técnica perfilados; resultados más abajo.
+- 3.4: auditoría del workflow completada; la suite completa incluye el banco.
+- 3.5: informe consolidado, cuestiones abiertas y decisiones documentadas;
+  cierre técnico sujeto a revisión del autor, no a una validación clínica.
 
 ## Decisiones del agente
 
 | N.º | Contexto | Alternativas | Elección | Justificación | Evidencia | Cómo revertirla |
 |---|---|---|---|---|---|---|
 | D-1 | Objetivo espectral | Añadir penalización a legacy; respetar el objetivo de Powell | Respetar cada modo | No cambiar estimador | `_spectral_profile_objective`; `test_general_profile_residual_matches_existing_objective` | Retirar el constructor de residuo, sin cambiar Powell |
-| D-2 | Jacobiano para modos generales | Fórmula analítica supuesta; diferencias centradas del residuo real | Diferencias centradas con paso relativo | Evita aplicar fórmulas no verificadas a modos acoplados | `centered_residual_jacobian`; prueba sintética con grupos, pesos, cotas y suavidad | Retirar la función auxiliar; no está integrada |
+| D-2 | Jacobiano para modos generales | Fórmula analítica supuesta; diferencias centradas del residuo real | Diferencias centradas con paso relativo | Evita aplicar fórmulas no verificadas a modos acoplados | `centered_residual_jacobian`; prueba sintética con grupos, pesos, cotas y suavidad | Seleccionar Powell o revertir la ruta LM |
 | D-3 | Humo del banco en CI | Añadir subconjunto; conservar suite completa | Conservar suite completa | Ya corre en cada push y no necesita selección adicional | `.github/workflows/tests.yml`, `pytest.ini`, ejecución local del banco 57 aprobadas y 14 xfail en 50.84 s | No hubo cambio de workflow |
 | D-4 | Cota inferior igual a superior en LM | Contabilizar el gradiente de un parámetro inmóvil; excluirlo | Excluirlo del gradiente proyectado | Ningún paso factible puede mover ese parámetro | `test_fixed_bound_is_excluded_from_projected_gradient` | Revertir el cambio en `_gradient` |
 | D-5 | Derivadas del ajuste espectral | Perfil analítico en todas las rutas; perfil analítico solo con hipótesis verificadas y diferencias centradas en las demás | Analítico para columnas independientes; centradas para el resto y sistemas de rango deficiente | No usar una fórmula no validada con regularización acoplada | `tests/test_explicit_lm.py` y `tests/test_phase31_spectro_lm.py` | Seleccionar Powell o revertir la rama `explicit_lm` |
@@ -83,8 +85,9 @@ gtol=1e-8, máximo 200 iteraciones y amortiguamiento inicial 1e-3; las normas
 son relativas y el gradiente es proyectado.
 
 
-Rama `fix/stable-phase3-optimizers`, base `0634b93`. Estado: etapa 3.0 implementada,
-probada con datos sintéticos y pendiente de revisión del autor; no validada con datos publicados.
+Rama `fix/stable-phase3-optimizers`, base `0634b93`. La etapa 3.0 fue aprobada
+por el autor; sus cambios se probaron con datos sintéticos y no se validaron con
+referencias publicadas. Este informe integra y sustituye el informe provisional 3.1.
 
 ## Entorno y línea base
 
@@ -115,6 +118,24 @@ recolectadas, 545 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionada
 5 deseleccionadas (361.46 s); 9 pruebas del núcleo aprobadas también con importaciones Qt
 bloqueadas.
 
+## Evidencia y pruebas por etapa
+
+Las cifras son de la suite principal, con `QT_QPA_PLATFORM=offscreen`,
+`OPENBLAS_NUM_THREADS=1` y `OMP_NUM_THREADS=1`; `slow` queda deseleccionado
+por `pytest.ini`. Recogidas incluye deseleccionadas.
+
+| Etapa | Recogidas | Aprobadas | Fallidas | xfail | Omitidas | Deseleccionadas |
+|---|---:|---:|---:|---:|---:|---:|
+| Base 3.0, antes de 3.1 | 572 | 547 | 0 | 17 | 3 | 5 |
+| Núcleo LM/Jacobiano inicial | 581 | 556 | 0 | 17 | 3 | 5 |
+| Residuo general | 591 | 566 | 0 | 17 | 3 | 5 |
+| LM y límites | 598 | 573 | 0 | 17 | 3 | 5 |
+| Espectroscopía | 602 | 577 | 0 | 17 | 3 | 5 |
+| RMN y comparación | 607 | 582 | 0 | 17 | 3 | 5 |
+| Pesos RMN | 610 | 585 | 0 | 17 | 3 | 5 |
+| Potenciometría vectorizada y perfiles | 621 | 596 | 0 | 17 | 3 | 5 |
+| Refits y SE en límites | 625 | 600 | 0 | 17 | 3 | 5 |
+
 ## Problemas y estado
 
 | Etiqueta | Problema | Estado y evidencia |
@@ -127,6 +148,11 @@ bloqueadas.
 | [Limitación metodológica] | Valores iniciales de cinética y escala | Propuesta automática y Log10 por defecto para k y A de Arrhenius; se conservan las celdas y escalas del usuario. Implementado y probado con datos sintéticos, no validado con datos publicados. |
 | [Defecto comprobado] | Eyring aplicaba kBT/h sin convertir unidades de tiempo o concentración | Corregido en Eyring para unidades reconocidas; pruebas de equivalencia y de factores de unidad en `tests/test_phase3_auto_rates.py`. |
 | [Limitación metodológica] | Presentación de resultados de potenciometría | Informe y hoja `Fit_summary`: cada pKa con equilibrio y SE analítico o `fixed`, RMS en unidades de señal, N y g.l., autocorrelación y avisos; estadísticos adicionales separados. Probado con pH y mV sintéticos; no validado con datos publicados. |
+| [Limitación metodológica] | LM puede converger a SSQ mayor o agotar iteraciones | Implementado y probado con datos sintéticos; evaluado en banco publicado pero no supera los criterios para defecto. Powell se conserva. Tabla 3.1.g. |
+| [Limitación metodológica] | Pesos unitarios e IRLS producen estimaciones distintas | Selector implementado y probado con datos sintéticos; comparado con HypNMR publicado en tabla 3.2, sin cambiar el defecto IRLS. |
+| [Limitación metodológica] | El solver escalar de pH limita el rendimiento | Vectorizado con respaldo; implementado y probado frente a Brent en casos sintéticos, sin validación con datos publicados. 8.96× en una réplica de bootstrap, no 10×. |
+| [Defecto comprobado] | Máscara de Errors RMN y comportamiento inmutable al importar JAX | Reproducidos y documentados; no corregidos por la restricción del autor y por no incorporar JAX al entorno principal. |
+| [Sospecha] | Corte de rango JAX en precisión simple | Riesgo identificado, aún no validado en matrices mal condicionadas ni con datos publicados. |
 
 ## Comparación 3.1.g (cinco ejecuciones)
 
@@ -140,7 +166,8 @@ JSON conserva además SSQ con los pesos usados en el último ciclo de cada méto
 como IRLS puede producir pesos diferentes, comparar esas SSQ ponderadas entre
 métodos no equivale a comparar un único objetivo con pesos fijos. Los valores
 individuales de log β se muestran en el orden del modelo, separados por `/`;
-la pareja es Powell ; LM. Éxito e iteraciones también están en ese orden.
+la pareja es Powell ; LM. Éxito e iteraciones también están en ese orden;
+en RMN corresponden al último ciclo IRLS, no a la suma de todos los ciclos.
 Los únicos casos publicados que Powell reproduce en todas las constantes dentro
 de la tolerancia L2 del banco son `r09a-r1-11-me` y `r09b-b-qx` (y Powell
 reporta éxito); en ambos Δ máximo < 1e-4. El segundo criterio falla en los
@@ -248,15 +275,19 @@ acumulados y se solapan: no deben sumarse.
 
 | Carga | Antes (s perfilados) | Después (s perfilados) | Punto caliente observado | Cambio |
 |---|---:|---:|---|---|
-| Banco de literatura (10 casos) | No medido | 47.17 | Newton-Raphson concentraciones 40.19 s | Sin cambio del solver |
-| Bootstrap potenciometría | 0.506 | 0.041 | balance escalar 0.474 s → vectorial 0.019 s | Newton vectorizado; misma semilla |
-| Bootstrap ácido-base RMN | No medido | 0.0052 | predicción 0.0020 s | Sin cambio |
-| Bootstrap ácido-base espectral | No medido | 0.0063 | predicción 0.0031 s | Sin cambio |
-| Bootstrap cinética | No medido | 0.209 | integración 0.206 s | Sin cambio |
-| Bootstrap espectroscopia | No medido | 0.146 | concentraciones 0.0796 s | Sin cambio |
-| Bootstrap RMN | No medido | 0.466 | concentraciones 0.184 s; render 0.162 s | Sin cambio |
+| Banco de literatura (10 casos) | 46.115 | 46.245 | Newton-Raphson concentraciones 39.40 s | Sin cambio del solver |
+| Bootstrap potenciometría | 0.502 | 0.040 | balance escalar 0.471 s → vectorial 0.0184 s | Newton vectorizado; misma semilla |
+| Bootstrap ácido-base RMN | 0.0052 | 0.0052 | predicción 0.0019 s | Sin cambio |
+| Bootstrap ácido-base espectral | 0.0062 | 0.0062 | predicción 0.0030 s | Sin cambio |
+| Bootstrap cinética | 0.2053 | 0.2023 | integración | Sin cambio |
+| Bootstrap espectroscopia | 0.1424 | 0.1409 | concentraciones 0.0769 s | Sin cambio |
+| Bootstrap RMN | 0.4603 | 0.4613 | concentraciones 0.181 s; render 0.164 s | Sin cambio |
 
-No se inventan tiempos anteriores para rutas que no se modificaron. Se deja
+Antes y después son ejecuciones emparejadas del mismo código actual, cambiando
+únicamente el resolvedor de pH entre referencia escalar y vectorizado; las
+rutas no potenciométricas no se modificaron y sus muestras/estimaciones fueron
+idénticas a precisión completa. Los tiempos individuales perfilados reflejan
+ruido de medición, no una optimización de esas rutas. Se deja
 el solver Newton-Raphson compartido sin optimizar: aunque es un cuello medido,
 no se ha demostrado una alternativa con la equivalencia numérica exigida.
 Igualmente no se altera el render ni el integrador de cinética en esta etapa.
@@ -340,13 +371,33 @@ volumen de titulante, normal al comenzar, no el volumen inicial de la celda; no 
 La diferencia de terminología `fixed`
 frente a `const` en otros módulos queda para la Fase 4.
 
+## Pendientes de 3.0 respondidos
+
+1. **Estancamiento k1 = k2:** no se reprodujo en el caso consecutivo probado;
+   el arranque igual convergió a (0.0040568, 0.0493764). El factor 3 se adoptó
+   por la decisión explícita del autor, no como corrección universal demostrada.
+2. **Cinco fallos JAX:** reproducidos en entorno aislado con versiones NumPy y
+   SciPy idénticas, debidos a arrays JAX inmutables al importar el backend; véase
+   el diagnóstico controlado en Evidencia de JAX.
+3. **Estadísticas JAX:** SSQ, RMS, residuos del optimizador, Jacobiano y
+   covarianza/errores proceden del objetivo JAX minimizado. Las curvas y el
+   diagnóstico de autocorrelación se generan con SciPy; el recuento de
+   parámetros lineales para grados de libertad también usa la matriz SciPy.
+
 ## Cambios esperados en resultados
 
 El commit `3caecff` mezcla la función nueva de valores iniciales y la corrección de unidades
 Eyring; son cambios independientes, separados a continuación para su revisión.
 
-- Potenciometría: presentación y exportación de resumen cambian; no cambia el ajuste ni los
-  errores numéricos. El RMS se calcula en unidades de señal, deshaciendo la división por σ.
+- Potenciometría: presentación y exportación de resumen cambian. El solver de pH
+  vectorizado puede producir diferencias de redondeo; en el full-refit probado
+  el desplazamiento fue < 1e-3·SE. El RMS se calcula en unidades de señal,
+  deshaciendo la división por σ.
+- LM es optativo y puede conducir a otros mínimos, en particular en las tres
+  regresiones soft-bound; Powell sigue por defecto. SE de parámetros en límites
+  activos se marcan indefinidos al elegir LM.
+- RMN con pesos unitarios optativos puede cambiar log β y SE; al faltar la
+  clave de configuración se conserva IRLS.
 - Arranques automáticos y Log10 pueden cambiar mínimos o convergencia respecto a los valores
   anteriores; parámetros y escala escritos por el usuario o cargados no se sustituyen.
 - Eyring con unidades reconocidas distintas de s y M cambia constantes numéricas y valores
@@ -385,6 +436,8 @@ El CI del resolvedor vectorizado `2571a66` también terminó en verde:
 <https://github.com/PJGV333/GUI_HM_fit/actions/runs/43466430821>.
 El CI de los perfiles `c4fd734` terminó en verde:
 <https://github.com/PJGV333/GUI_HM_fit/actions/runs/43468016440>.
+El CI de los refits y avisos `b785345` también terminó en verde:
+<https://github.com/PJGV333/GUI_HM_fit/actions/runs/43471180920>.
 
 ## Riesgos y cuestiones abiertas
 
@@ -408,3 +461,14 @@ El CI de los perfiles `c4fd734` terminó en verde:
   JAX minimizado; el número de parámetros lineales para los grados de libertad se determina
   con la matriz SciPy. Las curvas y el diagnóstico de autocorrelación usan residuos SciPy.
 - `fixed` frente a `const` se deja para unificar en Fase 4; no se cambian métodos de error.
+
+## Preguntas para el autor
+
+1. ¿Se mantiene JAX como experimental o se oculta en la versión estable? No se
+   ha ocultado ni retirado y no se incorpora al entorno principal.
+2. ¿Se autoriza corregir la máscara RMN del banco §6.4(c), sustituyendo el
+   criterio del progenitor por el denominador estequiométrico `C·S_j`? Se deja
+   sin cambios conforme al alcance.
+3. ¿Conviene abordar en una fase posterior el full-refit RMN de la pestaña
+   Errors, actualmente de pesos unitarios incluso cuando el ajuste usa IRLS?
+   No se ha cambiado el método de error por defecto en esta fase.
