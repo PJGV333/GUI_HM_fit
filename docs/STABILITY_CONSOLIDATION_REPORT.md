@@ -48,9 +48,9 @@ El generador `validation.make_unc_report` identifica como invalidados los HC2/HC
 
 ## Retirada parcial de JAX del ajuste de cinética
 
-El selector normal solo ofrece SciPy. Los archivos de configuración que solicitan JAX u otro backend no reconocido se rechazan antes de modificar el mecanismo o parámetros, indicando que la migración a SciPy debe ser explícita; los archivos sin clave de backend mantienen SciPy. La entrada programática del ajuste también rechaza cualquier backend distinto de SciPy antes de cargar el modelo. Esto no elimina todavía el método experimental `solve_concentrations_jax`, las importaciones opcionales ni el código JAX ahora inaccesible del ajuste: su aislamiento/eliminación y la auditoría de dependencias están pendientes. No se han repetido las comparaciones JAX, pues JAX no está instalado.
+El selector normal solo ofrece SciPy. Los archivos de configuración que solicitan JAX u otro backend no reconocido se rechazan antes de modificar el mecanismo o parámetros, indicando que la migración a SciPy debe ser explícita; los archivos sin clave de backend mantienen SciPy. La entrada programática del ajuste también rechaza cualquier backend distinto de SciPy antes de cargar el modelo. Se retiró la implementación JAX previamente inaccesible del ajuste; permanece en la historia Git. No se han eliminado todavía `solve_concentrations_jax`, la proyección JAX de las pruebas ni las importaciones opcionales en otras rutas: su aislamiento/eliminación y la auditoría de dependencias están pendientes. No se han repetido las comparaciones JAX, pues JAX no está instalado.
 
-Pruebas específicas de cinética: 26 aprobadas y 2 omitidas. Suite local completa: 612 aprobadas, 3 omitidas, 5 deseleccionadas, 16 xfail, 283 advertencias en 178,80 s. No es CI multiplataforma.
+Tras retirar el código inaccesible del ajuste, las pruebas específicas de cinética dieron 27 aprobadas y 2 omitidas; la suite local completa dio 613 aprobadas, 3 omitidas, 5 deseleccionadas, 16 xfail y 283 advertencias en 179,11 s. No es CI multiplataforma.
 
 ## Pendiente y límites
 

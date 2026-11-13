@@ -44,6 +44,16 @@ def test_fit_rejects_legacy_jax_backend_before_loading_model():
         _run_kinetics_fit({"backend": "JAX"})
 
 
+def test_production_kinetics_fit_contains_no_jax_execution_path():
+    import inspect
+    from hmfit_gui_qt.tabs.kinetics_tab import _run_kinetics_fit
+
+    source = inspect.getsource(_run_kinetics_fit)
+    assert "import jax" not in source
+    assert "solve_concentrations_jax" not in source
+    assert "_run_once_jax" not in source
+
+
 def test_jax_rk4_fine_and_coarse_grid():
     pytest.importorskip("jax")
     from hmfit.kinetics.model.kinetics_model import KineticsModel

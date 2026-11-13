@@ -583,8 +583,6 @@ class KineticsTab(QWidget):
         method = str(self.model_opt_plots.combo_algorithm.currentData() or "trust-region")
         backend = str(self.model_opt_plots.combo_backend.currentData() or "scipy")
         nnls = self.model_opt_plots.chk_nnls.isChecked()
-        if backend == "jax" and nnls:
-            raise ValueError("NNLS is not supported with JAX backend.")
         runs, seeds = self.model_opt_plots.get_multi_start()
         config = {
             "model": self._model,
@@ -1377,15 +1375,6 @@ def _run_kinetics_fit(
     seeds = config.get("multi_start_seeds")
     seeds_list = list(seeds) if isinstance(seeds, (list, tuple)) else None
 
-    if nnls and backend == "jax":
-        raise ValueError("NNLS is not supported with JAX backend.")
-    jax_warning = (
-        "JAX is experimental: one RK4 step per sampling interval without error control; "
-        "SciPy is the reference engine."
-    ) if backend == "jax" else None
-    if jax_warning and progress_cb is not None:
-        progress_cb("WARNING: " + jax_warning)
-
     # Bounded trust-region reflective is the only algorithm the kinetics tab runs; legacy
     # method names ("least_squares", "multistart") map to it (they always did).
     ls_method = "trf"
@@ -1399,8 +1388,6 @@ def _run_kinetics_fit(
     )
 
     def _run_once(x0: np.ndarray) -> dict[str, Any]:
-        if backend == "jax":
-            return _run_once_jax(x0)
         result = fit_global(
             objective,
             x0,
@@ -1422,130 +1409,6 @@ def _run_kinetics_fit(
             "condition_number": result.condition_number,
             "raw_result": result.result,
             "convergence_notes": list(getattr(result.result, "convergence_notes", ()) or ()),
-        }
-        return payload
-
-    def _run_once_jax(x0: np.ndarray) -> dict[str, Any]:
-        try:
-            import jax
-            jax.config.update("jax_enable_x64", True)
-            import jax.numpy as jnp
-        except Exception as exc:
-            raise ValueError("JAX backend is not available.") from exc
-
-        from scipy.optimize import least_squares
-        from hmfit.kinetics.observation.linear_matrix import prepare_weights
-
-        jax_datasets = []
-        for dataset in datasets:
-            if dataset.D is None:
-                raise ValueError("Dataset is missing observed data D.")
-            weights = None
-            if dataset.weights is not None or dataset.sigma is not None:
-                weights = prepare_weights(
-                    dataset.weights if dataset.weights is not None else 1.0 / dataset.sigma,
-                    dataset.D.shape[0],
-                    dataset.D.shape[1],
-                )
-            jax_datasets.append(
-                {
-                    "dataset": dataset,
-                    "t": jnp.asarray(dataset.t, dtype=float),
-                    "D": jnp.asarray(dataset.D, dtype=float),
-                    "weights": jnp.asarray(weights, dtype=float) if weights is not None else None,
-                }
-            )
-
-        def _params_from_vector(x_vec):
-            params = {}
-            for name, value in zip(param_names, x_vec, strict=True):
-                if name in log_params:
-                    params[name] = jnp.power(10.0, value)
-                else:
-                    params[name] = value
-            return params
-
-        def residuals_jax(x_vec):
-            params = _params_from_vector(x_vec)
-            resid_list = []
-            for entry in jax_datasets:
-                ds = entry["dataset"]
-                C = model.solve_concentrations_jax(ds.t, ds.y0, params, ds)
-                A = _jax_solve_linear_matrix(C, entry["D"], weights=entry["weights"])
-                D_hat = C @ A
-                resid = entry["D"] - D_hat
-                if entry["weights"] is not None:
-                    resid = resid * entry["weights"]
-                resid_list.append(jnp.ravel(resid))
-            if not resid_list:
-                return jnp.array([])
-            return jnp.concatenate(resid_list)
-
-        jac_fn = jax.jacrev(residuals_jax)
-
-        def residuals_np(x_vec):
-            return np.asarray(residuals_jax(jnp.asarray(x_vec, dtype=float)))
-
-        def jac_np(x_vec):
-            return np.asarray(jac_fn(jnp.asarray(x_vec, dtype=float)))
-
-        from hmfit.kinetics.fit.optimizer import resolve_fixed_parameters
-
-        lower_b = np.broadcast_to(np.asarray(bounds[0], dtype=float), x0.shape).astype(float)
-        upper_b = np.broadcast_to(np.asarray(bounds[1], dtype=float), x0.shape).astype(float)
-        x_base, fixed_arr = resolve_fixed_parameters(
-            np.asarray(x0, dtype=float), lower_b, upper_b,
-            fixed_mask=fixed_mask, param_names=param_names,
-        )
-        free_arr = np.where(~fixed_arr)[0]
-
-        def _expand(xf):
-            x_full = x_base.copy()
-            x_full[free_arr] = xf
-            return x_full
-
-        from hmfit.kinetics.fit.optimizer import convergence_notes, residual_scale, scaled_least_squares
-
-        result = scaled_least_squares(
-            lambda xf: residuals_np(_expand(xf)),
-            x_base[free_arr],
-            scale=residual_scale(objective),
-            bounds=(lower_b[free_arr], upper_b[free_arr]),
-            method=ls_method,
-            jac=lambda xf: jac_np(_expand(xf))[:, free_arr],
-            max_nfev=300,
-        )
-        jac_free_res = np.asarray(result.jac, dtype=float)
-        result.convergence_notes = tuple(
-            convergence_notes(result, x_base[free_arr], np.asarray(result.x, dtype=float),
-                              [param_names[i] for i in free_arr])
-        )
-        result.x = _expand(np.asarray(result.x, dtype=float))
-        jac_full_res = np.zeros((jac_free_res.shape[0], x0.size), dtype=float)
-        jac_full_res[:, free_arr] = jac_free_res
-        result.jac = jac_full_res
-        result.fixed_mask = fixed_arr
-
-        params = _params_vector_to_dict(result.x, param_names, log_params)
-        from hmfit.kinetics.fit.optimizer import _count_linear_parameters
-
-        result.n_linear = _count_linear_parameters(objective, result.x)
-        errors, covariance, correlations, condition_number = _compute_covariance(
-            result, param_names, log_params
-        )
-        payload = {
-            "params": params,
-            "ssq": float(2.0 * result.cost),
-            "nfev": result.nfev,
-            "njev": result.njev,
-            "jac": result.jac,
-            "residuals": result.fun,
-            "errors": errors,
-            "covariance": covariance,
-            "correlations": correlations,
-            "condition_number": condition_number,
-            "raw_result": result,
-            "convergence_notes": list(getattr(result, "convergence_notes", ()) or ()),
         }
         return payload
 
@@ -1722,7 +1585,7 @@ def _run_kinetics_fit(
     serial_note = serial_correlation_note(serial_diag or {}, "time")
     residual_warnings = [serial_note] if serial_note else []
     diagnostics_warnings = (
-        unit_warnings + ([jax_warning] if jax_warning else []) + convergence_warnings + equivalence_warnings
+        unit_warnings + convergence_warnings + equivalence_warnings
         + multistart_warnings + residual_warnings + list(parameter_error_warnings)
     )
     if stability_diag:
