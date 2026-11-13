@@ -266,11 +266,16 @@ def basic_metrics(y_obs, y_cal, r):
 
 
 def param_errors_cs(residuals, k):
+    """Linearized unweighted errors; residuals must support complex-step derivatives.
+
+    Returns undefined uncertainties for nonpositive degrees of freedom or
+    parameters affected by numerical rank deficiency.
+    """
     r = residuals(k).ravel()
     J = jacobian_cs(residuals, k)      # (p, m)
-    m, p = r.size, len(k)
-    s2 = (r @ r) / max(m - p, 1)       # varianza reducida
-    Cov = s2 * pinv_cs(J @ J.T)        # (p, p)
+    lin = linearized_covariance(J.T, float(r @ r), r.size)
+    s2 = lin["s2"]
+    Cov = lin["cov"]
     SE_log10K = np.sqrt(np.clip(np.diag(Cov), 0, np.inf))
     K_num = 10.0**np.asarray(k)
     SE_K  = np.log(10.0) * K_num * SE_log10K

@@ -257,6 +257,47 @@ def test_sigma2_reduced_never_clamps_nonpositive_degrees_of_freedom():
     assert sigma2_reduced(residual, p=0, dof=4) == pytest.approx(1.25)
 
 
+def test_param_errors_cs_nonpositive_dof_reports_undefined():
+    from hmfit_core.utils.errors import param_errors_cs
+
+    def residual(theta):
+        return np.array([theta[0] - 1.0, theta[1] - 3.0])
+
+    se_log, se_k, pct, variance, cov = param_errors_cs(residual, np.array([2.0, 2.0]))
+    assert np.isnan(variance)
+    assert np.isnan(se_log).all() and np.isnan(se_k).all() and np.isnan(pct).all()
+    assert np.isnan(cov).all()
+
+
+def test_param_errors_cs_rank_deficiency_does_not_imply_precision():
+    from hmfit_core.utils.errors import param_errors_cs
+
+    def residual(theta):
+        return np.array([theta[0] + theta[1] - 1.,
+                         2. * (theta[0] + theta[1]) - 3.,
+                         3. * (theta[0] + theta[1]) - 4.])
+
+    se_log, se_k, pct, variance, cov = param_errors_cs(residual, np.array([1., 1.]))
+    assert np.isfinite(variance)
+    assert np.isnan(se_log).all() and np.isnan(se_k).all() and np.isnan(pct).all()
+    assert np.isnan(cov).all()
+
+
+def test_param_errors_cs_matches_full_rank_linear_reference():
+    from hmfit_core.utils.errors import param_errors_cs
+
+    X = np.array([[1., 0.], [0., 1.], [1., 1.], [2., 1.]])
+    y = np.array([1., 3., 4.5, 6.])
+    theta = np.array([1., 2.])
+    residual = lambda k: X @ k - y
+    se_log, _, _, variance, cov = param_errors_cs(residual, theta)
+    expected_s2 = float(residual(theta) @ residual(theta)) / 2
+    expected_cov = expected_s2 * np.linalg.inv(X.T @ X)
+    assert variance == pytest.approx(expected_s2)
+    np.testing.assert_allclose(cov, expected_cov, rtol=1e-12)
+    np.testing.assert_allclose(se_log, np.sqrt(np.diag(expected_cov)), rtol=1e-12)
+
+
 def test_linearized_covariance_reference_and_degenerate_cases():
     rng = np.random.default_rng(3)
     J = rng.normal(size=(40, 2))

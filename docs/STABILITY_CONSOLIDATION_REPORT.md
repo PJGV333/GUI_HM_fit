@@ -70,6 +70,12 @@ Suite local: 624 aprobadas, 3 omitidas, 5 deseleccionadas, 16 xfail, 283 adverte
 
 Suite local posterior: 627 aprobadas, 3 omitidas, 5 deseleccionadas, 16 xfail, 283 advertencias en 179,26 s. No es CI multiplataforma.
 
+## Corrección de `param_errors_cs`
+
+La búsqueda adicional detectó otro truncamiento `max(m-p,1)` en la utilidad `param_errors_cs`, sin llamadas internas encontradas. Con dos residuos `[1,-1]` y dos parámetros, antes devolvía varianza 2; ahora devuelve NaN. También utilizaba una pseudoinversa que atribuía precisión finita a parámetros confundidos: para un Jacobiano con dos columnas idénticas devolvía errores estándar `0.32732684`, y ahora ambos se marcan no disponibles. La utilidad comparte `linearized_covariance` y requiere residuos compatibles con diferenciación por paso complejo. Una referencia lineal independiente de rango completo verifica varianza, covarianza y errores estándar; no se afirma que el método sea válido para residuos no holomorfos ni para estimadores con restricciones.
+
+Suite local posterior: 630 aprobadas, 3 omitidas, 5 deseleccionadas, 16 xfail y 283 advertencias en 179,28 s. CI multiplataforma pendiente.
+
 ## Pendiente y límites
 
 Faltan las etapas B–H, la verificación de las causas de los xfail clasificados provisionalmente, los análisis antes/después y las pruebas de CI en todas las plataformas. Aparte de la retirada parcial de JAX descrita arriba, no se han cambiado objetivos ni umbrales productivos. Los informes de fases anteriores son históricos: los resultados HC2/HC3 calculados mediante el leverage incorrecto quedan **invalidados** y no deben utilizarse como evidencia, aunque se conservan los datos. La campaña de incertidumbre rechaza resumir o reanudar filas históricas que contengan estos resultados, antes de agregar nuevas filas; los generadores que leen resúmenes históricos directamente siguen requiriendo cautela. No se ha implementado ni validado aún una alternativa HC2/HC3 ni se han repetido las campañas afectadas. El dictamen actual es **C — consolidación incompleta**; no se cumplen los criterios obligatorios para A.
