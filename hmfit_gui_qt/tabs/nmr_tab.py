@@ -1279,7 +1279,9 @@ class NMRTab(QWidget):
             mask = ctx.get("mask")
             if mask is None:
                 base = dq_obs if dq_obs.size else dq_star
-                mask = np.isfinite(base) & np.isfinite(D_cols) & (np.abs(D_cols) > 0)
+                # Match the fit: the projector filters each actual denominator
+                # (C @ S_j when stoichiometry is supplied).
+                mask = np.isfinite(base) & np.isfinite(D_cols)
             mask = np.asarray(mask, dtype=bool)
 
             theta0 = np.asarray(theta0, dtype=float).ravel()

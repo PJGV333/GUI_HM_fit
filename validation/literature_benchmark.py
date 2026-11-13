@@ -229,7 +229,9 @@ def errors_tab_analytic(result, cfg) -> dict[str, Any]:
     stoich = np.asarray(ed["stoichiometry_map"], dtype=float)
     res = NewtonRaphson(C_T, modelo, list(ed.get("non_absorbent_species") or []), "Free")
     D_cols, _ = build_D_cols(C_T, list(ed["column_names"]), list(ed["signal_names"]), default_idx=0)
-    mask = np.isfinite(dq) & np.isfinite(D_cols) & (np.abs(D_cols) > 0)
+    # As in the processor and Errors tab, denominator validity is determined
+    # per signal by the linear solver (C @ S_j when stoichiometry is present).
+    mask = np.isfinite(dq) & np.isfinite(D_cols)
     m = compute_errors_nmr_varpro(
         k_hat, res, dq, D_cols, modelo, [], stoichiometry=stoich, mask=mask, fixed_mask=fixed_mask,
         rcond=1e-10, rcond_cov=1e-10, ridge=1e-8, ridge_cov=0.0, use_projector=True,

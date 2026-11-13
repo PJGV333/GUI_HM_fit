@@ -914,7 +914,10 @@ class ModelOptPlotsWidget(QWidget):
 
             mask = ctx.get("mask")
             if mask is None:
-                mask = np.isfinite(dq) & np.isfinite(D_cols) & (np.abs(D_cols) > 0)
+                # The linear solver applies its own per-signal denominator test.
+                # With a stoichiometry map that denominator is C @ S_j, not the
+                # guessed parent column D_cols; zero parent can still be valid.
+                mask = np.isfinite(dq) & np.isfinite(D_cols)
 
             base_metrics = compute_errors_nmr_varpro(
                 k_hat,

@@ -40,7 +40,7 @@ ESTADO: ETAPA 3.6 EN CURSO
   tabla de evidencia del banco en este informe. Suite: 610 recogidas,
   585 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas,
   186.40 s; antes 607 recogidas y 582 aprobadas. El full-refit histórico de
-  Errors sigue con pesos unitarios y máscara anterior (§6.4(c), fuera de alcance).
+  Errors sigue con pesos unitarios; la máscara de §6.4(c) se corrigió en 3.6.
 - 3.3: resuelto vectorizado de pH con Brent de referencia y respaldo;
   comparaciones extremas y full-refit sintético añadidas. Suite: 621 recogidas,
   596 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas,
@@ -107,6 +107,24 @@ Con JAX 0.12.0.1 aislado, NumPy 2.4.2 y SciPy 1.17.1: suite completa
 incluidas las cinco pruebas que antes fallaban. Sin JAX: 603 aprobadas,
 0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas (178.36 s). Se añadió un
 job Linux/Python 3.14 separado con JAX CPU; los jobs principales siguen sin JAX.
+El primer CI con los cinco jobs, incluido JAX, terminó en verde:
+<https://github.com/PJGV333/GUI_HM_fit/actions/runs/43480306927>.
+
+### 3.6 — máscara RMN §6.4(c), corrección aprobada
+
+[Defecto comprobado] La GUI filtraba observaciones por la concentración del
+progenitor antes de aplicar la estequiometría. Se sustituyó ese prefiltrado
+por el usado por el ajuste: finitud de observación y columna, seguido del
+filtro real por señal dentro del proyector (`C·S_j` con estequiometría, o la
+columna del progenitor sin ella, con umbral 1e-12). Se corrigieron tanto Errors
+como el full-refit y la reproducción del banco. Los grados de libertad, SE y
+correlaciones de casos afectados pueden cambiar; el ajuste principal no cambia.
+El caso publicado `r09a-r1-11-me` provocó XPASS estricto en
+`test_errors_tab_uses_every_observed_value`; se retiró el marcador xfail, no la
+prueba, en el mismo commit. Las pruebas enfocadas dieron 37 aprobadas y 9 xfail;
+la suite completa sin JAX dio 604 aprobadas, 16 xfail, 3 omitidas y 5
+ deseleccionadas (178.32 s); con JAX aislado, 606 aprobadas, 16 xfail,
+1 omitida y 5 deseleccionadas (180.59 s).
 
 ## Decisiones del agente
 
@@ -209,7 +227,7 @@ por `pytest.ini`. Recogidas incluye deseleccionadas.
 | [Limitación metodológica] | LM puede converger a SSQ mayor o agotar iteraciones | Implementado y probado con datos sintéticos; evaluado en banco publicado pero no supera los criterios para defecto. Powell se conserva. Tabla 3.1.g. |
 | [Limitación metodológica] | Pesos unitarios e IRLS producen estimaciones distintas | Selector implementado y probado con datos sintéticos; comparado con HypNMR publicado en tabla 3.2, sin cambiar el defecto IRLS. |
 | [Limitación metodológica] | El solver escalar de pH limita el rendimiento | Vectorizado con respaldo; implementado y probado frente a Brent en casos sintéticos, sin validación con datos publicados. 8.96× en una réplica de bootstrap, no 10×. |
-| [Defecto comprobado] | Máscara de Errors RMN y comportamiento inmutable al importar JAX | JAX corregido en 3.6 con suite aislada; máscara RMN aprobada para corrección en commit separado. |
+| [Defecto comprobado] | Máscara de Errors RMN y comportamiento inmutable al importar JAX | Ambos corregidos en 3.6: JAX con suite aislada; máscara con regresión publicada y xfail retirado. |
 | [Sospecha] | Corte de rango JAX en precisión simple | Riesgo identificado, aún no validado en matrices mal condicionadas ni con datos publicados. |
 
 ## Comparación 3.1.g (cinco ejecuciones)
@@ -292,10 +310,8 @@ anterior, incluida la actualización de pesos al final del último ciclo.
 | r09b-r-qx IRLS | 6.1225/2.9463/0.76699/4.4863/4.0905 | 0.010509/0.0087755/0.024987/0.044217/0.0051932 | 0.0011965/0.00023231/0.015514/0.026173/0.00083274 | 3 |
 | r09b-r-qx unit | 6.1218/2.9463/0.78138/4.5114/4.09 | 0.010116/0.0085307/0.026704/0.045776/0.0050635 | 0.00045652/0.00022964/0.001121/0.0011361/0.00031606 | 1 |
 
-**Pregunta para el autor — banco §6.4(c):** la pestaña Errors usa la máscara
-basada en la concentración del progenitor y omite titulaciones donde ésta es
-cero, incluso si la señal tiene población válida por su estequiometría. ¿Se
-aprueba sustituir esa máscara por la del denominador `C·S_j`? No se ha cambiado.
+La pregunta original sobre §6.4(c) fue contestada por el autor en 3.6 y la
+máscara se corrigió; véase la sección «3.6 — máscara RMN §6.4(c)».
 
 ## Potenciometría vectorizada 3.3
 
@@ -505,10 +521,9 @@ El CI de los refits y avisos `b785345` también terminó en verde:
 - Configuraciones antiguas que compartan una constante entre órdenes distintos se seguirán
   abriendo, pero no podrán ajustarse hasta corregir el mecanismo, tampoco mediante el núcleo.
 - [Limitación metodológica] El full-refit de la pestaña Errors de RMN mantiene
-  su objetivo histórico de pesos unitarios y la máscara anterior incluso si el
-  ajuste principal usa IRLS. El dispatch LM nuevo respeta ese objetivo histórico;
-  no se ha cambiado el método de error ni corregido §6.4(c). Sus SE no deben
-  interpretarse como un full-refit IRLS idéntico al ajuste principal.
+  su objetivo histórico de pesos unitarios incluso si el ajuste principal usa
+  IRLS. El dispatch LM respeta ese objetivo; la máscara sí se corrigió en 3.6.
+  Sus SE no deben interpretarse como un full-refit IRLS idéntico al ajuste.
 - [Sospecha] En JAX con precisión de 32 bits, un corte de rango de 10⁻¹⁰ está por debajo de
   la precisión de máquina; no se ha validado el comportamiento para matrices mal condicionadas.
 - [Defecto comprobado por inspección] Tras optimizar con JAX, `_run_kinetics_fit` genera las
@@ -524,9 +539,8 @@ El CI de los refits y avisos `b785345` también terminó en verde:
 
 1. ¿Se mantiene JAX como experimental o se oculta en la versión estable? No se
    ha ocultado ni retirado y no se incorpora al entorno principal.
-2. ¿Se autoriza corregir la máscara RMN del banco §6.4(c), sustituyendo el
-   criterio del progenitor por el denominador estequiométrico `C·S_j`? Se deja
-   sin cambios conforme al alcance.
+2. La corrección de la máscara RMN del banco §6.4(c) fue aprobada por el autor
+   y se ha implementado; ya no es pregunta pendiente.
 3. ¿Conviene abordar en una fase posterior el full-refit RMN de la pestaña
    Errors, actualmente de pesos unitarios incluso cuando el ajuste usa IRLS?
    No se ha cambiado el método de error por defecto en esta fase.

@@ -4,7 +4,7 @@
 * the "analytic" errors used for sigma, correlations and limiting shifts equal those
   of the Errors tab (``ModelOptPlotsWidget._compute_errors_from_context``) for the
   context the NMR tab hands over;
-* a strict xfail pins the Errors-tab defect found with the benchmark (§6.4).
+* the Errors tab uses all observations with a valid stoichiometric denominator (§6.4).
 """
 from __future__ import annotations
 
@@ -73,11 +73,6 @@ def test_harness_errors_equal_the_errors_tab():
     assert int(out["dof"]) == mine["dof"]
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "Errors tab (analytic): its mask uses the parent column guessed from the signal name "
-    "(default: receptor) instead of C @ S_j, so the T_receptor = 0 point of each titration is "
-    "dropped for the salt's Me signal: nu = m - p - n_titrations; fix changes GUI numbers, left "
-    "to the author (docs/LITERATURE_BENCHMARK.md §6.4)"))
 def test_errors_tab_uses_every_observed_value():
     case = lb.load_case("r09a-r1-11-me")
     _result, _cfg, out = _errors_tab_output(case)

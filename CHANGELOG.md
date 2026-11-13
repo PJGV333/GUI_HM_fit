@@ -50,6 +50,12 @@ All notable user-visible changes. Versions follow the GitHub releases
   shown as "—" with the reason in the tooltip; exports keep NaN plus a `Note` column.
 
 ### Fixed
+- NMR Errors tab and full-refit bootstrap now retain observed points with zero
+  guessed parent concentration when the stoichiometric denominator `C @ S_j`
+  is valid. Previously those points were discarded, altering degrees of freedom
+  and uncertainties in the literature bank. Existing regression
+  `test_errors_tab_uses_every_observed_value` now passes without xfail; the
+  author approved this numerical change in phase 3.6.
 - Equilibrium and uncertainty solvers now use NumPy regardless of whether JAX is
   installed; formerly JAX availability silently changed arrays to immutable JAX
   arrays, breaking five regression tests. Kinetics selects JAX explicitly and enables

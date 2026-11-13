@@ -448,6 +448,11 @@ compararía con la referencia.
 
 ### 6.4 Defectos encontrados con el banco
 
+**Actualización etapa 3.6:** el defecto (c) fue corregido tras aprobación del
+autor; `test_errors_tab_uses_every_observed_value` ahora pasa sin xfail. La tabla
+siguiente conserva los valores históricos del diagnóstico previo a la corrección.
+Véase `docs/STABILITY_PHASE3_REPORT.md`, sección «3.6 — máscara RMN».
+
 | # | Etiqueta | Módulo | Defecto | Estado |
 |---|---|---|---|---|
 | a | [Defecto comprobado] | `hmfit_core/utils/errors.py` (`compute_errors_nmr_varpro`) | Con tantas señales como especies, el mapa de estequiometría (especies × señales) se transponía. El ajuste de β era correcto, pero el RMS reportado, los SE, las correlaciones y los desplazamientos usaban especies equivocadas para cada señal. Hallado con `r09a-r1-11-3n`: nivel 0 = +22 % (después −2·10⁻⁸) | Corregido (`f93bfcd`); `tests/test_nmr_square_stoichiometry.py` |
