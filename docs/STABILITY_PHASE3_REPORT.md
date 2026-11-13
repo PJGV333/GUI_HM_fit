@@ -15,6 +15,12 @@
   `tests/test_phase31_spectro_lm.py`; comparación extensa pendiente. Suite:
   602 recogidas, 577 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5
   deseleccionadas, 185.11 s; antes 598 recogidas y 573 aprobadas.
+- 3.1.g–h: comparación Powell/LM realizada con cinco repeticiones por caso;
+  Powell permanece por defecto porque LM empeora la SSQ en varios casos.
+  El xfail de grupos sigue fallando; no se ha retirado. Suite tras comparación:
+  607 recogidas, 582 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5
+  deseleccionadas, 184.53 s (mismas cifras antes). Falta revisar otras rutas
+  de incertidumbre y completar las etapas 3.2–3.5.
 - 3.1.f: LM optativo en RMN dentro del IRLS anterior, sin cambiar sus pesos.
   Probado sintéticamente con Powell, límite activo, parámetro fijo,
   no convergencia y multistart paralelo en `tests/test_phase31_nmr_lm.py`.
@@ -40,6 +46,8 @@
 | D-4 | Cota inferior igual a superior en LM | Contabilizar el gradiente de un parámetro inmóvil; excluirlo | Excluirlo del gradiente proyectado | Ningún paso factible puede mover ese parámetro | `test_fixed_bound_is_excluded_from_projected_gradient` | Revertir el cambio en `_gradient` |
 | D-5 | Derivadas del ajuste espectral | Perfil analítico en todas las rutas; perfil analítico solo con hipótesis verificadas y diferencias centradas en las demás | Analítico para columnas independientes; centradas para el resto y sistemas de rango deficiente | No usar una fórmula no validada con regularización acoplada | `tests/test_explicit_lm.py` y `tests/test_phase31_spectro_lm.py` | Seleccionar Powell o revertir la rama `explicit_lm` |
 | D-6 | Jacobiano RMN en IRLS | Derivar la proyección con ridge; diferenciar el residuo real | Diferencias centradas | Reproduce la proyección, máscara y pesos por señal existentes sin suponer un Jacobiano de proyección inexacto | `test_nmr_lm_with_irls_matches_powell`, `test_nmr_lm_parallel_multistart` | Seleccionar Powell |
+| D-7 | Optimización predeterminada | LM; Powell | Powell | LM empeora SSQ en casos de regresión y agota iteraciones en el sintético sin ruido | Tabla 3.1.g y `validation/results/phase31_comparison.json` | Elegir LM explícitamente en la configuración |
+| D-8 | Pesos para comparar IRLS | Comparar solo SSQ ponderada; mostrar también SSQ sin ponderar | Mostrar ambas y los pesos usados | Los métodos pueden terminar con pesos distintos, por lo que las SSQ ponderadas no comparten escala | `weights_used_for_fit` y `weighted_ssq_fit` en los resultados | Ignorar campos adicionales, sin cambiar el ajuste |
 
 ### Inventario del residuo y Jacobiano espectral
 
@@ -102,6 +110,52 @@ bloqueadas.
 | [Limitación metodológica] | Valores iniciales de cinética y escala | Propuesta automática y Log10 por defecto para k y A de Arrhenius; se conservan las celdas y escalas del usuario. Implementado y probado con datos sintéticos, no validado con datos publicados. |
 | [Defecto comprobado] | Eyring aplicaba kBT/h sin convertir unidades de tiempo o concentración | Corregido en Eyring para unidades reconocidas; pruebas de equivalencia y de factores de unidad en `tests/test_phase3_auto_rates.py`. |
 | [Limitación metodológica] | Presentación de resultados de potenciometría | Informe y hoja `Fit_summary`: cada pKa con equilibrio y SE analítico o `fixed`, RMS en unidades de señal, N y g.l., autocorrelación y avisos; estadísticos adicionales separados. Probado con pH y mV sintéticos; no validado con datos publicados. |
+
+## Comparación 3.1.g (cinco ejecuciones)
+
+Comando: `QT_QPA_PLATFORM=offscreen OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1
+.venv/bin/python -m validation.phase31_comparison --repeats 5 --output
+validation/results/phase31_comparison.json`. Misma máquina y proceso, tiempo de
+pared mediano; generación de gráficos desactivada por igual para ambos, pero se
+incluyen lectura, ajuste, errores y preparación de exportación. SSQ espectral
+es la del objetivo perfilado; RMN muestra aquí SSQ de datos sin ponderar. El
+JSON conserva además SSQ con los pesos usados en el último ciclo de cada método:
+como IRLS puede producir pesos diferentes, comparar esas SSQ ponderadas entre
+métodos no equivale a comparar un único objetivo con pesos fijos. Los valores
+individuales de log β se muestran en el orden del modelo, separados por `/`;
+la pareja es Powell ; LM. Éxito e iteraciones también están en ese orden.
+Los únicos casos publicados que Powell reproduce en todas las constantes dentro
+de la tolerancia L2 del banco son `r09a-r1-11-me` y `r09b-b-qx` (y Powell
+reporta éxito); en ambos Δ máximo < 1e-4. El segundo criterio falla en los
+casos golden y en el sintético sin ruido. **Se conserva Powell por defecto**.
+
+| Caso | log β Powell ; LM | Δ máximo | SSQ Powell ; LM | Éxito P/LM | Iter. P/LM | segundos P/LM |
+|---|---|---:|---:|---:|---:|---:|
+| r09a-p2-058 | 7.17371 / 3.59686 / 4.06043 / 0.1 / 6.23871 / 9.51271 ; 7.17387 / 3.59671 / 4.06044 / 0.1 / 6.23884 / 9.5128 | 0.000161 | 6.40748e-05 ; 6.40605e-05 | 1/1 | 1/3 | 3.837/0.959 |
+| r09a-p2-106 | 7.1914 / 3.60734 / 4.09372 / 0.1 / 6.12458 / 9.53348 ; 7.18772 / 3.60725 / 4.09341 / 0.1 / 6.11906 / 9.52748 | 0.006 | 0.000177316 ; 0.000178185 | 1/1 | 1/4 | 6.185/1.884 |
+| r09a-qx-dil | 4.05787 ; 4.05787 | 4.99e-10 | 2.55974e-05 ; 2.55974e-05 | 1/1 | 1/1 | 0.127/0.070 |
+| r09a-r1-11-3n | 2.56992 ; 2.56992 | 7.11e-08 | 0.00261379 ; 0.00261378 | 1/1 | 1/3 | 0.152/0.131 |
+| r09a-r1-11-me | 2.56998 ; 2.56998 | 1.97e-09 | 6.54713e-07 ; 6.54713e-07 | 1/1 | 1/1 | 0.121/0.045 |
+| r09a-r1-3sp | 6.17778 / 2.94243 / 4.112 ; 6.17806 / 2.94204 / 4.1119 | 0.000396 | 0.0102099 ; 0.0102079 | 1/1 | 5/5 | 4.444/4.175 |
+| r09a-r1-5sp | 6.1225 / 2.94633 / 0.766986 / 4.48633 / 4.09053 ; 6.12193 / 2.94736 / 0.765473 / 4.48486 / 4.09092 | 0.00151 | 7.22611e-06 ; 7.22723e-06 | 1/1 | 2/5 | 4.789/1.040 |
+| r09b-b-qx | 4.76675 / 1.37332 / 4.0897 ; 4.76675 / 1.37332 / 4.0897 | 1.9e-06 | 1.18673e-05 ; 1.18673e-05 | 1/1 | 1/3 | 1.194/0.327 |
+| r09b-d-qx | No admitido: desplazamientos límite fijos | — | — | — | — | — |
+| r09b-r-qx | 6.1225 / 2.94633 / 0.766986 / 4.48633 / 4.09053 ; 6.12193 / 2.94736 / 0.765473 / 4.48486 / 4.09092 | 0.00151 | 7.22611e-06 ; 7.22723e-06 | 1/1 | 2/5 | 4.838/1.036 |
+| phase1 espectro ruido | 3.02788 ; 3.02788 | 4.02e-09 | 8.39284e-06 ; 8.39284e-06 | 1/1 | 2/5 | 0.092/0.040 |
+| phase1 espectro sin ruido | 3 ; 3 | 5.2e-07 | 2.54969e-29 ; 4.8858e-17 | 1/0 | 4/200 | 0.156/1.093 |
+| phase1 espectro fijo | 3.99956 / 7 ; 3.99956 / 7 | 6.73e-11 | 8.01592e-06 ; 8.01592e-06 | 1/1 | 2/6 | 0.111/0.078 |
+| phase1 RMN 1:1 | 2.99868 ; 2.99868 | 7.41e-06 | 0.000102941 ; 0.000102941 | 1/1 | 1/3 | 0.053/0.046 |
+| phase1 RMN 1:2 fijo | 4.02852 / 7 ; 4.02854 / 7 | 1.65e-05 | 0.000129834 ; 0.000129834 | 1/1 | 1/4 | 0.098/0.127 |
+| golden soft-bound 1 | 2.68871 ; 3.13206 | 0.443 | 1.24505 ; 1.33738 | 1/1 | 2/22 | 0.071/0.215 |
+| golden soft-bound 2 | 2.67167 ; 3.13148 | 0.46 | 1.24314 ; 1.33732 | 1/1 | 2/27 | 0.090/0.259 |
+| golden soft-bound 3 | 2.68968 ; 3.13297 | 0.443 | 1.24792 ; 1.33785 | 1/1 | 2/29 | 0.083/0.287 |
+
+La SSQ menor en cada caso se identifica por la comparación de las dos cifras;
+el JSON contiene precisión completa cuando la tabla redondea a igualdad.
+`test_absgrp_shared_groups_reduce_optical_components` sigue en XFAIL estricto:
+con Powell, el RMS agrupado incumple el límite del 5 % respecto al no agrupado;
+no ha pasado a XPASS y no se toca la prueba. La unificación de motores sugerida
+por su razón histórica está fuera de alcance.
 
 ## Evidencia de JAX
 
@@ -199,8 +253,11 @@ incluyen en la suite normal. Los cuatro archivos tardaron 50.84 s localmente
 (57 aprobadas, 14 xfail), dentro del presupuesto de cinco minutos. JAX no
 figura en los requisitos instalados por el workflow. La ejecución de `4647f58`
 fue verde: <https://github.com/PJGV333/GUI_HM_fit/actions/runs/43446398678>.
-También la ejecución de `de66038` terminó en verde en los cuatro trabajos:
-<https://github.com/PJGV333/GUI_HM_fit/actions/runs/43449185373>.
+También las ejecuciones de `de66038` y `613fa18` terminaron en verde en los
+cuatro trabajos: <https://github.com/PJGV333/GUI_HM_fit/actions/runs/43449185373>
+y <https://github.com/PJGV333/GUI_HM_fit/actions/runs/43459085101>. El push de
+`613fa18` canceló el CI de `e79343b` por concurrencia; se reejecutó y quedó
+verde: <https://github.com/PJGV333/GUI_HM_fit/actions/runs/43458138060>.
 
 ## Riesgos y cuestiones abiertas
 

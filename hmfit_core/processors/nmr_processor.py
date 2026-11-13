@@ -725,10 +725,12 @@ def process_nmr_data(
     old_best_rms = np.inf
     param_opt_failed = False
     lm_summary = None
+    optimizer_summary = {"success": True, "message": "all parameters fixed", "nit": 0}
     while cycle_count < MAX_IRLS_CYCLES:
         cycle_count += 1
         _raise_if_cancelled()
         iter_state["best"] = np.inf  # Reset for current weights
+        weights_used_for_fit = weights_per_signal.copy()
         log_progress(f"--- IRLS Cycle {cycle_count}/{MAX_IRLS_CYCLES} ---")
         param_opt_failed = False
         try:
@@ -877,6 +879,9 @@ def process_nmr_data(
                                         if np.isfinite(fval) and current_full is not None and fval < best_rms_val:
                                             best_rms_val = fval
                                             best_full_params = current_full
+                                            optimizer_summary = {"success": bool(run_result.get("success", False)),
+                                                                 "message": str(run_result.get("message", "")),
+                                                                 "nit": run_result.get("nit")}
                                             if optimizer == "explicit_lm":
                                                 lm_summary = dict(run_result)
                                                 iter_state["best"] = min(iter_state["best"], fval)
@@ -911,6 +916,9 @@ def process_nmr_data(
                             if np.isfinite(fval) and fval < best_rms_val:
                                 best_rms_val = fval
                                 best_full_params = current_full
+                                optimizer_summary = {"success": bool(getattr(opt_res, "success", False)),
+                                                     "message": str(getattr(opt_res, "message", "")),
+                                                     "nit": getattr(opt_res, "nit", None)}
                                 if optimizer == "explicit_lm":
                                     lm_summary = {"success": bool(opt_res.success), "message": str(opt_res.message),
                                                   "nit": int(opt_res.nit), "scaled_gradient": opt_res.scaled_gradient,
@@ -934,6 +942,9 @@ def process_nmr_data(
                     opt_res = _run_optimizer(k_free0, seed_list[0] if seed_list else None)
                     objective_eval_count_total += int(iter_state.get("cnt", 0))
                     k_opt_full = pack(opt_res.x)
+                    optimizer_summary = {"success": bool(getattr(opt_res, "success", False)),
+                                         "message": str(getattr(opt_res, "message", "")),
+                                         "nit": getattr(opt_res, "nit", None)}
                     if optimizer == "explicit_lm":
                         lm_summary = {"success": bool(opt_res.success), "message": str(opt_res.message),
                                       "nit": int(opt_res.nit), "scaled_gradient": opt_res.scaled_gradient,
@@ -1159,6 +1170,12 @@ def process_nmr_data(
                 ["LM scaled gradient", lm_summary["scaled_gradient"]],
             ] if optimizer == "explicit_lm" and lm_summary is not None else []),
             "uncertainty_notes": (["parámetro en el límite: " + ", ".join(bound_names)] if bound_names else []),
+            "weights_used_for_fit": weights_used_for_fit.tolist(),
+            "irls_weights_final": weights_per_signal.tolist(),
+            "irls_cycles": cycle_count,
+            "weighted_ssq_fit": float(np.sum((diff_final[valid_residuals_final] ** 2) *
+                np.broadcast_to(weights_used_for_fit[None, :], diff_final.shape)[valid_residuals_final])),
+            "unweighted_ssq": SS_res,
             "non_absorbent_species": non_absorbent_species,
             "objective_evaluations": int(objective_eval_count_total),
         }
@@ -1245,7 +1262,7 @@ def process_nmr_data(
             "export_data": export_data,
             "timings": dict(stage_times),
             "objective_evaluations": int(objective_eval_count_total),
-            "optimizer_result": lm_summary if optimizer == "explicit_lm" else None,
+            "optimizer_result": lm_summary if optimizer == "explicit_lm" and lm_summary is not None else optimizer_summary,
             "constants": constants,
             "derived_noncoop": export_data.get("derived_noncoop"),
             "stability_status": stability_diag.get("status") if 'stability_diag' in locals() else None,

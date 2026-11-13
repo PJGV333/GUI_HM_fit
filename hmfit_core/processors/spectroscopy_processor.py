@@ -2954,6 +2954,7 @@ def process_spectroscopy_data(
             "iterations": optimizer_summary.get("nit"),
             "scaled_gradient": optimizer_summary.get("scaled_gradient"),
             "active_bounds": optimizer_summary.get("active_bounds", []),
+            "objective_rms": float(best_result["rms"]),
         },
         "timings": dict(stage_times),
         "render_graphs": bool(render_graphs),

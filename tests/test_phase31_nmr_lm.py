@@ -32,6 +32,12 @@ def test_nmr_lm_with_irls_matches_powell(tmp_path, monkeypatch):
     assert out['success'], out
     assert out['optimizer_result']['success'], out['optimizer_result']
     assert abs(out['export_data']['k'][0] - ref['export_data']['k'][0]) < 1e-3
+    assert ref['optimizer_result']['success']
+    ed = out['export_data']
+    diff = np.asarray(ed['Chemical_Shifts']) - np.asarray(ed['Calculated_Chemical_Shifts'])
+    weights = np.asarray(ed['weights_used_for_fit'])
+    np.testing.assert_allclose(ed['weighted_ssq_fit'], np.sum(diff**2 * weights[None, :]))
+    assert ed['irls_cycles'] > 0
     assert 'LM: success=' in out['results_text']
 
 

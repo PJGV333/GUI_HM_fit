@@ -1,0 +1,760 @@
+{
+  "repeats": 5,
+  "timing": "wall clock, plot rendering disabled equally",
+  "cases": {
+    "literature/r09a-p2-058": {
+      "powell": {
+        "method": "powell",
+        "elapsed": 3.964677956988453,
+        "success": true,
+        "reason": "Optimization terminated successfully.",
+        "iterations": 1,
+        "log_beta": [
+          7.173709719109068,
+          3.596861415561381,
+          4.060430460716096,
+          0.1,
+          6.238710668132484,
+          9.512709144239286
+        ],
+        "se": [
+          0.015917149455837998,
+          0.010006351820251527,
+          0.01040924480019709,
+          0.0,
+          0.025443868894291486,
+          0.026936169416037655
+        ],
+        "ssq": 6.40747501179925e-05,
+        "weighted_ssq": 233.47211869978722,
+        "rms": 0.0004993176282130731,
+        "median_s": 3.836913006991381,
+        "repeats": 5,
+        "published_reference_within_tolerance": false
+      },
+      "explicit_lm": {
+        "method": "explicit_lm",
+        "elapsed": 0.9588768039975548,
+        "success": true,
+        "reason": "ftol",
+        "iterations": 3,
+        "log_beta": [
+          7.173870518054124,
+          3.5967112599581603,
+          4.060442088734087,
+          0.1,
+          6.238836482352953,
+          9.512804359028092
+        ],
+        "se": [
+          0.015918757848772083,
+          0.01000644392932456,
+          0.010412510498905023,
+          0.0,
+          0.02544995646994325,
+          0.026929821156503705
+        ],
+        "ssq": 6.406051704517933e-05,
+        "weighted_ssq": 233.44688123179813,
+        "rms": 0.0004992621678417582,
+        "median_s": 0.9588768039975548,
+        "repeats": 5
+      }
+    },
+    "literature/r09a-p2-106": {
+      "powell": {
+        "method": "powell",
+        "elapsed": 6.159165958990343,
+        "success": true,
+        "reason": "Optimization terminated successfully.",
+        "iterations": 1,
+        "log_beta": [
+          7.191402871534845,
+          3.6073411285167483,
+          4.093718144500294,
+          0.1,
+          6.1245838619474435,
+          9.533483957780364
+        ],
+        "se": [
+          0.01925903392000612,
+          0.015898532624741907,
+          0.008193631500357953,
+          0.0,
+          0.031487085924263726,
+          0.031713201979317054
+        ],
+        "ssq": 0.00017731566875503154,
+        "weighted_ssq": 258.97512237558374,
+        "rms": 0.0008274155435327876,
+        "median_s": 6.185085981996963,
+        "repeats": 5,
+        "published_reference_within_tolerance": false
+      },
+      "explicit_lm": {
+        "method": "explicit_lm",
+        "elapsed": 1.9199789589911234,
+        "success": true,
+        "reason": "ftol",
+        "iterations": 4,
+        "log_beta": [
+          7.187719333060996,
+          3.60724597641538,
+          4.093406831468012,
+          0.1,
+          6.1190629296268515,
+          9.527482567133422
+        ],
+        "se": [
+          0.019213562663318688,
+          0.015812802414672682,
+          0.00817508978060462,
+          0.0,
+          0.03155059885086764,
+          0.031823426289145036
+        ],
+        "ssq": 0.0001781850340945794,
+        "weighted_ssq": 258.94860177990427,
+        "rms": 0.0008294414413400598,
+        "median_s": 1.883755137998378,
+        "repeats": 5
+      }
+    },
+    "literature/r09a-qx-dil": {
+      "powell": {
+        "method": "powell",
+        "elapsed": 0.12729926299653016,
+        "success": true,
+        "reason": "Optimization terminated successfully.",
+        "iterations": 1,
+        "log_beta": [
+          4.057872733896361
+        ],
+        "se": [
+          0.013345927886459441
+        ],
+        "ssq": 2.5597422823328757e-05,
+        "weighted_ssq": 24.999999999996632,
+        "rms": 0.0010118779140455385,
+        "median_s": 0.12685014501039404,
+        "repeats": 5,
+        "published_reference_within_tolerance": false
+      },
+      "explicit_lm": {
+        "method": "explicit_lm",
+        "elapsed": 0.06958894598938059,
+        "success": true,
+        "reason": "ftol",
+        "iterations": 1,
+        "log_beta": [
+          4.057872733397153
+        ],
+        "se": [
+          0.01334592788499121
+        ],
+        "ssq": 2.5597422823334263e-05,
+        "weighted_ssq": 24.999999999998273,
+        "rms": 0.0010118779140456473,
+        "median_s": 0.07025624100060668,
+        "repeats": 5
+      }
+    },
+    "literature/r09a-r1-11-3n": {
+      "powell": {
+        "method": "powell",
+        "elapsed": 0.15034550499694888,
+        "success": true,
+        "reason": "Optimization terminated successfully.",
+        "iterations": 1,
+        "log_beta": [
+          2.5699170013012393
+        ],
+        "se": [
+          0.0030759058961845826
+        ],
+        "ssq": 0.0026137850444427242,
+        "weighted_ssq": 57.99927387109187,
+        "rms": 0.006713066317782323,
+        "median_s": 0.15221605700207874,
+        "repeats": 5,
+        "published_reference_within_tolerance": false
+      },
+      "explicit_lm": {
+        "method": "explicit_lm",
+        "elapsed": 0.13106068500201218,
+        "success": true,
+        "reason": "ftol",
+        "iterations": 3,
+        "log_beta": [
+          2.5699169302147222
+        ],
+        "se": [
+          0.0030759060792550177
+        ],
+        "ssq": 0.0026137849587971602,
+        "weighted_ssq": 57.99927395224483,
+        "rms": 0.006713066207799225,
+        "median_s": 0.13106068500201218,
+        "repeats": 5
+      }
+    },
+    "literature/r09a-r1-11-me": {
+      "powell": {
+        "method": "powell",
+        "elapsed": 0.12099039800523315,
+        "success": true,
+        "reason": "Optimization terminated successfully.",
+        "iterations": 1,
+        "log_beta": [
+          2.5699767069322523
+        ],
+        "se": [
+          0.0031284052776200757
+        ],
+        "ssq": 6.547125253878705e-07,
+        "weighted_ssq": 19.999999999963162,
+        "rms": 0.00018092989324429925,
+        "median_s": 0.12099039800523315,
+        "repeats": 5,
+        "published_reference_within_tolerance": true
+      },
+      "explicit_lm": {
+        "method": "explicit_lm",
+        "elapsed": 0.04694399000436533,
+        "success": true,
+        "reason": "xtol",
+        "iterations": 1,
+        "log_beta": [
+          2.5699767089008096
+        ],
+        "se": [
+          0.003128405274702451
+        ],
+        "ssq": 6.54712525388087e-07,
+        "weighted_ssq": 20.0,
+        "rms": 0.00018092989324432917,
+        "median_s": 0.04530067300947849,
+        "repeats": 5
+      }
+    },
+    "literature/r09a-r1-3sp": {
+      "powell": {
+        "method": "powell",
+        "elapsed": 4.444484830004512,
+        "success": true,
+        "reason": "Optimization terminated successfully.",
+        "iterations": 5,
+        "log_beta": [
+          6.177782678803984,
+          2.942434460972247,
+          4.112002849087163
+        ],
+        "se": [
+          0.012481489712132867,
+          0.010709266127899263,
+          0.005646963870568343
+        ],
+        "ssq": 0.010209860677606793,
+        "weighted_ssq": 100.17218612737747,
+        "rms": 0.009381686432843324,
+        "median_s": 4.444484830004512,
+        "repeats": 5,
+        "published_reference_within_tolerance": false
+      },
+      "explicit_lm": {
+        "method": "explicit_lm",
+        "elapsed": 4.169873519000248,
+        "success": true,
+        "reason": "ftol",
+        "iterations": 5,
+        "log_beta": [
+          6.178058515933276,
+          2.9420380235115786,
+          4.111897368945627
+        ],
+        "se": [
+          0.012480753540053758,
+          0.01071600688780346,
+          0.005647880584312784
+        ],
+        "ssq": 0.01020793358514,
+        "weighted_ssq": 97.99012645144138,
+        "rms": 0.0093808010030116,
+        "median_s": 4.174652828995022,
+        "repeats": 5
+      }
+    },
+    "literature/r09a-r1-5sp": {
+      "powell": {
+        "method": "powell",
+        "elapsed": 4.789207378998981,
+        "success": true,
+        "reason": "Optimization terminated successfully.",
+        "iterations": 2,
+        "log_beta": [
+          6.12249652362623,
+          2.9463323146467153,
+          0.7669856968136972,
+          4.486327088235461,
+          4.090532742468367
+        ],
+        "se": [
+          0.010508949193693202,
+          0.008775491403862502,
+          0.024986516284185547,
+          0.04421716497347413,
+          0.00519317087313404
+        ],
+        "ssq": 7.22611104400734e-06,
+        "weighted_ssq": 115.93282470377609,
+        "rms": 0.00024958778160038447,
+        "median_s": 4.789207378998981,
+        "repeats": 5,
+        "published_reference_within_tolerance": false
+      },
+      "explicit_lm": {
+        "method": "explicit_lm",
+        "elapsed": 1.0660235230025137,
+        "success": true,
+        "reason": "ftol",
+        "iterations": 5,
+        "log_beta": [
+          6.121933958143841,
+          2.947356355316454,
+          0.7654731364719126,
+          4.484856057730799,
+          4.090921994563455
+        ],
+        "se": [
+          0.01057045615955132,
+          0.008803767302546037,
+          0.02493078705587895,
+          0.04432042846272269,
+          0.00521548882840229
+        ],
+        "ssq": 7.227234709277931e-06,
+        "weighted_ssq": 115.93671437206541,
+        "rms": 0.0002496071863824743,
+        "median_s": 1.0396821899921633,
+        "repeats": 5
+      }
+    },
+    "literature/r09b-b-qx": {
+      "powell": {
+        "method": "powell",
+        "elapsed": 1.2203763849975076,
+        "success": true,
+        "reason": "Optimization terminated successfully.",
+        "iterations": 1,
+        "log_beta": [
+          4.766751509705757,
+          1.373318281763353,
+          4.0897
+        ],
+        "se": [
+          0.02084732685327837,
+          0.007093549113934764,
+          0.0
+        ],
+        "ssq": 1.1867310921141576e-05,
+        "weighted_ssq": 44.999997791524244,
+        "rms": 0.000513534828877081,
+        "median_s": 1.1943116290058242,
+        "repeats": 5,
+        "published_reference_within_tolerance": true
+      },
+      "explicit_lm": {
+        "method": "explicit_lm",
+        "elapsed": 0.3258112500043353,
+        "success": true,
+        "reason": "ftol",
+        "iterations": 3,
+        "log_beta": [
+          4.766753409173365,
+          1.3733177013989497,
+          4.0897
+        ],
+        "se": [
+          0.020847253969160557,
+          0.007093557038695002,
+          0.0
+        ],
+        "ssq": 1.1867310918650996e-05,
+        "weighted_ssq": 44.999999999992426,
+        "rms": 0.0005135348288231934,
+        "median_s": 0.3273429649998434,
+        "repeats": 5
+      }
+    },
+    "literature/r09b-d-qx": {
+      "unsupported": "fixed limiting shifts are not supported by HM fit (NH-1 in DQ); docs/LITERATURE_BENCHMARK.md \u00a76"
+    },
+    "literature/r09b-r-qx": {
+      "powell": {
+        "method": "powell",
+        "elapsed": 4.837738547008485,
+        "success": true,
+        "reason": "Optimization terminated successfully.",
+        "iterations": 2,
+        "log_beta": [
+          6.12249652362623,
+          2.9463323146467153,
+          0.7669856968136972,
+          4.486327088235461,
+          4.090532742468367
+        ],
+        "se": [
+          0.010508949193693202,
+          0.008775491403862502,
+          0.024986516284185547,
+          0.04421716497347413,
+          0.00519317087313404
+        ],
+        "ssq": 7.22611104400734e-06,
+        "weighted_ssq": 115.93282470377609,
+        "rms": 0.00024958778160038447,
+        "median_s": 4.837738547008485,
+        "repeats": 5,
+        "published_reference_within_tolerance": false
+      },
+      "explicit_lm": {
+        "method": "explicit_lm",
+        "elapsed": 1.034518170010415,
+        "success": true,
+        "reason": "ftol",
+        "iterations": 5,
+        "log_beta": [
+          6.121933958143841,
+          2.947356355316454,
+          0.7654731364719126,
+          4.484856057730799,
+          4.090921994563455
+        ],
+        "se": [
+          0.01057045615955132,
+          0.008803767302546037,
+          0.02493078705587895,
+          0.04432042846272269,
+          0.00521548882840229
+        ],
+        "ssq": 7.227234709277931e-06,
+        "weighted_ssq": 115.93671437206541,
+        "rms": 0.0002496071863824743,
+        "median_s": 1.0362130059947958,
+        "repeats": 5
+      }
+    },
+    "phase1/spectro-noisy": {
+      "powell": {
+        "method": "powell",
+        "elapsed": 0.09367730100348126,
+        "success": true,
+        "reason": "Optimization terminated successfully.",
+        "iterations": 2,
+        "log_beta": [
+          3.027881295363756
+        ],
+        "se": [
+          0.013301515268316499
+        ],
+        "ssq": 8.392844659755659e-06,
+        "weighted_ssq": 8.392844659755659e-06,
+        "rms": 0.00015522418163504948,
+        "median_s": 0.09226091699383687,
+        "repeats": 5
+      },
+      "explicit_lm": {
+        "method": "explicit_lm",
+        "elapsed": 0.039830180001445115,
+        "success": true,
+        "reason": "ftol",
+        "iterations": 5,
+        "log_beta": [
+          3.027881291342243
+        ],
+        "se": [
+          0.013301515360426935
+        ],
+        "ssq": 8.39284465975848e-06,
+        "weighted_ssq": 8.39284465975848e-06,
+        "rms": 0.0001552241816060619,
+        "median_s": 0.039830180001445115,
+        "repeats": 5
+      }
+    },
+    "phase1/spectro-noiseless": {
+      "powell": {
+        "method": "powell",
+        "elapsed": 0.1548460129997693,
+        "success": true,
+        "reason": "Optimization terminated successfully.",
+        "iterations": 4,
+        "log_beta": [
+          3.00000000000013
+        ],
+        "se": [
+          3.895562655398457e-14
+        ],
+        "ssq": 2.5496872072476726e-29,
+        "weighted_ssq": 2.5496872072476726e-29,
+        "rms": 4.374234475931027e-16,
+        "median_s": 0.15575245399668347,
+        "repeats": 5
+      },
+      "explicit_lm": {
+        "method": "explicit_lm",
+        "elapsed": 1.099276817010832,
+        "success": false,
+        "reason": "maxiter",
+        "iterations": 200,
+        "log_beta": [
+          3.0000005196138306
+        ],
+        "se": [
+          3.535532528500079e-08
+        ],
+        "ssq": 4.885798573800516e-17,
+        "weighted_ssq": 4.885798573800516e-17,
+        "rms": 3.9699672673095987e-10,
+        "median_s": 1.0928039790014736,
+        "repeats": 5
+      }
+    },
+    "phase1/spectro-fixed": {
+      "powell": {
+        "method": "powell",
+        "elapsed": 0.10963549200096168,
+        "success": true,
+        "reason": "Optimization terminated successfully.",
+        "iterations": 2,
+        "log_beta": [
+          3.9995567401879293,
+          7.0
+        ],
+        "se": [
+          0.0010730675363533845,
+          0.0
+        ],
+        "ssq": 8.015919672308708e-06,
+        "weighted_ssq": 8.015919672308708e-06,
+        "rms": 0.00014540708762307962,
+        "median_s": 0.11056174999976065,
+        "repeats": 5
+      },
+      "explicit_lm": {
+        "method": "explicit_lm",
+        "elapsed": 0.07624792199931107,
+        "success": true,
+        "reason": "ftol",
+        "iterations": 6,
+        "log_beta": [
+          3.999556740255224,
+          7.0
+        ],
+        "se": [
+          0.0010730675361571328,
+          0.0
+        ],
+        "ssq": 8.015919672315027e-06,
+        "weighted_ssq": 8.015919672315027e-06,
+        "rms": 0.0001454070875941436,
+        "median_s": 0.07826088700676337,
+        "repeats": 5
+      }
+    },
+    "phase1/nmr-11": {
+      "powell": {
+        "method": "powell",
+        "elapsed": 0.05342324300727341,
+        "success": true,
+        "reason": "Optimization terminated successfully.",
+        "iterations": 1,
+        "log_beta": [
+          2.9986838167221053
+        ],
+        "se": [
+          0.009806983365952685
+        ],
+        "ssq": 0.00010294114492075891,
+        "weighted_ssq": 23.99974701274981,
+        "rms": 0.0020710418565780576,
+        "median_s": 0.05275611901015509,
+        "repeats": 5
+      },
+      "explicit_lm": {
+        "method": "explicit_lm",
+        "elapsed": 0.04466576200502459,
+        "success": true,
+        "reason": "ftol",
+        "iterations": 3,
+        "log_beta": [
+          2.998676411061464
+        ],
+        "se": [
+          0.009806979475012663
+        ],
+        "ssq": 0.00010294124982175332,
+        "weighted_ssq": 23.99977015947149,
+        "rms": 0.0020710429118135274,
+        "median_s": 0.04624883399810642,
+        "repeats": 5
+      }
+    },
+    "phase1/nmr-12-fixed": {
+      "powell": {
+        "method": "powell",
+        "elapsed": 0.09734406200004742,
+        "success": true,
+        "reason": "Optimization terminated successfully.",
+        "iterations": 1,
+        "log_beta": [
+          4.028523287793426,
+          7.0
+        ],
+        "se": [
+          0.02477779444272559,
+          0.0
+        ],
+        "ssq": 0.00012983396972093822,
+        "weighted_ssq": 29.996303956858956,
+        "rms": 0.0020803362686589734,
+        "median_s": 0.09768116599298082,
+        "repeats": 5
+      },
+      "explicit_lm": {
+        "method": "explicit_lm",
+        "elapsed": 0.12678666799911298,
+        "success": true,
+        "reason": "ftol",
+        "iterations": 4,
+        "log_beta": [
+          4.028539818266959,
+          7.0
+        ],
+        "se": [
+          0.024777676709663292,
+          0.0
+        ],
+        "ssq": 0.00012983358152869926,
+        "weighted_ssq": 29.996286532362838,
+        "rms": 0.0020803331586447017,
+        "median_s": 0.12678666799911298,
+        "repeats": 5
+      }
+    },
+    "golden/soft-bound-1": {
+      "powell": {
+        "method": "powell",
+        "elapsed": 0.07054830000561196,
+        "success": true,
+        "reason": "Optimization terminated successfully.",
+        "iterations": 2,
+        "log_beta": [
+          2.6887069411952402
+        ],
+        "se": [
+          0.016265797808747068
+        ],
+        "ssq": 1.2450463951230721,
+        "weighted_ssq": 1.2450463951230721,
+        "rms": 0.00013854168748589265,
+        "median_s": 0.07079153500671964,
+        "repeats": 5
+      },
+      "explicit_lm": {
+        "method": "explicit_lm",
+        "elapsed": 0.21449512300023343,
+        "success": true,
+        "reason": "xtol",
+        "iterations": 22,
+        "log_beta": [
+          3.132062109653445
+        ],
+        "se": [
+          0.009486965832012995
+        ],
+        "ssq": 1.3373802115721416,
+        "weighted_ssq": 1.3373802115721416,
+        "rms": 6.60892546757718e-05,
+        "median_s": 0.2147179989988217,
+        "repeats": 5
+      }
+    },
+    "golden/soft-bound-2": {
+      "powell": {
+        "method": "powell",
+        "elapsed": 0.0918963620060822,
+        "success": true,
+        "reason": "Optimization terminated successfully.",
+        "iterations": 2,
+        "log_beta": [
+          2.67166713375592
+        ],
+        "se": [
+          0.01674634565604378
+        ],
+        "ssq": 1.2431419480393309,
+        "weighted_ssq": 1.2431419480393309,
+        "rms": 0.00014684823130602814,
+        "median_s": 0.08979165200435091,
+        "repeats": 5
+      },
+      "explicit_lm": {
+        "method": "explicit_lm",
+        "elapsed": 0.2585999239963712,
+        "success": true,
+        "reason": "xtol",
+        "iterations": 27,
+        "log_beta": [
+          3.1314757346091544
+        ],
+        "se": [
+          0.013234865702699274
+        ],
+        "ssq": 1.3373184066648849,
+        "weighted_ssq": 1.3373184066648849,
+        "rms": 9.200183345214527e-05,
+        "median_s": 0.25897818700468633,
+        "repeats": 5
+      }
+    },
+    "golden/soft-bound-3": {
+      "powell": {
+        "method": "powell",
+        "elapsed": 0.08203447099367622,
+        "success": true,
+        "reason": "Optimization terminated successfully.",
+        "iterations": 2,
+        "log_beta": [
+          2.6896840102331567
+        ],
+        "se": [
+          0.03178505131057596
+        ],
+        "ssq": 1.2479179588848908,
+        "weighted_ssq": 1.2479179588848908,
+        "rms": 0.00026922158301044476,
+        "median_s": 0.08279280900023878,
+        "repeats": 5
+      },
+      "explicit_lm": {
+        "method": "explicit_lm",
+        "elapsed": 0.2866562840063125,
+        "success": true,
+        "reason": "ftol",
+        "iterations": 29,
+        "log_beta": [
+          3.132971488165554
+        ],
+        "se": [
+          0.027957095634480882
+        ],
+        "ssq": 1.3378537516713744,
+        "weighted_ssq": 1.3378537516713744,
+        "rms": 0.00019455009571877791,
+        "median_s": 0.2866562840063125,
+        "repeats": 5
+      }
+    }
+  }
+}
