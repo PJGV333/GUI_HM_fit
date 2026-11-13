@@ -41,8 +41,8 @@
 - 3.3: resuelto vectorizado de pH con Brent de referencia y respaldo;
   comparaciones extremas y full-refit sintético añadidas. Suite: 621 recogidas,
   596 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas,
-  172.50 s; antes 610 recogidas y 585 aprobadas. Pendiente perfilar banco y
-  demás bootstrap y tabla de perfiles; 3.5 pendiente.
+  172.50 s; antes 610 recogidas y 585 aprobadas. Banco y una réplica de
+  bootstrap full-refit por técnica perfilados; resultados más abajo. 3.5 pendiente.
   3.4: auditoría del workflow completada;
   no requiere cambio de CI, pues la suite completa ya incluye el banco.
   Este documento es provisional; no constituye validación de la fase completa.
@@ -61,6 +61,7 @@
 | D-8 | Pesos para comparar IRLS | Comparar solo SSQ ponderada; mostrar también SSQ sin ponderar | Mostrar ambas y los pesos usados | Los métodos pueden terminar con pesos distintos, por lo que las SSQ ponderadas no comparten escala | `weights_used_for_fit` y `weighted_ssq_fit` en los resultados | Ignorar campos adicionales, sin cambiar el ajuste |
 | D-9 | Configuraciones RMN sin pesos | Unitarios; IRLS previo | IRLS | Compatibilidad y decisión expresa del autor | `test_nmr_weight_selection_roundtrips_and_legacy_defaults_to_irls` y pruebas de regresión | Seleccionar `unit` expresamente |
 | D-10 | Resolver pH sin intervalo válido o modelo no monótono | Forzar Newton; usar Brent y respaldo previos | Mantener referencia escalar | Preservar comportamiento en casos sin garantía de monotonía o sin bracket | `test_unbracketed_points_use_reference_fallback` y pruebas extremas | Sustituir llamada vectorizada por `_simulate_pH_titration_reference` |
+| D-11 | Otros cuellos observados | Optimizar speciation/render/ODE; no alterar rutas sin prueba de equivalencia | No cambiarlos | Son compartidos y pueden alterar resultados o interfaz; no se ha demostrado una optimización equivalente | `validation/results/phase33_profiles.json` | No hay cambio que revertir |
 
 ### Inventario del residuo y Jacobiano espectral
 
@@ -231,6 +232,32 @@ Las cinco mediciones y semillas están en
 validation.phase33_potentiometry_benchmark --output RUTA`. La mejora medida
 no garantiza 10× para otros experimentos ni es una campaña de cobertura.
 
+### Perfiles cProfile 3.3
+
+`validation/phase33_profiles.py` perfila una ejecución del banco completo y
+una réplica wild bootstrap full-refit por técnica, semilla 20261113. Los datos
+son sintéticos para bootstrap; se llama al ajuste completo y se comprueba que
+la réplica haya tenido éxito. En Espectroscopía/RMN se incluyen lectura y
+escritura XLSX; la medición es perfilada y no equivale a las medianas sin
+perfilador de la tabla anterior. Detalle por función, llamadas y muestras en
+`validation/results/phase33_profiles.json`. Los tiempos por función son
+acumulados y se solapan: no deben sumarse.
+
+| Carga | Antes (s perfilados) | Después (s perfilados) | Punto caliente observado | Cambio |
+|---|---:|---:|---|---|
+| Banco de literatura (10 casos) | No medido | 47.17 | Newton-Raphson concentraciones 40.19 s | Sin cambio del solver |
+| Bootstrap potenciometría | 0.506 | 0.041 | balance escalar 0.474 s → vectorial 0.019 s | Newton vectorizado; misma semilla |
+| Bootstrap ácido-base RMN | No medido | 0.0052 | predicción 0.0020 s | Sin cambio |
+| Bootstrap ácido-base espectral | No medido | 0.0063 | predicción 0.0031 s | Sin cambio |
+| Bootstrap cinética | No medido | 0.209 | integración 0.206 s | Sin cambio |
+| Bootstrap espectroscopia | No medido | 0.146 | concentraciones 0.0796 s | Sin cambio |
+| Bootstrap RMN | No medido | 0.466 | concentraciones 0.184 s; render 0.162 s | Sin cambio |
+
+No se inventan tiempos anteriores para rutas que no se modificaron. Se deja
+el solver Newton-Raphson compartido sin optimizar: aunque es un cuello medido,
+no se ha demostrado una alternativa con la equivalencia numérica exigida.
+Igualmente no se altera el render ni el integrador de cinética en esta etapa.
+
 ## Evidencia de JAX
 
 Con JAX 0.12.0.1 en CPU y datos sintéticos A → B → C (k1 = 1 s⁻¹,
@@ -336,6 +363,8 @@ El CI de `f0afeca` también terminó en verde:
 <https://github.com/PJGV333/GUI_HM_fit/actions/runs/43463381745>.
 El CI de `8e5342c` terminó en verde:
 <https://github.com/PJGV333/GUI_HM_fit/actions/runs/43464692714>.
+El CI del resolvedor vectorizado `2571a66` también terminó en verde:
+<https://github.com/PJGV333/GUI_HM_fit/actions/runs/43466430821>.
 
 ## Riesgos y cuestiones abiertas
 
