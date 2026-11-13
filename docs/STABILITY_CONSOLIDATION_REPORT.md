@@ -21,7 +21,7 @@
 | HC2/HC3 experimental | `validation/uncertainty_methods.py` usaba suma de cuadrados de concentraciones como leverage | Cálculo inválido desactivado en la campaña: HC2/HC3 se declaran no aplicables para OLS, NNLS y penalización; la corrección fundamentada y repetición de campañas **pendientes** |
 | Grados de libertad | Truncamientos a 1 en `kinetics_tab.py` y `hmfit_core/utils/errors.py` | Eliminados en esas rutas; auditoría de todos los usos y convenciones **pendiente** |
 | Solver interior espectral | Diferencia 300/3000 iteraciones documentada en Fase 3 | Diagnóstico independiente y KKT **pendientes** |
-| Sensibilidades implícitas y cinéticas | Véase `DERIVATIVES_DESIGN.md` | Implementación y validación **pendientes** |
+| Sensibilidades implícitas y cinéticas | Véase `DERIVATIVES_DESIGN.md` | Sensibilidad 1:1 experimental probada; cinética y otros modelos **pendientes**, sin integración productiva |
 
 `hmfit_confignmrT2.json` configura Powell; la auditoría de migración de todos los formatos antiguos no está completada. La búsqueda de rutas usa `rg 'explicit_lm|\\bjax\\b|jaxlib'` sobre código, GUI, pruebas, configuración y CI; los resultados históricos no deben borrarse.
 
@@ -75,6 +75,12 @@ Suite local posterior: 627 aprobadas, 3 omitidas, 5 deseleccionadas, 16 xfail, 2
 La búsqueda adicional detectó otro truncamiento `max(m-p,1)` en la utilidad `param_errors_cs`, sin llamadas internas encontradas. Con dos residuos `[1,-1]` y dos parámetros, antes devolvía varianza 2; ahora devuelve NaN. También utilizaba una pseudoinversa que atribuía precisión finita a parámetros confundidos: para un Jacobiano con dos columnas idénticas devolvía errores estándar `0.32732684`, y ahora ambos se marcan no disponibles. La utilidad comparte `linearized_covariance` y requiere residuos compatibles con diferenciación por paso complejo. Una referencia lineal independiente de rango completo verifica varianza, covarianza y errores estándar; no se afirma que el método sea válido para residuos no holomorfos ni para estimadores con restricciones.
 
 Suite local posterior: 630 aprobadas, 3 omitidas, 5 deseleccionadas, 16 xfail y 283 advertencias en 179,28 s. CI multiplataforma pendiente.
+
+## Sensibilidad de equilibrio 1:1
+
+Se añadió una implementación experimental de diferenciación implícita para asociación 1:1, sin cambiar Jacobianos productivos. Se ha contrastado con una solución escalar independiente, una derivada analítica y diferencias finitas en tres escalas, además de un caso del solver existente y un rechazo por mal condicionamiento. Alcance, tolerancias y medición exploratoria de rendimiento en `DERIVATIVES_DESIGN.md`. Quedan pendientes cinética, otros modelos, integración en producción y validación más amplia.
+
+Suite local: 636 aprobadas, 3 omitidas, 5 deseleccionadas, 16 xfail y 284 advertencias en 177,16 s. No es CI multiplataforma.
 
 ## Pendiente y límites
 
