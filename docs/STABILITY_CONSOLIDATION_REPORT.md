@@ -25,6 +25,19 @@
 
 `hmfit_confignmrT2.json` configura Powell; la auditoría de migración de todos los formatos antiguos no está completada. La búsqueda de rutas usa `rg 'explicit_lm|\\bjax\\b|jaxlib'` sobre código, GUI, pruebas, configuración y CI; los resultados históricos no deben borrarse.
 
+## Repetición local de la línea base y auditoría de xfail
+
+En `0a4c33d`, `QT_QPA_PLATFORM=offscreen OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 .venv/bin/python -m pytest -q -rxfEs` terminó con 606 aprobadas, 3 omitidas, 5 deseleccionadas, 16 xfail y 283 advertencias en 175,04 s. Las omitidas son el fichero experimental RMN ausente y dos pruebas JAX sin dependencia instalada. No es CI multiplataforma. El banco de literatura se ejecutó de nuevo con `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 .venv/bin/python -m validation.literature_benchmark run --json "$TMPDIR/hmfit-consolidation-literature-current.json"`: código 0, dos casos reproducidos, cuatro parciales, tres no reproducidos y uno no soportado; código 0 no equivale a superar todas las referencias. El JSON temporal no es un artefacto versionado.
+
+Clasificación individual provisional de los 16 xfail, basada en sus motivos y en `docs/LITERATURE_BENCHMARK.md`; no se retiró ninguno ni se afirma haber resuelto sus causas:
+
+- Defecto pendiente de GUI: `test_custom_model_dimensions_start_without_forced_roles` y `test_gui_potentiometry_validation_warns_for_operational_ph` (`tests/test_acid_base.py`).
+- Discrepancia de referencia/redondeo, limitación científica conocida: `test_r09a_ratio_at_fixed_cation_is_15_4` y los tres parámetros `r09b-spec-r`, `r09b-spec-b`, `r09b-spec-d-x` de `test_bc50_tables_reproduce_preregistered` (`tests/test_literature_bc50.py`).
+- Diferencias ligadas al estimador IRLS, pendiente contrastar tras consolidar pesos: parámetros `r09a-p2-058`, `r09a-p2-106`, `r09a-r1-11-3n`, `r09a-r1-3sp`, `r09a-r1-5sp`, `r09b-r-qx` de `test_literature_reproduces_published_fit` (`tests/test_literature_benchmark.py`).
+- Discrepancia no resuelta entre datos/modelo y referencia: `r09a-qx-dil` tanto en `test_literature_reproduces_published_fit` como en `test_literature_forward_model_at_published_constants` (`tests/test_literature_benchmark.py`); no se presupone cuál es su causa definitiva.
+- Característica no soportada: `test_literature_reproduces_published_fit[r09b-d-qx]`, desplazamientos límite fijos.
+- Defecto pendiente o limitación del modelo espectral: `test_absgrp_shared_groups_reduce_optical_components` (`tests/test_spectro_absgrp_equivalence.py`); causa raíz aún sin verificar.
+
 ## Pendiente y límites
 
-Faltan las etapas B–H, la clasificación individual de todos los xfail, los análisis antes/después y las pruebas de CI en todas las plataformas. No se han cambiado los métodos, umbrales, ni resultados productivos en este checkpoint de auditoría. Los informes de fases anteriores son históricos: los resultados HC2/HC3 calculados mediante el leverage incorrecto quedan **invalidados** y no deben utilizarse como evidencia, aunque se conservan los datos. La implementación experimental aún permite volver a generar esos resultados inválidos: no usarla hasta su corrección. El dictamen actual es **C — consolidación incompleta**; no se cumplen los criterios obligatorios para A.
+Faltan las etapas B–H, la verificación de las causas de los xfail clasificados provisionalmente, los análisis antes/después y las pruebas de CI en todas las plataformas. No se han cambiado los métodos, umbrales, ni resultados productivos en este checkpoint de auditoría. Los informes de fases anteriores son históricos: los resultados HC2/HC3 calculados mediante el leverage incorrecto quedan **invalidados** y no deben utilizarse como evidencia, aunque se conservan los datos. La implementación experimental aún permite volver a generar esos resultados inválidos: no usarla hasta su corrección. El dictamen actual es **C — consolidación incompleta**; no se cumplen los criterios obligatorios para A.
