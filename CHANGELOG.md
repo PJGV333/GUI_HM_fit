@@ -16,6 +16,10 @@ All notable user-visible changes. Versions follow the GitHub releases
   and the current IRLS weighting remain the defaults. Convergence and active-bound
   uncertainty warnings are reported. Different optimizers may reach different minima;
   see `tests/test_phase31_nmr_lm.py` and the phase 3 report.
+- NMR: unit weights are available as an opt-in alternative to per-signal IRLS;
+  changing weights can change estimates and standard errors. Final weights and cycle
+  counts are shown and exported. Configurations without `weights_mode` retain IRLS;
+  evidence: `tests/test_phase31_nmr_lm.py` and `validation/results/phase32_weights.json`.
 - Kinetics: automatic initial rate estimates now use the experiment duration and reactant
   concentrations in the data's units; rate constants and Arrhenius A use Log10 by default.
   Existing user entries and saved settings are retained. Initial guesses can change fitted

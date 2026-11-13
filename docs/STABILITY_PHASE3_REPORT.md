@@ -32,7 +32,13 @@
   propagar diagnósticos y SE a todas las rutas de análisis adicionales. Suite: 598 recogidas,
   573 aprobadas, 0 fallidas, 17 xfail, 3 omitidas, 5 deseleccionadas,
   191.94 s (antes: 591 recogidas, 566 aprobadas, las demás cifras iguales).
-- 3.2, 3.3 y 3.5 pendientes. 3.4: auditoría del workflow completada;
+- 3.2: pesos unitarios y por señal disponibles en GUI, API y configuración;
+  IRLS sigue por defecto. Pesos finales y ciclos se muestran y exportan;
+  tabla de evidencia del banco en este informe. Suite: 610 recogidas,
+  585 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas,
+  186.40 s; antes 607 recogidas y 582 aprobadas. Falta revisión de rutas de
+  errores de la GUI, sin corregir el problema fuera de alcance §6.4(c).
+- 3.3 y 3.5 pendientes. 3.4: auditoría del workflow completada;
   no requiere cambio de CI, pues la suite completa ya incluye el banco.
   Este documento es provisional; no constituye validación de la fase completa.
 
@@ -48,6 +54,7 @@
 | D-6 | Jacobiano RMN en IRLS | Derivar la proyección con ridge; diferenciar el residuo real | Diferencias centradas | Reproduce la proyección, máscara y pesos por señal existentes sin suponer un Jacobiano de proyección inexacto | `test_nmr_lm_with_irls_matches_powell`, `test_nmr_lm_parallel_multistart` | Seleccionar Powell |
 | D-7 | Optimización predeterminada | LM; Powell | Powell | LM empeora SSQ en casos de regresión y agota iteraciones en el sintético sin ruido | Tabla 3.1.g y `validation/results/phase31_comparison.json` | Elegir LM explícitamente en la configuración |
 | D-8 | Pesos para comparar IRLS | Comparar solo SSQ ponderada; mostrar también SSQ sin ponderar | Mostrar ambas y los pesos usados | Los métodos pueden terminar con pesos distintos, por lo que las SSQ ponderadas no comparten escala | `weights_used_for_fit` y `weighted_ssq_fit` en los resultados | Ignorar campos adicionales, sin cambiar el ajuste |
+| D-9 | Configuraciones RMN sin pesos | Unitarios; IRLS previo | IRLS | Compatibilidad y decisión expresa del autor | `test_nmr_weight_selection_roundtrips_and_legacy_defaults_to_irls` y pruebas de regresión | Seleccionar `unit` expresamente |
 
 ### Inventario del residuo y Jacobiano espectral
 
@@ -157,6 +164,44 @@ con Powell, el RMS agrupado incumple el límite del 5 % respecto al no agrupado;
 no ha pasado a XPASS y no se toca la prueba. La unificación de motores sugerida
 por su razón histórica está fuera de alcance.
 
+## Pesos RMN: evidencia 3.2
+
+Se usó Powell y el mismo banco con las dos opciones; comando reproducible
+`QT_QPA_PLATFORM=offscreen OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1
+.venv/bin/python -m validation.phase32_weights --output
+validation/results/phase32_weights.json`. Las columnas contienen vectores en
+orden de especies; Δ es el valor absoluto frente a HypNMR, y SE es el reportado
+por el procesador. Los pesos finales completos se conservan en el JSON. Con
+pesos unitarios se ejecuta un solo ciclo; IRLS sin clave conserva el comportamiento
+anterior, incluida la actualización de pesos al final del último ciclo.
+
+| Caso y pesos | log β | SE | Δ frente a referencia | Ciclos |
+|---|---|---|---|---:|
+| r09a-p2-058 IRLS | 7.1737/3.5969/4.0604/0.1/6.2387/9.5127 | 0.015917/0.010006/0.010409/0/0.025444/0.026936 | 0.01509/0.019161/0.0027695/0/0.017089/0.047109 | 3 |
+| r09a-p2-058 unit | 7.1887/3.5778/4.0633/0.1/6.2558/9.4655 | 0.020505/0.013652/0.014407/0/0.035265/0.037652 | 8.64e-05/0.000127/5.41e-05/0/3.99e-05/5.21e-05 | 1 |
+| r09a-p2-106 IRLS | 7.1914/3.6073/4.0937/0.1/6.1246/9.5335 | 0.019259/0.015899/0.0081936/0/0.031487/0.031713 | 0.049503/0.0026589/0.021318/0/0.043884/0.064016 | 4 |
+| r09a-p2-106 unit | 7.142/3.6092/4.0722/0.1/6.0809/9.5978 | 0.024431/0.021569/0.017307/0/0.049122/0.027452 | 6.9e-05/0.0007574/0.00023049/0/0.00024838/0.00027081 | 1 |
+| r09a-qx-dil IRLS | 4.0579 | 0.013346 | 0.0070727 | 2 |
+| r09a-qx-dil unit | 4.0579 | 0.013346 | 0.0070727 | 1 |
+| r09a-r1-11-3n IRLS | 2.5699 | 0.0030759 | 0.19182 | 4 |
+| r09a-r1-11-3n unit | 2.3781 | 0.11788 | 4.14e-05 | 1 |
+| r09a-r1-11-me IRLS | 2.57 | 0.0031284 | 2.33e-05 | 2 |
+| r09a-r1-11-me unit | 2.57 | 0.0031284 | 2.33e-05 | 1 |
+| r09a-r1-3sp IRLS | 6.1778/2.9424/4.112 | 0.012481/0.010709/0.005647 | 0.35182/0.79953/0.144 | 5 |
+| r09a-r1-3sp unit | 6.5296/2.1428/4.256 | 0.18388/0.11798/0.18692 | 2.08e-05/0.00013908/3.82e-07 | 1 |
+| r09a-r1-5sp IRLS | 6.1225/2.9463/0.76699/4.4863/4.0905 | 0.010509/0.0087755/0.024987/0.044217/0.0051932 | 0.0011965/0.00023231/0.015514/0.026173/0.00083274 | 3 |
+| r09a-r1-5sp unit | 6.1218/2.9463/0.78138/4.5114/4.09 | 0.010116/0.0085307/0.026704/0.045776/0.0050635 | 0.00045652/0.00022964/0.001121/0.0011361/0.00031606 | 1 |
+| r09b-b-qx IRLS | 4.7668/1.3733/4.0897 | 0.020847/0.0070935/0 | 4.85e-05/1.83e-05/0 | 2 |
+| r09b-b-qx unit | 4.7668/1.3733/4.0897 | 0.020847/0.0070936/0 | 3.56e-05/1.84e-05/0 | 1 |
+| r09b-d-qx | No admitido: desplazamientos límite fijos | — | — | — |
+| r09b-r-qx IRLS | 6.1225/2.9463/0.76699/4.4863/4.0905 | 0.010509/0.0087755/0.024987/0.044217/0.0051932 | 0.0011965/0.00023231/0.015514/0.026173/0.00083274 | 3 |
+| r09b-r-qx unit | 6.1218/2.9463/0.78138/4.5114/4.09 | 0.010116/0.0085307/0.026704/0.045776/0.0050635 | 0.00045652/0.00022964/0.001121/0.0011361/0.00031606 | 1 |
+
+**Pregunta para el autor — banco §6.4(c):** la pestaña Errors usa la máscara
+basada en la concentración del progenitor y omite titulaciones donde ésta es
+cero, incluso si la señal tiene población válida por su estequiometría. ¿Se
+aprueba sustituir esa máscara por la del denominador `C·S_j`? No se ha cambiado.
+
 ## Evidencia de JAX
 
 Con JAX 0.12.0.1 en CPU y datos sintéticos A → B → C (k1 = 1 s⁻¹,
@@ -258,6 +303,8 @@ cuatro trabajos: <https://github.com/PJGV333/GUI_HM_fit/actions/runs/43449185373
 y <https://github.com/PJGV333/GUI_HM_fit/actions/runs/43459085101>. El push de
 `613fa18` canceló el CI de `e79343b` por concurrencia; se reejecutó y quedó
 verde: <https://github.com/PJGV333/GUI_HM_fit/actions/runs/43458138060>.
+El CI de `f0afeca` también terminó en verde:
+<https://github.com/PJGV333/GUI_HM_fit/actions/runs/43463381745>.
 
 ## Riesgos y cuestiones abiertas
 

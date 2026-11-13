@@ -161,6 +161,13 @@ class NMRTab(QWidget):
         sig_btns.addStretch(1)
         data_layout.addLayout(sig_btns)
 
+        weights_row = QHBoxLayout()
+        weights_row.addWidget(QLabel("Weights", self._data_group))
+        self.combo_weights = QComboBox(self._data_group)
+        self.combo_weights.addItem("Per signal (IRLS)", "irls")
+        self.combo_weights.addItem("Unit", "unit")
+        weights_row.addWidget(self.combo_weights)
+        data_layout.addLayout(weights_row)
         left_layout.addWidget(self._data_group)
 
         # Model-definition area inside Model tab: matrix or equations.
@@ -777,6 +784,7 @@ class NMRTab(QWidget):
             "algorithm": state.algorithm,
             "model_settings": state.model_settings,
             "optimizer": state.optimizer,
+            "weights_mode": str(self.combo_weights.currentData()),
             "initial_k": state.initial_k,
             "bounds": state.bounds,
             "fixed_mask": state.fixed_mask,
@@ -1114,6 +1122,8 @@ class NMRTab(QWidget):
             guest_label=str(config.get("guest_label") or ""),
         )
         self.model_opt_plots.apply_state(state)
+        weights_index = self.combo_weights.findData(str(config.get("weights_mode") or "irls"))
+        self.combo_weights.setCurrentIndex(weights_index if weights_index >= 0 else 0)
         self.model_opt_plots.set_multi_start(
             config.get("multi_start_runs", 1),
             config.get("multi_start_seeds"),
@@ -1149,6 +1159,7 @@ class NMRTab(QWidget):
         if self.equation_editor is not None:
             self.equation_editor.set_text("")
         self.model_opt_plots.reset()
+        self.combo_weights.setCurrentIndex(0)
 
         self.canvas_main.clear()
         self._reset_plot_state()

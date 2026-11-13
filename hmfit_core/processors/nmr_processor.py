@@ -465,6 +465,7 @@ def process_nmr_data(
     multi_start_seeds: Optional[List[int]] = None,
     multi_start_parallel: bool = False,
     multi_start_max_workers: Optional[int] = None,
+    weights_mode: str = "irls",
 ) -> Dict[str, Any]:
     """
     Main entry point for processing NMR titration data and fitting binding constants.
@@ -515,6 +516,9 @@ def process_nmr_data(
     Dict[str, Any]
         A JSON-serializable dictionary containing fit results, figures, and statistics.
     """
+    weights_mode = str(weights_mode).strip().lower()
+    if weights_mode not in {"irls", "unit"}:
+        raise ValueError("weights_mode must be 'irls' or 'unit'")
     t_total_start = time.perf_counter()
     stage_times = {
         "parse_s": 0.0,
@@ -956,6 +960,9 @@ def process_nmr_data(
             log_progress(f"Optimization cycle failed: {e}")
             param_opt_failed = True
             break
+        if weights_mode == "unit":
+            log_progress("Unit weights: one optimization cycle, no IRLS update.")
+            break
         # Update weights
         C_opt = res.concentraciones(k_opt_full)[0]
         dq_fit = project_coeffs_block_onp_frac(
@@ -1121,6 +1128,9 @@ def process_nmr_data(
             f"Optimizer: {optimizer}",
             f"Algorithm: {algorithm}",
             f"Model settings: {model_settings}",
+            f"Weights: {weights_mode}; cycles: {cycle_count}",
+            "Final weights per signal: " + ", ".join(
+                f"{name}={weight:.8g}" for name, weight in zip(signal_names, weights_per_signal)),
         ]
         results_text += "\n\nEstadísticas:\n" + "\n".join(extra_stats)
         graphs = {}
@@ -1163,7 +1173,9 @@ def process_nmr_data(
                 ["optimizer", optimizer],
                 ["algorithm", algorithm],
                 ["objective_evaluations", int(objective_eval_count_total)],
-            ] + ([
+                ["weights_mode", weights_mode],
+                ["irls_cycles", cycle_count],
+            ] + [[f"weight {name}", float(weight)] for name, weight in zip(signal_names, weights_per_signal)] + ([
                 ["LM success", lm_summary["success"]],
                 ["LM stop reason", lm_summary["message"]],
                 ["LM iterations", lm_summary["nit"]],
@@ -1171,6 +1183,7 @@ def process_nmr_data(
             ] if optimizer == "explicit_lm" and lm_summary is not None else []),
             "uncertainty_notes": (["parámetro en el límite: " + ", ".join(bound_names)] if bound_names else []),
             "weights_used_for_fit": weights_used_for_fit.tolist(),
+            "weights_mode": weights_mode,
             "irls_weights_final": weights_per_signal.tolist(),
             "irls_cycles": cycle_count,
             "weighted_ssq_fit": float(np.sum((diff_final[valid_residuals_final] ** 2) *
@@ -1263,6 +1276,9 @@ def process_nmr_data(
             "timings": dict(stage_times),
             "objective_evaluations": int(objective_eval_count_total),
             "optimizer_result": lm_summary if optimizer == "explicit_lm" and lm_summary is not None else optimizer_summary,
+            "weights_mode": weights_mode,
+            "final_weights_per_signal": dict(zip(signal_names, weights_per_signal.tolist())),
+            "irls_cycles": cycle_count,
             "constants": constants,
             "derived_noncoop": export_data.get("derived_noncoop"),
             "stability_status": stability_diag.get("status") if 'stability_diag' in locals() else None,

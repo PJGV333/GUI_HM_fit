@@ -5,7 +5,8 @@ from hmfit_core.processors import nmr_processor as nmr
 from hmfit_core.solvers import NewtonRaphson
 
 
-def _fit(tmp_path, monkeypatch, bounds, *, optimizer='explicit_lm', fixed=None, parallel=False):
+def _fit(tmp_path, monkeypatch, bounds, *, optimizer='explicit_lm', fixed=None, parallel=False,
+         weights_mode='irls'):
     monkeypatch.setattr(nmr, 'generate_figure_base64', lambda *args, **kwargs: '')
     monkeypatch.setattr(nmr, 'generate_figure2_base64', lambda *args, **kwargs: '')
     n = 12
@@ -23,7 +24,8 @@ def _fit(tmp_path, monkeypatch, bounds, *, optimizer='explicit_lm', fixed=None, 
     return nmr.process_nmr_data(str(path), 'S', 'S', ['H', 'G'], ['s1', 's2'], 'H', 'G',
                                 model, [2.8], bounds, 'Newton-Raphson', optimizer, 'Free', [1],
                                 k_fixed=fixed, multi_start_runs=2 if parallel else 1,
-                                multi_start_parallel=parallel, multi_start_seeds=[1, 2] if parallel else None)
+                                multi_start_parallel=parallel, multi_start_seeds=[1, 2] if parallel else None,
+                                weights_mode=weights_mode)
 
 
 def test_nmr_lm_with_irls_matches_powell(tmp_path, monkeypatch):
@@ -39,6 +41,23 @@ def test_nmr_lm_with_irls_matches_powell(tmp_path, monkeypatch):
     np.testing.assert_allclose(ed['weighted_ssq_fit'], np.sum(diff**2 * weights[None, :]))
     assert ed['irls_cycles'] > 0
     assert 'LM: success=' in out['results_text']
+
+
+def test_unit_weights_run_one_cycle_and_are_exported(tmp_path, monkeypatch):
+    out = _fit(tmp_path, monkeypatch, [[1., 5.]], optimizer='powell', weights_mode='unit')
+    ed = out['export_data']
+    assert ed['weights_mode'] == 'unit'
+    assert ed['irls_cycles'] == 1
+    assert ed['irls_weights_final'] == [1., 1.]
+    assert ed['weights_used_for_fit'] == [1., 1.]
+    assert 'Weights: unit; cycles: 1' in out['results_text']
+    assert dict(ed['stats_table'])['weight s1'] == 1.
+
+
+def test_unknown_weight_mode_is_rejected(tmp_path, monkeypatch):
+    import pytest
+    with pytest.raises(ValueError, match='weights_mode'):
+        _fit(tmp_path, monkeypatch, [[1., 5.]], weights_mode='bad')
 
 
 def test_nmr_lm_marks_active_bound(tmp_path, monkeypatch):
