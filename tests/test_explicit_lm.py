@@ -34,6 +34,37 @@ def test_general_profile_residual_matches_existing_objective(mode, solver, delta
     assert np.all(np.isfinite(r)) and np.all(np.isfinite(j))
 
 
+def test_fixed_bound_is_excluded_from_projected_gradient():
+    def f(x):
+        return np.array([x[0] - 2, x[1] - 3]), np.eye(2)
+    result = explicit_lm(f, [0., 0.], [(0., 0.), (None, None)])
+    assert result.success and result.reason in ('gtol', 'ftol')
+    np.testing.assert_allclose(result.x, [0., 3.], atol=1e-7)
+    assert result.scaled_gradient < 1e-8
+    assert result.active_bounds.tolist() == [True, False]
+
+
+def test_bound_can_be_left_when_gradient_points_inward():
+    result = explicit_lm(lambda x: (np.array([x[0] - 2]), np.ones((1, 1))),
+                         [0.], [(0., 3.)])
+    assert result.success
+    np.testing.assert_allclose(result.x, [2.], atol=1e-7)
+    assert not result.active_bounds[0]
+
+
+def test_lm_maxiter_is_not_success():
+    result = explicit_lm(lambda x: (np.array([x[0] ** 2 - 4]), np.array([[2 * x[0]]])),
+                         [10.], maxiter=1)
+    assert not result.success and result.reason == 'maxiter' and result.nit == 1
+
+
+@pytest.mark.parametrize('controls', [dict(ftol=0), dict(xtol=float('nan')),
+                                       dict(maxiter=0), dict(damping=float('inf'))])
+def test_lm_rejects_invalid_controls(controls):
+    with pytest.raises(ValueError):
+        explicit_lm(lambda x: (x, np.eye(1)), [1.], **controls)
+
+
 def test_lm_linear_and_active_bound():
     def f(x):
         return np.array([x[0] - 2, 2 * (x[1] + 3)]), np.diag([1., 2.])

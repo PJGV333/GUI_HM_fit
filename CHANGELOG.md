@@ -33,6 +33,10 @@ All notable user-visible changes. Versions follow the GitHub releases
   shown as "—" with the reason in the tooltip; exports keep NaN plus a `Note` column.
 
 ### Fixed
+- Explicit LM utility: a parameter whose lower and upper bounds coincide is excluded
+  from the projected scaled gradient. Previously it could report a misleadingly
+  large final gradient even after optimizing all free parameters. The utility is
+  not yet connected to the spectroscopy or NMR fit paths; default fits are unchanged.
 - Acid-base: a warning is shown (values are never reordered) when entered or fitted pKa are in
   inverted order.
 - Spectroscopy/NMR: a non-numeric initial value or bound (e.g. `3,5` with a decimal comma) is

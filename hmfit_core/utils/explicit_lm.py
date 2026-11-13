@@ -36,7 +36,7 @@ def centered_residual_jacobian(residual, x):
 
 def _gradient(r, j, x, lower, upper):
     g = j.T @ r
-    active = ((x <= lower) & (g > 0)) | ((x >= upper) & (g < 0))
+    active = (lower == upper) | ((x <= lower) & (g > 0)) | ((x >= upper) & (g < 0))
     denom = np.linalg.norm(j, axis=0) * np.linalg.norm(r)
     scaled = np.divide(np.abs(g), denom, out=np.zeros_like(g), where=denom > 0)
     scaled[active] = 0
@@ -53,9 +53,15 @@ def explicit_lm(fun_jac, x0, bounds=None, *, ftol=1e-10, xtol=1e-10,
         raise ValueError("bounds length must equal parameter count")
     lower = np.array([-np.inf if b[0] is None else b[0] for b in bounds], float)
     upper = np.array([np.inf if b[1] is None else b[1] for b in bounds], float)
-    if np.any(lower > upper) or damping <= 0:
-        raise ValueError("invalid bounds or damping")
+    if (np.any(np.isnan(lower)) or np.any(np.isnan(upper)) or np.any(lower > upper)
+            or not np.isfinite(damping) or damping <= 0
+            or any(not np.isfinite(t) or t <= 0 for t in (ftol, xtol, gtol))
+            or not isinstance(maxiter, (int, np.integer)) or maxiter < 1
+            or not np.all(np.isfinite(x))):
+        raise ValueError("invalid initial parameters, bounds or LM controls")
     x = np.clip(x, lower, upper)
+    if not np.all(np.isfinite(x)):
+        raise ValueError("bounds do not admit finite parameters")
 
     def evaluate(v):
         r, j = fun_jac(v)

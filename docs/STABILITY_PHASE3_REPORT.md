@@ -9,6 +9,11 @@
   566 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas
   (591 recogidas; 586 seleccionadas), 190.94 s. Antes: 556 aprobadas,
   0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas (581 recogidas).
+- 3.1.c–d: núcleo LM reforzado para cotas iguales, controles inválidos,
+  paso que entra desde un límite y agotamiento de iteraciones; sigue pendiente
+  propagar diagnósticos y SE a los ajustes integrados. Suite: 598 recogidas,
+  573 aprobadas, 0 fallidas, 17 xfail, 3 omitidas, 5 deseleccionadas,
+  191.94 s (antes: 591 recogidas, 566 aprobadas, las demás cifras iguales).
 - 3.2, 3.3 y 3.5 pendientes. 3.4: auditoría del workflow completada;
   no requiere cambio de CI, pues la suite completa ya incluye el banco.
   Este documento es provisional; no constituye validación de la fase completa.
@@ -20,6 +25,7 @@
 | D-1 | Objetivo espectral | Añadir penalización a legacy; respetar el objetivo de Powell | Respetar cada modo | No cambiar estimador | `_spectral_profile_objective`; `test_general_profile_residual_matches_existing_objective` | Retirar el constructor de residuo, sin cambiar Powell |
 | D-2 | Jacobiano para modos generales | Fórmula analítica supuesta; diferencias centradas del residuo real | Diferencias centradas con paso relativo | Evita aplicar fórmulas no verificadas a modos acoplados | `centered_residual_jacobian`; prueba sintética con grupos, pesos, cotas y suavidad | Retirar la función auxiliar; no está integrada |
 | D-3 | Humo del banco en CI | Añadir subconjunto; conservar suite completa | Conservar suite completa | Ya corre en cada push y no necesita selección adicional | `.github/workflows/tests.yml`, `pytest.ini`, ejecución local del banco 57 aprobadas y 14 xfail en 50.84 s | No hubo cambio de workflow |
+| D-4 | Cota inferior igual a superior en LM | Contabilizar el gradiente de un parámetro inmóvil; excluirlo | Excluirlo del gradiente proyectado | Ningún paso factible puede mover ese parámetro | `test_fixed_bound_is_excluded_from_projected_gradient` | Revertir el cambio en `_gradient` |
 
 
 Rama `fix/stable-phase3-optimizers`, base `0634b93`. Estado: etapa 3.0 implementada,
@@ -163,6 +169,8 @@ incluyen en la suite normal. Los cuatro archivos tardaron 50.84 s localmente
 (57 aprobadas, 14 xfail), dentro del presupuesto de cinco minutos. JAX no
 figura en los requisitos instalados por el workflow. La ejecución de `4647f58`
 fue verde: <https://github.com/PJGV333/GUI_HM_fit/actions/runs/43446398678>.
+También la ejecución de `de66038` terminó en verde en los cuatro trabajos:
+<https://github.com/PJGV333/GUI_HM_fit/actions/runs/43449185373>.
 
 ## Riesgos y cuestiones abiertas
 
