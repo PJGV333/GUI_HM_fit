@@ -61,6 +61,11 @@ def _normalize_nmr_config(config: Mapping[str, Any] | Any) -> dict[str, Any]:
     return cfg
 
 
+def _reject_retired_optimizer(cfg: Mapping[str, Any]) -> None:
+    if str(cfg.get("optimizer") or "").strip().lower() == "explicit_lm":
+        raise ValueError("explicit_lm is retired; choose a supported optimizer such as powell explicitly.")
+
+
 def _wrap_progress(progress_cb: ProgressCallback, cancel: CancelCallback) -> ProgressCallback:
     if cancel is None:
         return progress_cb
@@ -82,9 +87,11 @@ def run_spectroscopy_fit(
     progress_cb: ProgressCallback = None,
     cancel: CancelCallback = None,
 ) -> dict[str, Any]:
+    cfg = _normalize_config(config)
+    _reject_retired_optimizer(cfg)
     from hmfit_core.run_spectroscopy import run_spectroscopy
 
-    return run_spectroscopy(_normalize_config(config), progress_cb=_wrap_progress(progress_cb, cancel))
+    return run_spectroscopy(cfg, progress_cb=_wrap_progress(progress_cb, cancel))
 
 
 def run_nmr_fit(
@@ -92,9 +99,11 @@ def run_nmr_fit(
     progress_cb: ProgressCallback = None,
     cancel: CancelCallback = None,
 ) -> dict[str, Any]:
+    cfg = _normalize_nmr_config(config)
+    _reject_retired_optimizer(cfg)
     from hmfit_core.run_nmr import run_nmr
 
-    return run_nmr(_normalize_nmr_config(config), progress_cb=_wrap_progress(progress_cb, cancel))
+    return run_nmr(cfg, progress_cb=_wrap_progress(progress_cb, cancel))
 
 
 def run_acid_base_fit(

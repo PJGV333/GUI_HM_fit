@@ -54,9 +54,9 @@ Tras retirar el código inaccesible del ajuste, las pruebas específicas de cin�
 
 ## Retirada parcial de `explicit_lm` de los selectores
 
-Las pestañas RMN y espectroscopía ya no ofrecen `explicit_lm`. Al importar un proyecto que lo solicite, ambas rechazan la configuración antes de modificar el estado e indican Powell como alternativa que el usuario debe elegir explícitamente. Los dos full-refit también rechazan ese optimizador con `unsupported_optimizer`, sin reajuste ni alternativa automática, y se han eliminado sus ramas de ejecución LM; no se alteró el objetivo de los métodos conservados. Se conserva la prueba de persistencia de pesos RMN con Powell. Esto no constituye la retirada completa: los procesadores todavía admiten `explicit_lm`, y las pruebas experimentales se mantienen. No se ha demostrado aún la equivalencia completa de resultados con los optimizadores conservados.
+Las pestañas RMN y espectroscopía ya no ofrecen `explicit_lm`. Al importar un proyecto que lo solicite, ambas rechazan la configuración antes de modificar el estado e indican Powell como alternativa que el usuario debe elegir explícitamente. Las API `run_nmr_fit` y `run_spectroscopy_fit` también rechazan la selección antes de ejecutar el procesamiento, tanto con diccionarios como con dataclasses. Los dos full-refit rechazan ese optimizador con `unsupported_optimizer`, sin reajuste ni alternativa automática, y se han eliminado sus ramas de ejecución LM; no se alteró el objetivo de los métodos conservados. Se conserva la prueba de persistencia de pesos RMN con Powell. Esto no constituye la retirada completa: los procesadores y las entradas directas `run_nmr`/`run_spectroscopy` todavía admiten `explicit_lm`, y las pruebas experimentales se mantienen. No se ha demostrado aún la equivalencia completa de resultados con los optimizadores conservados.
 
-Tras la retirada de full-refit, 163 pruebas dirigidas aprobaron; la suite local dio 615 aprobadas, 3 omitidas, 5 deseleccionadas, 16 xfail y 282 advertencias en 179,26 s. No se ha ejecutado CI multiplataforma.
+Tras añadir la validación en las API, la suite local dio 619 aprobadas, 3 omitidas, 5 deseleccionadas, 16 xfail y 283 advertencias en 179,06 s. No se ha ejecutado CI multiplataforma.
 
 ## Pendiente y límites
 
