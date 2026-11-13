@@ -66,7 +66,15 @@ def run_replicate(seed: int, scen: dict) -> dict:
     return row
 
 
+def _reject_historical_hc_results(rows: list[dict]) -> None:
+    for row in rows:
+        for name in ("hc2", "hc3"):
+            if name in row and row[name].get("status") != "not_applicable":
+                raise ValueError("historical invalid HC2/HC3 results cannot be resumed or summarized")
+
+
 def summarize(rows: list[dict], scen: dict) -> dict:
+    _reject_historical_hc_results(rows)
     truth = float(scen.get("truth", 3.0))
     th = np.array([r["theta"] for r in rows])
     out = {"n": len(rows), "truth": truth,
@@ -80,7 +88,7 @@ def summarize(rows: list[dict], scen: dict) -> dict:
         w = np.array([r[k]["width95"] for r in rows], dtype=float)
         w = w[np.isfinite(w)]
         cov = np.array([bool(r[k]["covered95"]) for r in rows if r[k]["covered95"] is not None])
-        covb = np.array([bool(r[k].get("covered95_basic", False)) for r in rows
+        covb = np.array([bool(r[k]["covered95_basic"]) for r in rows
                          if r[k].get("covered95_basic") is not None])
         wb = np.array([r[k]["width95_basic"] for r in rows
                        if r[k].get("width95_basic") is not None])
@@ -89,6 +97,9 @@ def summarize(rows: list[dict], scen: dict) -> dict:
              "se_over_mc_sd": float(se.mean() / th.std(ddof=1)) if se.size and len(rows) > 1 else None,
              "cov95": float(cov.mean()) if cov.size else None,
              "cov68": None, "n_cov": int(cov.size)}
+        if all(r[k].get("status") == "not_applicable" for r in rows):
+            m["status"] = "not_applicable"
+            m["reason"] = rows[0][k]["reason"]
         if cov.size:
             c68 = np.array([bool(r[k]["covered68"]) for r in rows if r[k]["covered68"] is not None])
             m["cov68"] = float(c68.mean()) if c68.size else None
@@ -140,6 +151,7 @@ def main() -> None:
     if rows_path.exists():
         for line in rows_path.read_text().splitlines():
             r = json.loads(line)
+            _reject_historical_hc_results([r])
             done[r["seed"]] = r
     todo = [seed_for(int(scen["base_seed"]), r) for r in range(int(scen["n_rep"]))
             if seed_for(int(scen["base_seed"]), r) not in done]

@@ -124,17 +124,67 @@ def test_bca_shifts_interval_against_positive_bias():
     assert entry["ci_low_bca"] < lo_pct
 
 
-def test_hc2_hc3_sandwich_ordering_and_finiteness():
-    """HC3 inflates at least as much as HC2 (same residuals, squared leverage
-    correction); both must be finite and same order as the analytic SE."""
-    d, theta = _fit("ols")
-    res = replicate_uncertainty(d, theta, "ols", 3.0, B_wild=50, seed=3)
-    a, h2, h3 = res["analytic"]["se"], res["hc2"]["se"], res["hc3"]["se"]
-    assert all(np.isfinite(v) and v > 0 for v in (a, h2, h3))
-    assert h3 >= h2 > 0
-    assert 0.3 < h2 / a < 4.0
-    # identical center and Student-t width convention
-    assert res["hc2"]["ci_low"] < theta < res["hc2"]["ci_high"]
+def test_hc2_hc3_are_explicitly_unavailable_for_unvalidated_varpro():
+    # The old concentration-square leverage is not a hat diagonal; none of
+    # the current estimators has a validated full VarPro leverage here.
+    for estimator in ("ols", "nnls", 1e-2):
+        d = dataset(12345, SCEN)
+        theta = refit_theta(d, estimator)
+        res = replicate_uncertainty(d, theta, estimator, 3.0, B_wild=20, seed=3)
+        for name in ("hc2", "hc3"):
+            method = res[name]
+            assert method["status"] == "not_applicable"
+            assert method["reason"]
+            assert method["n_valid"] == 0
+            assert all(method[key] is None for key in
+                       ("se", "ci_low", "ci_high", "covered95", "covered68", "width95"))
+
+
+def test_unavailable_hc_methods_remain_unavailable_in_campaign_summary():
+    from validation.uncertainty_experiment import run_replicate, summarize
+
+    scen = {**SCEN, "estimator": "ols", "B_wild": 20}
+    rows = [run_replicate(seed, scen) for seed in (12345, 12346)]
+    summary = summarize(rows, scen)
+    for name in ("hc2", "hc3"):
+        result = summary[name]
+        assert result["status"] == "not_applicable"
+        assert result["mean_se"] is None
+        assert result["cov95"] is None
+        assert result["n_cov"] == 0
+        assert "cov95_basic" not in result
+
+
+def test_campaign_summary_rejects_historical_invalid_hc_results():
+    import pytest
+    from validation.uncertainty_experiment import run_replicate, summarize
+
+    scen = {**SCEN, "estimator": "ols", "B_wild": 20}
+    rows = [run_replicate(seed, scen) for seed in (12345, 12346)]
+    rows[0]["hc2"] = {"se": 0.01, "width95": 0.04,
+                       "covered95": True, "covered68": True}
+    with pytest.raises(ValueError, match="historical.*HC2/HC3"):
+        summarize(rows, scen)
+
+
+def test_resume_rejects_historical_hc_before_writing(tmp_path, monkeypatch):
+    import json
+    import sys
+    import pytest
+    from validation.uncertainty_experiment import main
+
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({**SCEN, "base_seed": 1, "n_rep": 2}))
+    output = tmp_path / "run"
+    output.mkdir()
+    rows_path = output / "rows.jsonl"
+    original = json.dumps({"seed": 1, "hc2": {"se": 0.01}}) + "\n"
+    rows_path.write_text(original)
+    monkeypatch.setattr(sys, "argv", ["uncertainty_experiment", str(config), str(output)])
+    with pytest.raises(ValueError, match="historical.*HC2/HC3"):
+        main()
+    assert rows_path.read_text() == original
+    assert not (output / "summary.json").exists()
 
 
 def test_profile_ci_brackets_theta_and_is_finite():

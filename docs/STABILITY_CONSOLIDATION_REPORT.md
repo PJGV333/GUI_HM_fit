@@ -18,7 +18,7 @@
 | SciPy/Powell | En producción | Conservar; regresión por completar |
 | JAX | Cinética: `hmfit/kinetics/model/kinetics_model.py`, `hmfit_gui_qt/tabs/kinetics_tab.py` y selector; importaciones opcionales en `hmfit_core/utils/errors.py`; job CI separado | Retirar de producción; **pendiente**. No es dependencia declarada en requirements inspeccionados |
 | IRLS RMN | Histórico; selección de pesos y diagnósticos parciales en Fase 3 | Conservar para configuraciones antiguas; coherencia con Errors y último ciclo **pendiente de auditoría** |
-| HC2/HC3 experimental | `validation/uncertainty_methods.py` usa suma de cuadrados de concentraciones como leverage | Expresión inválida; resultados históricos afectados no son evidencia válida. Corrección/repetición **pendiente** |
+| HC2/HC3 experimental | `validation/uncertainty_methods.py` usaba suma de cuadrados de concentraciones como leverage | Cálculo inválido desactivado en la campaña: HC2/HC3 se declaran no aplicables para OLS, NNLS y penalización; la corrección fundamentada y repetición de campañas **pendientes** |
 | Grados de libertad | Truncamientos a 1 en `kinetics_tab.py:779,1624` y `hmfit_core/utils/errors.py:198` | Revisar contexto y sustituir solo con pruebas; **pendiente** |
 | Solver interior espectral | Diferencia 300/3000 iteraciones documentada en Fase 3 | Diagnóstico independiente y KKT **pendientes** |
 | Sensibilidades implícitas y cinéticas | Véase `DERIVATIVES_DESIGN.md` | Implementación y validación **pendientes** |
@@ -38,6 +38,12 @@ Clasificación individual provisional de los 16 xfail, basada en sus motivos y e
 - Característica no soportada: `test_literature_reproduces_published_fit[r09b-d-qx]`, desplazamientos límite fijos.
 - Defecto pendiente o limitación del modelo espectral: `test_absgrp_shared_groups_reduce_optical_components` (`tests/test_spectro_absgrp_equivalence.py`); causa raíz aún sin verificar.
 
+## Salvaguarda HC2/HC3
+
+La suma de cuadrados de concentraciones usada anteriormente depende de unidades y no es la diagonal del proyector estadístico. Se ha retirado ese cálculo de la campaña experimental, sin sustituirlo por un leverage lineal que ignore parámetros de molestia, sensibilidad no lineal o restricciones. Las tres clases de estimador (OLS, NNLS y penalización suave) devuelven `not_applicable`, razón explícita y valores no disponibles. Un resumen conserva ese estado y una reanudación rechaza filas históricas afectadas antes de escribir. Las pruebas dirigidas cubren estas condiciones, pero no demuestran todavía una fórmula HC2/HC3 válida.
+
+Tras este cambio, la suite local con el mismo entorno terminó con 608 aprobadas, 3 omitidas, 5 deseleccionadas, 16 xfail y 284 advertencias en 179,38 s; después se agregó y ejecutó por separado una prueba adicional de reanudación (14 pruebas dirigidas aprobadas). La advertencia adicional observada provino del integrador BDF de SciPy. No se ejecutó CI multiplataforma.
+
 ## Pendiente y límites
 
-Faltan las etapas B–H, la verificación de las causas de los xfail clasificados provisionalmente, los análisis antes/después y las pruebas de CI en todas las plataformas. No se han cambiado los métodos, umbrales, ni resultados productivos en este checkpoint de auditoría. Los informes de fases anteriores son históricos: los resultados HC2/HC3 calculados mediante el leverage incorrecto quedan **invalidados** y no deben utilizarse como evidencia, aunque se conservan los datos. La implementación experimental aún permite volver a generar esos resultados inválidos: no usarla hasta su corrección. El dictamen actual es **C — consolidación incompleta**; no se cumplen los criterios obligatorios para A.
+Faltan las etapas B–H, la verificación de las causas de los xfail clasificados provisionalmente, los análisis antes/después y las pruebas de CI en todas las plataformas. No se han cambiado los métodos, umbrales, ni resultados productivos. Los informes de fases anteriores son históricos: los resultados HC2/HC3 calculados mediante el leverage incorrecto quedan **invalidados** y no deben utilizarse como evidencia, aunque se conservan los datos. La campaña de incertidumbre rechaza resumir o reanudar filas históricas que contengan estos resultados, antes de agregar nuevas filas; los generadores que leen resúmenes históricos directamente siguen requiriendo cautela. No se ha implementado ni validado aún una alternativa HC2/HC3 ni se han repetido las campañas afectadas. El dictamen actual es **C — consolidación incompleta**; no se cumplen los criterios obligatorios para A.

@@ -167,31 +167,17 @@ def replicate_uncertainty(d, theta, estimator, truth, *,
                       "covered68": bool(lo_p68 <= truth <= hi_p68) if ok_p else None,
                       "width95": (hi_p - lo_p) if ok_p else None, "n_valid": int(ok_p)}
 
-    # ---- HC2 / HC3: per-observation leverage-weighted sandwich.
-    # For the (projected) VarPro Jacobian wrt log K, replace the scalar s^2
-    # of HC1 by Omega_ee = r_e^2 / (1-h_e) (HC2) or /(1-h_e)^2 (HC3), where
-    # h_e is the hat diagonal of the weighted linear projection at that
-    # observation: with the harness unit weights h_(i,j) = sum_l C_il^2.
-    # These describe the UNCONSTRAINED projected estimator, like analytic/HC1.
-    Jrow = np.asarray(m["J"], dtype=float)[np.asarray(m["free_idx"], dtype=int)[0], :]
-    JtJ = float(Jrow @ Jrow)
-    rpre = np.asarray(m["r"], dtype=float).ravel()
-    Cmat = np.asarray(d["c"], dtype=float)
-    lev_row = np.einsum("ij,ij->i", Cmat, Cmat)
-    hvec = np.broadcast_to(lev_row[:, None],
-                           (d["y"].shape[0], d["y"].shape[1])).reshape(-1)
-    hvec = np.clip(hvec, 0.0, 1.0 - 1e-6)
-    for hc_name, pw in (("hc2", 1.0), ("hc3", 2.0)):
-        omega = (rpre * rpre) / np.power(1.0 - hvec, pw)
-        # MacKinlay-White finite-sample factor n/(n-p) = nobs/dof, matching
-        # the s^2 convention used by the analytic VarPro covariance.
-        omega = omega * (float(m["nobs"]) / float(m["dof"]))
-        se_hc = float(np.sqrt(max(float(Jrow @ (omega * Jrow)), 0.0)) / JtJ)
-        out[hc_name] = {"se": se_hc, "ci_low": theta - q * se_hc,
-                        "ci_high": theta + q * se_hc,
-                        "covered95": bool(theta - q * se_hc <= truth <= theta + q * se_hc),
-                        "covered68": bool(theta - q68 * se_hc <= truth <= theta + q68 * se_hc),
-                        "width95": 2 * q * se_hc, "n_valid": 1}
+    # The former sum of squared concentrations was not a hat diagonal. A
+    # valid VarPro leverage must account for nonlinear sensitivity, linear
+    # nuisance parameters and active constraints; it has not been validated.
+    for hc_name in ("hc2", "hc3"):
+        out[hc_name] = {
+            "status": "not_applicable",
+            "reason": "Full VarPro leverage is not validated for this estimator",
+            "se": None, "ci_low": None, "ci_high": None,
+            "covered95": None, "covered68": None, "width95": None,
+            "n_valid": 0,
+        }
 
     J = np.asarray(m["J"], dtype=float)[np.asarray(m["free_idx"], dtype=int), :]
     r = np.asarray(m["r"], dtype=float).ravel()      # layout (m, nw) row-major
