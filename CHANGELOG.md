@@ -50,6 +50,11 @@ All notable user-visible changes. Versions follow the GitHub releases
   shown as "—" with the reason in the tooltip; exports keep NaN plus a `Note` column.
 
 ### Fixed
+- Explicit LM recognizes residuals at the rounding level relative to the weighted
+  data norm, and reports repeated rejected steps at maximum damping as
+  `no_progress` rather than a successful `xtol` stop. Existing golden
+  soft-bound cases reproduce the latter condition; see `tests/test_explicit_lm.py`
+  and phase 3.6 diagnostics. The absorptivity solver is unchanged.
 - NMR Errors tab and full-refit bootstrap now retain observed points with zero
   guessed parent concentration when the stoichiometric denominator `C @ S_j`
   is valid. Previously those points were discarded, altering degrees of freedom

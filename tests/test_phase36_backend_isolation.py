@@ -15,8 +15,12 @@ def test_equilibrium_backend_is_numpy_independent_of_jax_installation(setting):
     code = '''
 import numpy as np
 from hmfit_core.utils.np_backend import xp, USE_JAX
+from hmfit_core.utils.errors import _as_onp
 from hmfit_core.solvers import NewtonRaphson
 assert xp is np and not USE_JAX
+assert 'jax' not in __import__('sys').modules
+_as_onp([1.])
+assert 'jax' not in __import__('sys').modules
 s = NewtonRaphson(np.array([[.001, .001]]), np.array([[1,0,1],[0,1,1]]), nas=[], model_sett='Free')
 assert isinstance(s.concentraciones(np.array([3.]))[0], np.ndarray)
 '''

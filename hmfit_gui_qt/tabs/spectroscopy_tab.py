@@ -1822,7 +1822,8 @@ class SpectroscopyTab(QWidget):
                         result = explicit_lm(
                             lambda x: centered_residual_jacobian(lambda y: f_m(y, return_residual=True), x),
                             k_free0, bounds_free, maxiter=int(max_iter), ftol=threshold,
-                            xtol=threshold, gtol=threshold)
+                            xtol=threshold, gtol=threshold,
+                            residual_scale=float(np.linalg.norm(Y_star.T * weights_row) / np.sqrt(Y_star.size)))
                         return optimize.OptimizeResult(x=result.x, success=result.success,
                                                        message=result.reason, nit=result.nit)
                     options = {"maxiter": int(max_iter)}

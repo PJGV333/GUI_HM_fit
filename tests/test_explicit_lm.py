@@ -34,6 +34,21 @@ def test_general_profile_residual_matches_existing_objective(mode, solver, delta
     assert np.all(np.isfinite(r)) and np.all(np.isfinite(j))
 
 
+def test_roundoff_residual_stops_without_undefined_scaled_gradient():
+    result = explicit_lm(lambda x: (np.array([1e-16]), np.ones((1, 1))),
+                         [1.], residual_scale=1.)
+    assert result.success and result.reason == 'zero_residual'
+    assert result.nit == 1
+
+
+def test_repeated_rejections_at_maximum_damping_are_not_success():
+    def inconsistent_jacobian(x):
+        return np.array([1 + x[0] ** 2]), np.ones((1, 1))
+    result = explicit_lm(inconsistent_jacobian, [0.], damping=.001, max_damping=.1)
+    assert not result.success and result.reason == 'no_progress'
+    assert result.scaled_gradient > .9
+
+
 def test_fixed_bound_is_excluded_from_projected_gradient():
     def f(x):
         return np.array([x[0] - 2, x[1] - 3]), np.eye(2)

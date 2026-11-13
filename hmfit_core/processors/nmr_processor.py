@@ -259,7 +259,10 @@ def _run_nmr_lm(solver, pack, start, bounds, dq, d_cols, mask, stoich, weights):
             raise ValueError("non-finite NMR residual")
         return result
 
-    lm = explicit_lm(lambda x: centered_residual_jacobian(residual, x), start, bounds)
+    data_weights = np.broadcast_to(np.asarray(weights)[None, :], dq.shape)[mask]
+    data_scale = float(np.linalg.norm(dq[mask] * np.sqrt(data_weights)) / np.sqrt(np.count_nonzero(mask)))
+    lm = explicit_lm(lambda x: centered_residual_jacobian(residual, x), start, bounds,
+                     residual_scale=data_scale)
     return optimize.OptimizeResult(
         x=lm.x, fun=float(np.linalg.norm(lm.fun)), success=lm.success,
         message=lm.reason, nit=lm.nit, nfev=evaluations,

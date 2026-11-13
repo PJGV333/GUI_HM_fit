@@ -44,7 +44,8 @@ def _gradient(r, j, x, lower, upper):
 
 
 def explicit_lm(fun_jac, x0, bounds=None, *, ftol=1e-10, xtol=1e-10,
-                gtol=1e-8, maxiter=200, damping=1e-3):
+                gtol=1e-8, maxiter=200, damping=1e-3, residual_scale=0.0,
+                max_damping=1e30):
     """Minimize ||r||² using scaled damping and active-bound projection."""
     x = np.asarray(x0, dtype=float).ravel().copy()
     if bounds is None:
@@ -57,6 +58,8 @@ def explicit_lm(fun_jac, x0, bounds=None, *, ftol=1e-10, xtol=1e-10,
             or not np.isfinite(damping) or damping <= 0
             or any(not np.isfinite(t) or t <= 0 for t in (ftol, xtol, gtol))
             or not isinstance(maxiter, (int, np.integer)) or maxiter < 1
+            or not np.isfinite(residual_scale) or residual_scale < 0
+            or not np.isfinite(max_damping) or max_damping < damping
             or not np.all(np.isfinite(x))):
         raise ValueError("invalid initial parameters, bounds or LM controls")
     x = np.clip(x, lower, upper)
@@ -76,8 +79,13 @@ def explicit_lm(fun_jac, x0, bounds=None, *, ftol=1e-10, xtol=1e-10,
     reason = 'maxiter'
     success = False
     nit = 0
+    rejected = 0
+    zero_threshold = 10 * np.finfo(float).eps * residual_scale
     for nit in range(1, maxiter + 1):
         _, active, scaled = _gradient(r, j, x, lower, upper)
+        if np.linalg.norm(r) <= zero_threshold:
+            reason, success = 'zero_residual', True
+            break
         if scaled < gtol:
             reason, success = 'gtol', True
             break
@@ -95,6 +103,12 @@ def explicit_lm(fun_jac, x0, bounds=None, *, ftol=1e-10, xtol=1e-10,
         trial = np.clip(x + step, lower, upper)
         step = trial - x
         if np.linalg.norm(step) / (np.linalg.norm(x) + xtol) < xtol:
+            if rejected:
+                if damping >= max_damping:
+                    reason, success = 'no_progress', bool(scaled < gtol)
+                    break
+                damping = min(damping * 10, max_damping)
+                continue
             reason, success = 'xtol', True
             break
         rt, jt = evaluate(trial)
@@ -102,12 +116,21 @@ def explicit_lm(fun_jac, x0, bounds=None, *, ftol=1e-10, xtol=1e-10,
         if trial_cost < cost:
             relative = (cost - trial_cost) / max(cost, np.finfo(float).tiny)
             x, r, j, cost = trial, rt, jt, trial_cost
+            rejected = 0
             damping = max(damping / 3, 1e-15)
             if relative < ftol:
                 reason, success = 'ftol', True
                 break
         else:
-            damping = min(damping * 10, 1e30)
+            rejected += 1
+            if damping >= max_damping:
+                reason, success = 'no_progress', bool(scaled < gtol)
+                break
+            damping = min(damping * 10, max_damping)
     _, _, scaled = _gradient(r, j, x, lower, upper)
+    if not success and np.linalg.norm(r) <= zero_threshold:
+        reason, success = 'zero_residual', True
+    elif not success and scaled < gtol:
+        reason, success = 'gtol', True
     return LMResult(x, r, cost, success, reason, nit, scaled,
                     (x <= lower) | (x >= upper))

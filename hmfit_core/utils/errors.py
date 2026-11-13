@@ -367,9 +367,8 @@ _JAX_ARRAY_TYPE = _UNRESOLVED
 
 
 def _as_onp(x):
-    jax_type = _jax_array_type()
-    if jax_type is not None and isinstance(x, jax_type):
-        return _onp.array(x)
+    # NumPy converts concrete foreign arrays directly.  Do not import JAX as a
+    # side effect of ordinary equilibrium/uncertainty calculations.
     return _onp.array(x)
 
 

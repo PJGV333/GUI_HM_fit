@@ -1355,7 +1355,9 @@ class NMRTab(QWidget):
                         threshold = float(tol) if tol is not None else 1e-8
                         result = explicit_lm(lambda x: centered_residual_jacobian(residual, x),
                                              k_free0, bounds_free, maxiter=int(max_iter),
-                                             ftol=threshold, xtol=threshold, gtol=threshold)
+                                             ftol=threshold, xtol=threshold, gtol=threshold,
+                                             residual_scale=float(np.linalg.norm(dq_star[mask]) /
+                                                                  np.sqrt(np.count_nonzero(mask))))
                         return optimize.OptimizeResult(x=result.x, success=result.success,
                                                        message=result.reason, nit=result.nit)
                     options = {"maxiter": int(max_iter)}

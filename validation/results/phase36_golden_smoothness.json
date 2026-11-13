@@ -1,0 +1,233 @@
+{
+  "1": {
+    "theta": [
+      3.132062109653445
+    ],
+    "progression": [
+      {
+        "relative_step": 1e-08,
+        "norm_r_plus": 0.06568203494661964,
+        "norm_r_minus": 0.06568203494692254,
+        "forward_backward_relative": 5.872123107318099e-07
+      },
+      {
+        "relative_step": 1e-07,
+        "norm_r_plus": 0.06568203494525619,
+        "norm_r_minus": 0.06568203494828609,
+        "forward_backward_relative": 2.3154263656478164e-07
+      },
+      {
+        "relative_step": 1e-06,
+        "norm_r_plus": 0.0656820349316439,
+        "norm_r_minus": 0.06568203496194158,
+        "forward_backward_relative": 2.1620602683658847e-06
+      },
+      {
+        "relative_step": 9.999999999999999e-06,
+        "norm_r_plus": 0.0656820356665235,
+        "norm_r_minus": 0.06568203510046318,
+        "forward_backward_relative": 0.0018535355234128228
+      },
+      {
+        "relative_step": 0.0001,
+        "norm_r_plus": 0.06568205064357557,
+        "norm_r_minus": 0.06568204851720932,
+        "forward_backward_relative": 0.00621440719213295
+      },
+      {
+        "relative_step": 0.001,
+        "norm_r_plus": 0.0656835172224586,
+        "norm_r_minus": 0.06568331795560377,
+        "forward_backward_relative": 0.05759545557732033
+      },
+      {
+        "relative_step": 0.01,
+        "norm_r_plus": 0.06579255374540435,
+        "norm_r_minus": 0.06575796020884207,
+        "forward_backward_relative": 1.1268187121526558
+      }
+    ],
+    "inner": [
+      {
+        "iterations": 300,
+        "projected_gradient_norm": 0.4646688594448122,
+        "projected_gradient_max": 0.14667582406712015,
+        "delta_A_vs_300": 0.0,
+        "outer_ssq": 1.3373802115721416
+      },
+      {
+        "iterations": 600,
+        "projected_gradient_norm": 0.23911317237162732,
+        "projected_gradient_max": 0.06614610845374488,
+        "delta_A_vs_300": 294.2893309427329,
+        "outer_ssq": 2.050521498814297
+      },
+      {
+        "iterations": 3000,
+        "projected_gradient_norm": 0.06523846948479582,
+        "projected_gradient_max": 0.023689958549139665,
+        "delta_A_vs_300": 1099.1989933179025,
+        "outer_ssq": 5.2527594945095215
+      }
+    ],
+    "jacobian_relative_norms": [
+      0.0009275703757693396,
+      0.0,
+      0.311047013841547
+    ]
+  },
+  "2": {
+    "theta": [
+      3.1314757346091544
+    ],
+    "progression": [
+      {
+        "relative_step": 1e-08,
+        "norm_r_plus": 0.06568051723383006,
+        "norm_r_minus": 0.06568051723347716,
+        "forward_backward_relative": 4.98107056796297e-07
+      },
+      {
+        "relative_step": 1e-07,
+        "norm_r_plus": 0.06568051723541728,
+        "norm_r_minus": 0.0656805172318905,
+        "forward_backward_relative": 2.1138620379106975e-07
+      },
+      {
+        "relative_step": 1e-06,
+        "norm_r_plus": 0.06568051725130918,
+        "norm_r_minus": 0.0656805172160417,
+        "forward_backward_relative": 2.163762835215391e-06
+      },
+      {
+        "relative_step": 9.999999999999999e-06,
+        "norm_r_plus": 0.06568051741216924,
+        "norm_r_minus": 0.06568051805753201,
+        "forward_backward_relative": 0.0020746375664462548
+      },
+      {
+        "relative_step": 0.0001,
+        "norm_r_plus": 0.06568052985274263,
+        "norm_r_minus": 0.06568053298085924,
+        "forward_backward_relative": 0.005998560621463082
+      },
+      {
+        "relative_step": 0.001,
+        "norm_r_plus": 0.06568196890319503,
+        "norm_r_minus": 0.06568183009243204,
+        "forward_backward_relative": 0.05736477534776563
+      },
+      {
+        "relative_step": 0.01,
+        "norm_r_plus": 0.06579048963298698,
+        "norm_r_minus": 0.06575852784093668,
+        "forward_backward_relative": 1.1204931395106486
+      }
+    ],
+    "inner": [
+      {
+        "iterations": 300,
+        "projected_gradient_norm": 0.46480983702927314,
+        "projected_gradient_max": 0.14672359444205493,
+        "delta_A_vs_300": 0.0,
+        "outer_ssq": 1.3373184066648849
+      },
+      {
+        "iterations": 600,
+        "projected_gradient_norm": 0.23914550890702713,
+        "projected_gradient_max": 0.06617771102147035,
+        "delta_A_vs_300": 294.37852632357584,
+        "outer_ssq": 2.0501702739964713
+      },
+      {
+        "iterations": 3000,
+        "projected_gradient_norm": 0.06525496874594341,
+        "projected_gradient_max": 0.023698964357224676,
+        "delta_A_vs_300": 1099.3680770021565,
+        "outer_ssq": 5.250503444744144
+      }
+    ],
+    "jacobian_relative_norms": [
+      0.0010382039006093925,
+      0.0,
+      0.3093008485841206
+    ]
+  },
+  "3": {
+    "theta": [
+      3.132971488165554
+    ],
+    "progression": [
+      {
+        "relative_step": 1e-08,
+        "norm_r_plus": 0.06569366227840537,
+        "norm_r_minus": 0.06569366227698722,
+        "forward_backward_relative": 1.3152306119784515e-06
+      },
+      {
+        "relative_step": 1e-07,
+        "norm_r_plus": 0.06569366228478639,
+        "norm_r_minus": 0.0656936622809454,
+        "forward_backward_relative": 0.0022223256093615784
+      },
+      {
+        "relative_step": 1e-06,
+        "norm_r_plus": 0.06569366234861408,
+        "norm_r_minus": 0.06569366234302876,
+        "forward_backward_relative": 0.0029274280971757
+      },
+      {
+        "relative_step": 9.999999999999999e-06,
+        "norm_r_plus": 0.06569366298882062,
+        "norm_r_minus": 0.06569366296582001,
+        "forward_backward_relative": 0.002996246438539713
+      },
+      {
+        "relative_step": 0.0001,
+        "norm_r_plus": 0.06569367299274564,
+        "norm_r_minus": 0.06569368103587217,
+        "forward_backward_relative": 0.006129492106459918
+      },
+      {
+        "relative_step": 0.001,
+        "norm_r_plus": 0.06569509116402777,
+        "norm_r_minus": 0.06569502156321227,
+        "forward_backward_relative": 0.05791327281759845
+      },
+      {
+        "relative_step": 0.01,
+        "norm_r_plus": 0.06580391728228727,
+        "norm_r_minus": 0.06577161352675047,
+        "forward_backward_relative": 1.1389404636812646
+      }
+    ],
+    "inner": [
+      {
+        "iterations": 300,
+        "projected_gradient_norm": 0.4637691133891115,
+        "projected_gradient_max": 0.14629314988734873,
+        "delta_A_vs_300": 0.0,
+        "outer_ssq": 1.3378537516713744
+      },
+      {
+        "iterations": 600,
+        "projected_gradient_norm": 0.23883835064738027,
+        "projected_gradient_max": 0.0659745380647493,
+        "delta_A_vs_300": 293.7376667747661,
+        "outer_ssq": 2.051322886349661
+      },
+      {
+        "iterations": 3000,
+        "projected_gradient_norm": 0.0651717090718696,
+        "projected_gradient_max": 0.023646730464554636,
+        "delta_A_vs_300": 1098.0581874030497,
+        "outer_ssq": 5.254677921212784
+      }
+    ],
+    "jacobian_relative_norms": [
+      0.0014992405562930665,
+      0.0,
+      0.3128674695063667
+    ]
+  }
+}

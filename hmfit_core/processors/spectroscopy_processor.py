@@ -1540,7 +1540,9 @@ def _run_spectro_single_start(
                     jac = onp.vstack((jac, onp.zeros((r.size - jac.shape[0], len(theta)))))
                 return r, jac
 
-            lm = explicit_lm(residual_jacobian, start_k, processed_bounds)
+            data_scale = float(onp.linalg.norm(onp.asarray(y_transposed) * onp.asarray(weights_row)) /
+                               onp.sqrt(y_transposed.size))
+            lm = explicit_lm(residual_jacobian, start_k, processed_bounds, residual_scale=data_scale)
             opt_result_obj = optimize.OptimizeResult(
                 x=lm.x, fun=float(onp.linalg.norm(lm.fun)), success=lm.success,
                 message=lm.reason, nit=lm.nit, scaled_gradient=lm.scaled_gradient,

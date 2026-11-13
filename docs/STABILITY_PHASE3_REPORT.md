@@ -2,7 +2,7 @@
 
 ## Estado de avance
 
-ESTADO: ETAPA 3.6 EN CURSO
+ESTADO: ETAPA 3.6 COMPLETA
 
 - 3.0 aprobada por el autor. 3.1: núcleo LM y Jacobiano espectral independiente
   en `4647f58`, posteriormente integrados; Powell sigue por defecto. Suite
@@ -52,6 +52,12 @@ ESTADO: ETAPA 3.6 EN CURSO
 
 ## Etapa 3.6 — diagnóstico antes de modificar LM
 
+Suite final local sin JAX: 606 aprobadas, 0 fallidas, 16 xfail, 3 omitidas y
+5 deseleccionadas (176.25 s). Con JAX aislado: 608 aprobadas, 0 fallidas,
+16 xfail, 1 omitida y 5 deseleccionadas (179.47 s). El CI del commit de la
+máscara, con cinco jobs, terminó en verde:
+<https://github.com/PJGV333/GUI_HM_fit/actions/runs/43481798557>.
+
 Los ocho casos de la tabla 3.1.g donde la SSQ de datos de LM superó a la de
 Powell se reprodujeron con `validation/phase36_diagnosis.py`, antes de cambiar
 el algoritmo. El JSON `validation/results/phase36_diagnosis_before.json`
@@ -86,6 +92,14 @@ empeoró la SSQ. La comparación de Jacobianos usa pasos relativos
 RMN la discrepancia relativa es ≤ 2.91e-8. Esto es sensibilidad a paso/solver
 o cambios de conjunto activo, no prueba de cuál aproximación es la correcta.
 
+| Caso | Clasificación sustentada por el arranque cruzado |
+|---|---|
+| r09a-p2-106, r09a-r1-5sp, r09b-r-qx | Powell reportó éxito lejos de estacionariedad con los pesos comunes; LM desde Powell reduce SSQ. No son evidencia de que LM haya perdido el objetivo ponderado común. |
+| phase1 RMN 1:1 | Powell parte con gradiente mayor; LM desde Powell mejora ligeramente la SSQ común. La diferencia es pequeña. |
+| phase1 espectro sin ruido | LM se estancó y agotó iteraciones; gradiente mal condicionado y Jacobianos sensibles al paso. No se acredita un mínimo distinto. |
+| golden 1 y 2 | LM declaró xtol en la cuenca superior; después de la corrección declara no_progress. Powell desde LM llega a menor SSQ y LM desde Powell conserva esa cuenca. Hay dependencia de arranque, sin prueba de mínimos locales exactos. |
+| golden 3 | LM declara ftol en la cuenca superior con gradiente no nulo; Powell desde LM alcanza la cuenca inferior. No se ha demostrado si el punto superior es mínimo local. |
+
 ### 3.6 — aislamiento de JAX
 
 [Defecto comprobado] `hmfit_core/utils/np_backend.py` seleccionaba JAX por
@@ -94,8 +108,10 @@ mera disponibilidad y suministraba `xp` a `nr_conc.py`, `lm_conc.py`,
 devolvía `jaxlib` en vez de NumPy, provocando las cinco fallas documentadas en
 Evidencia de JAX. Ahora el motor compartido usa NumPy siempre; JAX se selecciona
 exclusivamente en cinética. La variable histórica `HMFIT_USE_JAX` ya no cambia
-el backend de equilibrio. `tests/test_phase36_backend_isolation.py` comprueba
-el resultado incluso con esa variable a 0 o 1. Antes, con JAX importable, el
+el backend de equilibrio. La conversión de arrays en errores ya no importa JAX
+implícitamente; conserva la conversión NumPy de arrays concretos.
+`tests/test_phase36_backend_isolation.py` comprueba tipo y ausencia de importación
+incluso con esa variable a 0 o 1. Antes, con JAX importable, el
 código ejecutaba `jax_enable_x64=True`: el dtype observado fue **float64**, no
 float32; por ello no procede cuantificar un efecto float32 en el banco. El
 backend JAX de cinética habilita ahora explícitamente x64 al seleccionarse;
@@ -126,6 +142,126 @@ la suite completa sin JAX dio 604 aprobadas, 16 xfail, 3 omitidas y 5
  deseleccionadas (178.32 s); con JAX aislado, 606 aprobadas, 16 xfail,
 1 omitida y 5 deseleccionadas (180.59 s).
 
+### 3.6 — parada LM y repetición del banco
+
+LM reconoce `zero_residual` cuando ‖r‖ ≤ 10 ε_mach ‖Y_ponderada‖
+(con la misma normalización que r). `no_progress` se informa cuando pasos
+rechazados consecutivos llevan λ al máximo 1e30; no se declara éxito si el
+residuo no es nulo y el gradiente proyectado no cumple gtol. En vez de
+aceptar `xtol` por un paso diminuto causado por los rechazos, se continúa
+hasta ese máximo. Las pruebas `test_roundoff_residual_stops_without_undefined_scaled_gradient`
+y `test_repeated_rejections_at_maximum_damping_are_not_success` cubren ambos
+casos. Las pruebas sintéticas y el diagnóstico previo están arriba.
+
+Se repitió el banco 3.1.g con cinco ejecuciones y los mismos criterios; datos
+completos, log β, razones, iteraciones y medianas en
+`validation/results/phase36_comparison_after.json`. Se cita la tabla 3.1.g
+para los valores anteriores, sin duplicarla: el caso sin ruido sigue agotando
+200 iteraciones (SSQ 4.89e-17 frente a 2.55e-29 de Powell); golden 1 y 2 ahora
+se marcan **no convergidos** `no_progress` (1.33738 frente a 1.24505, y
+1.33732 frente a 1.24314); golden 3 termina `ftol` en 1.33785 frente a
+1.24792. El criterio de SSQ no se cumple; Powell sigue por defecto. El resto
+de las comparaciones IRLS se conserva solo como información: la SSQ sin
+ponderar no es el objetivo de ninguno de los dos ajustes IRLS. La tabla
+siguiente reproduce la comparación completa: parejas Powell; LM, vectores
+log β en orden de especie, éxito 1/0, iteraciones del último ciclo IRLS y
+mediana de tiempo en segundos. SSQ espectral es el objetivo perfilado; SSQ
+RMN aquí es solo descriptiva sin ponderar, no el objetivo IRLS.
+
+| Caso | log β P; LM | SSQ P; LM | éxito P; LM (razón LM) | iter. P; LM | s P; LM |
+|---|---|---|---|---|---|
+| r09a-p2-058 | 7.17371/3.59686/4.06043/0.1/6.23871/9.51271; 7.17387/3.59671/4.06044/0.1/6.23884/9.5128 | 6.407475e-05; 6.4060517e-05 | 1; 1 (ftol) | 1; 3 | 3.763; 0.888 |
+| r09a-p2-106 | 7.1914/3.60734/4.09372/0.1/6.12458/9.53348; 7.18772/3.60725/4.09341/0.1/6.11906/9.52748 | 0.00017731567; 0.00017818503 | 1; 1 (ftol) | 1; 4 | 5.979; 1.766 |
+| r09a-qx-dil | 4.05787; 4.05787 | 2.5597423e-05; 2.5597423e-05 | 1; 1 (ftol) | 1; 1 | 0.129; 0.070 |
+| r09a-r1-11-3n | 2.56992; 2.56992 | 0.002613785; 0.002613785 | 1; 1 (ftol) | 1; 3 | 0.155; 0.124 |
+| r09a-r1-11-me | 2.56998; 2.56998 | 6.5471253e-07; 6.5471253e-07 | 1; 1 (xtol) | 1; 1 | 0.122; 0.044 |
+| r09a-r1-3sp | 6.17778/2.94243/4.112; 6.17806/2.94204/4.1119 | 0.010209861; 0.010207934 | 1; 1 (ftol) | 5; 5 | 4.483; 3.917 |
+| r09a-r1-5sp | 6.1225/2.94633/0.766986/4.48633/4.09053; 6.12193/2.94736/0.765473/4.48486/4.09092 | 7.226111e-06; 7.2272347e-06 | 1; 1 (ftol) | 2; 5 | 4.841; 0.955 |
+| r09b-b-qx | 4.76675/1.37332/4.0897; 4.76675/1.37332/4.0897 | 1.1867311e-05; 1.1867311e-05 | 1; 1 (ftol) | 1; 3 | 1.185; 0.306 |
+| r09b-d-qx | no admitido | — | — | — | — |
+| r09b-r-qx | 6.1225/2.94633/0.766986/4.48633/4.09053; 6.12193/2.94736/0.765473/4.48486/4.09092 | 7.226111e-06; 7.2272347e-06 | 1; 1 (ftol) | 2; 5 | 4.738; 0.968 |
+| phase1 espectro ruido | 3.02788; 3.02788 | 8.3928447e-06; 8.3928447e-06 | 1; 1 (ftol) | 2; 5 | 0.091; 0.039 |
+| phase1 espectro sin ruido | 3; 3 | 2.5496872e-29; 4.8857986e-17 | 1; 0 (maxiter) | 4; 200 | 0.152; 1.080 |
+| phase1 espectro fijo | 3.99956/7; 3.99956/7 | 8.0159197e-06; 8.0159197e-06 | 1; 1 (ftol) | 2; 6 | 0.108; 0.074 |
+| phase1 RMN 1:1 | 2.99868; 2.99868 | 0.00010294114; 0.00010294125 | 1; 1 (ftol) | 1; 3 | 0.052; 0.042 |
+| phase1 RMN 1:2 fijo | 4.02852/7; 4.02854/7 | 0.00012983397; 0.00012983358 | 1; 1 (ftol) | 1; 4 | 0.094; 0.118 |
+| golden 1 | 2.68871; 3.13206 | 1.2450464; 1.3373802 | 1; 0 (no_progress) | 2; 46 | 0.069; 0.210 |
+| golden 2 | 2.67167; 3.13148 | 1.2431419; 1.3373184 | 1; 0 (no_progress) | 2; 51 | 0.088; 0.255 |
+| golden 3 | 2.68968; 3.13297 | 1.247918; 1.3378538 | 1; 1 (ftol) | 2; 29 | 0.080; 0.276 |
+
+### 3.6 — RMN con pesos unitarios (objetivo fijo)
+
+`validation/phase36_nmr_unit.py` repite cada caso soportado cinco veces, con
+pesos exactamente unitarios para ambos métodos; las SSQ de esta tabla sí son
+el mismo objetivo. Parejas Powell; LM. Las medianas incluyen lectura, ajuste
+y exportación, sin gráficos. Los gradientes se calcularon de forma centrada
+con pesos comunes; éxito=1/0. Archivo completo y arranques cruzados:
+`validation/results/phase36_nmr_unit.json`. Con el criterio L2 del banco,
+Powell unitario reproduce la referencia en todos los casos soportados salvo
+`r09a-qx-dil`; en cuatro de los que reproduce, LM supera Δ log β=1e-4:
+`r09a-p2-058` (1.60e-4), `r09a-p2-106` (7.60e-4),
+`r09a-r1-5sp` y `r09b-r-qx` (1.132e-3). Por tanto tampoco con objetivo
+unitario se satisface el primer criterio para cambiar el defecto.
+
+| Caso | log β Powell; LM | SSQ P; LM | gradiente P; LM | razón P; LM | éxito P/LM | iteraciones P; LM | segundos P; LM |
+|---|---|---|---|---|---|---|---|
+| r09a-p2-058 | 7.18871/3.57783/4.06325/0.1/6.25584/9.46555; 7.1888/3.57767/4.06317/0.1/6.25581/9.46565 | 6.2606638e-05; 6.2606556e-05 | 0.000591; 3.72e-07 | éxito; ftol | 1/1 | 6; 6 | 1.648; 0.379 |
+| r09a-p2-106 | 7.14197/3.60924/4.07217/0.1/6.08095/9.59777; 7.14188/3.61/4.07242/0.1/6.08071/9.59753 | 0.00014628047; 0.00014627949 | 0.00193; 5.69e-07 | éxito; ftol | 1/1 | 8; 10 | 2.400; 0.632 |
+| r09a-qx-dil | 4.05787; 4.05787 | 2.5597423e-05; 2.5597423e-05 | 7.24e-09; 1.01e-07 | éxito; ftol | 1/1 | 2; 5 | 0.060; 0.048 |
+| r09a-r1-11-3n | 2.37814; 2.37814 | 0.0025037175; 0.0025037175 | 1.45e-08; 1.59e-06 | éxito; ftol | 1/1 | 2; 10 | 0.051; 0.052 |
+| r09a-r1-11-me | 2.56998; 2.56998 | 6.5471253e-07; 6.5471253e-07 | 1.37e-06; 1.39e-08 | éxito; ftol | 1/1 | 2; 5 | 0.081; 0.033 |
+| r09a-r1-3sp | 6.52962/2.14276/4.256; 6.52963/2.14279/4.25599 | 0.0062336351; 0.0062336351 | 1.84e-05; 1.04e-05 | éxito; ftol | 1/1 | 5; 48 | 0.925; 1.650 |
+| r09a-r1-5sp | 6.12176/2.94633/0.781379/4.51136/4.09002; 6.12128/2.94607/0.782511/4.51249/4.08973 | 7.1894245e-06; 7.1889949e-06 | 0.00433; 1.52e-07 | éxito; ftol | 1/1 | 12; 6 | 3.211; 0.352 |
+| r09b-b-qx | 4.76676/1.37332/4.0897; 4.76675/1.37332/4.0897 | 1.1867312e-05; 1.1867311e-05 | 0.000221; 1.8e-08 | éxito; ftol | 1/1 | 7; 5 | 0.984; 0.179 |
+| r09b-d-qx | No admitido: desplazamientos límite fijos | — | — | — | — | — | — |
+| r09b-r-qx | 6.12176/2.94633/0.781379/4.51136/4.09002; 6.12128/2.94607/0.782511/4.51249/4.08973 | 7.1894245e-06; 7.1889949e-06 | 0.00433; 1.52e-07 | éxito; ftol | 1/1 | 12; 6 | 3.206; 0.352 |
+| phase1 RMN 1:1 | 2.99882; 2.99881 | 0.00010294029; 0.00010294028 | 0.000155; 2.46e-09 | éxito; ftol | 1/1 | 2; 5 | 0.035; 0.026 |
+| phase1 RMN 1:2 fijo | 4.02986/7; 4.02986/7 | 0.00012981818; 0.00012981818 | 2.45e-05; 6.25e-07 | éxito; no_progress | 1/0 | 2; 40 | 0.063; 0.084 |
+
+### 3.6 — suavidad y convergencia interior de los golden
+
+En cada solución LM golden se evaluó r(θ±h) para pasos relativos 1e-8,
+1e-7, …, 1e-2, y Jacobianos centrados con pasos relativos 1e-8, 1e-5 y 1e-2.
+Los datos completos y norma de cada r están en
+`validation/results/phase36_golden_smoothness.json`. Las diferencias relativas
+entre Jacobianos con pasos 1e-8 y 1e-5 son 0.000928, 0.00104 y 0.00150;
+entre 1e-2 y 1e-5 son 0.311, 0.309 y 0.313. La diferencia relativa entre
+pendientes hacia delante y atrás crece hasta 1.13, 1.12 y 1.14 en h=1e-2;
+en el caso 3 ya alcanza 0.00222 en h=1e-7. Hay sensibilidad al paso/cambios
+locales, por lo que no se demuestra suavidad global ni Jacobiano exacto.
+
+El gradiente proyectado interior (norma) a 300/600/3000 iteraciones fue
+0.46467/0.23911/0.06524, 0.46481/0.23915/0.06525 y
+0.46377/0.23884/0.06517, respectivamente. Las ε cambian en norma ≈294 al
+pasar de 300 a 600 y ≈1098–1099 al pasar de 300 a 3000; no hay evidencia de
+convergencia a 300. **Pregunta para el autor:** ¿se autoriza cambiar el
+resolvedor interior o su criterio para hacerlo converger, sabiendo que cambia
+el estimador `legacy`? No se ha cambiado ese resolvedor.
+
+### 3.6 — influencia y razones de pesos IRLS
+
+Razón máximo/mínimo de pesos finales positivos por señal, con Powell e IRLS:
+`r09a-p2-058` 124.08; `r09a-p2-106` 130.90; `r09a-qx-dil` 1;
+`r09a-r1-11-3n` 2565.79; `r09a-r1-11-me` 1; `r09a-r1-3sp` 1678.17;
+`r09a-r1-5sp` 1.532; `r09b-b-qx` 1; `r09b-r-qx` 1.532.
+`r09b-d-qx` no se admite. Datos y SE completos en
+`validation/results/phase36_irls_influence.json`.
+
+| Caso / señal omitida | log β IRLS | log β unitarios | razón pesos restantes |
+|---|---|---|---:|
+| 11-3n / NH-2 | 2.56997 | 2.56620 | 1635.49 |
+| 11-3n / NH-1 | 2.56992 | 2.39373 | 2565.80 |
+| 11-3n / Me | −1.94675 | −1.94654 | 2.44 |
+| 3sp / NH-2 | 6.17633/2.94427/4.11240 | 6.72340/2.06535/4.36497 | 887.96 |
+| 3sp / NH-1 | 6.17632/2.94391/4.11243 | 6.38239/2.04525/4.21092 | 1682.66 |
+| 3sp / Me | 6.79498/2.06065/4.56073 | 6.78370/2.05169/4.56130 | 1.22 |
+
+La señal Me domina fuertemente la ponderación en ambos casos; al omitirla la
+razón entre las restantes cae a 2.44 y 1.22, y los SE de algunos parámetros
+crecen mucho. Esto es compatible con que IRLS destaque una señal y se aparte
+de la referencia unitariamente ponderada, pero no prueba por sí solo la
+causa física ni una calibración válida de sus SE. No se cambia el defecto IRLS.
+
 ## Decisiones del agente
 
 | N.º | Contexto | Alternativas | Elección | Justificación | Evidencia | Cómo revertirla |
@@ -143,6 +279,9 @@ la suite completa sin JAX dio 604 aprobadas, 16 xfail, 3 omitidas y 5
 | D-11 | Otros cuellos observados | Optimizar speciation/render/ODE; no alterar rutas sin prueba de equivalencia | No cambiarlos | Son compartidos y pueden alterar resultados o interfaz; no se ha demostrado una optimización equivalente | `validation/results/phase33_profiles.json` | No hay cambio que revertir |
 | D-12 | Bootstrap de GUI con LM | Dejar fallback silencioso a Nelder–Mead; ejecutar LM sobre el residuo que ya usa el refit | Ejecutar LM y reportar fallback cuando proceda | Respeta la elección de optimizador sin modificar el estimador de errores predeterminado | `test_lm_full_refit_does_not_silently_switch_optimizer` | Seleccionar Powell o revertir las ramas de dispatch LM |
 | D-13 | SE en límite en pestaña Errors | Mostrar SE sin restricciones; marcar indefinido | NaN, nota y código `bound` | Un intervalo simétrico sin restricciones no es válido en el límite | `test_error_tab_marks_bound_se_undefined` | No seleccionar LM o revertir el tratamiento de `active_bound_mask` |
+| D-14 | Nivel numérico de residuo nulo | Umbral absoluto; múltiplo de ε relativo a datos | 10 ε ‖Y ponderada‖ | Mantiene independencia de unidades y evita 0/0 | `test_roundoff_residual_stops_without_undefined_scaled_gradient` | Ajustar el multiplicador en `explicit_lm` |
+| D-15 | Rechazos sucesivos y paso mínimo | Marcar xtol como éxito; seguir hasta λ máximo y verificar gradiente | `no_progress` no exitoso salvo gradiente pequeño o residuo nulo | Evita éxito espurio observado en golden | Diagnóstico cruzado y `test_repeated_rejections_at_maximum_damping_are_not_success` | Revertir la rama de rechazos en `explicit_lm` |
+| D-16 | Solver interior golden no convergido | Cambiar estimador; conservar y preguntar | Conservar 300 pasos | El autor prohíbe cambiarlo sin autorización | `phase36_golden_smoothness.json` | Sin cambio que revertir |
 
 ### Inventario del residuo y Jacobiano espectral
 
