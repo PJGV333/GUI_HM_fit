@@ -2,7 +2,7 @@
 
 ## Estado de avance
 
-ESTADO: FASE 3 COMPLETA
+ESTADO: ETAPA 3.6 EN CURSO
 
 - 3.0 aprobada por el autor. 3.1: núcleo LM y Jacobiano espectral independiente
   en `4647f58`, posteriormente integrados; Powell sigue por defecto. Suite
@@ -49,6 +49,42 @@ ESTADO: FASE 3 COMPLETA
 - 3.4: auditoría del workflow completada; la suite completa incluye el banco.
 - 3.5: informe consolidado, cuestiones abiertas y decisiones documentadas;
   cierre técnico sujeto a revisión del autor, no a una validación clínica.
+
+## Etapa 3.6 — diagnóstico antes de modificar LM
+
+Los ocho casos de la tabla 3.1.g donde la SSQ de datos de LM superó a la de
+Powell se reprodujeron con `validation/phase36_diagnosis.py`, antes de cambiar
+el algoritmo. El JSON `validation/results/phase36_diagnosis_before.json`
+contiene todos los arranques, resultados, pesos y diagnósticos. En RMN se fijan
+para ambos métodos los pesos usados por Powell en su último ciclo IRLS; por
+tanto las SSQ de esta tabla son comparables entre sí, a diferencia de las
+ponderadas con pesos distintos citadas en 3.1.g. Cada celda contiene SSQ
+(gradiente escalado, razón); «initial» significa punto recibido de 3.1.g.
+
+| Caso | Powell inicial | LM inicial | LM desde Powell | Powell desde LM | Error relativo Jacobiano |
+|---|---|---|---|---|---:|
+| r09a-p2-106 | 258.97512 (0.0074, initial) | 258.90912 (0.00015, initial) | 258.90911 (5.7e-07, ftol) | 258.90912 (6.4e-05, éxito) | 2.9e-08 |
+| r09a-r1-5sp | 115.93282 (0.0056, initial) | 115.92046 (0.001, initial) | 115.91988 (3e-07, ftol) | 115.92015 (0.00045, éxito) | 2.2e-08 |
+| r09b-r-qx | 115.93282 (0.0056, initial) | 115.92046 (0.001, initial) | 115.91988 (3e-07, ftol) | 115.92015 (0.00045, éxito) | 2.2e-08 |
+| phase1 espectro sin ruido | 2.5496872e-29 (0.0018, initial) | 4.8857986e-17 (0.097, initial) | 2.5496872e-29 (0.0018, xtol) | 1.2856975e-13 (1, éxito) | 0.279 |
+| phase1 RMN 1:1 | 23.999747 (0.00017, initial) | 23.999746 (4.7e-07, initial) | 23.999746 (9.1e-09, ftol) | 23.999746 (5.3e-05, éxito) | 4.94e-09 |
+| golden soft-bound 1 | 1.2450464 (1.5e-06, initial) | 1.3373802 (0.00014, initial) | 1.2450464 (1.1e-07, ftol) | 1.2450464 (1.1e-06, éxito) | 0.000383 |
+| golden soft-bound 2 | 1.2431419 (3.3e-05, initial) | 1.3373184 (0.00038, initial) | 1.2431419 (1e-07, ftol) | 1.2431419 (4e-06, éxito) | 9.81e-05 |
+| golden soft-bound 3 | 1.247918 (5.7e-05, initial) | 1.3378538 (1.7e-05, initial) | 1.247918 (2.9e-07, ftol) | 1.247918 (7.6e-06, éxito) | 2.56e-06 |
+
+Con pesos fijos, en los cuatro casos RMN el punto Powell no era estacionario:
+LM mejora su SSQ desde ese arranque; la mayor SSQ sin ponderar previa no prueba
+que LM minimizara peor el objetivo ponderado. En los tres golden Powell desde
+LM encuentra la cuenca inferior y LM desde Powell permanece en ella; LM declaró
+parada en la cuenca superior con gradiente no nulo. Esto evidencia dependencia
+del arranque/parada, pero no demuestra por sí solo que el punto superior sea
+un mínimo local exacto. En el caso sin ruido el gradiente escalado es inestable
+por el residuo casi nulo y LM agotó iteraciones; Powell arrancado en LM incluso
+empeoró la SSQ. La comparación de Jacobianos usa pasos relativos
+ε^(1/3) y 1e-5: en el caso sin ruido discrepan 27.9 %, en golden entre
+2.56e-6 y 3.83e-4; no se debe afirmar coherencia exacta en esos puntos. En
+RMN la discrepancia relativa es ≤ 2.91e-8. Esto es sensibilidad a paso/solver
+o cambios de conjunto activo, no prueba de cuál aproximación es la correcta.
 
 ## Decisiones del agente
 

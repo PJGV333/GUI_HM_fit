@@ -1,0 +1,677 @@
+{
+  "literature/r09a-p2-106": {
+    "powell_initial": {
+      "x": [
+        7.191402871534845,
+        3.6073411285167483,
+        4.093718144500294,
+        6.1245838619474435,
+        9.533483957780364
+      ],
+      "ssq": 258.97512237558374,
+      "scaled_gradient": 0.00744425345149163,
+      "success": true,
+      "reason": "initial",
+      "iterations": 0
+    },
+    "lm_from_powell": {
+      "x": [
+        7.187751209801229,
+        3.60723859199608,
+        4.093402327892668,
+        6.119122901996035,
+        9.527572835176347
+      ],
+      "ssq": 258.90911057354896,
+      "scaled_gradient": 5.691952109947919e-07,
+      "success": true,
+      "reason": "ftol",
+      "iterations": 5
+    },
+    "powell_from_powell": {
+      "x": [
+        7.189815939313391,
+        3.6060472203538345,
+        4.093358251556497,
+        6.122073789012162,
+        9.530386534548247
+      ],
+      "ssq": 258.9263182695747,
+      "scaled_gradient": 0.0026734286319131002,
+      "success": true,
+      "reason": "Optimization terminated successfully.",
+      "iterations": 2
+    },
+    "lm_initial": {
+      "x": [
+        7.187719333060996,
+        3.60724597641538,
+        4.093406831468012,
+        6.1190629296268515,
+        9.527482567133422
+      ],
+      "ssq": 258.90912381559053,
+      "scaled_gradient": 0.00014733274267797502,
+      "success": true,
+      "reason": "initial",
+      "iterations": 0
+    },
+    "lm_from_lm": {
+      "x": [
+        7.187751470709173,
+        3.607238385352803,
+        4.093402319098408,
+        6.1191234461186,
+        9.527573179382737
+      ],
+      "ssq": 258.9091105732294,
+      "scaled_gradient": 2.510531194002746e-07,
+      "success": true,
+      "reason": "ftol",
+      "iterations": 3
+    },
+    "powell_from_lm": {
+      "x": [
+        7.187711278703311,
+        3.6072520857042885,
+        4.09340698764022,
+        6.119061335340825,
+        9.527505084971908
+      ],
+      "ssq": 258.90911790695174,
+      "scaled_gradient": 6.350826765476642e-05,
+      "success": true,
+      "reason": "Optimization terminated successfully.",
+      "iterations": 1
+    },
+    "jacobian_check": {
+      "method": "centered",
+      "max_abs": 2.055817195589782e-06,
+      "relative_norm": 2.9038925548251583e-08,
+      "centered_step_relative_norm": 2.9038925548251583e-08,
+      "note": "actual LM Jacobian versus centered differences at 1e-5 relative step"
+    },
+    "common_weights": [
+      1191689.4794798412,
+      26572352.137562647,
+      5841120.419006432,
+      252475.69218436876,
+      31829361.444119047,
+      32835169.812876273,
+      10271044.049064295
+    ],
+    "weights_source": "Powell last IRLS cycle",
+    "free_indices": [
+      0,
+      1,
+      2,
+      4,
+      5
+    ]
+  },
+  "literature/r09a-r1-5sp": {
+    "powell_initial": {
+      "x": [
+        6.12249652362623,
+        2.9463323146467153,
+        0.7669856968136972,
+        4.486327088235461,
+        4.090532742468367
+      ],
+      "ssq": 115.9328247037761,
+      "scaled_gradient": 0.00561111780820557,
+      "success": true,
+      "reason": "initial",
+      "iterations": 0
+    },
+    "lm_from_powell": {
+      "x": [
+        6.122045449985845,
+        2.947208076943614,
+        0.765764279390111,
+        4.485541876465633,
+        4.090852010102816
+      ],
+      "ssq": 115.91987511813338,
+      "scaled_gradient": 3.0454142253958563e-07,
+      "success": true,
+      "reason": "ftol",
+      "iterations": 4
+    },
+    "powell_from_powell": {
+      "x": [
+        6.122493899512423,
+        2.946571035071185,
+        0.7665919122856693,
+        4.486624288628038,
+        4.090633583114678
+      ],
+      "ssq": 115.92714034364646,
+      "scaled_gradient": 0.0039372330913343126,
+      "success": true,
+      "reason": "Optimization terminated successfully.",
+      "iterations": 1
+    },
+    "lm_initial": {
+      "x": [
+        6.121933958143841,
+        2.947356355316454,
+        0.7654731364719126,
+        4.484856057730799,
+        4.090921994563455
+      ],
+      "ssq": 115.92046063116892,
+      "scaled_gradient": 0.0010033185332889996,
+      "success": true,
+      "reason": "initial",
+      "iterations": 0
+    },
+    "lm_from_lm": {
+      "x": [
+        6.122045381546605,
+        2.9472081631149285,
+        0.7657641002037018,
+        4.485541559044579,
+        4.090852043454178
+      ],
+      "ssq": 115.91987511812953,
+      "scaled_gradient": 6.993152771720417e-08,
+      "success": true,
+      "reason": "ftol",
+      "iterations": 4
+    },
+    "powell_from_lm": {
+      "x": [
+        6.121969428802145,
+        2.947318767278571,
+        0.7654719010564924,
+        4.485134766661292,
+        4.090892950918175
+      ],
+      "ssq": 115.92014717470495,
+      "scaled_gradient": 0.00045268442044467746,
+      "success": true,
+      "reason": "Optimization terminated successfully.",
+      "iterations": 1
+    },
+    "jacobian_check": {
+      "method": "centered",
+      "max_abs": 2.3160878033223753e-06,
+      "relative_norm": 2.204653268960694e-08,
+      "centered_step_relative_norm": 2.204653268960694e-08,
+      "note": "actual LM Jacobian versus centered differences at 1e-5 relative step"
+    },
+    "common_weights": [
+      20562821.758156393,
+      14033659.052619562,
+      15082851.770164182
+    ],
+    "weights_source": "Powell last IRLS cycle",
+    "free_indices": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ]
+  },
+  "literature/r09b-r-qx": {
+    "powell_initial": {
+      "x": [
+        6.12249652362623,
+        2.9463323146467153,
+        0.7669856968136972,
+        4.486327088235461,
+        4.090532742468367
+      ],
+      "ssq": 115.9328247037761,
+      "scaled_gradient": 0.00561111780820557,
+      "success": true,
+      "reason": "initial",
+      "iterations": 0
+    },
+    "lm_from_powell": {
+      "x": [
+        6.122045449985845,
+        2.947208076943614,
+        0.765764279390111,
+        4.485541876465633,
+        4.090852010102816
+      ],
+      "ssq": 115.91987511813338,
+      "scaled_gradient": 3.0454142253958563e-07,
+      "success": true,
+      "reason": "ftol",
+      "iterations": 4
+    },
+    "powell_from_powell": {
+      "x": [
+        6.122493899512423,
+        2.946571035071185,
+        0.7665919122856693,
+        4.486624288628038,
+        4.090633583114678
+      ],
+      "ssq": 115.92714034364646,
+      "scaled_gradient": 0.0039372330913343126,
+      "success": true,
+      "reason": "Optimization terminated successfully.",
+      "iterations": 1
+    },
+    "lm_initial": {
+      "x": [
+        6.121933958143841,
+        2.947356355316454,
+        0.7654731364719126,
+        4.484856057730799,
+        4.090921994563455
+      ],
+      "ssq": 115.92046063116892,
+      "scaled_gradient": 0.0010033185332889996,
+      "success": true,
+      "reason": "initial",
+      "iterations": 0
+    },
+    "lm_from_lm": {
+      "x": [
+        6.122045381546605,
+        2.9472081631149285,
+        0.7657641002037018,
+        4.485541559044579,
+        4.090852043454178
+      ],
+      "ssq": 115.91987511812953,
+      "scaled_gradient": 6.993152771720417e-08,
+      "success": true,
+      "reason": "ftol",
+      "iterations": 4
+    },
+    "powell_from_lm": {
+      "x": [
+        6.121969428802145,
+        2.947318767278571,
+        0.7654719010564924,
+        4.485134766661292,
+        4.090892950918175
+      ],
+      "ssq": 115.92014717470495,
+      "scaled_gradient": 0.00045268442044467746,
+      "success": true,
+      "reason": "Optimization terminated successfully.",
+      "iterations": 1
+    },
+    "jacobian_check": {
+      "method": "centered",
+      "max_abs": 2.3160878033223753e-06,
+      "relative_norm": 2.204653268960694e-08,
+      "centered_step_relative_norm": 2.204653268960694e-08,
+      "note": "actual LM Jacobian versus centered differences at 1e-5 relative step"
+    },
+    "common_weights": [
+      20562821.758156393,
+      14033659.052619562,
+      15082851.770164182
+    ],
+    "weights_source": "Powell last IRLS cycle",
+    "free_indices": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ]
+  },
+  "phase1/spectro-noiseless": {
+    "powell_initial": {
+      "x": [
+        3.00000000000013
+      ],
+      "ssq": 2.549687207247672e-29,
+      "scaled_gradient": 0.0017910912005053622,
+      "success": true,
+      "reason": "initial",
+      "iterations": 0
+    },
+    "lm_from_powell": {
+      "x": [
+        3.00000000000013
+      ],
+      "ssq": 2.549687207247672e-29,
+      "scaled_gradient": 0.0017910912005053622,
+      "success": true,
+      "reason": "xtol",
+      "iterations": 1
+    },
+    "powell_from_powell": {
+      "x": [
+        3.000026654879373
+      ],
+      "ssq": 1.2856974512354914e-13,
+      "scaled_gradient": 0.9999999973662179,
+      "success": true,
+      "reason": "Optimization terminated successfully.",
+      "iterations": 1
+    },
+    "lm_initial": {
+      "x": [
+        3.0000005196138306
+      ],
+      "ssq": 4.8857985738005175e-17,
+      "scaled_gradient": 0.09677113345254057,
+      "success": true,
+      "reason": "initial",
+      "iterations": 0
+    },
+    "lm_from_lm": {
+      "x": [
+        3.0000000850611968
+      ],
+      "ssq": 1.3092934180984293e-18,
+      "scaled_gradient": 0.09389811892097846,
+      "success": false,
+      "reason": "maxiter",
+      "iterations": 200
+    },
+    "powell_from_lm": {
+      "x": [
+        3.000026654879373
+      ],
+      "ssq": 1.2856974512354914e-13,
+      "scaled_gradient": 0.9999999973662179,
+      "success": true,
+      "reason": "Optimization terminated successfully.",
+      "iterations": 1
+    },
+    "jacobian_check": {
+      "method": "centered",
+      "max_abs": 0.024213780523607918,
+      "relative_norm": 0.27908918880592215,
+      "centered_step_relative_norm": 0.27908918880592215,
+      "note": "actual LM Jacobian versus centered differences at 1e-5 relative step"
+    }
+  },
+  "phase1/nmr-11": {
+    "powell_initial": {
+      "x": [
+        2.9986838167221053
+      ],
+      "ssq": 23.999747012749815,
+      "scaled_gradient": 0.00017175661959820685,
+      "success": true,
+      "reason": "initial",
+      "iterations": 0
+    },
+    "lm_from_powell": {
+      "x": [
+        2.998676431846558
+      ],
+      "ssq": 23.99974630063293,
+      "scaled_gradient": 9.09221062678931e-09,
+      "success": true,
+      "reason": "ftol",
+      "iterations": 2
+    },
+    "powell_from_powell": {
+      "x": [
+        2.9986787251675517
+      ],
+      "ssq": 23.999746369341917,
+      "scaled_gradient": 5.334444512399315e-05,
+      "success": true,
+      "reason": "Optimization terminated successfully.",
+      "iterations": 1
+    },
+    "lm_initial": {
+      "x": [
+        2.998676411061464
+      ],
+      "ssq": 23.999746300563555,
+      "scaled_gradient": 4.746393338109248e-07,
+      "success": true,
+      "reason": "initial",
+      "iterations": 0
+    },
+    "lm_from_lm": {
+      "x": [
+        2.998676411061464
+      ],
+      "ssq": 23.999746300563555,
+      "scaled_gradient": 4.746393338109248e-07,
+      "success": true,
+      "reason": "xtol",
+      "iterations": 6
+    },
+    "powell_from_lm": {
+      "x": [
+        2.9986787251675517
+      ],
+      "ssq": 23.999746369341917,
+      "scaled_gradient": 5.334444512399315e-05,
+      "success": true,
+      "reason": "Optimization terminated successfully.",
+      "iterations": 1
+    },
+    "jacobian_check": {
+      "method": "centered",
+      "max_abs": 2.3582656538678748e-07,
+      "relative_norm": 4.939698561377034e-09,
+      "centered_step_relative_norm": 4.939698561377034e-09,
+      "note": "actual LM Jacobian versus centered differences at 1e-5 relative step"
+    },
+    "common_weights": [
+      253037.15692604773,
+      216152.2642360929
+    ],
+    "weights_source": "Powell last IRLS cycle",
+    "free_indices": [
+      0
+    ]
+  },
+  "golden/soft-bound-1": {
+    "powell_initial": {
+      "x": [
+        2.6887069411952402
+      ],
+      "ssq": 1.2450463951230721,
+      "scaled_gradient": 1.4503871228389453e-06,
+      "success": true,
+      "reason": "initial",
+      "iterations": 0
+    },
+    "lm_from_powell": {
+      "x": [
+        2.6887061799289094
+      ],
+      "ssq": 1.2450463951202608,
+      "scaled_gradient": 1.0527071826718217e-07,
+      "success": true,
+      "reason": "ftol",
+      "iterations": 1
+    },
+    "powell_from_powell": {
+      "x": [
+        2.68870672561978
+      ],
+      "ssq": 1.2450463951217823,
+      "scaled_gradient": 1.0694513556548229e-06,
+      "success": true,
+      "reason": "Optimization terminated successfully.",
+      "iterations": 1
+    },
+    "lm_initial": {
+      "x": [
+        3.132062109653445
+      ],
+      "ssq": 1.3373802115721414,
+      "scaled_gradient": 0.0001389511626559129,
+      "success": true,
+      "reason": "initial",
+      "iterations": 0
+    },
+    "lm_from_lm": {
+      "x": [
+        3.132062109653445
+      ],
+      "ssq": 1.3373802115721414,
+      "scaled_gradient": 0.0001389511626559129,
+      "success": true,
+      "reason": "xtol",
+      "iterations": 11
+    },
+    "powell_from_lm": {
+      "x": [
+        2.68870672561978
+      ],
+      "ssq": 1.2450463951217823,
+      "scaled_gradient": 1.0694513556548229e-06,
+      "success": true,
+      "reason": "Optimization terminated successfully.",
+      "iterations": 2
+    },
+    "jacobian_check": {
+      "method": "centered",
+      "max_abs": 4.271054347903744e-05,
+      "relative_norm": 0.00038252097930550384,
+      "centered_step_relative_norm": 0.00038252097930550384,
+      "note": "actual LM Jacobian versus centered differences at 1e-5 relative step"
+    }
+  },
+  "golden/soft-bound-2": {
+    "powell_initial": {
+      "x": [
+        2.67166713375592
+      ],
+      "ssq": 1.2431419480393304,
+      "scaled_gradient": 3.292941225351571e-05,
+      "success": true,
+      "reason": "initial",
+      "iterations": 0
+    },
+    "lm_from_powell": {
+      "x": [
+        2.67168363289269
+      ],
+      "ssq": 1.2431419466130915,
+      "scaled_gradient": 1.0143680994721592e-07,
+      "success": true,
+      "reason": "ftol",
+      "iterations": 2
+    },
+    "powell_from_powell": {
+      "x": [
+        2.6716856761813874
+      ],
+      "ssq": 1.2431419466337443,
+      "scaled_gradient": 3.9640216598013e-06,
+      "success": true,
+      "reason": "Optimization terminated successfully.",
+      "iterations": 1
+    },
+    "lm_initial": {
+      "x": [
+        3.1314757346091544
+      ],
+      "ssq": 1.3373184066648847,
+      "scaled_gradient": 0.0003808857926849633,
+      "success": true,
+      "reason": "initial",
+      "iterations": 0
+    },
+    "lm_from_lm": {
+      "x": [
+        3.1314757346091544
+      ],
+      "ssq": 1.3373184066648847,
+      "scaled_gradient": 0.0003808857926849633,
+      "success": true,
+      "reason": "xtol",
+      "iterations": 11
+    },
+    "powell_from_lm": {
+      "x": [
+        2.6716856761813874
+      ],
+      "ssq": 1.2431419466337443,
+      "scaled_gradient": 3.9640216598013e-06,
+      "success": true,
+      "reason": "Optimization terminated successfully.",
+      "iterations": 2
+    },
+    "jacobian_check": {
+      "method": "centered",
+      "max_abs": 9.969488032640639e-06,
+      "relative_norm": 9.814974003880697e-05,
+      "centered_step_relative_norm": 9.814974003880697e-05,
+      "note": "actual LM Jacobian versus centered differences at 1e-5 relative step"
+    }
+  },
+  "golden/soft-bound-3": {
+    "powell_initial": {
+      "x": [
+        2.6896840102331567
+      ],
+      "ssq": 1.2479179588848908,
+      "scaled_gradient": 5.6526626766786936e-05,
+      "success": true,
+      "reason": "initial",
+      "iterations": 0
+    },
+    "lm_from_powell": {
+      "x": [
+        2.689652072812366
+      ],
+      "ssq": 1.2479179545908192,
+      "scaled_gradient": 2.9330298648462264e-07,
+      "success": true,
+      "reason": "ftol",
+      "iterations": 2
+    },
+    "powell_from_powell": {
+      "x": [
+        2.6896562064666076
+      ],
+      "ssq": 1.2479179546677515,
+      "scaled_gradient": 7.571751899994315e-06,
+      "success": true,
+      "reason": "Optimization terminated successfully.",
+      "iterations": 1
+    },
+    "lm_initial": {
+      "x": [
+        3.132971488165554
+      ],
+      "ssq": 1.3378537516713749,
+      "scaled_gradient": 1.7187405666807058e-05,
+      "success": true,
+      "reason": "initial",
+      "iterations": 0
+    },
+    "lm_from_lm": {
+      "x": [
+        3.1329714403292934
+      ],
+      "ssq": 1.33785375162728,
+      "scaled_gradient": 1.4791536250901182e-05,
+      "success": true,
+      "reason": "ftol",
+      "iterations": 7
+    },
+    "powell_from_lm": {
+      "x": [
+        2.689656206466195
+      ],
+      "ssq": 1.247917954667757,
+      "scaled_gradient": 7.5717488286902755e-06,
+      "success": true,
+      "reason": "Optimization terminated successfully.",
+      "iterations": 2
+    },
+    "jacobian_check": {
+      "method": "centered",
+      "max_abs": 2.852607403174001e-07,
+      "relative_norm": 2.563258640118962e-06,
+      "centered_step_relative_norm": 2.563258640118962e-06,
+      "note": "actual LM Jacobian versus centered differences at 1e-5 relative step"
+    }
+  }
+}
