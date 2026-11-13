@@ -2413,6 +2413,8 @@ def process_spectroscopy_data(
             percK[bound_hits] = onp.nan
             warnings_list.append("Parámetro en el límite; su SE no es válido: " +
                                  ", ".join(k_names[i] for i in onp.flatnonzero(bound_hits)))
+    if bound_hits.size != len(k):
+        bound_hits = onp.zeros(len(k), dtype=bool)
     if optimizer == "explicit_lm" and not optimizer_summary.get("success", False):
         warnings_list.append(">>> FIT NOT RELIABLE: " + str(optimizer_summary.get("message", "LM failed")))
 
@@ -2751,6 +2753,7 @@ def process_spectroscopy_data(
         ),
         "percK": np.asarray(percK).tolist(),
         "SE_log10K": np.asarray(SE_log10K).tolist(),
+        "active_bound_mask": bound_hits.tolist(),
         "param_names": list(k_names),
         "solver_param_transform": (
             None

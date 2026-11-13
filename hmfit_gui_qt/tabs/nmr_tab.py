@@ -1199,6 +1199,7 @@ class NMRTab(QWidget):
             "signal_names": export_data.get("signal_names") or [],
             "non_abs_species": export_data.get("non_absorbent_species") or [],
             "fixed_mask": export_data.get("fixed_mask") or [],
+            "active_bound_mask": export_data.get("active_bound_mask") or [],
             "stoichiometry_map": export_data.get("stoichiometry_map") or [],
             "modelo_solver": modelo_solver,
             "algorithm": (self._last_config or {}).get("algorithm", "Newton-Raphson"),
@@ -1337,6 +1338,24 @@ class NMRTab(QWidget):
                     return True
 
                 def _run_optimizer(method_name: str):
+                    if method_name == "explicit_lm":
+                        from hmfit_core.utils.explicit_lm import centered_residual_jacobian, explicit_lm
+                        def residual(theta):
+                            C = res.concentraciones(pack(theta))[0]
+                            dq_cal = project_coeffs_block_onp_frac(
+                                dq_star, C, D_cols, mask, stoichiometry=stoichiometry,
+                                rcond=1e-10, ridge=1e-8)
+                            valid = mask & np.isfinite(dq_cal)
+                            if not np.array_equal(valid, mask) or np.count_nonzero(valid) <= len(theta):
+                                raise ValueError("LM requires a stable finite NMR residual mask")
+                            r = (dq_star - dq_cal)[valid]
+                            return r / np.sqrt(r.size)
+                        threshold = float(tol) if tol is not None else 1e-8
+                        result = explicit_lm(lambda x: centered_residual_jacobian(residual, x),
+                                             k_free0, bounds_free, maxiter=int(max_iter),
+                                             ftol=threshold, xtol=threshold, gtol=threshold)
+                        return optimize.OptimizeResult(x=result.x, success=result.success,
+                                                       message=result.reason, nit=result.nit)
                     options = {"maxiter": int(max_iter)}
                     if tol is not None:
                         options.update(
@@ -1433,7 +1452,8 @@ class NMRTab(QWidget):
 
             final_rms = f_m(theta_star[free_idx] if free_idx.size else np.array([]))
             theta_star = np.asarray(theta_star, dtype=float).ravel()
-            ok = bool(np.isfinite(final_rms) and np.all(np.isfinite(theta_star)))
+            ok = bool(np.isfinite(final_rms) and np.all(np.isfinite(theta_star)) and
+                      (success if free_idx.size and opt_method == "explicit_lm" else True))
             info = {
                 "n_iter": n_iter,
                 "final_rms": final_rms,

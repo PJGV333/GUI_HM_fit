@@ -1059,10 +1059,12 @@ def process_nmr_data(
         SE_log10K_full[fixed_mask] = 0.0
         percK_full[fixed_mask] = 0.0
         bound_names = []
+        bound_mask = np.zeros(len(k_opt_full), dtype=bool)
         if optimizer == "explicit_lm" and lm_summary is not None:
             hits = np.asarray(lm_summary.get("active_bounds", []), dtype=bool)
             if hits.size == free_idx.size:
                 bound_indices = free_idx[hits]
+                bound_mask[bound_indices] = True
                 SE_log10K_full[bound_indices] = np.nan
                 percK_full[bound_indices] = np.nan
                 bound_names = [f"K{i+1}" for i in bound_indices]
@@ -1160,6 +1162,7 @@ def process_nmr_data(
             "percK": percK_full.tolist() if percK_full is not None else [],
             "SE_log10K": SE_log10K_full.tolist() if SE_log10K_full is not None else [],
             "fixed_mask": fixed_mask.tolist(),
+            "active_bound_mask": bound_mask.tolist(),
             "derived_noncoop": derived_noncoop,
             "signal_names": signal_names,
             "column_names": column_names,

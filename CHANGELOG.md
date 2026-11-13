@@ -50,6 +50,10 @@ All notable user-visible changes. Versions follow the GitHub releases
   shown as "—" with the reason in the tooltip; exports keep NaN plus a `Note` column.
 
 ### Fixed
+- LM full-refit uncertainty dispatch now uses the selected optimizer instead of silently
+  falling back to Nelder–Mead; parameters at an active bound also have undefined SE
+  in the Errors tab and export. Existing Powell/default error methods are unchanged.
+  Evidence: `tests/test_phase31_refit_lm.py`.
 - Explicit LM utility: a parameter whose lower and upper bounds coincide is excluded
   from the projected scaled gradient. Previously it could report a misleadingly
   large final gradient even after optimizing all free parameters. The utility is

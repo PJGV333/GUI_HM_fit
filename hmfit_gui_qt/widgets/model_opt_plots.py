@@ -1188,6 +1188,23 @@ class ModelOptPlotsWidget(QWidget):
             dof=base_metrics.get("dof"),
             extra_ci=(ci_16, ci_84),
         )
+        bound_raw = ctx.get("active_bound_mask")
+        bound_mask = np.asarray(bound_raw if bound_raw is not None else [], dtype=bool).ravel()
+        if bound_mask.size != k_hat.size:
+            bound_mask = np.zeros(k_hat.size, dtype=bool)
+        bound_mask &= ~fixed_mask
+        if np.any(bound_mask):
+            se_log10 = np.asarray(se_log10, dtype=float).copy()
+            se_log10[bound_mask] = np.nan
+            for interval in (ci_2p5, ci_97p5, ci_16, ci_84):
+                if interval is not None and np.asarray(interval).size == k_hat.size:
+                    interval[bound_mask] = np.nan
+            if corr is not None and np.asarray(corr).shape == (k_hat.size, k_hat.size):
+                corr = np.asarray(corr, dtype=float).copy()
+                corr[bound_mask, :] = np.nan
+                corr[:, bound_mask] = np.nan
+            summary += "\nWARNING: parámetro en el límite; SE no válido: " + ", ".join(
+                param_names[i] for i in np.flatnonzero(bound_mask))
         perc_err = np.asarray(perc_err, dtype=float).reshape(-1)
         if perc_err.size == se_log10.size:
             perc_err = np.where(np.isnan(se_log10), np.nan, np.where(se_log10 == 0.0, 0.0, perc_err))
@@ -1227,12 +1244,13 @@ class ModelOptPlotsWidget(QWidget):
             "rms": rms_val,
             "s2": s2_val,
             "dof": dof_val,
-            "param_status": parameter_status_codes(
-                se_log10,
-                fixed_mask=fixed_mask,
-                nonidentifiable=base_metrics.get("nonidentifiable"),
-                dof=dof_val,
-            ),
+            "param_status": [
+                "bound" if bound_mask[i] else code
+                for i, code in enumerate(parameter_status_codes(
+                    se_log10, fixed_mask=fixed_mask,
+                    nonidentifiable=base_metrics.get("nonidentifiable"), dof=dof_val,
+                ))
+            ],
         }
 
     def _corr_from_cov(self, metrics: dict[str, Any], p_total: int) -> np.ndarray:

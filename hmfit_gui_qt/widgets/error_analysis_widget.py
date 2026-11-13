@@ -13,6 +13,7 @@ def status_reason_text(tr, code: str) -> str:
     """Tooltip text explaining why a reported uncertainty is 0 or undefined."""
     reasons = {
         "fixed": tr("Fixed parameter: it was not estimated, so it has no uncertainty (SE = 0)."),
+        "bound": tr("Undefined: parameter at a bound; its standard error is not valid."),
         "nonidentifiable": tr(
             "Undefined: this parameter is not identifiable from these data "
             "(the data carry no information about it)."

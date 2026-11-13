@@ -15,7 +15,7 @@ def _fit(tmp_path, monkeypatch, bounds, *, optimizer='explicit_lm', fixed=None, 
     model = [[1, 0], [0, 1], [1, 1]]
     solver = NewtonRaphson(np.column_stack([H, G]), np.array(model).T, nas=[1], model_sett='Free')
     _, Co = solver.concentraciones(np.array([3.]))
-    fraction = Co[:, [0, 2]] / H[:, None]
+    fraction = np.asarray(Co)[:, [0, 2]] / H[:, None]
     rng = np.random.default_rng(4)
     s1 = fraction @ [7., 7.6] + rng.normal(0, .002, n)
     s2 = fraction @ [8., 7.5] + rng.normal(0, .002, n)

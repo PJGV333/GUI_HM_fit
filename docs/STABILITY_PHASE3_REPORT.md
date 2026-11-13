@@ -2,42 +2,43 @@
 
 ## Estado de avance
 
-- 3.0 aprobada por el autor. 3.1 en curso: núcleo LM y Jacobiano
-  espectral independiente en `4647f58`; se añade un constructor de residuo
-  perfilado y diferencias centradas para los modos generales. Aún no están
-  integrados en los procesadores, y Powell sigue por defecto. Suite posterior:
+- 3.0 aprobada por el autor. 3.1: núcleo LM y Jacobiano espectral independiente
+  en `4647f58`, posteriormente integrados; Powell sigue por defecto. Suite
+  posterior al constructor de residuo perfilado y diferencias centradas:
   566 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas
   (591 recogidas; 586 seleccionadas), 190.94 s. Antes: 556 aprobadas,
   0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas (581 recogidas).
 - 3.1.e: LM disponible como `explicit_lm` en Espectroscopía (API y selector),
   sin alterar el predeterminado Powell. Diagnósticos y notas de límite están en
   el resultado y exportación. Validación inicial sintética en
-  `tests/test_phase31_spectro_lm.py`; comparación extensa pendiente. Suite:
+  `tests/test_phase31_spectro_lm.py`; comparación extensa más abajo. Suite:
   602 recogidas, 577 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5
   deseleccionadas, 185.11 s; antes 598 recogidas y 573 aprobadas.
 - 3.1.g–h: comparación Powell/LM realizada con cinco repeticiones por caso;
   Powell permanece por defecto porque LM empeora la SSQ en varios casos.
   El xfail de grupos sigue fallando; no se ha retirado. Suite tras comparación:
   607 recogidas, 582 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5
-  deseleccionadas, 184.53 s (mismas cifras antes). Falta revisar otras rutas
-  de incertidumbre y completar las etapas 3.2–3.5.
+  deseleccionadas, 184.53 s (mismas cifras antes). Refits GUI de LM y SE en
+  límites se verifican también en `tests/test_phase31_refit_lm.py`. Suite de
+  este bloque: 625 recogidas, 600 aprobadas, 0 fallidas, 17 xfail, 3 omitidas
+  y 5 deseleccionadas, 172.09 s; antes 621 recogidas y 596 aprobadas.
 - 3.1.f: LM optativo en RMN dentro del IRLS anterior, sin cambiar sus pesos.
   Probado sintéticamente con Powell, límite activo, parámetro fijo,
   no convergencia y multistart paralelo en `tests/test_phase31_nmr_lm.py`.
-  La comparación de literatura y la decisión sobre defecto siguen pendientes.
+  La comparación de literatura confirma que debe conservarse Powell.
   Suite posterior: 607 recogidas, 582 aprobadas, 0 fallidas, 17 xfail,
   3 omitidas y 5 deseleccionadas, 186.40 s; antes 602 recogidas y 577 aprobadas.
 - 3.1.c–d: núcleo LM reforzado para cotas iguales, controles inválidos,
-  paso que entra desde un límite y agotamiento de iteraciones; sigue pendiente
-  propagar diagnósticos y SE a todas las rutas de análisis adicionales. Suite: 598 recogidas,
+  paso que entra desde un límite y agotamiento de iteraciones; diagnósticos y
+  SE en límites también propagados a Errors. Suite: 598 recogidas,
   573 aprobadas, 0 fallidas, 17 xfail, 3 omitidas, 5 deseleccionadas,
   191.94 s (antes: 591 recogidas, 566 aprobadas, las demás cifras iguales).
 - 3.2: pesos unitarios y por señal disponibles en GUI, API y configuración;
   IRLS sigue por defecto. Pesos finales y ciclos se muestran y exportan;
   tabla de evidencia del banco en este informe. Suite: 610 recogidas,
   585 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas,
-  186.40 s; antes 607 recogidas y 582 aprobadas. Falta revisión de rutas de
-  errores de la GUI, sin corregir el problema fuera de alcance §6.4(c).
+  186.40 s; antes 607 recogidas y 582 aprobadas. El full-refit histórico de
+  Errors sigue con pesos unitarios y máscara anterior (§6.4(c), fuera de alcance).
 - 3.3: resuelto vectorizado de pH con Brent de referencia y respaldo;
   comparaciones extremas y full-refit sintético añadidas. Suite: 621 recogidas,
   596 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas,
@@ -62,6 +63,8 @@
 | D-9 | Configuraciones RMN sin pesos | Unitarios; IRLS previo | IRLS | Compatibilidad y decisión expresa del autor | `test_nmr_weight_selection_roundtrips_and_legacy_defaults_to_irls` y pruebas de regresión | Seleccionar `unit` expresamente |
 | D-10 | Resolver pH sin intervalo válido o modelo no monótono | Forzar Newton; usar Brent y respaldo previos | Mantener referencia escalar | Preservar comportamiento en casos sin garantía de monotonía o sin bracket | `test_unbracketed_points_use_reference_fallback` y pruebas extremas | Sustituir llamada vectorizada por `_simulate_pH_titration_reference` |
 | D-11 | Otros cuellos observados | Optimizar speciation/render/ODE; no alterar rutas sin prueba de equivalencia | No cambiarlos | Son compartidos y pueden alterar resultados o interfaz; no se ha demostrado una optimización equivalente | `validation/results/phase33_profiles.json` | No hay cambio que revertir |
+| D-12 | Bootstrap de GUI con LM | Dejar fallback silencioso a Nelder–Mead; ejecutar LM sobre el residuo que ya usa el refit | Ejecutar LM y reportar fallback cuando proceda | Respeta la elección de optimizador sin modificar el estimador de errores predeterminado | `test_lm_full_refit_does_not_silently_switch_optimizer` | Seleccionar Powell o revertir las ramas de dispatch LM |
+| D-13 | SE en límite en pestaña Errors | Mostrar SE sin restricciones; marcar indefinido | NaN, nota y código `bound` | Un intervalo simétrico sin restricciones no es válido en el límite | `test_error_tab_marks_bound_se_undefined` | No seleccionar LM o revertir el tratamiento de `active_bound_mask` |
 
 ### Inventario del residuo y Jacobiano espectral
 
@@ -266,6 +269,21 @@ para 401 puntos y 0.2474 para 5 puntos en [0, 8] s. La comparación usa
 `tests/test_phase3_jax.py` (3 aprobadas con JAX aislado); en el entorno normal
 sin JAX se omiten los dos casos JAX mediante `importorskip`.
 
+Diagnóstico controlado adicional: `jax==jaxlib==0.12.0.1`, `ml_dtypes==0.6.0`
+y `opt_einsum==3.4.0` instalados con `pip --no-deps --target` en un directorio
+externo, añadido solo por `PYTHONPATH`; entorno principal sin JAX. Con y sin
+ese directorio se usan exactamente NumPy 2.4.2 y SciPy 1.17.1. El mismo
+`NewtonRaphson.concentraciones` devuelve `numpy.ndarray` sin JAX y
+`jaxlib._jax.ArrayImpl` con JAX. En la suite aislada: 593 aprobadas, 5
+fallidas, 17 xfail, 1 omitida, 5 deseleccionadas (298.98 s). Las cinco fallas
+son las tres pruebas de coeficientes/orientación RMN, la de caché de
+especiación y golden espectral seed 3: todas intentan asignar in-place a
+arreglos JAX inmutables. Esto reproduce la causa por cambio de comportamiento
+al importar, sin cambiar versiones NumPy/SciPy. El primer ensayo aislado dio
+además siete fallos en la nueva fixture LM RMN por multiplicar un array JAX por
+una lista; se corrigió la fixture convirtiendo explícitamente a NumPy y las
+siete pruebas pasan. No se instala JAX en el entorno ni CI principal.
+
 ## Valores iniciales y Eyring (1.2)
 
 Regla implementada: mayor duración entre conjuntos; para cada constante distinta, en orden de
@@ -365,6 +383,8 @@ El CI de `8e5342c` terminó en verde:
 <https://github.com/PJGV333/GUI_HM_fit/actions/runs/43464692714>.
 El CI del resolvedor vectorizado `2571a66` también terminó en verde:
 <https://github.com/PJGV333/GUI_HM_fit/actions/runs/43466430821>.
+El CI de los perfiles `c4fd734` terminó en verde:
+<https://github.com/PJGV333/GUI_HM_fit/actions/runs/43468016440>.
 
 ## Riesgos y cuestiones abiertas
 
@@ -373,6 +393,11 @@ El CI del resolvedor vectorizado `2571a66` también terminó en verde:
   ajuste global solo produce aviso y no garantiza compatibilidad de unidades.
 - Configuraciones antiguas que compartan una constante entre órdenes distintos se seguirán
   abriendo, pero no podrán ajustarse hasta corregir el mecanismo, tampoco mediante el núcleo.
+- [Limitación metodológica] El full-refit de la pestaña Errors de RMN mantiene
+  su objetivo histórico de pesos unitarios y la máscara anterior incluso si el
+  ajuste principal usa IRLS. El dispatch LM nuevo respeta ese objetivo histórico;
+  no se ha cambiado el método de error ni corregido §6.4(c). Sus SE no deben
+  interpretarse como un full-refit IRLS idéntico al ajuste principal.
 - [Sospecha] En JAX con precisión de 32 bits, un corte de rango de 10⁻¹⁰ está por debajo de
   la precisión de máquina; no se ha validado el comportamiento para matrices mal condicionadas.
 - [Defecto comprobado por inspección] Tras optimizar con JAX, `_run_kinetics_fit` genera las
