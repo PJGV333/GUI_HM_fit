@@ -1,5 +1,25 @@
 # HM fit — Fase 3: informe intermedio
 
+## Estado de avance
+
+- 3.0 aprobada por el autor. 3.1 en curso: núcleo LM y Jacobiano
+  espectral independiente en `4647f58`; se añade un constructor de residuo
+  perfilado y diferencias centradas para los modos generales. Aún no están
+  integrados en los procesadores, y Powell sigue por defecto. Suite posterior:
+  566 aprobadas, 0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas
+  (591 recogidas; 586 seleccionadas), 190.94 s. Antes: 556 aprobadas,
+  0 fallidas, 17 xfail, 3 omitidas y 5 deseleccionadas (581 recogidas).
+- 3.2, 3.3, 3.4 y 3.5 pendientes. Este documento es provisional; no
+  constituye validación de la fase completa.
+
+## Decisiones del agente
+
+| N.º | Contexto | Alternativas | Elección | Justificación | Evidencia | Cómo revertirla |
+|---|---|---|---|---|---|---|
+| D-1 | Objetivo espectral | Añadir penalización a legacy; respetar el objetivo de Powell | Respetar cada modo | No cambiar estimador | `_spectral_profile_objective`; `test_general_profile_residual_matches_existing_objective` | Retirar el constructor de residuo, sin cambiar Powell |
+| D-2 | Jacobiano para modos generales | Fórmula analítica supuesta; diferencias centradas del residuo real | Diferencias centradas con paso relativo | Evita aplicar fórmulas no verificadas a modos acoplados | `centered_residual_jacobian`; prueba sintética con grupos, pesos, cotas y suavidad | Retirar la función auxiliar; no está integrada |
+
+
 Rama `fix/stable-phase3-optimizers`, base `0634b93`. Estado: etapa 3.0 implementada,
 probada con datos sintéticos y pendiente de revisión del autor; no validada con datos publicados.
 

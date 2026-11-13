@@ -922,6 +922,29 @@ def _spectral_profile_objective(fit, YT, weights_row, mu, alpha_smooth, smooth_m
     return float(onp.sqrt(max(total, 0.0) / residual.size))
 
 
+def _spectral_profile_residual(fit, YT, weights_row, mu, alpha_smooth, smooth_matrix, mode):
+    """Residual whose squared norm reproduces the profiled Powell objective.
+
+    The profile objective divides SSQ by the number of data points, not by
+    the number of residuals including regularization. Keep that normalization
+    even when the penalty contributes additional residuals.
+    """
+    residual = ((onp.asarray(fit["yfit"]) - onp.asarray(YT)) * onp.asarray(weights_row)).ravel()
+    parts = [residual]
+    if mode == "absolute":
+        A = onp.asarray(fit["E_group"], dtype=float)
+        parts.append(onp.sqrt(float(mu)) * onp.minimum(A, 0.0).ravel())
+        if float(alpha_smooth) > 0.0 and smooth_matrix is not None:
+            L = onp.asarray(smooth_matrix, dtype=float)
+            eigenvalues, eigenvectors = onp.linalg.eigh((L + L.T) / 2)
+            scale = max(float(onp.max(onp.abs(eigenvalues), initial=0.0)), 1.0)
+            if onp.min(eigenvalues, initial=0.0) < -1e-12 * scale:
+                raise ValueError("smoothness matrix must be positive semidefinite")
+            root = eigenvectors * onp.sqrt(onp.maximum(eigenvalues, 0.0))
+            parts.append((onp.sqrt(float(alpha_smooth)) * (A @ root)).ravel())
+    return onp.concatenate(parts) / onp.sqrt(residual.size)
+
+
 def _resolve_render_profile(render_quality: str):
     q = str(render_quality or "preview").strip().lower()
     if q == "full":

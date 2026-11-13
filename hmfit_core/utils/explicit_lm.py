@@ -20,6 +20,20 @@ class LMResult:
     active_bounds: np.ndarray
 
 
+def centered_residual_jacobian(residual, x):
+    """Centered finite differences of the actual residual, with relative steps."""
+    x = np.asarray(x, dtype=float).ravel()
+    r = np.asarray(residual(x), dtype=float).ravel()
+    jac = np.empty((r.size, x.size))
+    for j in range(x.size):
+        h = np.cbrt(np.finfo(float).eps) * max(abs(x[j]), 1.0)
+        step = np.zeros_like(x)
+        step[j] = h
+        jac[:, j] = (np.asarray(residual(x + step)).ravel()
+                     - np.asarray(residual(x - step)).ravel()) / (2 * h)
+    return r, jac
+
+
 def _gradient(r, j, x, lower, upper):
     g = j.T @ r
     active = ((x <= lower) & (g > 0)) | ((x >= upper) & (g < 0))
