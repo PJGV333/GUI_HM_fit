@@ -1,6 +1,6 @@
 # errors.py
 import numpy as _onp
-from .np_backend import xp as np, jit, jacrev, vmap, lax
+from .np_backend import xp as np
 from ..solvers.lm_conc import pinv_cs  # complex-step-safe
 
 # ============================================================================
@@ -336,7 +336,6 @@ def sensitivities_wrt_logK(c_spec, modelo, param_idx=None, rcond=1e-12):
 
 
 # --- errors.py (añadir al final) ---
-from .np_backend import xp as np, USE_JAX, jit
 # Usaremos tu sensitivities_wrt_log10K ya existente:
 _sens = sensitivities_wrt_logK
 
@@ -350,23 +349,6 @@ def _projector(C, rcond=1e-10):
 def _stack_rows(lst):
     # stack que funcione en ambos backends
     return np.stack(lst, axis=0)
-
-def _jax_array_type():
-    """jax.numpy.ndarray if JAX is importable, else None. Resolved once: the previous
-    per-call ``import jax.numpy`` cost ~25 % of a one-step bootstrap when JAX is absent."""
-    global _JAX_ARRAY_TYPE
-    if _JAX_ARRAY_TYPE is _UNRESOLVED:
-        try:
-            import jax.numpy as jnp
-            _JAX_ARRAY_TYPE = jnp.ndarray
-        except Exception:
-            _JAX_ARRAY_TYPE = None
-    return _JAX_ARRAY_TYPE
-
-
-_UNRESOLVED = object()
-_JAX_ARRAY_TYPE = _UNRESOLVED
-
 
 def _as_onp(x):
     # NumPy converts concrete foreign arrays directly.  Do not import JAX as a
@@ -431,17 +413,6 @@ def _jac_varpro(C, A, dC_all, use_projector=True, rcond=1e-10):
     # J: (p × m*nw)
     J = V.transpose(1, 0, 2).reshape(p, m * nw)
     return J
-
-# --- al final del archivo, después de definir la función ---
-try:
-    if USE_JAX:
-        # jit de JAX con argumento estático
-        from jax import jit as _jit
-        _jac_varpro = _jit(_jac_varpro, static_argnames=("use_projector",))
-except Exception:
-    # si no hay JAX o falla el wrap, seguimos sin jit (modo NumPy)
-    pass
-
 
 def _weighted_column_lstsq(C, YT, W, rcond=1e-10):
     """

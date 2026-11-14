@@ -59,17 +59,23 @@ def test_wrapper_returns_copies_and_tracks_k():
     assert E._FixedPointConcentrations(solver).nas is solver.nas  # attributes delegate to the solver
 
 
-def test_jax_type_resolved_once(monkeypatch):
-    E._JAX_ARRAY_TYPE = E._UNRESOLVED
-    first = E._jax_array_type()
+def test_uncertainty_engine_has_no_jax_import_or_type_probe():
+    import inspect
+
+    assert not hasattr(E, "_jax_array_type")
+    assert "import jax" not in inspect.getsource(E)
+    assert np.array_equal(E._as_onp([1.0, 2.0]), np.array([1.0, 2.0]))
+
+
+def test_bootstrap_runs_without_importing_jax(monkeypatch):
     import builtins
 
     real_import = builtins.__import__
 
-    def no_more_imports(name, *a, **k):
-        assert not name.startswith("jax"), "jax import attempted again"
+    def no_jax_imports(name, *a, **k):
+        assert not (name == "jax" or name.startswith("jax.")), "jax import attempted"
         return real_import(name, *a, **k)
 
-    monkeypatch.setattr(builtins, "__import__", no_more_imports)
-    assert E._jax_array_type() is first
-    assert np.array_equal(E._as_onp([1.0, 2.0]), np.array([1.0, 2.0]))
+    monkeypatch.setattr(builtins, "__import__", no_jax_imports)
+    samples, calls = _run(monkeypatch, cached=True)
+    assert calls == 1 and np.isfinite(samples).all()
