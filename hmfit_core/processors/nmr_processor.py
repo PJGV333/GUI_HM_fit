@@ -1287,7 +1287,7 @@ def process_nmr_data(
             "objective_evaluations": int(objective_eval_count_total),
             "optimizer_result": lm_summary if optimizer == "explicit_lm" and lm_summary is not None else optimizer_summary,
             "weights_mode": weights_mode,
-            "final_weights_per_signal": dict(zip(signal_names, weights_per_signal.tolist())),
+            "final_weights_per_signal": dict(zip(signal_names, weights_used_for_fit.tolist())),
             "irls_cycles": cycle_count,
             "constants": constants,
             "derived_noncoop": export_data.get("derived_noncoop"),

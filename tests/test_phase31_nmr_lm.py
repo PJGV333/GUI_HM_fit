@@ -61,6 +61,9 @@ def test_nmr_irls_reports_and_uses_weights_of_the_last_fit(tmp_path, monkeypatch
     proposed = np.asarray(ed["irls_weights_proposed_next"])
     np.testing.assert_array_equal(ed["irls_weights_final"], used)
     assert not np.allclose(used, proposed, rtol=1e-8, atol=1e-8)
+    np.testing.assert_array_equal(
+        [out["final_weights_per_signal"][name] for name in ed["signal_names"]], used
+    )
     np.testing.assert_allclose(calls[-1], used, rtol=0, atol=0)
     stats = dict(ed["stats_table"])
     np.testing.assert_allclose([stats["weight s1"], stats["weight s2"]], used, rtol=0, atol=0)

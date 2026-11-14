@@ -88,6 +88,11 @@ def test_versioned_and_legacy_nmr_runs_keep_selected_estimator(tmp_path):
     a, b, c = [result['export_data'] for result in (legacy, irls, unit)]
     assert a['weights_mode'] == b['weights_mode'] == 'irls'
     assert c['weights_mode'] == 'unit'
+    for result, data in zip((legacy, irls, unit), (a, b, c)):
+        np.testing.assert_array_equal(
+            [result['final_weights_per_signal'][name] for name in data['signal_names']],
+            data['weights_used_for_fit'],
+        )
     np.testing.assert_array_equal(a['k'], b['k'])
     np.testing.assert_array_equal(a['weights_used_for_fit'], b['weights_used_for_fit'])
     np.testing.assert_array_equal(c['weights_used_for_fit'], np.ones(len(c['signal_names'])))
