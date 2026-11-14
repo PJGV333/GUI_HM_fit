@@ -56,23 +56,6 @@ from hmfit_gui_qt.widgets.mpl_canvas import MplCanvas, NavigationToolbar
 from hmfit_gui_qt.workers.fit_worker import FitWorker
 
 
-def _jax_solve_linear_matrix(C, D, weights=None):
-    """Project with the same relative rank cutoff as the SciPy observation model."""
-    import jax.numpy as jnp
-    from hmfit.kinetics.observation.linear_matrix import RANK_RCOND
-
-    if weights is None:
-        return jnp.linalg.pinv(C, rtol=RANK_RCOND) @ D
-    if weights.ndim == 1 or weights.shape[1] == 1:
-        w = weights.reshape(-1, 1)
-        return jnp.linalg.pinv(C * w, rtol=RANK_RCOND) @ (D * w)
-    return jnp.concatenate([
-        jnp.linalg.pinv(C * weights[:, j:j + 1], rtol=RANK_RCOND)
-        @ (D[:, j:j + 1] * weights[:, j:j + 1])
-        for j in range(D.shape[1])
-    ], axis=1)
-
-
 class KineticsTab(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -1132,77 +1115,6 @@ def _extract_param_names(ast) -> list[str]:
         params.update(temp_model.params.values())
 
     return sorted(params)
-
-
-def _params_vector_to_dict(
-    x: np.ndarray, param_names: Sequence[str], log_params: set[str]
-) -> dict[str, float]:
-    params: dict[str, float] = {}
-    for name, value in zip(param_names, x, strict=True):
-        if name in log_params:
-            params[name] = float(10.0 ** float(value))
-        else:
-            params[name] = float(value)
-    return params
-
-
-def _compute_covariance(
-    result,
-    param_names: Sequence[str],
-    log_params: set[str],
-) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None, float | None]:
-    """Linearized covariance for the JAX path (same rules as ``fit_global``)."""
-    errors = None
-    covariance = None
-    correlations = None
-    condition_number = None
-    if result.jac is None:
-        return errors, covariance, correlations, condition_number
-    J = np.asarray(result.jac, dtype=float)
-    if J.size == 0:
-        return errors, covariance, correlations, condition_number
-    from hmfit.kinetics.fit.optimizer import _scaled_condition_number
-    from hmfit_core.utils.errors import linearized_covariance
-
-    n_data = result.fun.size if result.fun is not None else J.shape[0]
-    m = J.shape[1]
-    # Free/fixed comes from the explicit mask: a zero Jacobian column means
-    # "not identifiable", never "fixed".
-    fixed = np.asarray(getattr(result, "fixed_mask", np.zeros(m, dtype=bool)), dtype=bool)
-    free = np.where(~fixed)[0]
-    n_linear = int(getattr(result, "n_linear", 0) or 0)
-    lin = linearized_covariance(J[:, free], 2.0 * result.cost, n_data, n_linear)
-    try:
-        result.dof = lin["dof"]
-        result.sigma2 = lin["s2"]
-        result.notes = tuple(lin["notes"])
-    except Exception:
-        pass
-    covariance = np.zeros((m, m), dtype=float)
-    nonid = np.zeros(m, dtype=bool)
-    if free.size:
-        condition_number = _scaled_condition_number(J[:, free])
-        covariance[np.ix_(free, free)] = lin["cov"]
-        nonid[free] = lin["nonidentifiable"]
-    if log_params:
-        params = _params_vector_to_dict(result.x, param_names, log_params)
-        scale = np.ones(m, dtype=float)
-        for idx, name in enumerate(param_names):
-            if name in log_params:
-                scale[idx] = np.log(10.0) * float(params[name])
-        covariance = (scale[:, None] * covariance) * scale[None, :]
-    diag = np.diag(covariance)
-    errors = np.where(np.isfinite(diag), np.sqrt(np.clip(diag, 0.0, np.inf)), np.nan)
-    denom = np.outer(errors, errors)
-    with np.errstate(invalid="ignore"):
-        correlations = np.divide(
-            covariance, denom, out=np.zeros_like(covariance),
-            where=(denom != 0) & np.isfinite(denom),
-        )
-    correlations[nonid, :] = np.nan
-    correlations[:, nonid] = np.nan
-    np.fill_diagonal(correlations, np.where(fixed | nonid, np.nan, 1.0))
-    return errors, covariance, correlations, condition_number
 
 
 def _randomize_params(

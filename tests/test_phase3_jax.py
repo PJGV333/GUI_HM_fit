@@ -54,6 +54,17 @@ def test_production_kinetics_fit_contains_no_jax_execution_path():
     assert "_run_once_jax" not in source
 
 
+def test_jax_projection_is_isolated_from_production_gui():
+    import inspect
+    from hmfit_gui_qt.tabs import kinetics_tab
+
+    assert not hasattr(kinetics_tab, "_jax_solve_linear_matrix")
+    assert not hasattr(kinetics_tab, "_compute_covariance")
+    assert "import jax" not in inspect.getsource(kinetics_tab)
+    from validation.jax_kinetics import jax_solve_linear_matrix
+    assert callable(jax_solve_linear_matrix)
+
+
 def test_jax_rk4_fine_and_coarse_grid():
     pytest.importorskip("jax")
     from hmfit.kinetics.model.kinetics_model import KineticsModel
@@ -75,7 +86,7 @@ def test_jax_rk4_fine_and_coarse_grid():
 def test_jax_projection_drops_roundoff_rank_for_all_weight_shapes():
     jax = pytest.importorskip("jax")
     import jax.numpy as jnp
-    from hmfit_gui_qt.tabs.kinetics_tab import _jax_solve_linear_matrix
+    from validation.jax_kinetics import jax_solve_linear_matrix
     from hmfit.kinetics.observation.linear_matrix import solve_linear_matrix
     c = np.array([[1., 1.], [0., 1e-12], [0., 0.]])
     d = np.array([[1., 2.], [1., -1.], [0., 0.]])
@@ -84,5 +95,5 @@ def test_jax_projection_drops_roundoff_rank_for_all_weight_shapes():
         assert np.max(np.abs(np.asarray(jnp.linalg.pinv(jnp.asarray(c)) @ jnp.asarray(d)))) > 1e11
         for w in (None, np.ones((3, 1)), np.ones((3, 2))):
             expected, _ = solve_linear_matrix(c, d, weights=w)
-            got = _jax_solve_linear_matrix(jnp.asarray(c), jnp.asarray(d), None if w is None else jnp.asarray(w))
+            got = jax_solve_linear_matrix(jnp.asarray(c), jnp.asarray(d), None if w is None else jnp.asarray(w))
             np.testing.assert_allclose(np.asarray(got), expected, atol=1e-10)
