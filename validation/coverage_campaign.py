@@ -41,6 +41,7 @@ import types
 import warnings
 import zlib
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -527,7 +528,8 @@ def run_replicate(cell: dict[str, Any], rep: int, methods: list[str] | None = No
     ss = seed_for(cell.get("seed_id", cell["id"]), rep)
     data_ss, *method_ss = ss.spawn(1 + len(ALL_METHODS))
     rng = np.random.default_rng(data_ss)
-    row: dict[str, Any] = {"cell": cell["id"], "rep": int(rep), "entropy": [int(v) for v in np.atleast_1d(ss.entropy)]}
+    row: dict[str, Any] = {"cell": cell["id"], "technique": cell["technique"], "rep": int(rep),
+                           "entropy": [int(v) for v in np.atleast_1d(ss.entropy)]}
     t0 = time.perf_counter()
     with tempfile.TemporaryDirectory() as workdir:
         cfg, truth = GENERATORS[cell["technique"]](cell, rng, workdir)
@@ -606,6 +608,9 @@ def _provenance() -> dict[str, Any]:
 
 def run(grid: list[dict[str, Any]], out: Path, *, workers: int = 1, n_rep: int | None = None,
         methods: list[str] | None = None, progress: bool = True) -> None:
+    for cell in grid:
+        if cell.get("technique") == "nmr" or _coverage_techniques().get(cell["id"]) == "nmr":
+            raise ValueError(f"NMR coverage is unavailable for {cell['id']}: Errors do not reproduce IRLS weighting.")
     out.mkdir(parents=True, exist_ok=True)
     manifest = out / "manifest.jsonl"
     with manifest.open("a", encoding="utf-8") as fh:
@@ -680,7 +685,33 @@ def classify_ci(cov_lo: float, cov_hi: float, point_class: str) -> str:
     return point_class
 
 
+@lru_cache(maxsize=1)
+def _coverage_techniques() -> dict[str, str]:
+    return {c["id"]: c["technique"] for c in primary_grid() + diagnostic_grid() + smoke_grid()}
+
+
+def validate_coverage_rows(rows: list[dict[str, Any]], cell_id: str) -> None:
+    technique = _coverage_techniques().get(cell_id)
+    registered = technique is not None
+    for row in rows:
+        recorded = row.get("technique")
+        if row.get("cell", cell_id) != cell_id:
+            raise ValueError(f"Coverage cell identifier mismatch for {cell_id}.")
+        if not registered and recorded not in GENERATORS:
+            raise ValueError(f"Unknown or missing coverage technique for {cell_id}.")
+        if technique is None:
+            technique = recorded
+        elif recorded is not None and recorded != technique:
+            raise ValueError(f"Coverage technique mismatch for {cell_id}.")
+    if technique == "nmr" and any(
+        r.get("fit_ok") and any("error" not in rec for rec in (r.get("methods") or {}).values())
+        for r in rows
+    ):
+        raise ValueError(f"NMR coverage for {cell_id} is invalid: historical Errors did not reproduce IRLS weighting.")
+
+
 def summarize_rows(rows: list[dict[str, Any]], cell_id: str, rng_seed: int = 0) -> list[dict[str, Any]]:
+    validate_coverage_rows(rows, cell_id)
     n_total = len(rows)
     ok_rows = [r for r in rows if r.get("fit_ok")]
     out = []

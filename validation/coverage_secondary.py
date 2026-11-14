@@ -24,7 +24,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from validation.coverage_campaign import ALL_METHODS, wilson
+from validation.coverage_campaign import ALL_METHODS, validate_coverage_rows, wilson
 from validation.coverage_report import REALISTIC_NOISE, _meta
 
 BOOT = [m for m in ALL_METHODS if m != "analytic"]
@@ -46,6 +46,8 @@ def per_replicate(run_dir: Path) -> pd.DataFrame:
     for bootstraps, by the t interval with bootstrap SE."""
     meta = _meta().set_index("cell")
     by_cell = {p.stem: _rows(p) for p in sorted(run_dir.glob("*.jsonl")) if p.stem != "manifest"}
+    for cell, rows in by_cell.items():
+        validate_coverage_rows(rows, cell)
     recs = []
     for cell, rows in by_cell.items():
         if cell not in meta.index:
