@@ -18,3 +18,18 @@ def test_retired_optimizer_rejected_before_processing(fit, config):
     with pytest.raises(ValueError, match="(?i)explicit_lm.*powell"):
         fit(config, progress_cb=messages.append)
     assert messages == []
+
+
+@pytest.mark.parametrize("config", [{"optimizer": "explicit_lm"}, OldConfig(),
+                                  {"optimizer": " EXPLICIT_LM "}])
+def test_direct_nmr_runner_rejects_retired_optimizer_before_mutating_callback(monkeypatch, config):
+    from hmfit_core.processors import nmr_processor
+    from hmfit_core.run_nmr import run_nmr
+
+    previous = lambda _message: None
+    monkeypatch.setattr(nmr_processor, "_progress_callback", previous)
+    messages = []
+    with pytest.raises(ValueError, match="(?i)explicit_lm.*powell"):
+        run_nmr(config, progress_cb=messages.append)
+    assert messages == []
+    assert nmr_processor._progress_callback is previous
