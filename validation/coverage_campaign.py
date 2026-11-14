@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import io
 import json
 import math
@@ -313,6 +314,7 @@ def _nmr_data(cell, rng, workdir):
         "initial_k": (k_true + 0.3).tolist(), "bounds": [(0.0, 8.0)] * k_true.size,
         "algorithm": "Newton-Raphson", "optimizer": "powell", "model_settings": "Free",
         "non_abs_species": [1], "multi_start_runs": 1,
+        "weights_mode": cell["weights_mode"], "weights_schema_version": 1,
     }
     return cfg, k_true
 
@@ -465,6 +467,11 @@ def _fit(cell, cfg):
             result = _quiet(run_nmr_fit, cfg)
         ok = bool(result.get("success", True))
         ctx = _capture_context(Tab, result, cfg) if ok else {}
+        if tech == "nmr" and ok:
+            ed = result.get("export_data") or {}
+            if (ed.get("weights_mode") != "unit" or ctx.get("weights_mode") != "unit"
+                    or not np.all(np.asarray(ed.get("weights_used_for_fit")) == 1.0)):
+                raise ValueError("NMR coverage requires unit weights in fit and Errors context.")
         k = np.asarray((result.get("export_data") or {}).get("k") or [np.nan], dtype=float)
         return ctx, k, ok and bool(ctx), {}
     if tech in ("ab_nmr", "ab_spec", "pot"):
@@ -524,12 +531,25 @@ def seed_for(cell_id: str, rep: int) -> np.random.SeedSequence:
     return np.random.SeedSequence([BASE_SEED, zlib.crc32(cell_id.encode()), int(rep)])
 
 
+def _nmr_fingerprint(cell, methods):
+    payload = {"cell": cell, "methods": methods if methods is not None else cell["methods"],
+               "weights_contract": "unit-v1"}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"),
+                                     allow_nan=False).encode()).hexdigest()
+
+
 def run_replicate(cell: dict[str, Any], rep: int, methods: list[str] | None = None) -> dict[str, Any]:
+    if cell["technique"] == "nmr" and cell.get("weights_mode") != "unit":
+        raise ValueError("NMR coverage unavailable: explicit unit weights required.")
     ss = seed_for(cell.get("seed_id", cell["id"]), rep)
     data_ss, *method_ss = ss.spawn(1 + len(ALL_METHODS))
     rng = np.random.default_rng(data_ss)
     row: dict[str, Any] = {"cell": cell["id"], "technique": cell["technique"], "rep": int(rep),
                            "entropy": [int(v) for v in np.atleast_1d(ss.entropy)]}
+    if cell["technique"] == "nmr":
+        row.update(weights_mode="unit", weights_contract="unit-v1", nmr_cell_config=cell,
+                   nmr_methods=methods if methods is not None else cell["methods"],
+                   campaign_fingerprint=_nmr_fingerprint(cell, methods))
     t0 = time.perf_counter()
     with tempfile.TemporaryDirectory() as workdir:
         cfg, truth = GENERATORS[cell["technique"]](cell, rng, workdir)
@@ -610,7 +630,18 @@ def run(grid: list[dict[str, Any]], out: Path, *, workers: int = 1, n_rep: int |
         methods: list[str] | None = None, progress: bool = True) -> None:
     for cell in grid:
         if cell.get("technique") == "nmr" or _coverage_techniques().get(cell["id"]) == "nmr":
-            raise ValueError(f"NMR coverage is unavailable for {cell['id']}: Errors do not reproduce IRLS weighting.")
+            if cell.get("technique") != "nmr" or cell.get("weights_mode") != "unit":
+                raise ValueError(f"NMR coverage is unavailable for {cell['id']}: explicit unit weights required.")
+            path = out / f"{cell['id']}.jsonl"
+            if path.exists():
+                try:
+                    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+                except (ValueError, OSError) as exc:
+                    raise ValueError(f"NMR coverage for {cell['id']} is invalid: unreadable existing rows.") from exc
+                validate_coverage_rows(rows, cell["id"])
+                fingerprint = _nmr_fingerprint(cell, methods)
+                if any(r.get("campaign_fingerprint") != fingerprint for r in rows):
+                    raise ValueError(f"NMR coverage for {cell['id']} is invalid: incompatible campaign configuration.")
     out.mkdir(parents=True, exist_ok=True)
     manifest = out / "manifest.jsonl"
     with manifest.open("a", encoding="utf-8") as fh:
@@ -703,11 +734,18 @@ def validate_coverage_rows(rows: list[dict[str, Any]], cell_id: str) -> None:
             technique = recorded
         elif recorded is not None and recorded != technique:
             raise ValueError(f"Coverage technique mismatch for {cell_id}.")
-    if technique == "nmr" and any(
-        r.get("fit_ok") and any("error" not in rec for rec in (r.get("methods") or {}).values())
-        for r in rows
-    ):
-        raise ValueError(f"NMR coverage for {cell_id} is invalid: historical Errors did not reproduce IRLS weighting.")
+    if technique == "nmr" and rows:
+        fingerprints = {r.get("campaign_fingerprint") for r in rows}
+        if (any(r.get("weights_mode") != "unit" or r.get("weights_contract") != "unit-v1" for r in rows)
+                or len(fingerprints) != 1 or None in fingerprints):
+            raise ValueError(f"NMR coverage for {cell_id} is invalid: missing or incompatible weighting provenance.")
+        for row in rows:
+            config, methods = row.get("nmr_cell_config"), row.get("nmr_methods")
+            if (not isinstance(config, dict) or not isinstance(methods, list)
+                    or config.get("id") != cell_id or config.get("technique") != "nmr"
+                    or config.get("weights_mode") != "unit"
+                    or row["campaign_fingerprint"] != _nmr_fingerprint(config, methods)):
+                raise ValueError(f"NMR coverage for {cell_id} is invalid: inconsistent campaign metadata.")
 
 
 def summarize_rows(rows: list[dict[str, Any]], cell_id: str, rng_seed: int = 0) -> list[dict[str, Any]]:

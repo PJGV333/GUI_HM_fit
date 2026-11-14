@@ -116,6 +116,12 @@ Las filas RMN históricas de `validation/coverage_campaign.py` producidas con aj
 
 Se verificaron diez pruebas de esta salvaguarda, incluidas las rutas de resumen, informes y reanudación sin escrituras, y un ajuste real UV-Vis con resumen y reanudación. La suite completa posterior obtuvo 659 aprobadas, 6 fallidas, 3 omitidas, 5 deseleccionadas y 16 xfail: permanecen los mismos cinco fallos de baselines y el smoke de todas las técnicas, ahora bloqueado antes de iniciar la campaña por la indisponibilidad RMN. No se cambiaron los criterios de aceptación de la campaña ni las referencias.
 
+## Campaña RMN con pesos unitarios explícitos
+
+Las nuevas réplicas RMN solo se permiten cuando la celda declara `weights_mode: unit`; el ajuste recibe además la versión de esquema 1, y se comprueban los pesos efectivos y el contexto de Errors antes de analizar. Analítico, bootstrap lineal, one-step y full-refit usan las rutas unitarias existentes; el smoke ejecuta los cuatro métodos, tres réplicas y reanudación sin reducir sus comprobaciones. Cada réplica guarda configuración, métodos y huella; la reanudación rechaza antes de escribir filas históricas sin procedencia, IRLS y configuraciones incompatibles. Los datos históricos no se convierten ni se alteran. Las mallas primarias históricas no se cambian implícitamente: requieren selección explícita para una campaña nueva.
+
+Las pruebas dirigidas dieron 27 aprobadas y 5 deseleccionadas; la suite completa local dio 695 aprobadas, 3 omitidas, 5 deseleccionadas y 16 xfail. El smoke es una prueba funcional pequeña, no demuestra cobertura estadística ni calibración. La huella de configuración no incluye el código fuente ni el entorno: el manifiesto registra commit, estado sucio y versiones, pero la reanudación aún no impide mezclar revisiones o entornos distintos. No debe tratarse esta salvaguarda como validación confirmatoria de campañas largas. Permanecen las advertencias numéricas de remuestreo con tres réplicas idénticas.
+
 ## Baselines RMN: errores condicionales validados
 
 Los cinco casos se reprodujeron con Powell, Newton–Raphson, inicio histórico, máscara y modelo del banco, IRLS explícito, Python 3.14.10, NumPy 2.4.2 y SciPy 1.17.1. Todas las constantes reprodujeron los baselines con tolerancia absoluta 1e-4 sin cambiar estos valores ni las referencias publicadas. Se actualizó únicamente `se`; el resto del JSON, incluso `environment`, conserva su procedencia histórica y no describe la actualización de SE. Los valores anteriores permanecen en Git y se reproducen aquí.

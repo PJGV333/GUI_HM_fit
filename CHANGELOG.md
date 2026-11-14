@@ -7,6 +7,9 @@ All notable user-visible changes. Versions follow the GitHub releases
 ## [Unreleased]
 
 ### Changed
+- Coverage validation permits new NMR campaigns only with explicit unit weights,
+  recording the cell and methods per replicate; historical IRLS or ambiguous rows
+  remain blocked. The smoke run is a plumbing check, not coverage calibration.
 - NMR literature regression baselines now record analytic standard errors conditional on
   the signal weights actually used in the final IRLS fit, rather than the proposed next
   weights. Fitted constants and published references are unchanged. These conditional

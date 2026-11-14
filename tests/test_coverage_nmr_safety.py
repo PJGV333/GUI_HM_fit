@@ -35,6 +35,42 @@ def test_resume_rejects_legacy_nmr_before_any_write(tmp_path):
     assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == before
 
 
+def test_new_explicit_unit_nmr_campaign_runs_and_resumes(tmp_path):
+    cell = {**next(c for c in cc.smoke_grid() if c['technique'] == 'nmr'), 'weights_mode': 'unit'}
+    cc.run([cell], tmp_path, n_rep=1, methods=['analytic', 'fr_row'], workers=1, progress=False)
+    path = tmp_path / f"{cell['id']}.jsonl"
+    before = path.read_bytes()
+    row = json.loads(before)
+    assert row['weights_mode'] == 'unit' and row['fit_ok']
+    assert row['nmr_cell_config'] == cell
+    assert row['nmr_methods'] == ['analytic', 'fr_row']
+    assert all('error' not in rec for rec in row['methods'].values())
+    assert cc.summarize(tmp_path)
+    cc.run([cell], tmp_path, n_rep=1, methods=['analytic', 'fr_row'], workers=1, progress=False)
+    assert path.read_bytes() == before
+
+
+def test_unit_nmr_resume_rejects_legacy_before_writing(tmp_path):
+    cell = {**next(c for c in cc.smoke_grid() if c['technique'] == 'nmr'), 'weights_mode': 'unit'}
+    path = tmp_path / f"{cell['id']}.jsonl"
+    path.write_text(json.dumps(_row(cell['id'])) + '\n')
+    before = path.read_bytes()
+    with pytest.raises(ValueError, match='(?i)nmr.*invalid'):
+        cc.run([cell], tmp_path, workers=1, progress=False)
+    assert path.read_bytes() == before
+    assert not (tmp_path / 'manifest.jsonl').exists()
+
+
+def test_unit_nmr_resume_rejects_changed_configuration(tmp_path):
+    cell = {**next(c for c in cc.smoke_grid() if c['technique'] == 'nmr'), 'weights_mode': 'unit'}
+    cc.run([cell], tmp_path, n_rep=1, methods=['analytic'], workers=1, progress=False)
+    before = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
+    changed = {**cell, 'noise': 'iid5'}
+    with pytest.raises(ValueError, match='(?i)nmr.*invalid'):
+        cc.run([changed], tmp_path, n_rep=1, methods=['analytic'], workers=1, progress=False)
+    assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == before
+
+
 def test_new_nmr_campaign_is_rejected_before_creating_output(tmp_path):
     cell = next(c for c in cc.smoke_grid() if c["technique"] == "nmr")
     out = tmp_path / "new"

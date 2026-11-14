@@ -19,6 +19,9 @@ from validation import coverage_campaign as cc  # noqa: E402
 @pytest.mark.campaign_smoke
 def test_smoke_campaign_runs_every_technique_and_resumes(tmp_path):
     grid = cc.smoke_grid()
+    for cell in grid:
+        if cell['technique'] == 'nmr':
+            cell['weights_mode'] = 'unit'
     cc.run(grid, tmp_path, workers=1, progress=False)
     files = sorted(p for p in tmp_path.glob("*.jsonl") if p.name != "manifest.jsonl")
     assert len(files) == len(grid)
