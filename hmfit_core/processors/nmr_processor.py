@@ -732,11 +732,14 @@ def process_nmr_data(
     k_opt_full = p0_full.copy()
     old_best_rms = np.inf
     param_opt_failed = False
+    irls_stop_reason = "max_cycles"
+    diff_w = None
     lm_summary = None
     optimizer_summary = {"success": True, "message": "all parameters fixed", "nit": 0}
     while cycle_count < MAX_IRLS_CYCLES:
         cycle_count += 1
         _raise_if_cancelled()
+        diff_w = None  # No weight update has occurred in this cycle yet.
         iter_state["best"] = np.inf  # Reset for current weights
         weights_used_for_fit = weights_per_signal.copy()
         log_progress(f"--- IRLS Cycle {cycle_count}/{MAX_IRLS_CYCLES} ---")
@@ -963,8 +966,10 @@ def process_nmr_data(
                 raise
             log_progress(f"Optimization cycle failed: {e}")
             param_opt_failed = True
+            irls_stop_reason = "optimization_failed"
             break
         if weights_mode == "unit":
+            irls_stop_reason = "unit_weights"
             log_progress("Unit weights: one optimization cycle, no IRLS update.")
             break
         # Update weights
@@ -990,13 +995,21 @@ def process_nmr_data(
         log_progress(f"Cycle {cycle_count} done. Max weight change: {diff_w:.2%}")
         current_best_rms = iter_state["best"]
         if cycle_count > 1 and np.abs(current_best_rms - old_best_rms) < 1e-6 * old_best_rms:
-            log_progress("IRLS Converged (RMS stability).")
+            irls_stop_reason = "rms_stable"
+            log_progress("IRLS stopped: RMS stability criterion (weights change between cycles; convergence is not established).")
             break
         if diff_w < 0.05 and cycle_count > 1:
-            log_progress("IRLS Converged (Weights stable).")
+            irls_stop_reason = "weights_stable"
+            log_progress("IRLS stopped: relative weight change below 5% (convergence is not established).")
             break
         old_best_rms = current_best_rms
     stage_times["optimization_s"] = time.perf_counter() - t_opt_start
+    irls_diagnostics = {
+        "cycles": cycle_count,
+        "stop_reason": irls_stop_reason,
+        "max_relative_weight_change": float(diff_w) if diff_w is not None else None,
+        "optimizer_success": False if param_opt_failed else bool(optimizer_summary["success"]),
+    }
     log_progress(f"Objective evaluations (NMR f_m): {int(objective_eval_count_total)}")
     if param_opt_failed:
         # Never report the initial guess as if it were a fitted result: an
@@ -1008,6 +1021,7 @@ def process_nmr_data(
                       "the returned result does NOT fall back to the initial values"),
             "results_text": "Optimization failed: no run produced a finite objective value.",
             "objective_evaluations": int(objective_eval_count_total),
+            "irls_diagnostics": irls_diagnostics,
             "constants": [],
             "timings": dict(stage_times),
         })
@@ -1135,6 +1149,7 @@ def process_nmr_data(
             f"Algorithm: {algorithm}",
             f"Model settings: {model_settings}",
             f"Weights: {weights_mode}; cycles: {cycle_count}",
+            f"Weight iteration stop reason: {irls_stop_reason} (not proof of IRLS convergence).",
             "Analytic uncertainty is conditional on the weights used in the final fit.",
             "Final weights per signal: " + ", ".join(
                 f"{name}={weight:.8g}" for name, weight in zip(signal_names, weights_used_for_fit)),
@@ -1196,6 +1211,7 @@ def process_nmr_data(
             "irls_weights_final": weights_used_for_fit.tolist(),
             "irls_weights_proposed_next": weights_per_signal.tolist(),
             "irls_cycles": cycle_count,
+            "irls_diagnostics": irls_diagnostics,
             "weighted_ssq_fit": float(np.sum((diff_final[valid_residuals_final] ** 2) *
                 np.broadcast_to(weights_used_for_fit[None, :], diff_final.shape)[valid_residuals_final])),
             "unweighted_ssq": SS_res,
@@ -1289,6 +1305,7 @@ def process_nmr_data(
             "weights_mode": weights_mode,
             "final_weights_per_signal": dict(zip(signal_names, weights_used_for_fit.tolist())),
             "irls_cycles": cycle_count,
+            "irls_diagnostics": irls_diagnostics,
             "constants": constants,
             "derived_noncoop": export_data.get("derived_noncoop"),
             "stability_status": stability_diag.get("status") if 'stability_diag' in locals() else None,

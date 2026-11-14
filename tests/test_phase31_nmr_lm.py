@@ -87,6 +87,49 @@ def test_unknown_weight_mode_is_rejected(tmp_path, monkeypatch):
         _fit(tmp_path, monkeypatch, [[1., 5.]], weights_mode='bad')
 
 
+def test_irls_stop_diagnostic_matches_reported_weight_change(tmp_path, monkeypatch):
+    out = _fit(tmp_path, monkeypatch, [[1., 5.]], optimizer='powell')
+    ed = out['export_data']
+    diag = ed['irls_diagnostics']
+    assert diag['cycles'] == ed['irls_cycles']
+    assert diag['stop_reason'] in {'rms_stable', 'weights_stable', 'max_cycles'}
+    used = np.asarray(ed['weights_used_for_fit'])
+    proposed = np.asarray(ed['irls_weights_proposed_next'])
+    np.testing.assert_allclose(diag['max_relative_weight_change'],
+                               np.max(np.abs(used - proposed) / (used + 1e-9)))
+    assert diag['optimizer_success'] == out['optimizer_result']['success']
+    assert 'IRLS Converged' not in out['results_text']
+
+
+def test_failed_later_cycle_does_not_report_previous_weight_change(tmp_path, monkeypatch):
+    original = nmr.optimize.minimize
+    calls = 0
+
+    def fail_after_first(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls > 1:
+            raise RuntimeError('second cycle failed')
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(nmr.optimize, 'minimize', fail_after_first)
+    out = _fit(tmp_path, monkeypatch, [[1., 5.]], optimizer='powell')
+    assert not out['success']
+    diag = out['irls_diagnostics']
+    assert diag['cycles'] == 2
+    assert diag['stop_reason'] == 'optimization_failed'
+    assert diag['optimizer_success'] is False
+    assert diag['max_relative_weight_change'] is None
+
+
+def test_unit_mode_does_not_claim_irls_convergence(tmp_path, monkeypatch):
+    out = _fit(tmp_path, monkeypatch, [[1., 5.]], optimizer='powell', weights_mode='unit')
+    diag = out['export_data']['irls_diagnostics']
+    assert diag['stop_reason'] == 'unit_weights'
+    assert diag['max_relative_weight_change'] is None
+    assert diag['cycles'] == 1
+
+
 def test_nmr_lm_marks_active_bound(tmp_path, monkeypatch):
     out = _fit(tmp_path, monkeypatch, [[1., 2.9]])
     assert out['optimizer_result']['active_bounds'] == [True]
