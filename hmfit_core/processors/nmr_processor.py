@@ -689,6 +689,7 @@ def process_nmr_data(
     stage_times["solver_s"] = time.perf_counter() - t_solver_start
     # --- IRLS Loop Setup ---
     weights_per_signal = np.ones(dq.shape[1], dtype=float)
+    weights_used_for_fit = weights_per_signal.copy()
     # 4. Define Objective Function
     iter_state = {"cnt": 0, "best": np.inf}
     def f_m(theta_free):
@@ -1037,7 +1038,7 @@ def process_nmr_data(
                 stoichiometry=stoich_mat,
                 mask=mask,
                 fixed_mask=fixed_mask,
-                weights=weights_per_signal,
+                weights=weights_used_for_fit,
                 rcond=1e-10,
                 rcond_cov=1e-10,
                 ridge=1e-8,
@@ -1134,8 +1135,9 @@ def process_nmr_data(
             f"Algorithm: {algorithm}",
             f"Model settings: {model_settings}",
             f"Weights: {weights_mode}; cycles: {cycle_count}",
+            "Analytic uncertainty is conditional on the weights used in the final fit.",
             "Final weights per signal: " + ", ".join(
-                f"{name}={weight:.8g}" for name, weight in zip(signal_names, weights_per_signal)),
+                f"{name}={weight:.8g}" for name, weight in zip(signal_names, weights_used_for_fit)),
         ]
         results_text += "\n\nEstadísticas:\n" + "\n".join(extra_stats)
         graphs = {}
@@ -1181,16 +1183,18 @@ def process_nmr_data(
                 ["objective_evaluations", int(objective_eval_count_total)],
                 ["weights_mode", weights_mode],
                 ["irls_cycles", cycle_count],
-            ] + [[f"weight {name}", float(weight)] for name, weight in zip(signal_names, weights_per_signal)] + ([
+            ] + [[f"weight {name}", float(weight)] for name, weight in zip(signal_names, weights_used_for_fit)] + ([
                 ["LM success", lm_summary["success"]],
                 ["LM stop reason", lm_summary["message"]],
                 ["LM iterations", lm_summary["nit"]],
                 ["LM scaled gradient", lm_summary["scaled_gradient"]],
             ] if optimizer == "explicit_lm" and lm_summary is not None else []),
-            "uncertainty_notes": (["parámetro en el límite: " + ", ".join(bound_names)] if bound_names else []),
+            "uncertainty_notes": ["Analytic uncertainty is conditional on the weights used in the final fit."] +
+                (["parámetro en el límite: " + ", ".join(bound_names)] if bound_names else []),
             "weights_used_for_fit": weights_used_for_fit.tolist(),
             "weights_mode": weights_mode,
-            "irls_weights_final": weights_per_signal.tolist(),
+            "irls_weights_final": weights_used_for_fit.tolist(),
+            "irls_weights_proposed_next": weights_per_signal.tolist(),
             "irls_cycles": cycle_count,
             "weighted_ssq_fit": float(np.sum((diff_final[valid_residuals_final] ** 2) *
                 np.broadcast_to(weights_used_for_fit[None, :], diff_final.shape)[valid_residuals_final])),

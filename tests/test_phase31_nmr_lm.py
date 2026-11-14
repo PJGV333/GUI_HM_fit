@@ -46,6 +46,27 @@ def test_nmr_lm_with_irls_matches_powell(tmp_path, monkeypatch):
     assert 'LM: success=' in out['results_text']
 
 
+def test_nmr_irls_reports_and_uses_weights_of_the_last_fit(tmp_path, monkeypatch):
+    original = nmr.compute_errors_nmr_varpro
+    calls = []
+
+    def capture(*args, **kwargs):
+        calls.append(np.array(kwargs["weights"], copy=True))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(nmr, "compute_errors_nmr_varpro", capture)
+    out = _fit(tmp_path, monkeypatch, [[1., 5.]], optimizer="powell")
+    ed = out["export_data"]
+    used = np.asarray(ed["weights_used_for_fit"])
+    proposed = np.asarray(ed["irls_weights_proposed_next"])
+    np.testing.assert_array_equal(ed["irls_weights_final"], used)
+    assert not np.allclose(used, proposed, rtol=1e-8, atol=1e-8)
+    np.testing.assert_allclose(calls[-1], used, rtol=0, atol=0)
+    stats = dict(ed["stats_table"])
+    np.testing.assert_allclose([stats["weight s1"], stats["weight s2"]], used, rtol=0, atol=0)
+    assert any("conditional" in note for note in ed["uncertainty_notes"])
+
+
 def test_unit_weights_run_one_cycle_and_are_exported(tmp_path, monkeypatch):
     out = _fit(tmp_path, monkeypatch, [[1., 5.]], optimizer='powell', weights_mode='unit')
     ed = out['export_data']
