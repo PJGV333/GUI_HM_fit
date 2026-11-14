@@ -65,20 +65,31 @@ def test_jax_projection_is_isolated_from_production_gui():
     assert callable(jax_solve_linear_matrix)
 
 
+def test_jax_integration_is_isolated_from_production_model():
+    import inspect
+    from hmfit.kinetics.model import kinetics_model
+
+    assert not hasattr(kinetics_model.KineticsModel, "solve_concentrations_jax")
+    assert "import jax" not in inspect.getsource(kinetics_model)
+    from validation.jax_kinetics import solve_concentrations_jax
+    assert callable(solve_concentrations_jax)
+
+
 def test_jax_rk4_fine_and_coarse_grid():
     pytest.importorskip("jax")
     from hmfit.kinetics.model.kinetics_model import KineticsModel
     from hmfit.kinetics.mechanism_editor.parser import parse_mechanism
+    from validation.jax_kinetics import solve_concentrations_jax
     model = KineticsModel(parse_mechanism("species: A, B, C\nA -> B ; k1\nB -> C ; k2\n"))
     y0 = {"A": 1.0, "B": 0.0, "C": 0.0}
     params = {"k1": 1.0, "k2": 0.2}
     fine = np.linspace(0, 8, 401)
-    a = np.asarray(model.solve_concentrations_jax(fine, y0, params))
+    a = np.asarray(solve_concentrations_jax(model, fine, y0, params))
     assert a.dtype == np.float64
     b = model.solve_concentrations(fine, y0, params)
     assert np.max(np.abs(a - b)) < 2e-5
     coarse = np.linspace(0, 8, 5)
-    a = np.asarray(model.solve_concentrations_jax(coarse, y0, params))
+    a = np.asarray(solve_concentrations_jax(model, coarse, y0, params))
     b = model.solve_concentrations(coarse, y0, params)
     assert np.max(np.abs(a - b)) > 0.05
 
