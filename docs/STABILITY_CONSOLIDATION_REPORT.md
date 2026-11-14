@@ -116,6 +116,40 @@ Las filas RMN históricas de `validation/coverage_campaign.py` producidas con aj
 
 Se verificaron diez pruebas de esta salvaguarda, incluidas las rutas de resumen, informes y reanudación sin escrituras, y un ajuste real UV-Vis con resumen y reanudación. La suite completa posterior obtuvo 659 aprobadas, 6 fallidas, 3 omitidas, 5 deseleccionadas y 16 xfail: permanecen los mismos cinco fallos de baselines y el smoke de todas las técnicas, ahora bloqueado antes de iniciar la campaña por la indisponibilidad RMN. No se cambiaron los criterios de aceptación de la campaña ni las referencias.
 
+## Baselines RMN: errores condicionales validados
+
+Los cinco casos se reprodujeron con Powell, Newton–Raphson, inicio histórico, máscara y modelo del banco, IRLS explícito, Python 3.14.10, NumPy 2.4.2 y SciPy 1.17.1. Todas las constantes reprodujeron los baselines con tolerancia absoluta 1e-4 sin cambiar estos valores ni las referencias publicadas. Se actualizó únicamente `se`; el resto del JSON, incluso `environment`, conserva su procedencia histórica y no describe la actualización de SE. Los valores anteriores permanecen en Git y se reproducen aquí.
+
+Una prueba independiente calcula por diferencias centradas la sensibilidad de las concentraciones, construye el diseño conjunto de constantes y desplazamientos lineales, elimina estos últimos por proyección, aplica la raíz de los pesos realmente usados y compara la covarianza, SSE ponderado y grados de libertad con el resultado productivo. Coincide en los cinco casos dentro de 0,2 % relativo para covarianza. La prueba también verifica los pesos pasados a Errors y los parámetros fijos. Es una comprobación de la aproximación de covarianza linealizada condicional; no establece calibración ni incertidumbre del procedimiento IRLS completo. La prueba previa `test_nmr_irls_reports_and_uses_weights_of_the_last_fit` protege frente al uso de pesos propuestos.
+
+| Caso | Parámetro | SE histórico | SE corregido |
+|---|---|---:|---:|
+| r09a-p2-058 | PQX | 0.01591714946 | 0.01589298529 |
+| r09a-p2-058 | PX | 0.01000635182 | 0.01001012637 |
+| r09a-p2-058 | QX | 0.0104092448 | 0.01037419932 |
+| r09a-p2-058 | P2 | 0 | 0 |
+| r09a-p2-058 | P2X | 0.02544386889 | 0.02540346517 |
+| r09a-p2-058 | P2QX | 0.02693616942 | 0.02694661332 |
+| r09a-p2-106 | PQX | 0.01925903392 | 0.01923777244 |
+| r09a-p2-106 | PX | 0.01589853262 | 0.01589699698 |
+| r09a-p2-106 | QX | 0.0081936315 | 0.008197561773 |
+| r09a-p2-106 | P2 | 0 | 0 |
+| r09a-p2-106 | P2X | 0.03148708592 | 0.03146257074 |
+| r09a-p2-106 | P2QX | 0.03171320198 | 0.03166670004 |
+| r09a-r1-3sp | RQX | 0.01248148971 | 0.01553998109 |
+| r09a-r1-3sp | RX | 0.01070926613 | 0.01333995854 |
+| r09a-r1-3sp | QX | 0.005646963871 | 0.007043102367 |
+| r09a-r1-5sp | RQX | 0.01050894919 | 0.01044068035 |
+| r09a-r1-5sp | RX | 0.008775491404 | 0.00872570368 |
+| r09a-r1-5sp | R2 | 0.02498651628 | 0.02516062539 |
+| r09a-r1-5sp | R2X | 0.04421716497 | 0.044586382 |
+| r09a-r1-5sp | QX | 0.005193170873 | 0.005168446154 |
+| r09b-r-qx | RQX | 0.01050894919 | 0.01044068035 |
+| r09b-r-qx | RX | 0.008775491404 | 0.00872570368 |
+| r09b-r-qx | R2 | 0.02498651628 | 0.02516062539 |
+| r09b-r-qx | R2X | 0.04421716497 | 0.044586382 |
+| r09b-r-qx | QX | 0.005193170873 | 0.005168446154 |
+
 ## Diagnóstico de parada IRLS
 
 El resultado ahora registra ciclos, motivo de parada, cambio relativo máximo de pesos y éxito del último optimizador, sin presentar los criterios históricos de parada como prueba de convergencia IRLS. En modo unitario no hay actualización de pesos; si falla un ciclo posterior, el cambio de pesos de ese ciclo queda no disponible en vez de reutilizar el del ciclo anterior. Las pruebas dirigidas cubren pesos utilizados y propuestos, parada unitaria y fallo en el segundo ciclo. Esto no modifica los criterios históricos ni demuestra que IRLS haya convergido; la comparación RMS entre ciclos con pesos distintos y el comportamiento multistart siguen pendientes de revisión. La suite completa tras la corrección dio 681 aprobadas y los mismos seis fallos documentados, 3 omitidas, 5 deseleccionadas y 16 xfail; no es CI multiplataforma.

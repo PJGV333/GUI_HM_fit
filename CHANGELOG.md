@@ -7,6 +7,11 @@ All notable user-visible changes. Versions follow the GitHub releases
 ## [Unreleased]
 
 ### Changed
+- NMR literature regression baselines now record analytic standard errors conditional on
+  the signal weights actually used in the final IRLS fit, rather than the proposed next
+  weights. Fitted constants and published references are unchanged. These conditional
+  errors do not describe uncertainty of the complete IRLS procedure; see
+  `docs/STABILITY_CONSOLIDATION_REPORT.md` and `tests/test_consolidation_nmr_covariance.py`.
 - Potentiometry: pH titrations use a safeguarded vectorized Newton/bisection solver;
   unsupported or unbracketed cases fall back to the previous scalar implementation.
   Differences are numerical only within the tested tolerances. Evidence:
