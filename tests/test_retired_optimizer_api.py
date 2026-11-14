@@ -33,3 +33,18 @@ def test_direct_nmr_runner_rejects_retired_optimizer_before_mutating_callback(mo
         run_nmr(config, progress_cb=messages.append)
     assert messages == []
     assert nmr_processor._progress_callback is previous
+
+
+@pytest.mark.parametrize("config", [{"optimizer": "explicit_lm"}, OldConfig(),
+                                  {"optimizer": " EXPLICIT_LM "}])
+def test_direct_spectroscopy_runner_rejects_retired_optimizer_before_mutating_callback(monkeypatch, config):
+    from hmfit_core.processors import spectroscopy_processor
+    from hmfit_core.run_spectroscopy import run_spectroscopy
+
+    previous = lambda _message: None
+    monkeypatch.setattr(spectroscopy_processor, "_progress_callback", previous)
+    messages = []
+    with pytest.raises(ValueError, match="(?i)explicit_lm.*powell"):
+        run_spectroscopy(config, progress_cb=messages.append)
+    assert messages == []
+    assert spectroscopy_processor._progress_callback is previous

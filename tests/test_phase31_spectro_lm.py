@@ -14,6 +14,14 @@ def _fit(tmp_path, bounds, optimizer='explicit_lm'):
     pc._spectro_dataset(path, [3.0], model)
     cfg = pc._spectro_cfg(path, model, [2.8], bounds)
     cfg.update(optimizer=optimizer, render_graphs=False)
+    if optimizer == 'explicit_lm':
+        # Preserve the historical experiment through the still-unretired processor,
+        # not by bypassing the guard on the public production runner.
+        from hmfit_core.processors import spectroscopy_processor as processor
+        processor.set_progress_callback(None)
+        return pc._quiet(processor.process_spectroscopy_data, **cfg,
+                         species_names=[], abs_groups={}, solver_param_transform=None,
+                         solver_model_settings='Free', param_names=[])
     return pc._quiet(run_spectroscopy, cfg)
 
 

@@ -21,9 +21,12 @@ def run_spectroscopy(config: Mapping[str, Any] | Any, progress_cb: ProgressCallb
 
     This directly calls `process_spectroscopy_data(...)`.
     """
+    cfg = _normalize_config(config)
+    from hmfit_core.api import _reject_retired_optimizer
+
+    _reject_retired_optimizer(cfg)
     from hmfit_core.processors.spectroscopy_processor import process_spectroscopy_data, set_progress_callback
 
-    cfg = _normalize_config(config)
     set_progress_callback(progress_cb, loop=None)
 
     multi_runs = int(cfg.get("multi_start_runs", 1) or 1)
