@@ -2,6 +2,18 @@
 
 **Estado: incompleta.** No se ha iniciado la Fase 4. Este informe no certifica las etapas pendientes.
 
+| Etapa | Estado | Commit | Pruebas | Limitaciones |
+|---|---|---|---|---|
+| Suite y baselines RMN | Baselines condicionales validados | `6237ee3` | Cinco casos y covarianza independiente | No valida incertidumbre IRLS completa |
+| Cobertura RMN unitaria | Funcional, validación estadística pendiente | `23633ff` | Smoke y suite local: 695 aprobadas | Reanudación no protege aún cambios de código o entorno; sin campaña confirmatoria |
+| Retirada `explicit_lm` | Parcial | `76b13eb` y anteriores | Guardas de API | Procesadores aún lo ejecutan |
+| Solver interior | Pendiente | — | Diagnóstico previo de Fase 3 | KKT y corrección pendientes |
+| Derivadas genéricas | Pendiente | — | Prototipos especializados probados | No hay motor genérico |
+| Integración cinética | Pendiente | — | Prototipo aislado de primer orden | Sin integración productiva |
+| Full-refit IRLS | Bloqueado por seguridad | `916fbe6` y anteriores | Guardas de incertidumbre | No recalcula IRLS por réplica |
+| HC2/HC3 | Desactivado por decisión de alcance | Véase salvaguarda abajo | Rechazo de resultados históricos | No aplicable en las rutas actuales sin formulación validada; no es una afirmación universal |
+| CI multiplataforma | Aprobada para `23633ff` | `23633ff` | [Linux, Windows y JAX aislado](https://github.com/PJGV333/GUI_HM_fit/actions/runs/43551077855) | No valida las etapas pendientes |
+
 ## Línea base
 
 - Rama de partida `origin/fix/stable-phase3-optimizers`, tras `git fetch`: `0ed96a3911ac14fbe07a7e0ea0115c06aa93072b`. Árbol limpio. Rama de trabajo `fix/stability-consolidation-phase1-3`.
