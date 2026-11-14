@@ -1191,6 +1191,8 @@ class NMRTab(QWidget):
 
         context = {
             "technique": "nmr",
+            "weights_mode": export_data.get("weights_mode"),
+            "weights_used_for_fit": export_data.get("weights_used_for_fit"),
             "k_hat": k_hat,
             "C_T": export_data.get("C_T") or [],
             "dq": export_data.get("Chemical_Shifts") or [],
@@ -1230,6 +1232,11 @@ class NMRTab(QWidget):
                     "failure_reason": "unsupported_optimizer",
                     "optimizer_requested": "explicit_lm", "optimizer_used": None,
                     "fallback_used": False,
+                }
+            if ctx.get("weights_mode") != "unit":
+                return np.asarray(theta0, dtype=float), False, {
+                    "error": "IRLS or unknown-weight NMR full refit is unavailable: this refit does not repeat IRLS.",
+                    "failure_reason": "unsupported_weights",
                 }
 
             from scipy import optimize

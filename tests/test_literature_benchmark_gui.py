@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import tempfile
 import types
+from typing import Any, cast
 
 import numpy as np
 import pytest
@@ -37,6 +38,8 @@ def _errors_tab_output(case):
     conc, shifts = lb.numeric_table(case)
     with tempfile.TemporaryDirectory() as td:
         cfg = lb.gui_config(case, os.path.join(td, "c.xlsx"), conc, shifts)
+        # This comparison exercises the supported unit-weight Errors path.
+        cfg["weights_mode"] = "unit"
         result = run_nmr_fit(cfg, progress_cb=lambda _m: None)
     captured = {}
     fake = types.SimpleNamespace(
@@ -78,3 +81,36 @@ def test_errors_tab_uses_every_observed_value():
     _result, _cfg, out = _errors_tab_output(case)
     dof = case["dof_identity"]
     assert int(out["dof"]) == dof["m"] - dof["p"]
+
+
+def test_irls_literature_fit_does_not_expose_unit_weight_errors():
+    from hmfit_core.api import run_nmr_fit
+    from hmfit_gui_qt.tabs.nmr_tab import NMRTab
+    from hmfit_gui_qt.widgets.model_opt_plots import ModelOptPlotsWidget
+
+    app = _qapp()
+    case = lb.load_case("r09a-r1-5sp")
+    conc, shifts = lb.numeric_table(case)
+    with tempfile.TemporaryDirectory() as td:
+        cfg = lb.gui_config(case, os.path.join(td, "c.xlsx"), conc, shifts)
+        cfg["weights_mode"] = "irls"
+        result = run_nmr_fit(cfg, progress_cb=lambda _m: None)
+    assert result["success"]
+    widget = ModelOptPlotsWidget()
+    fake = types.SimpleNamespace(_last_config=cfg, _last_fit_context=None,
+                                 model_opt_plots=widget, _refit_from_data=lambda *a: None)
+    try:
+        NMRTab._update_errors_context_from_result(cast(Any, fake), result)
+        assert fake._last_fit_context["weights_mode"] == "irls"
+        np.testing.assert_allclose(fake._last_fit_context["weights_used_for_fit"],
+                                   result["export_data"]["weights_used_for_fit"])
+        panel = widget.errors_panel
+        assert panel is not None
+        assert panel._errors_worker is None
+        assert not panel.btn_error_compute.isEnabled()
+        assert "unavailable" in panel.text_error_summary.toPlainText()
+        with pytest.raises(ValueError, match="IRLS.*unavailable"):
+            widget._compute_errors_from_context(fake._last_fit_context, options={"method": "analytic"})
+    finally:
+        widget.deleteLater()
+        app.processEvents()

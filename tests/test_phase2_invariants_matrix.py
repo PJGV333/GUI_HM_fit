@@ -114,7 +114,7 @@ def _nmr_case(config):
     D_cols, _ = build_D_cols(C_T, ["H", "G"], ["s1", "s2"], default_idx=0)
     fixed = {"mixed": [False, True], "all_fixed": [True] * k.size}.get(config, [False] * k.size)
     ctx = {
-        "technique": "nmr", "k_hat": k.tolist(), "C_T": C_T.tolist(), "dq": dq.tolist(),
+        "technique": "nmr", "weights_mode": "unit", "k_hat": k.tolist(), "C_T": C_T.tolist(), "dq": dq.tolist(),
         "dq_fit": dq_true.tolist(), "y_fit_hat": dq_true.tolist(), "column_names": ["H", "G"],
         "signal_names": ["s1", "s2"], "non_abs_species": nas, "fixed_mask": fixed,
         "stoichiometry_map": [], "modelo_solver": M.tolist(), "algorithm": "Newton-Raphson",

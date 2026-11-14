@@ -440,7 +440,15 @@ class ModelOptPlotsWidget(QWidget):
     def set_errors_context(self, context: dict[str, Any] | None, *, auto_compute: bool = False) -> None:
         self._errors_context = context
         if self.errors_panel is not None:
-            self.errors_panel.set_errors_context(context, auto_compute=auto_compute)
+            unsupported = bool(context and context.get("technique") == "nmr" and context.get("weights_mode") != "unit")
+            self.errors_panel.set_errors_context(context, auto_compute=auto_compute and not unsupported)
+            if unsupported:
+                self.errors_panel.text_error_summary.setPlainText(
+                    "IRLS or unknown-weight NMR Errors are unavailable: this calculation "
+                    "does not reproduce the fitted weighting procedure."
+                )
+                self.errors_panel.lbl_error_status.setText("Errors unavailable for these weights.")
+                self.errors_panel.btn_error_compute.setEnabled(False)
 
     def _on_error_method_changed(self) -> None:
         method = str(self.combo_error_method.currentData() or "")
@@ -710,6 +718,11 @@ class ModelOptPlotsWidget(QWidget):
         wild_block = str(opts.get("wild_block") or "row")
 
         technique = str(ctx.get("technique") or "")
+        if technique == "nmr" and ctx.get("weights_mode") != "unit":
+            raise ValueError(
+                "IRLS or unknown-weight NMR Errors are unavailable: this calculation "
+                "does not reproduce the fitted weighting procedure."
+            )
         k_hat_raw = ctx.get("k_hat")
         k_hat = np.asarray(k_hat_raw if k_hat_raw is not None else [], dtype=float).ravel()
         if k_hat.size == 0:
