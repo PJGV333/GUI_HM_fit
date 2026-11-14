@@ -23,8 +23,10 @@ def run_nmr(config: Mapping[str, Any] | Any, progress_cb: ProgressCallback = Non
     """
     cfg = _normalize_config(config)
     from hmfit_core.api import _reject_retired_optimizer
+    from hmfit_core.nmr_weighting import resolve_nmr_weights_mode
 
     _reject_retired_optimizer(cfg)
+    weights_mode = resolve_nmr_weights_mode(cfg)
     from hmfit_core.processors.nmr_processor import process_nmr_data, set_progress_callback
 
     set_progress_callback(progress_cb, loop=None)
@@ -87,5 +89,5 @@ def run_nmr(config: Mapping[str, Any] | Any, progress_cb: ProgressCallback = Non
         multi_start_seeds=multi_seeds,
         multi_start_parallel=bool(cfg.get("multi_start_parallel", False)),
         multi_start_max_workers=cfg.get("multi_start_max_workers"),
-        weights_mode=str(cfg.get("weights_mode") or "irls"),
+        weights_mode=weights_mode,
     )

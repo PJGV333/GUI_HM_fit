@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from hmfit_core.api import run_nmr_fit
+from hmfit_core.nmr_weighting import WEIGHTS_SCHEMA_VERSION, resolve_nmr_weights_mode
 from hmfit_core.exports import write_results_xlsx
 from hmfit_gui_qt.plots.nmr_registry import build_nmr_registry
 from hmfit_gui_qt.plots.nmr_sources import build_nmr_plot_sources
@@ -166,6 +167,7 @@ class NMRTab(QWidget):
         self.combo_weights = QComboBox(self._data_group)
         self.combo_weights.addItem("Per signal (IRLS)", "irls")
         self.combo_weights.addItem("Unit", "unit")
+        self.combo_weights.setCurrentIndex(self.combo_weights.findData("unit"))
         weights_row.addWidget(self.combo_weights)
         data_layout.addLayout(weights_row)
         left_layout.addWidget(self._data_group)
@@ -784,6 +786,7 @@ class NMRTab(QWidget):
             "model_settings": state.model_settings,
             "optimizer": state.optimizer,
             "weights_mode": str(self.combo_weights.currentData()),
+            "weights_schema_version": WEIGHTS_SCHEMA_VERSION,
             "initial_k": state.initial_k,
             "bounds": state.bounds,
             "fixed_mask": state.fixed_mask,
@@ -1055,6 +1058,7 @@ class NMRTab(QWidget):
             raise RuntimeError("Cancel the running fit before importing config.")
         if str(config.get("optimizer") or "").strip().lower() == "explicit_lm":
             raise ValueError("explicit_lm is retired; choose a supported optimizer such as powell explicitly.")
+        weights_mode = resolve_nmr_weights_mode(config)
 
         file_path = str(config.get("file_path") or "")
         if not file_path:
@@ -1123,8 +1127,7 @@ class NMRTab(QWidget):
             guest_label=str(config.get("guest_label") or ""),
         )
         self.model_opt_plots.apply_state(state)
-        weights_index = self.combo_weights.findData(str(config.get("weights_mode") or "irls"))
-        self.combo_weights.setCurrentIndex(weights_index if weights_index >= 0 else 0)
+        self.combo_weights.setCurrentIndex(self.combo_weights.findData(weights_mode))
         self.model_opt_plots.set_multi_start(
             config.get("multi_start_runs", 1),
             config.get("multi_start_seeds"),
@@ -1160,7 +1163,7 @@ class NMRTab(QWidget):
         if self.equation_editor is not None:
             self.equation_editor.set_text("")
         self.model_opt_plots.reset()
-        self.combo_weights.setCurrentIndex(0)
+        self.combo_weights.setCurrentIndex(self.combo_weights.findData("unit"))
 
         self.canvas_main.clear()
         self._reset_plot_state()

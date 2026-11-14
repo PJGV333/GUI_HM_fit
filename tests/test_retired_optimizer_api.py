@@ -48,3 +48,18 @@ def test_direct_spectroscopy_runner_rejects_retired_optimizer_before_mutating_ca
         run_spectroscopy(config, progress_cb=messages.append)
     assert messages == []
     assert spectroscopy_processor._progress_callback is previous
+
+
+@pytest.mark.parametrize('extra', [
+    {'weights_mode': 'unknown'}, {'weights_mode': None},
+    {'weights_schema_version': 1}, {'weights_mode': 'unit', 'weights_schema_version': 2},
+])
+def test_nmr_runner_rejects_unsupported_weight_config_before_callback(monkeypatch, extra):
+    from hmfit_core.processors import nmr_processor
+    from hmfit_core.run_nmr import run_nmr
+
+    previous = lambda _message: None
+    monkeypatch.setattr(nmr_processor, '_progress_callback', previous)
+    with pytest.raises(ValueError, match='(?i)weight'):
+        run_nmr(extra, progress_cb=lambda _message: None)
+    assert nmr_processor._progress_callback is previous
