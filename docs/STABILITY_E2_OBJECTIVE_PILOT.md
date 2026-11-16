@@ -67,7 +67,7 @@ En golden 1, multiplicar por 10 toda la señal mantiene log β de C en 4.30255 y
 
 ## Decisión y salvaguarda pendiente
 
-1. Conservar `legacy` para reproducibilidad, sin presentar automáticamente el interior histórico como verificado. Por ahora no se ha implementado ninguna advertencia; la salvaguarda recomendada es calcular factibilidad y gradiente proyectado del objetivo **efectivamente usado**, con escala documentada, sin modificar `A` ni los resultados. Debe informar `no verificado` cuando no pueda evaluar correctamente el contrato, y probar igualdad exacta de los resultados históricos con y sin diagnóstico.
+1. Conservar `legacy` para reproducibilidad, sin presentar automáticamente el interior histórico como verificado. La salvaguarda E.3 incorpora factibilidad y gradiente proyectado del objetivo **efectivamente usado**, sin modificar `A` ni los resultados; véase `STABILITY_CONSOLIDATION_REPORT.md`. La verificación numérica no valida los SE.
 2. No recomendar `absolute` con parámetros originales; el modo sin regularización es prometedor en estos ejemplos 1:1, pero falla en 1:2 con ruido. La heurística D tampoco es aceptable como ajuste general por su sesgo y las cotas alcanzadas.
 3. Antes de solicitar autorización de integración, comparar escalamiento de señal y concentración, aislar `μ` y `α`, ampliar datos independientes y réplicas, examinar perfiles/identificabilidad y resolver o informar los fallos del interior. Cualquier nueva convención debe versionarse explícitamente; no modificar proyectos históricos silenciosamente.
 4. Los SE actuales no están validados para el estimador restringido y suavizado. No se han modificado baselines golden ni código productivo en este piloto.

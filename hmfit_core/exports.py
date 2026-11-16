@@ -310,6 +310,13 @@ def write_results_xlsx(
                 format_sheet(writer, name, TITLES_MAP.get(name, name))
         else:
             if export_data:
+                inner_optimality = export_data.get("inner_optimality")
+                if isinstance(inner_optimality, dict):
+                    rows = list(inner_optimality.items())
+                    rows.append(("uncertainty_status", export_data.get("uncertainty_status")))
+                    pd.DataFrame(rows, columns=["metric", "value"]).to_excel(
+                        writer, sheet_name="Inner_Optimality", index=False)
+                    format_sheet(writer, "Inner_Optimality", "Spectral inner optimality (not uncertainty validation)")
                 modelo = as_dataframe("Model", export_data.get("modelo"))
                 if modelo is not None:
                     modelo.to_excel(writer, sheet_name="Model", index=False)

@@ -7,6 +7,12 @@ All notable user-visible changes. Versions follow the GitHub releases
 ## [Unreleased]
 
 ### Changed
+- Spectroscopy now reports a separate first-order optimality and feasibility
+  diagnostic for the final absorptivity solve, including a warning when it is
+  not converged or cannot be verified. The report and XLSX distinguish this
+  from outer-optimizer success and from the unvalidated uncertainty of the
+  constrained or regularized estimator. The fitted values and inner solver are
+  unchanged; verification is not an identifiability or coverage guarantee.
 - Coverage validation permits new NMR campaigns only with explicit unit weights,
   recording the cell and methods per replicate; historical IRLS or ambiguous rows
   remain blocked. The smoke run is a plumbing check, not coverage calibration.

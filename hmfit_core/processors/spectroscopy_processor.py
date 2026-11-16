@@ -648,6 +648,126 @@ def _exact_nnls_columns(C, YT, weights_row=None):
     return A
 
 
+def spectral_inner_optimality(C, Y, A, *, eps_solver_mode, weight_regularization_mode,
+                             mu=0.0, alpha_smooth=0.0, smooth_matrix=None,
+                             lower_bound=None, delta_mode="off", weights_row=None):
+    """Assess first-order conditions for the *actual* inner estimator, without refitting.
+
+    The dimensionless residual is the maximum over coefficients of the gradient
+    divided by its largest gradient-term magnitude. This avoids a strong channel
+    or species hiding a weak one. These thresholds are not an identifiability test.
+    """
+    report = {"status": "not_verified", "reason": "insufficient information",
+              "projected_gradient_normalized": None, "projected_gradient_max": None,
+              "gradient_max": None, "constraint_violation": None,
+              "constraint_violation_normalized": None, "complementarity_normalized": None,
+              "gradient_tolerance": 1e-6, "feasibility_tolerance": 1e-10,
+              "complementarity_tolerance": 1e-6, "condition_number_max": None}
+    try:
+        C, Y, A = (onp.asarray(v, dtype=float) for v in (C, Y, A))
+        if (C.ndim != 2 or Y.ndim != 2 or A.ndim != 2 or not C.size or not Y.size
+                or C.shape[0] != Y.shape[0] or A.shape != (C.shape[1], Y.shape[1])
+                or not all(onp.isfinite(x).all() for x in (C, Y, A))):
+            report["reason"] = "invalid, empty or nonfinite arrays"
+            return report
+        if eps_solver_mode not in {"soft_penalty", "soft_bound", "nnls_hard"} or weight_regularization_mode not in {"legacy", "absolute"}:
+            report["reason"] = "unsupported solver mode"
+            return report
+        mu, alpha = float(mu), float(alpha_smooth)
+        if not onp.isfinite(mu) or not onp.isfinite(alpha) or mu < 0 or alpha < 0:
+            report["reason"] = "nonconvex or invalid regularization"
+            return report
+        if weights_row is not None and not onp.isfinite(onp.asarray(weights_row, dtype=float)).all():
+            report["reason"] = "nonfinite residual multipliers"
+            return report
+        W, per_point = _resolve_weights_matrix(weights_row, *Y.shape)
+        W = onp.ones_like(Y) if W is None else onp.asarray(W, dtype=float)
+        hard = eps_solver_mode == "nnls_hard"
+        exact_soft = (weight_regularization_mode == "legacy" and eps_solver_mode == "soft_penalty"
+                      and delta_mode == "off" and alpha <= 0)
+        if weight_regularization_mode == "absolute" and hard and alpha > 0:
+            report["reason"] = "unsupported absolute NNLS smoothing"
+            return report
+        # Legacy wavelength-only estimates ignore those weights internally.
+        if (weight_regularization_mode == "legacy" or hard) and not per_point:
+            W = onp.ones_like(Y)
+        # Hard NNLS uses neither soft negativity nor smoothness penalties.
+        if hard:
+            mu, alpha = 0., 0.
+            lower = onp.zeros_like(A)
+        else:
+            lower = None
+            if lower_bound is not None:
+                lb = onp.asarray(lower_bound, dtype=float)
+                if lb.ndim == 1 and lb.size == A.shape[0]:
+                    lb = lb[:, None]
+                lower = onp.broadcast_to(lb, A.shape)
+                if not onp.isfinite(lower).all():
+                    report["reason"] = "nonfinite lower bound"
+                    return report
+            elif eps_solver_mode == "soft_bound" or delta_mode != "off":
+                report["reason"] = "requested lower bounds unavailable"
+                return report
+        if alpha > 0:
+            L = onp.asarray(smooth_matrix, dtype=float)
+            if L.shape != (Y.shape[1], Y.shape[1]) or not onp.isfinite(L).all():
+                report["reason"] = "smoothness matrix unavailable"
+                return report
+            smooth = alpha * (A @ L)
+        else:
+            smooth = onp.zeros_like(A)
+        mu_by_channel = onp.full(Y.shape[1], mu)
+        if exact_soft and per_point:
+            for j in range(Y.shape[1]):
+                positive = W[:, j] > 0
+                mu_by_channel[j] *= float(onp.mean(W[positive, j] ** 2)) if positive.any() else 0.
+        penalty = onp.minimum(A, 0.) * mu_by_channel[None, :]
+        predicted = C @ A
+        data_pred = C.T @ ((W * W) * predicted)
+        data_rhs = C.T @ ((W * W) * Y)
+        grad = data_pred - data_rhs + penalty + smooth
+        scales = onp.maximum.reduce([onp.abs(v) for v in (data_pred, data_rhs, penalty, smooth)])
+        if not onp.isfinite(scales).all() or not onp.isfinite(grad).all():
+            report["reason"] = "nonfinite gradient scale"
+            return report
+        scales = onp.maximum(scales, onp.finfo(float).tiny)
+        projected = grad.copy()
+        violation = complementarity = 0.
+        coefficient_scale = onp.maximum(1., onp.abs(A))
+        violation_normalized = 0.
+        if lower is not None:
+            coefficient_scale = onp.maximum(coefficient_scale, onp.abs(lower))
+            gap = A - lower
+            violation = float(onp.max(onp.maximum(-gap, 0.), initial=0.))
+            violation_normalized = float(onp.max(onp.maximum(-gap, 0.) / coefficient_scale, initial=0.))
+            active = (gap <= 1e-10 * coefficient_scale) & (grad > 0.)
+            projected[active] = 0.
+            complementarity = float(onp.max(onp.abs(onp.maximum(grad, 0.) / scales * gap / coefficient_scale), initial=0.))
+        pg = float(onp.max(onp.abs(projected), initial=0.))
+        pg_normalized = float(onp.max(onp.abs(projected) / scales, initial=0.))
+        report.update(gradient_max=float(onp.max(onp.abs(grad), initial=0.)),
+                      projected_gradient_max=pg, projected_gradient_normalized=pg_normalized,
+                      constraint_violation=violation, constraint_violation_normalized=violation_normalized,
+                      complementarity_normalized=complementarity)
+        if (pg_normalized > report["gradient_tolerance"] or violation_normalized > report["feasibility_tolerance"]
+                or complementarity > report["complementarity_tolerance"]):
+            report.update(status="not_converged", reason="first-order conditions or feasibility not satisfied")
+            return report
+        # A stationary point can be non-unique or data-free: do not certify it.
+        conditions = []
+        for j in range(Y.shape[1]):
+            singular = onp.linalg.svd(C * W[:, j, None], compute_uv=False)
+            if singular.size < C.shape[1] or singular[0] <= 0 or singular[-1] <= singular[0] * 1e-12:
+                report["reason"] = "rank-deficient or ill-conditioned weighted design"
+                return report
+            conditions.append(float(singular[0] / singular[-1]))
+        report.update(status="verified", reason="first-order and feasibility checks passed",
+                      condition_number_max=max(conditions))
+    except (ValueError, TypeError, FloatingPointError, onp.linalg.LinAlgError) as exc:
+        report["reason"] = "diagnostic unavailable: " + str(exc)
+    return report
+
+
 def _solve_absorptivities(
     C,
     YT,
@@ -2360,6 +2480,27 @@ def process_spectroscopy_data(
     A_species_solver = final_fit["A_species"]
     y_cal = final_fit["yfit"]
     lower_bound_final = final_fit["lower_bound"]
+    try:
+        inner_optimality = spectral_inner_optimality(
+            final_fit["C_eff"], Y.T, A_solver, eps_solver_mode=eps_solver_mode,
+            weight_regularization_mode=weight_regularization_mode, mu=eps_mu,
+            alpha_smooth=alpha_smooth, smooth_matrix=smooth_matrix,
+            lower_bound=lower_bound_final, delta_mode=delta_mode, weights_row=weights_row,
+        )
+    except Exception as exc:
+        # Diagnostics must never replace or alter the historical fit.
+        logger.exception("Unable to assess inner spectral optimality")
+        inner_optimality = {"status": "not_verified", "reason": "diagnostic failed: " + str(exc)}
+    inner_warning = None
+    if inner_optimality["status"] != "verified":
+        inner_warning = ("Spectral inner absorptivity solution is " + inner_optimality["status"]
+                         + "; outer optimizer completion does not establish inner optimality. "
+                         + inner_optimality["reason"] + ".")
+        warnings_list.append(inner_warning)
+        log_progress("WARNING: " + inner_warning)
+    uncertainty_status = ("not_validated_for_constrained_smoothed_estimator"
+                          if eps_solver_mode in {"soft_bound", "nnls_hard"} or delta_mode != "off"
+                          or alpha_smooth > 0 or eps_mu > 0 else "not_assessed")
     constraint_report = absorptivity_constraint_report(
         metrics["A"],
         eps_solver_mode=eps_solver_mode,
@@ -2565,6 +2706,11 @@ def process_spectroscopy_data(
         results_text += f"\n\n>>> WARNING: {_note}"
     if constraint_report["note"]:
         results_text += f"\n\n>>> WARNING (uncertainty model): {constraint_report['note']}"
+    if inner_warning:
+        results_text += f"\n\n>>> WARNING (inner optimality): {inner_warning}"
+    if uncertainty_status != "not_assessed":
+        results_text += ("\n\n>>> UNCERTAINTY: Existing SE are not validated for the "
+                         "constrained or regularized spectral estimator.")
 
     # Stability Diagnostics
     if stability_diag:
@@ -2688,6 +2834,8 @@ def process_spectroscopy_data(
         "weighting_meta": weighting_meta,
         "weight_regularization_mode": weight_regularization_mode,
         "eps_solver_mode": eps_solver_mode,
+        "inner_optimality": inner_optimality,
+        "uncertainty_status": uncertainty_status,
         "eps_constraint_active": int(constraint_report["n_active"]),
         "eps_constraint_total": int(constraint_report["n_total"]),
         "uncertainty_notes": [n for n in (list(metrics.get("notes") or []) + [constraint_report["note"]] +
@@ -2857,6 +3005,8 @@ def process_spectroscopy_data(
         "plotData": {"spec": spec_plot_data},
         "results_text": results_text,
         "export_data": export_data,
+        "inner_optimality": inner_optimality,
+        "uncertainty_status": uncertainty_status,
         "optimizer_result": {
             "success": bool(optimizer_summary.get("success", onp.isfinite(best_result["rms"]))),
             "message": str(optimizer_summary.get("message", "")),
