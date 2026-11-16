@@ -5,14 +5,14 @@
 | Etapa | Estado | Commit | Pruebas | Limitaciones |
 |---|---|---|---|---|
 | Suite y baselines RMN | Baselines condicionales validados | `6237ee3` | Cinco casos y covarianza independiente | No valida incertidumbre IRLS completa |
-| Cobertura RMN unitaria | Funcional; reanudación con procedencia estricta | `23633ff` y checkpoint posterior | Smoke y pruebas de procedencia | Sin campaña confirmatoria; la huella cubre cambios Git rastreados y fuentes Python productivas sin seguimiento |
-| Retirada `explicit_lm` | Completada en procesadores | Checkpoint posterior a `8a36cc0` | Guardas, regresiones RMN y espectroscopía; suite local | Código experimental y comparaciones históricas conservados fuera de producción |
+| Cobertura RMN unitaria | Funcional; reanudación con procedencia estricta | `8a36cc0` | Smoke y pruebas de procedencia | Sin campaña confirmatoria; la huella cubre cambios Git rastreados y fuentes Python productivas sin seguimiento |
+| Retirada `explicit_lm` | Completada en procesadores | `a7947b4` | Guardas, regresiones RMN y espectroscopía; suite local | Código experimental y comparaciones históricas conservados fuera de producción |
 | Solver interior | Pendiente | — | Diagnóstico previo de Fase 3 | KKT y corrección pendientes |
 | Derivadas genéricas | Pendiente | — | Prototipos especializados probados | No hay motor genérico |
 | Integración cinética | Pendiente | — | Prototipo aislado de primer orden | Sin integración productiva |
 | Full-refit IRLS | Bloqueado por seguridad | `916fbe6` y anteriores | Guardas de incertidumbre | No recalcula IRLS por réplica |
 | HC2/HC3 | Desactivado por decisión de alcance | Véase salvaguarda abajo | Rechazo de resultados históricos | No aplicable en las rutas actuales sin formulación validada; no es una afirmación universal |
-| CI multiplataforma | Aprobada para `23633ff` | `23633ff` | [Linux, Windows y JAX aislado](https://github.com/PJGV333/GUI_HM_fit/actions/runs/43551077855) | No valida las etapas pendientes |
+| CI multiplataforma | Aprobada para `a7947b4` | `a7947b4` | [Linux, Windows y JAX aislado](https://github.com/PJGV333/GUI_HM_fit/actions/runs/43924668503) | No valida las etapas pendientes |
 
 ## Línea base
 
@@ -78,7 +78,7 @@ Se corrigió además el campo de nivel superior `final_weights_per_signal`: toda
 
 Se retiraron las ramas ejecutables y diagnósticos específicos de RMN y espectroscopía, tanto secuenciales como multistart. Las entradas directas y workers rechazan explícitamente la selección antigua antes de procesar datos; no se asigna otro optimizador. Los solvers internos Newton–Raphson y Levenberg–Marquardt de equilibrio no se modificaron. El optimizador experimental y la derivada de perfil se trasladaron a `validation/`; sus pruebas matemáticas continúan ejecutándose. Las pruebas de integración históricas que requerían las rutas retiradas permanecen en la historia Git (`20c6ca8`); sus ejecuciones comparativas antiguas no son reproducibles mediante los procesadores actuales. Los resultados y scripts históricos se conservan, pero los scripts que solicitan el optimizador retirado reciben el rechazo explícito.
 
-Las pruebas dirigidas dieron 53 aprobadas y 1 xfail; la suite completa local dio 704 aprobadas, 3 omitidas, 5 deseleccionadas y 16 xfail. El cambio neto de recuento frente a 709 refleja nueve pruebas de integración históricas retiradas y cuatro pruebas nuevas de rechazo, no resultados científicos adicionales. No se cambiaron los baselines ni las tolerancias de literatura. CI del nuevo checkpoint pendiente de ejecución y verificación.
+Las pruebas dirigidas dieron 53 aprobadas y 1 xfail; la suite completa local dio 704 aprobadas, 3 omitidas, 5 deseleccionadas y 16 xfail. El cambio neto de recuento frente a 709 refleja nueve pruebas de integración históricas retiradas y cuatro pruebas nuevas de rechazo, no resultados científicos adicionales. No se cambiaron los baselines ni las tolerancias de literatura. La [CI de `a7947b4`](https://github.com/PJGV333/GUI_HM_fit/actions/runs/43924668503) pasó en Linux, Windows y JAX aislado.
 
 ## Retirada parcial de `explicit_lm` de los selectores
 
