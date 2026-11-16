@@ -16,6 +16,35 @@ from validation.phase36_diagnosis import _quiet
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def refine_reference(C, Y, L, lower, approximate, *, mu, alpha):
+    n_species, n_channels = approximate.shape
+    negative = approximate.ravel() < 0
+    d2 = np.diff(np.eye(n_channels), n=2, axis=0)
+    original_low = np.broadcast_to(lower, approximate.shape).ravel().copy()
+    for _ in range(2 * negative.size + 2):
+        design = np.vstack((np.kron(C, np.eye(n_channels)),
+                            np.sqrt(mu)*np.diag(negative.astype(float)),
+                            np.sqrt(alpha)*np.kron(np.eye(n_species), d2)))
+        rhs = np.concatenate((Y.ravel(), np.zeros(design.shape[0]-Y.size)))
+        low = original_low.copy()
+        low[~negative] = np.maximum(low[~negative], 0.)
+        high = np.full(low.size, np.inf)
+        high[negative] = 0.
+        polished = lsq_linear(design, rhs, bounds=(low, high), method='bvls', tol=1e-14, max_iter=1000)
+        if not polished.success:
+            raise RuntimeError(f'bounded reference failed: {polished.message}')
+        A = polished.x.reshape(approximate.shape)
+        grad = (C.T @ (C @ A - Y) + mu*np.minimum(A, 0.) + alpha*(A @ L)).ravel()
+        at_zero = np.abs(polished.x) <= 1e-10
+        updated = negative.copy()
+        updated[at_zero & (grad < -1e-10)] = False
+        updated[at_zero & (grad > 1e-10) & (original_low < 0)] = True
+        if np.array_equal(updated, negative):
+            return A
+        negative = updated
+    raise RuntimeError('bounded reference did not resolve sign changes')
+
+
 def diagnose(seed):
     old = json.loads((ROOT / 'validation/results/phase31_comparison.json').read_text())['cases']
     with tempfile.TemporaryDirectory() as td:
@@ -52,25 +81,9 @@ def diagnose(seed):
         independent = minimize(f, np.maximum(initial, bounds).ravel()/scale, jac=True, method='L-BFGS-B',
                                bounds=list(zip((bounds/scale).ravel(), [None]*bounds.size)),
                                options={'ftol': 1e-15, 'gtol': 1e-10, 'maxiter': 30000, 'maxls': 50, 'maxcor': 40})
-        # Polish the fixed-sign region identified by L-BFGS-B as an independent
-        # bounded linear least-squares system. Bounds enforce the selected sign;
-        # the projected gradient below checks it against the original objective.
+        # Refine and correct sign choices at zero against the true objective.
         approximate = independent.x.reshape(initial.shape)*scale
-        negative = approximate.ravel() < 0
-        n_species, n_channels = initial.shape
-        d2 = np.diff(np.eye(n_channels), n=2, axis=0)
-        design = np.vstack((np.kron(C, np.eye(n_channels)),
-                            np.sqrt(.01)*np.diag(negative.astype(float)),
-                            np.sqrt(.02)*np.kron(np.eye(n_species), d2)))
-        rhs = np.concatenate((Y.ravel(), np.zeros(design.shape[0]-Y.size)))
-        low = bounds.ravel().copy()
-        low[~negative] = np.maximum(low[~negative], 0.)
-        high = np.full(low.size, np.inf)
-        high[negative] = 0.
-        polished = lsq_linear(design, rhs, bounds=(low, high), method='bvls', tol=1e-14, max_iter=1000)
-        if not polished.success:
-            raise RuntimeError(f'bounded reference failed: {polished.message}')
-        reference = polished.x.reshape(initial.shape)
+        reference = refine_reference(C, Y, L, lower, approximate, mu=.01, alpha=.02)
         t_scipy = time.perf_counter()-start
         start = time.perf_counter()
         production = sp._solve_spectral_model(C, Y, eps_solver_mode='soft_bound', mu=.01,

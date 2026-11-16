@@ -1,7 +1,14 @@
 """Independent bounded convex reference for the stage-E golden systems."""
+import numpy as np
 import pytest
 
-from validation.stage_e_golden_reference import diagnose
+from validation.stage_e_golden_reference import diagnose, refine_reference
+
+
+def test_reference_refines_when_seed_has_incorrect_sign():
+    result = refine_reference(np.array([[1.]]), np.array([[-1.]]), np.array([[0.]]),
+                              np.array([[-2.]]), np.array([[.1]]), mu=.01, alpha=0.)
+    np.testing.assert_allclose(result, [[-1/1.01]], rtol=1e-12)
 
 
 @pytest.mark.parametrize('seed', [1, 2, 3])
