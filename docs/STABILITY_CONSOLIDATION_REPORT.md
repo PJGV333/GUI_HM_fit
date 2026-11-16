@@ -7,7 +7,7 @@
 | Suite y baselines RMN | Baselines condicionales validados | `6237ee3` | Cinco casos y covarianza independiente | No valida incertidumbre IRLS completa |
 | Cobertura RMN unitaria | Funcional; reanudación con procedencia estricta | `8a36cc0` | Smoke y pruebas de procedencia | Sin campaña confirmatoria; la huella cubre cambios Git rastreados y fuentes Python productivas sin seguimiento |
 | Retirada `explicit_lm` | Completada en procesadores | `a7947b4` | Guardas, regresiones RMN y espectroscopía; suite local | Código experimental y comparaciones históricas conservados fuera de producción |
-| Solver interior | Pendiente | — | Diagnóstico previo de Fase 3 | KKT y corrección pendientes |
+| Solver interior | Etapa E: reproducción completada; corrección pendiente | Checkpoint de reproducción | Tres casos golden, 300/600/3000 | La referencia histórica no establece convergencia ni valida una corrección |
 | Derivadas genéricas | Pendiente | — | Prototipos especializados probados | No hay motor genérico |
 | Integración cinética | Pendiente | — | Prototipo aislado de primer orden | Sin integración productiva |
 | Full-refit IRLS | Bloqueado por seguridad | `916fbe6` y anteriores | Guardas de incertidumbre | No recalcula IRLS por réplica |
@@ -73,6 +73,18 @@ En `hmfit_core.utils.errors` se retiraron una detección del tipo JAX sin llamad
 Los proyectos RMN nuevos y el reinicio de la pestaña seleccionan ponderación unitaria; las configuraciones antiguas sin selección conservan IRLS. La GUI guarda `weights_schema_version: 1` con el modo explícito. La GUI y el ejecutor RMN rechazan antes de mutar estado los modos desconocidos, las versiones no soportadas y los esquemas versionados sin modo. Un ajuste real de literatura confirmó igualdad exacta de constantes y pesos entre el caso antiguo y el IRLS versionado, y pesos unitarios en la selección unitaria versionada. La validación dirigida dio 42 aprobadas; la suite completa dio 678 aprobadas, las mismas 6 fallidas, 3 omitidas, 5 deseleccionadas y 16 xfail. Esto no valida la incertidumbre IRLS ni desbloquea su análisis o las campañas RMN.
 
 Se corrigió además el campo de nivel superior `final_weights_per_signal`: todavía devolvía la propuesta siguiente de IRLS pese a que `export_data.weights_used_for_fit` ya contenía los pesos realmente utilizados. En el caso sintético de regresión, los valores anteriores eran `[253101.93610348302, 216101.5188580443]`, frente a `[253038.3577822667, 216151.3936238925]` realmente usados. Ahora coinciden con el ajuste y la incertidumbre condicional; la propuesta sigue disponible separadamente en `export_data.irls_weights_proposed_next`. Los resultados serializados antes de esta corrección pueden contener el campo superior mal etiquetado: no deben considerarse evidencia de pesos usados sin comprobar la procedencia y `export_data.weights_used_for_fit`, cuando exista. No se han auditado consumidores externos ni archivos históricos. Pasaron 40 pruebas dirigidas; la suite completa mantuvo 678 aprobadas, las mismas 6 fallidas, 3 omitidas, 5 deseleccionadas y 16 xfail. Esta corrección de metadatos no valida ni modifica el estimador IRLS.
+
+## Etapa E — Convergencia del solver interior de absortividades
+
+**Reproducción inicial; etapa incompleta.** La autorización actual permite corregir el algoritmo interior y sustituye la restricción histórica D-16, sin autorizar cambios silenciosos de objetivo o restricciones. En `30c708d`, Python 3.14.10, NumPy 2.4.2 y SciPy 1.17.1, con `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1`, se reprodujeron los tres casos usando el script previo sin sobrescribir su JSON. Además, `validation.stage_e_golden_reproduction` reconstruye de forma independiente el bucle histórico PGD y las cotas a partir de los datos golden y los parámetros históricos; `tests/test_stage_e_golden_reproduction.py` contrasta los resultados con el JSON de Fase 3. Esta implementación es una referencia histórica, no un solver nuevo ni una referencia óptima.
+
+| Golden | Iteraciones | Norma gradiente proyectado | Δ absortividades frente a 300 | Objetivo interior | SSQ exterior |
+|---|---:|---:|---:|---:|---:|
+| 1 | 300 / 600 / 3000 | 0.464669 / 0.239113 / 0.0652385 | 0 / 294.289 / 1099.20 | 254.282 / 154.428 / 40.0956 | 1.33738 / 2.05052 / 5.25276 |
+| 2 | 300 / 600 / 3000 | 0.464810 / 0.239146 / 0.0652550 | 0 / 294.379 / 1099.37 | 254.385 / 154.472 / 40.1165 | 1.33732 / 2.05017 / 5.25050 |
+| 3 | 300 / 600 / 3000 | 0.463769 / 0.238838 / 0.0651717 | 0 / 293.738 / 1098.06 | 253.642 / 154.160 / 40.0172 | 1.33785 / 2.05132 / 5.25468 |
+
+La norma anterior es Frobenius del gradiente proyectado **sin normalizar**, no un umbral de convergencia; Δ es norma Frobenius en unidades de absortividad. Para estos casos `legacy`, con pesos constantes por canal, el interior no pondera el residuo y usa `½||CE-Y||² + ½·0.01||min(E,0)||² + ½·0.02 tr(ELEᵀ)` sujeto a la cota inferior relativa por especie. `L=D₂ᵀD₂`. El exterior usa únicamente `||W⊙(CE-Y)||²` y los valores `W` son multiplicadores del residuo, no pesos estadísticos; por ello el descenso del objetivo interior no implica descenso del SSQ exterior. Esta discrepancia histórica no se ha cambiado. Las normas coinciden con el JSON histórico y no demuestran optimalidad. Quedan pendientes referencia óptima independiente, KKT normalizado, diagnóstico causal completo, corrección, regresiones y CI; no se han alterado resultados productivos.
 
 ## Retirada definitiva del optimizador externo `explicit_lm`
 
