@@ -84,7 +84,19 @@ Se corrigió además el campo de nivel superior `final_weights_per_signal`: toda
 | 2 | 300 / 600 / 3000 | 0.464810 / 0.239146 / 0.0652550 | 0 / 294.379 / 1099.37 | 254.385 / 154.472 / 40.1165 | 1.33732 / 2.05017 / 5.25050 |
 | 3 | 300 / 600 / 3000 | 0.463769 / 0.238838 / 0.0651717 | 0 / 293.738 / 1098.06 | 253.642 / 154.160 / 40.0172 | 1.33785 / 2.05132 / 5.25468 |
 
-La norma anterior es Frobenius del gradiente proyectado **sin normalizar**, no un umbral de convergencia; Δ es norma Frobenius en unidades de absortividad. Para estos casos `legacy`, con pesos constantes por canal, el interior no pondera el residuo y usa `½||CE-Y||² + ½·0.01||min(E,0)||² + ½·0.02 tr(ELEᵀ)` sujeto a la cota inferior relativa por especie. `L=D₂ᵀD₂`. El exterior usa únicamente `||W⊙(CE-Y)||²` y los valores `W` son multiplicadores del residuo, no pesos estadísticos; por ello el descenso del objetivo interior no implica descenso del SSQ exterior. Esta discrepancia histórica no se ha cambiado. Las normas coinciden con el JSON histórico y no demuestran optimalidad. Quedan pendientes referencia óptima independiente, KKT normalizado, diagnóstico causal completo, corrección, regresiones y CI; no se han alterado resultados productivos.
+La norma anterior es Frobenius del gradiente proyectado **sin normalizar**, no un umbral de convergencia; Δ es norma Frobenius en unidades de absortividad. Para estos casos `legacy`, con pesos constantes por canal, el interior no pondera el residuo y usa `½||CE-Y||² + ½·0.01||min(E,0)||² + ½·0.02 tr(ELEᵀ)` sujeto a la cota inferior relativa por especie. `L=D₂ᵀD₂`. El exterior usa únicamente `||W⊙(CE-Y)||²` y los valores `W` son multiplicadores del residuo, no pesos estadísticos; por ello el descenso del objetivo interior no implica descenso del SSQ exterior. Esta discrepancia histórica no se ha cambiado. Las normas coinciden con el JSON histórico y no demuestran optimalidad. Quedan pendientes KKT normalizado, corrección, regresiones y CI; no se han alterado resultados productivos.
+
+### Referencia convexa y diagnóstico de escala
+
+Para los tres golden, `validation.stage_e_golden_reference` resuelve el mismo objetivo interior y las mismas cotas con SciPy L-BFGS-B independiente, variables escaladas por 1000 y gradiente analítico. No se acepta su mensaje de éxito como prueba: se evalúan factibilidad y gradiente proyectado por separado. También se contrasta el Newton semisuave ya existente, suministrando multiplicadores unitarios para preservar el objetivo interior `legacy`. Las pruebas `tests/test_stage_e_golden_reference.py` verifican las tres semillas.
+
+| Golden | Φ PGD 300 | Φ SciPy | Φ Newton existente | máx. gradiente proyectado SciPy / Newton | norma de diferencia de predicción |
+|---|---:|---:|---:|---:|---:|
+| 1 | 254.2817 | 11.554455832 | 11.554455826 | 1.30e-7 / 2.24e-14 | 1.07e-4 |
+| 2 | 254.3851 | 11.553405670 | 11.553405665 | 2.06e-7 / 1.10e-12 | 8.56e-5 |
+| 3 | 253.6421 | 11.555827831 | 11.555827823 | 1.93e-7 / 4.11e-14 | 1.18e-4 |
+
+Ambas soluciones fueron factibles; SciPy terminó por reducción relativa de objetivo, no por su criterio de gradiente. En estas ejecuciones SciPy tomó ~0.32–0.33 s por sistema frente a ~0.0017–0.0020 s para Newton; son mediciones locales puntuales, no tiempos de ajustes completos. El límite Lipschitz usado por PGD es ~0.3283 mientras que la menor curvatura del término de datos es ~3.3e-8; el cociente ~1e7 indica una escala global dominada por penalización y suavizado, con modos de variación muy lentos. Es una cota de escala, no el número de condición exacto del Hessiano activo. La inicialización no necesariamente satisface las cotas hasta el primer paso. La referencia encontrada tiene SSQ exterior ~9.36 frente a ~1.34 en 300 pasos: `legacy` optimiza dos expresiones distintas y no se debe presentar un interior mejor resuelto como mejora automática del ajuste exterior. Aún no se modifica producción ni se han validado todas las rutas ni los SE.
 
 ## Retirada definitiva del optimizador externo `explicit_lm`
 
