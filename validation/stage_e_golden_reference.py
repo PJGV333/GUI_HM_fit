@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 
 import numpy as np
-from scipy.optimize import minimize
+from scipy.optimize import lsq_linear, minimize
 
 from hmfit_core import run_spectroscopy
 from hmfit_core.processors import spectroscopy_processor as sp
@@ -52,8 +52,26 @@ def diagnose(seed):
         independent = minimize(f, np.maximum(initial, bounds).ravel()/scale, jac=True, method='L-BFGS-B',
                                bounds=list(zip((bounds/scale).ravel(), [None]*bounds.size)),
                                options={'ftol': 1e-15, 'gtol': 1e-10, 'maxiter': 30000, 'maxls': 50, 'maxcor': 40})
+        # Polish the fixed-sign region identified by L-BFGS-B as an independent
+        # bounded linear least-squares system. Bounds enforce the selected sign;
+        # the projected gradient below checks it against the original objective.
+        approximate = independent.x.reshape(initial.shape)*scale
+        negative = approximate.ravel() < 0
+        n_species, n_channels = initial.shape
+        d2 = np.diff(np.eye(n_channels), n=2, axis=0)
+        design = np.vstack((np.kron(C, np.eye(n_channels)),
+                            np.sqrt(.01)*np.diag(negative.astype(float)),
+                            np.sqrt(.02)*np.kron(np.eye(n_species), d2)))
+        rhs = np.concatenate((Y.ravel(), np.zeros(design.shape[0]-Y.size)))
+        low = bounds.ravel().copy()
+        low[~negative] = np.maximum(low[~negative], 0.)
+        high = np.full(low.size, np.inf)
+        high[negative] = 0.
+        polished = lsq_linear(design, rhs, bounds=(low, high), method='bvls', tol=1e-14, max_iter=1000)
+        if not polished.success:
+            raise RuntimeError(f'bounded reference failed: {polished.message}')
+        reference = polished.x.reshape(initial.shape)
         t_scipy = time.perf_counter()-start
-        reference = independent.x.reshape(initial.shape)*scale
         start = time.perf_counter()
         production = sp._solve_spectral_model(C, Y, eps_solver_mode='soft_bound', mu=.01,
                                               delta_mode='relative', delta_rel=.005,
