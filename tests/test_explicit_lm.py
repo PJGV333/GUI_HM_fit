@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from hmfit_core.utils.explicit_lm import explicit_lm, centered_residual_jacobian
-from hmfit_core.utils.profile_jacobian import spectral_profile_jacobian
+from validation.explicit_lm import explicit_lm, centered_residual_jacobian
+from validation.profile_jacobian import spectral_profile_jacobian
 from hmfit_core.processors.spectroscopy_processor import (
     _solve_spectral_model, _spectral_profile_objective, _spectral_profile_residual,
     _build_smoothness_laplacian,

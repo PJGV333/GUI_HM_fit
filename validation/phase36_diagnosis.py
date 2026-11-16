@@ -17,7 +17,7 @@ from hmfit_core import run_spectroscopy
 from hmfit_core.api import run_nmr_fit
 from hmfit_core.processors import nmr_processor as nmr
 from hmfit_core.processors import spectroscopy_processor as sp
-from hmfit_core.utils.explicit_lm import centered_residual_jacobian, explicit_lm, _gradient
+from validation.explicit_lm import centered_residual_jacobian, explicit_lm, _gradient
 from validation import literature_benchmark as lit
 from validation.phase31_comparison import pc, golden, _nmr_phase1
 
@@ -88,7 +88,7 @@ def _spectro(cfg, old):
         return sp._spectral_profile_residual(fit, Y, weights, cfg.get('mu', .01),
             cfg.get('alpha_smooth', 0.), smooth, cfg.get('weight_regularization_mode', 'legacy')) * np.sqrt(Y.size)
     def actual_jacobian(x):
-        from hmfit_core.utils.profile_jacobian import spectral_profile_jacobian
+        from validation.profile_jacobian import spectral_profile_jacobian
         C = np.asarray(solver.concentraciones(x)[0], float)
         fit = sp._solve_spectral_model(C, Y, group_map=groups,
             eps_solver_mode=cfg.get('eps_solver_mode', 'soft_penalty'), mu=cfg.get('mu', .01),

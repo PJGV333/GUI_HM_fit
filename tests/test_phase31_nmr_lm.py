@@ -5,7 +5,7 @@ from hmfit_core.processors import nmr_processor as nmr
 from hmfit_core.solvers import NewtonRaphson
 
 
-def _fit(tmp_path, monkeypatch, bounds, *, optimizer='explicit_lm', fixed=None, parallel=False,
+def _fit(tmp_path, monkeypatch, bounds, *, optimizer='powell', fixed=None, parallel=False,
          weights_mode='irls'):
     monkeypatch.setattr(nmr, 'generate_figure_base64', lambda *args, **kwargs: '')
     monkeypatch.setattr(nmr, 'generate_figure2_base64', lambda *args, **kwargs: '')
@@ -28,22 +28,6 @@ def _fit(tmp_path, monkeypatch, bounds, *, optimizer='explicit_lm', fixed=None, 
                                 weights_mode=weights_mode)
 
 
-def test_nmr_lm_with_irls_matches_powell(tmp_path, monkeypatch):
-    out = _fit(tmp_path, monkeypatch, [[1., 5.]])
-    ref = _fit(tmp_path, monkeypatch, [[1., 5.]], optimizer='powell')
-    assert out['success'], out
-    diag = out['optimizer_result']
-    if not diag['success']:
-        assert diag['message'] == 'no_progress' and diag['scaled_gradient'] >= 1e-8
-        assert '>>> FIT NOT RELIABLE' in out['results_text']
-    assert abs(out['export_data']['k'][0] - ref['export_data']['k'][0]) < 1e-3
-    assert ref['optimizer_result']['success']
-    ed = out['export_data']
-    diff = np.asarray(ed['Chemical_Shifts']) - np.asarray(ed['Calculated_Chemical_Shifts'])
-    weights = np.asarray(ed['weights_used_for_fit'])
-    np.testing.assert_allclose(ed['weighted_ssq_fit'], np.sum(diff**2 * weights[None, :]))
-    assert ed['irls_cycles'] > 0
-    assert 'LM: success=' in out['results_text']
 
 
 def test_nmr_irls_reports_and_uses_weights_of_the_last_fit(tmp_path, monkeypatch):
@@ -128,34 +112,3 @@ def test_unit_mode_does_not_claim_irls_convergence(tmp_path, monkeypatch):
     assert diag['stop_reason'] == 'unit_weights'
     assert diag['max_relative_weight_change'] is None
     assert diag['cycles'] == 1
-
-
-def test_nmr_lm_marks_active_bound(tmp_path, monkeypatch):
-    out = _fit(tmp_path, monkeypatch, [[1., 2.9]])
-    assert out['optimizer_result']['active_bounds'] == [True]
-    assert out['export_data']['SE_log10K'][0] is None
-    assert 'límite' in out['results_text']
-
-
-def test_nmr_lm_reports_nonconvergence(tmp_path, monkeypatch):
-    from hmfit_core.utils import explicit_lm as module
-    original = module.explicit_lm
-    def short_run(*args, **kwargs):
-        return original(*args, maxiter=1, **kwargs)
-    monkeypatch.setattr(module, 'explicit_lm', short_run)
-    out = _fit(tmp_path, monkeypatch, [[1., 5.]])
-    assert not out['optimizer_result']['success']
-    assert out['optimizer_result']['message'] == 'maxiter'
-    assert '>>> FIT NOT RELIABLE' in out['results_text']
-
-
-def test_nmr_lm_fixed_parameter_unchanged(tmp_path, monkeypatch):
-    out = _fit(tmp_path, monkeypatch, [[1., 5.]], fixed=[True])
-    assert out['success']
-    assert out['export_data']['SE_log10K'][0] == 0
-
-
-def test_nmr_lm_parallel_multistart(tmp_path, monkeypatch):
-    out = _fit(tmp_path, monkeypatch, [[1., 5.]], parallel=True)
-    assert out['success'], out
-    assert out['optimizer_result']['success'], out['optimizer_result']

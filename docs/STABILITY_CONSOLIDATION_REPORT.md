@@ -6,7 +6,7 @@
 |---|---|---|---|---|
 | Suite y baselines RMN | Baselines condicionales validados | `6237ee3` | Cinco casos y covarianza independiente | No valida incertidumbre IRLS completa |
 | Cobertura RMN unitaria | Funcional; reanudación con procedencia estricta | `23633ff` y checkpoint posterior | Smoke y pruebas de procedencia | Sin campaña confirmatoria; la huella cubre cambios Git rastreados y fuentes Python productivas sin seguimiento |
-| Retirada `explicit_lm` | Parcial | `76b13eb` y anteriores | Guardas de API | Procesadores aún lo ejecutan |
+| Retirada `explicit_lm` | Completada en procesadores | Checkpoint posterior a `8a36cc0` | Guardas, regresiones RMN y espectroscopía; suite local | Código experimental y comparaciones históricas conservados fuera de producción |
 | Solver interior | Pendiente | — | Diagnóstico previo de Fase 3 | KKT y corrección pendientes |
 | Derivadas genéricas | Pendiente | — | Prototipos especializados probados | No hay motor genérico |
 | Integración cinética | Pendiente | — | Prototipo aislado de primer orden | Sin integración productiva |
@@ -73,6 +73,12 @@ En `hmfit_core.utils.errors` se retiraron una detección del tipo JAX sin llamad
 Los proyectos RMN nuevos y el reinicio de la pestaña seleccionan ponderación unitaria; las configuraciones antiguas sin selección conservan IRLS. La GUI guarda `weights_schema_version: 1` con el modo explícito. La GUI y el ejecutor RMN rechazan antes de mutar estado los modos desconocidos, las versiones no soportadas y los esquemas versionados sin modo. Un ajuste real de literatura confirmó igualdad exacta de constantes y pesos entre el caso antiguo y el IRLS versionado, y pesos unitarios en la selección unitaria versionada. La validación dirigida dio 42 aprobadas; la suite completa dio 678 aprobadas, las mismas 6 fallidas, 3 omitidas, 5 deseleccionadas y 16 xfail. Esto no valida la incertidumbre IRLS ni desbloquea su análisis o las campañas RMN.
 
 Se corrigió además el campo de nivel superior `final_weights_per_signal`: todavía devolvía la propuesta siguiente de IRLS pese a que `export_data.weights_used_for_fit` ya contenía los pesos realmente utilizados. En el caso sintético de regresión, los valores anteriores eran `[253101.93610348302, 216101.5188580443]`, frente a `[253038.3577822667, 216151.3936238925]` realmente usados. Ahora coinciden con el ajuste y la incertidumbre condicional; la propuesta sigue disponible separadamente en `export_data.irls_weights_proposed_next`. Los resultados serializados antes de esta corrección pueden contener el campo superior mal etiquetado: no deben considerarse evidencia de pesos usados sin comprobar la procedencia y `export_data.weights_used_for_fit`, cuando exista. No se han auditado consumidores externos ni archivos históricos. Pasaron 40 pruebas dirigidas; la suite completa mantuvo 678 aprobadas, las mismas 6 fallidas, 3 omitidas, 5 deseleccionadas y 16 xfail. Esta corrección de metadatos no valida ni modifica el estimador IRLS.
+
+## Retirada definitiva del optimizador externo `explicit_lm`
+
+Se retiraron las ramas ejecutables y diagnósticos específicos de RMN y espectroscopía, tanto secuenciales como multistart. Las entradas directas y workers rechazan explícitamente la selección antigua antes de procesar datos; no se asigna otro optimizador. Los solvers internos Newton–Raphson y Levenberg–Marquardt de equilibrio no se modificaron. El optimizador experimental y la derivada de perfil se trasladaron a `validation/`; sus pruebas matemáticas continúan ejecutándose. Las pruebas de integración históricas que requerían las rutas retiradas permanecen en la historia Git (`20c6ca8`); sus ejecuciones comparativas antiguas no son reproducibles mediante los procesadores actuales. Los resultados y scripts históricos se conservan, pero los scripts que solicitan el optimizador retirado reciben el rechazo explícito.
+
+Las pruebas dirigidas dieron 53 aprobadas y 1 xfail; la suite completa local dio 704 aprobadas, 3 omitidas, 5 deseleccionadas y 16 xfail. El cambio neto de recuento frente a 709 refleja nueve pruebas de integración históricas retiradas y cuatro pruebas nuevas de rechazo, no resultados científicos adicionales. No se cambiaron los baselines ni las tolerancias de literatura. CI del nuevo checkpoint pendiente de ejecución y verificación.
 
 ## Retirada parcial de `explicit_lm` de los selectores
 

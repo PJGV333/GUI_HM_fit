@@ -237,39 +237,9 @@ def _build_nmr_solver(algorithm: str, c_t_array, modelo, nas, model_settings):
     raise ValueError(f"Unknown algorithm: {algorithm}")
 
 
-def _run_nmr_lm(solver, pack, start, bounds, dq, d_cols, mask, stoich, weights):
-    """Minimize the same weighted RMS as Powell for one fixed IRLS cycle."""
-    from ..utils.explicit_lm import centered_residual_jacobian, explicit_lm
-
-    evaluations = 0
-    def residual(theta):
-        nonlocal evaluations
-        _raise_if_cancelled()
-        evaluations += 1
-        C = solver.concentraciones(pack(theta))[0]
-        calculated = project_coeffs_block_onp_frac(
-            dq, C, d_cols, mask, stoichiometry=stoich, rcond=1e-10, ridge=1e-8)
-        valid = mask & np.isfinite(calculated)
-        if not np.array_equal(valid, mask) or np.count_nonzero(valid) <= len(theta):
-            raise ValueError("LM requires a stable finite NMR residual mask")
-        residuals = (dq - calculated)[valid]
-        w = np.broadcast_to(np.asarray(weights)[None, :], dq.shape)[valid]
-        result = residuals * np.sqrt(w / residuals.size)
-        if not np.all(np.isfinite(result)):
-            raise ValueError("non-finite NMR residual")
-        return result
-
-    data_weights = np.broadcast_to(np.asarray(weights)[None, :], dq.shape)[mask]
-    data_scale = float(np.linalg.norm(dq[mask] * np.sqrt(data_weights)) / np.sqrt(np.count_nonzero(mask)))
-    lm = explicit_lm(lambda x: centered_residual_jacobian(residual, x), start, bounds,
-                     residual_scale=data_scale)
-    return optimize.OptimizeResult(
-        x=lm.x, fun=float(np.linalg.norm(lm.fun)), success=lm.success,
-        message=lm.reason, nit=lm.nit, nfev=evaluations,
-        scaled_gradient=lm.scaled_gradient, active_bounds=lm.active_bounds.tolist())
-
-
 def _run_nmr_single_start(payload: dict[str, Any]) -> dict[str, Any]:
+    from hmfit_core.api import _reject_retired_optimizer
+    _reject_retired_optimizer(payload)
     algorithm = str(payload["algorithm"])
     optimizer = str(payload["optimizer"])
     c_t_array = np.asarray(payload["c_t_array"], dtype=float)
@@ -368,11 +338,7 @@ def _run_nmr_single_start(payload: dict[str, Any]) -> dict[str, Any]:
         return True
 
     try:
-        if optimizer == "explicit_lm":
-            opt_res = _run_nmr_lm(solver, _pack, start_free, bounds_free, dq, d_cols,
-                                  mask, stoich_mat, weights_per_signal)
-            objective_state["eval_count"] += opt_res.nfev
-        elif optimizer == "differential_evolution" and cycle_count == 1:
+        if optimizer == "differential_evolution" and cycle_count == 1:
             opt_res = differential_evolution(
                 _eval,
                 bounds_free,
@@ -519,6 +485,8 @@ def process_nmr_data(
     Dict[str, Any]
         A JSON-serializable dictionary containing fit results, figures, and statistics.
     """
+    from hmfit_core.api import _reject_retired_optimizer
+    _reject_retired_optimizer({"optimizer": optimizer})
     weights_mode = str(weights_mode).strip().lower()
     if weights_mode not in {"irls", "unit"}:
         raise ValueError("weights_mode must be 'irls' or 'unit'")
@@ -734,7 +702,6 @@ def process_nmr_data(
     param_opt_failed = False
     irls_stop_reason = "max_cycles"
     diff_w = None
-    lm_summary = None
     optimizer_summary = {"success": True, "message": "all parameters fixed", "nit": 0}
     while cycle_count < MAX_IRLS_CYCLES:
         cycle_count += 1
@@ -759,12 +726,6 @@ def process_nmr_data(
                     return True
 
                 def _run_optimizer(start_free, seed):
-                    if optimizer == "explicit_lm":
-                        result = _run_nmr_lm(res, pack, start_free, bounds_free, dq, D_cols,
-                                             mask, stoich_mat, weights_per_signal)
-                        iter_state["cnt"] += result.nfev
-                        iter_state["best"] = min(iter_state["best"], result.fun)
-                        return result
                     if optimizer == "differential_evolution" and cycle_count == 1:
                         return differential_evolution(
                             f_m,
@@ -893,9 +854,6 @@ def process_nmr_data(
                                             optimizer_summary = {"success": bool(run_result.get("success", False)),
                                                                  "message": str(run_result.get("message", "")),
                                                                  "nit": run_result.get("nit")}
-                                            if optimizer == "explicit_lm":
-                                                lm_summary = dict(run_result)
-                                                iter_state["best"] = min(iter_state["best"], fval)
                                     else:
                                         log_progress(
                                             f"[DEBUG] optimization run {ms_iter+1}/{ms_runs} failed: "
@@ -930,10 +888,6 @@ def process_nmr_data(
                                 optimizer_summary = {"success": bool(getattr(opt_res, "success", False)),
                                                      "message": str(getattr(opt_res, "message", "")),
                                                      "nit": getattr(opt_res, "nit", None)}
-                                if optimizer == "explicit_lm":
-                                    lm_summary = {"success": bool(opt_res.success), "message": str(opt_res.message),
-                                                  "nit": int(opt_res.nit), "scaled_gradient": opt_res.scaled_gradient,
-                                                  "active_bounds": opt_res.active_bounds}
                         except Exception as run_exc:
                             if _is_fit_cancelled(run_exc):
                                 raise
@@ -956,10 +910,6 @@ def process_nmr_data(
                     optimizer_summary = {"success": bool(getattr(opt_res, "success", False)),
                                          "message": str(getattr(opt_res, "message", "")),
                                          "nit": getattr(opt_res, "nit", None)}
-                    if optimizer == "explicit_lm":
-                        lm_summary = {"success": bool(opt_res.success), "message": str(opt_res.message),
-                                      "nit": int(opt_res.nit), "scaled_gradient": opt_res.scaled_gradient,
-                                      "active_bounds": opt_res.active_bounds}
                 p0_full = k_opt_full
         except Exception as e:
             if _is_fit_cancelled(e):
@@ -1076,16 +1026,7 @@ def process_nmr_data(
             covfit_val = np.nan
         SE_log10K_full[fixed_mask] = 0.0
         percK_full[fixed_mask] = 0.0
-        bound_names = []
         bound_mask = np.zeros(len(k_opt_full), dtype=bool)
-        if optimizer == "explicit_lm" and lm_summary is not None:
-            hits = np.asarray(lm_summary.get("active_bounds", []), dtype=bool)
-            if hits.size == free_idx.size:
-                bound_indices = free_idx[hits]
-                bound_mask[bound_indices] = True
-                SE_log10K_full[bound_indices] = np.nan
-                percK_full[bound_indices] = np.nan
-                bound_names = [f"K{i+1}" for i in bound_indices]
         rms = np.sqrt(np.mean(residuals_vec**2)) if residuals_vec.size > 0 else 0.0
         dq_vec = dq.ravel()
         dq_fit_vec = dq_fit.ravel()
@@ -1108,13 +1049,6 @@ def process_nmr_data(
             lof=lof,
             fixed_mask=fixed_mask,
         )
-        if optimizer == "explicit_lm" and lm_summary is not None:
-            results_text += (f"\n\nLM: success={lm_summary['success']}, reason={lm_summary['message']}, "
-                             f"iterations={lm_summary['nit']}, scaled gradient={lm_summary['scaled_gradient']}")
-            if not lm_summary["success"]:
-                results_text += f"\n\n>>> FIT NOT RELIABLE: {lm_summary['message']}"
-            if bound_names:
-                results_text += "\n\n>>> WARNING: parámetro en el límite; SE no válido: " + ", ".join(bound_names)
         if 'stability_diag' in locals() and stability_diag:
             status = stability_diag.get("status")
             summary = stability_diag.get("diag_summary", "")
@@ -1198,14 +1132,8 @@ def process_nmr_data(
                 ["objective_evaluations", int(objective_eval_count_total)],
                 ["weights_mode", weights_mode],
                 ["irls_cycles", cycle_count],
-            ] + [[f"weight {name}", float(weight)] for name, weight in zip(signal_names, weights_used_for_fit)] + ([
-                ["LM success", lm_summary["success"]],
-                ["LM stop reason", lm_summary["message"]],
-                ["LM iterations", lm_summary["nit"]],
-                ["LM scaled gradient", lm_summary["scaled_gradient"]],
-            ] if optimizer == "explicit_lm" and lm_summary is not None else []),
-            "uncertainty_notes": ["Analytic uncertainty is conditional on the weights used in the final fit."] +
-                (["parámetro en el límite: " + ", ".join(bound_names)] if bound_names else []),
+            ] + [[f"weight {name}", float(weight)] for name, weight in zip(signal_names, weights_used_for_fit)],
+            "uncertainty_notes": ["Analytic uncertainty is conditional on the weights used in the final fit."],
             "weights_used_for_fit": weights_used_for_fit.tolist(),
             "weights_mode": weights_mode,
             "irls_weights_final": weights_used_for_fit.tolist(),
@@ -1301,7 +1229,7 @@ def process_nmr_data(
             "export_data": export_data,
             "timings": dict(stage_times),
             "objective_evaluations": int(objective_eval_count_total),
-            "optimizer_result": lm_summary if optimizer == "explicit_lm" and lm_summary is not None else optimizer_summary,
+            "optimizer_result": optimizer_summary,
             "weights_mode": weights_mode,
             "final_weights_per_signal": dict(zip(signal_names, weights_used_for_fit.tolist())),
             "irls_cycles": cycle_count,

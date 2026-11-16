@@ -19,19 +19,14 @@ All notable user-visible changes. Versions follow the GitHub releases
   unsupported or unbracketed cases fall back to the previous scalar implementation.
   Differences are numerical only within the tested tolerances. Evidence:
   `tests/test_phase33_potentiometry_vectorized.py` and the phase 3 report.
-- Spectroscopy: `explicit_lm` is an opt-in optimizer with convergence diagnostics and
-  active-bound uncertainty warnings. Powell remains the default for new and saved
-  configurations without an optimizer. Depending on the start and convergence, LM
-  may produce a different optimum; see `tests/test_phase31_spectro_lm.py` and the
-  phase 3 report. The absorptivity estimator is unchanged.
-- NMR: `explicit_lm` is an opt-in optimizer inside the existing IRLS cycle; Powell
-  and the current IRLS weighting remain the defaults. Convergence and active-bound
-  uncertainty warnings are reported. Different optimizers may reach different minima;
-  see `tests/test_phase31_nmr_lm.py` and the phase 3 report.
-- NMR: unit weights are available as an opt-in alternative to per-signal IRLS;
-  changing weights can change estimates and standard errors. Final weights and cycle
-  counts are shown and exported. Configurations without `weights_mode` retain IRLS;
-  evidence: `tests/test_phase31_nmr_lm.py` and `validation/results/phase32_weights.json`.
+- Spectroscopy and NMR: the experimental external optimizer `explicit_lm` has been
+  retired from selectors, processing and full-refit. Saved selections are rejected
+  with an explicit alternative; they are never silently replaced. Historical LM
+  experiments remain in Git, while its utility and profile derivative are isolated in
+  `validation/`. Internal equilibrium solvers named Levenberg–Marquardt are unaffected.
+- NMR: new projects use unit weights; older configurations without `weights_mode` retain
+  historical per-signal IRLS. Changing weights can change estimates and standard errors.
+  Weights actually used and cycle counts are reported; see the consolidation report.
 - Kinetics: automatic initial rate estimates now use the experiment duration and reactant
   concentrations in the data's units; rate constants and Arrhenius A use Log10 by default.
   Existing user entries and saved settings are retained. Initial guesses can change fitted
@@ -58,6 +53,8 @@ All notable user-visible changes. Versions follow the GitHub releases
   shown as "—" with the reason in the tooltip; exports keep NaN plus a `Note` column.
 
 ### Fixed
+<!-- The following explicit-LM notes describe historical experiments; the external
+optimizer is now retired from production, as stated above. -->
 - Explicit LM recognizes residuals at the rounding level relative to the weighted
   data norm, and reports repeated rejected steps at maximum damping as
   `no_progress` rather than a successful `xtol` stop. Existing golden
