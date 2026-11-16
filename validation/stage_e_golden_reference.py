@@ -55,6 +55,12 @@ def diagnose(seed):
         t_scipy = time.perf_counter()-start
         reference = independent.x.reshape(initial.shape)*scale
         start = time.perf_counter()
+        production = sp._solve_spectral_model(C, Y, eps_solver_mode='soft_bound', mu=.01,
+                                              delta_mode='relative', delta_rel=.005,
+                                              alpha_smooth=.02, smooth_matrix=L,
+                                              weights_row=W, max_iters=300)
+        t_production = time.perf_counter()-start
+        start = time.perf_counter()
         candidate = np.asarray(_solve_weighted_penalty_newton(C, Y, np.ones_like(Y), 0., .01,
                                                              lower[:, 0], .02, L, 300))
         t_candidate = time.perf_counter()-start
@@ -62,7 +68,15 @@ def diagnose(seed):
             obj, g = f(A.ravel()/scale)
             grad = g.reshape(A.shape)/scale
             pg = np.where((A <= bounds + 1e-9) & (grad > 0), 0., grad)
+            data_grad_scale = np.max(np.abs(C.T @ Y), initial=0.)
+            model_grad_scale = np.max(np.abs(C.T @ (C @ A)), initial=0.)
+            penalty_scale = max(np.max(np.abs(.01*np.minimum(A, 0.)), initial=0.),
+                                np.max(np.abs(.02*(A@L)), initial=0.))
+            scale_grad = max(data_grad_scale, model_grad_scale, penalty_scale, np.finfo(float).tiny)
+            multiplier = np.where(A <= bounds + 1e-9, np.maximum(grad, 0.), 0.)
             return {'inner_objective': obj, 'projected_gradient_norm': float(np.linalg.norm(pg)),
+                    'projected_gradient_normalized': float(np.max(np.abs(pg))/scale_grad),
+                    'complementarity_max': float(np.max(np.abs(multiplier*(A-bounds)))),
                     'projected_gradient_max': float(np.max(np.abs(pg))),
                     'outer_ssq': float(np.sum((W*(C@A-Y))**2)),
                     'max_bound_violation': float(np.max(np.maximum(bounds-A, 0.)))}
@@ -74,6 +88,7 @@ def diagnose(seed):
                 'curvature_ratio_bound': lipschitz/low_curvature,
                 'scipy':{**metrics(reference), 'success':bool(independent.success),
                          'message':str(independent.message), 'iterations':int(independent.nit), 'seconds':t_scipy},
+                'production': {**metrics(production['E_group']), 'seconds':t_production},
                 'newton':{**metrics(candidate), 'seconds':t_candidate},
                 'coefficient_difference_norm':float(np.linalg.norm(candidate-reference)),
                 'prediction_difference_norm':float(np.linalg.norm(C@(candidate-reference)))}
