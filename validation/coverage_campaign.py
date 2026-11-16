@@ -605,25 +605,47 @@ def _worker(args):
 
 
 def _provenance() -> dict[str, Any]:
+    import importlib.metadata
     import platform
     import subprocess
 
     import scipy
 
-    def _ver(mod):
-        try:
-            return __import__(mod).__version__
-        except Exception:
-            return None
+    numeric_config = io.StringIO()
+    with contextlib.redirect_stdout(numeric_config):
+        np.show_config()
+        scipy.show_config()
+
+    root = Path(__file__).resolve().parents[1]
+    def git(*args):
+        return subprocess.check_output(["git", "-C", str(root), *args])
 
     try:
-        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
-        dirty = bool(subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=no"], text=True).strip())
-    except Exception:
-        commit, dirty = None, None
-    return {"commit": commit, "dirty": dirty, "python": platform.python_version(), "platform": platform.platform(),
-            "numpy": np.__version__, "scipy": scipy.__version__, "pandas": _ver("pandas"), "PySide6": _ver("PySide6"),
-            "base_seed": BASE_SEED, "argv": sys.argv}
+        commit = git("rev-parse", "HEAD").decode().strip()
+        diff = git("diff", "--binary", "HEAD", "--")
+        untracked = git("ls-files", "--others", "--exclude-standard", "-z").decode().split("\0")
+        source_paths = sorted(p for p in untracked if p.endswith(".py") and
+                              p.split("/", 1)[0] in {"hmfit", "hmfit_core", "hmfit_gui_qt", "validation"})
+        source_hash = hashlib.sha256(diff)
+        for name in source_paths:
+            source_hash.update(name.encode() + b"\0" + (root / name).read_bytes() + b"\0")
+        dirty = bool(diff or source_paths)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ValueError("Campaign provenance unavailable: cannot inspect source revision.") from exc
+
+    def version(package):
+        try:
+            return importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            return None
+
+    return {"commit": commit, "dirty": dirty, "source_diff_sha256": source_hash.hexdigest(),
+            "python": platform.python_version(), "platform": platform.platform(),
+            "numpy": np.__version__, "scipy": scipy.__version__,
+            "dependencies": {p: version(p) for p in ("pandas", "PySide6", "matplotlib", "openpyxl", "threadpoolctl")},
+            "numeric_build_sha256": hashlib.sha256(numeric_config.getvalue().encode()).hexdigest(),
+            "threads": {p: os.environ.get(p) for p in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS")},
+            "base_seed": BASE_SEED}
 
 
 def run(grid: list[dict[str, Any]], out: Path, *, workers: int = 1, n_rep: int | None = None,
@@ -642,11 +664,53 @@ def run(grid: list[dict[str, Any]], out: Path, *, workers: int = 1, n_rep: int |
                 fingerprint = _nmr_fingerprint(cell, methods)
                 if any(r.get("campaign_fingerprint") != fingerprint for r in rows):
                     raise ValueError(f"NMR coverage for {cell['id']} is invalid: incompatible campaign configuration.")
-    out.mkdir(parents=True, exist_ok=True)
+    provenance = _provenance()
+    contracts = {c["id"]: {"cell": c, "methods": methods if methods is not None else c["methods"]}
+                 for c in grid}
+    if len(contracts) != len(grid):
+        raise ValueError("Campaign provenance incompatible: duplicate cell identifiers.")
     manifest = out / "manifest.jsonl"
+    data_files = list(out.glob("*.jsonl")) if out.exists() else []
+    prior_contracts = {}
+    if manifest.exists():
+        try:
+            entries = [json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines() if line.strip()]
+        except (OSError, ValueError) as exc:
+            raise ValueError("Campaign provenance incompatible: corrupt manifest.") from exc
+        if not entries:
+            raise ValueError("Campaign provenance incompatible: empty manifest.")
+        for entry in entries:
+            if entry.get("provenance_schema") != 2 or entry.get("provenance") != provenance:
+                raise ValueError("Campaign provenance incompatible or incomplete; use a new output directory.")
+            old_contracts = entry.get("contracts")
+            if not isinstance(old_contracts, dict):
+                raise ValueError("Campaign provenance incompatible: missing cell contracts.")
+            for cid, contract in old_contracts.items():
+                if cid in prior_contracts and prior_contracts[cid] != contract:
+                    raise ValueError(f"Campaign provenance incompatible for {cid}.")
+                prior_contracts[cid] = contract
+    elif data_files:
+        raise ValueError("Campaign provenance incomplete: existing results have no manifest.")
+    for path in data_files:
+        if path.name == "manifest.jsonl":
+            continue
+        if path.stem not in prior_contracts:
+            raise ValueError(f"Campaign provenance incomplete for {path.stem}.")
+        try:
+            rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+            reps = [int(r["rep"]) for r in rows]
+            if len(reps) != len(set(reps)) or any(r.get("cell") != path.stem for r in rows):
+                raise ValueError("duplicate or mismatched rows")
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            raise ValueError(f"Campaign provenance incompatible: corrupt rows in {path.name}.") from exc
+    for cid, contract in contracts.items():
+        if cid in prior_contracts and prior_contracts[cid] != contract:
+            raise ValueError(f"Campaign provenance incompatible configuration for {cid}.")
+    out.mkdir(parents=True, exist_ok=True)
     with manifest.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps({"started": time.strftime("%Y-%m-%dT%H:%M:%S"), **_provenance(),
-                             "cells": [c["id"] for c in grid], "n_rep": n_rep, "methods": methods}) + "\n")
+        fh.write(json.dumps({"started": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                             "provenance_schema": 2, "provenance": provenance, "contracts": contracts,
+                             "n_rep": n_rep}) + "\n")
     tasks = []
     for cell in grid:
         target = int(n_rep if n_rep is not None else cell["N"])
@@ -666,6 +730,8 @@ def run(grid: list[dict[str, Any]], out: Path, *, workers: int = 1, n_rep: int |
             futures = [pool.submit(_worker, t) for t in tasks]
             iterator = (f.result() for f in as_completed(futures))
         for i, (cell_id, row) in enumerate(iterator, 1):
+            if _provenance() != provenance:
+                raise ValueError("Campaign provenance changed during execution; replicate not written.")
             fh = handles.get(cell_id)
             if fh is None:
                 fh = handles[cell_id] = (out / f"{cell_id}.jsonl").open("a", encoding="utf-8")

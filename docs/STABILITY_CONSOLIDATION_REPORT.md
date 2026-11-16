@@ -5,7 +5,7 @@
 | Etapa | Estado | Commit | Pruebas | Limitaciones |
 |---|---|---|---|---|
 | Suite y baselines RMN | Baselines condicionales validados | `6237ee3` | Cinco casos y covarianza independiente | No valida incertidumbre IRLS completa |
-| Cobertura RMN unitaria | Funcional, validación estadística pendiente | `23633ff` | Smoke y suite local: 695 aprobadas | Reanudación no protege aún cambios de código o entorno; sin campaña confirmatoria |
+| Cobertura RMN unitaria | Funcional; reanudación con procedencia estricta | `23633ff` y checkpoint posterior | Smoke y pruebas de procedencia | Sin campaña confirmatoria; la huella cubre cambios Git rastreados y fuentes Python productivas sin seguimiento |
 | Retirada `explicit_lm` | Parcial | `76b13eb` y anteriores | Guardas de API | Procesadores aún lo ejecutan |
 | Solver interior | Pendiente | — | Diagnóstico previo de Fase 3 | KKT y corrección pendientes |
 | Derivadas genéricas | Pendiente | — | Prototipos especializados probados | No hay motor genérico |
@@ -132,7 +132,7 @@ Se verificaron diez pruebas de esta salvaguarda, incluidas las rutas de resumen,
 
 Las nuevas réplicas RMN solo se permiten cuando la celda declara `weights_mode: unit`; el ajuste recibe además la versión de esquema 1, y se comprueban los pesos efectivos y el contexto de Errors antes de analizar. Analítico, bootstrap lineal, one-step y full-refit usan las rutas unitarias existentes; el smoke ejecuta los cuatro métodos, tres réplicas y reanudación sin reducir sus comprobaciones. Cada réplica guarda configuración, métodos y huella; la reanudación rechaza antes de escribir filas históricas sin procedencia, IRLS y configuraciones incompatibles. Los datos históricos no se convierten ni se alteran. Las mallas primarias históricas no se cambian implícitamente: requieren selección explícita para una campaña nueva.
 
-Las pruebas dirigidas dieron 27 aprobadas y 5 deseleccionadas; la suite completa local dio 695 aprobadas, 3 omitidas, 5 deseleccionadas y 16 xfail. El smoke es una prueba funcional pequeña, no demuestra cobertura estadística ni calibración. La huella de configuración no incluye el código fuente ni el entorno: el manifiesto registra commit, estado sucio y versiones, pero la reanudación aún no impide mezclar revisiones o entornos distintos. No debe tratarse esta salvaguarda como validación confirmatoria de campañas largas. Permanecen las advertencias numéricas de remuestreo con tres réplicas idénticas.
+En el checkpoint posterior se añadió un manifiesto versionado para todas las técnicas: compara commit, hash de diferencias rastreadas y fuentes Python productivas sin seguimiento, estado sucio, Python, plataforma, NumPy, SciPy, huella de configuración de compilación numérica, dependencias, hilos, semilla, configuración de celda y métodos. Antes de reanudar rechaza manifiestos históricos o corruptos y archivos sin contrato, sin modificar el directorio; también comprueba la procedencia antes de escribir cada réplica. Los ficheros históricos se preservan, pero requieren otro directorio para una campaña nueva. La huella no inspecciona arbitrariamente archivos no seguidos ni archivos ignorados, para no leer datos privados: estos no deben utilizarse como código o entradas modificables de una campaña. Las pruebas locales dieron 709 aprobadas, 3 omitidas, 5 deseleccionadas y 16 xfail. No se ejecutó una campaña confirmatoria extensa.
 
 ## Baselines RMN: errores condicionales validados
 
