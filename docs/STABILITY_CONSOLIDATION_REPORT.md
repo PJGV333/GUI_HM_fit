@@ -124,6 +124,10 @@ La [investigación focalizada del 1:2](STABILITY_E3_IDENTIFIABILITY.md) usa perf
 
 La [CI del checkpoint productivo `ac3fcf3`](https://github.com/PJGV333/GUI_HM_fit/actions/runs/43982721274) pasó en Linux, Windows y JAX aislado. Tras añadir la investigación, la suite local completa dio 736 aprobadas, 3 omitidas, 5 deseleccionadas y 16 xfail; no sustituye la CI del checkpoint de investigación.
 
+### Etapa E.4: continuación experimental
+
+El [informe E.4](STABILITY_E4_SOLVER.md) conserva la reproducción de ambos sistemas y un nuevo candidato exclusivamente en `validation/`. El sistema A converge a una referencia independiente; el B se aproxima en objetivo y predicción, pero no satisface KKT normalizado y termina con fallo explícito. Una comprobación independiente de 60 dígitos confirma que el indicador de B sigue por encima del umbral. El parche heredado de procesador se ha preservado íntegro como diff revisable y no está integrado. **Dictamen E4-C:** no hay corrección productiva validada; no se han cambiado el solver, los objetivos, `legacy` ni los baselines.
+
 ### Candidato no integrado y límite de aceptación
 
 Se probó temporalmente, sin cambiar el objetivo, la cota ni los pesos, sustituir los 300 pasos PGD `legacy` por el Newton existente con multiplicadores unitarios. El gradiente proyectado de los tres sistemas fijos satisfizo las pruebas de referencia; sin embargo, el ajuste Powell completo alcanzó la cota inferior de log β y las tres regresiones golden existentes fallaron. Para conservar una reproducción ejecutable sin instalar el candidato en producción se aisló la comparación en `validation.stage_e_candidate_probe`; el parche productivo experimental se retiró, no se modificaron las tolerancias ni se regeneraron baselines. Los dos primeros golden fallaron el límite RMS (`0.00100352 > 1.5 × 0.000238756` y `0.000998449 > 1.5 × 0.000244275`); el tercero falló `|Δ log β| < 0.6` con `3.231086`.

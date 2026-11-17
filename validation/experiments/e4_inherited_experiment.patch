@@ -1,0 +1,74 @@
+diff --git a/hmfit_core/processors/spectroscopy_processor.py b/hmfit_core/processors/spectroscopy_processor.py
+index af42792..8add3af 100644
+--- a/hmfit_core/processors/spectroscopy_processor.py
++++ b/hmfit_core/processors/spectroscopy_processor.py
+@@ -768,6 +768,38 @@ def spectral_inner_optimality(C, Y, A, *, eps_solver_mode, weight_regularization
+     return report
+ 
+ 
++def _solve_absolute_checked(C, Y, W, ridge, mu, lower_bound, alpha_smooth, smooth_matrix, max_iters):
++    """Solve the separable, unregularized absolute problem and check its KKT.
++
++    Rank-deficient solutions remain explicitly unverified in the final report;
++    a demonstrable first-order failure is never returned as a successful solve.
++    """
++    if float(ridge) != 0.0 or float(mu) != 0.0 or float(alpha_smooth) != 0.0:
++        raise ValueError("bounded least-squares path requires an unregularized objective")
++    C, Y, W = (onp.asarray(v, dtype=float) for v in (C, Y, W))
++    if Y.ndim != 2 or Y.shape[1] != 1 or W.shape != Y.shape:
++        raise ValueError("bounded least-squares path requires one weighted column")
++    design = C * W[:, 0, None]
++    data = Y[:, 0] * W[:, 0]
++    if lower_bound is None:
++        solution = onp.linalg.lstsq(design, data, rcond=None)[0]
++    else:
++        lower = onp.broadcast_to(onp.asarray(lower_bound, dtype=float).reshape(-1), (C.shape[1],))
++        result = optimize.lsq_linear(design, data, bounds=(lower, onp.inf), method="bvls",
++                                     tol=1e-14, max_iter=int(max_iters))
++        if not result.success:
++            raise WeightedLinearSolveError("bounded least-squares failed: " + str(result.message))
++        solution = result.x
++    A = solution[:, None]
++    check = spectral_inner_optimality(
++        C, Y, A, eps_solver_mode="soft_bound" if lower_bound is not None else "soft_penalty",
++        weight_regularization_mode="absolute", lower_bound=lower_bound, weights_row=W,
++    )
++    if check["status"] == "not_converged":
++        raise WeightedLinearSolveError("bounded least-squares failed normalized optimality: " + check["reason"])
++    return np.asarray(A)
++
++
+ def _solve_absorptivities(
+     C,
+     YT,
+@@ -799,7 +831,8 @@ def _solve_absorptivities(
+             # avoids allocating a (species*wavelengths)^2 dense Hessian.
+             columns = []
+             for j in range(YT.shape[1]):
+-                a = _solve_weighted_penalty_newton(
++                solve_column = _solve_absolute_checked if float(mu) == 0.0 else _solve_weighted_penalty_newton
++                a = solve_column(
+                     C, YT[:, j:j + 1], multipliers[:, j:j + 1], 0.0, float(mu),
+                     lower_bound, 0.0, None, max_iters,
+                 )
+diff --git a/tests/test_stage_e4_solver_reproduction.py b/tests/test_stage_e4_solver_reproduction.py
+index 3be68d1..671efdf 100644
+--- a/tests/test_stage_e4_solver_reproduction.py
++++ b/tests/test_stage_e4_solver_reproduction.py
+@@ -35,3 +35,16 @@ def test_historical_failure_system_has_independent_feasible_reference(index):
+     assert pg < 1e-9
+     assert np.isfinite(objective)
+     assert 'weighted Newton' in row['error']
++
++
++@pytest.mark.parametrize('index', [0])
++def test_historical_failure_system_is_solved_with_normalized_kkt(index):
++    from hmfit_core.processors.spectroscopy_processor import _solve_absolute_checked, spectral_inner_optimality
++    s = systems()[index]['system']
++    C, Y, W, lower = (np.asarray(s[x], float) for x in ('C', 'Y', 'W', 'lower'))
++    L = np.asarray(s['L'], float) if s['L'] is not None else None
++    A = _solve_absolute_checked(C, Y, W, s['ridge'], s['mu'], lower, s['alpha'], L, s['max_iters'])
++    diagnostic = spectral_inner_optimality(C, Y, A, eps_solver_mode='soft_bound',
++        weight_regularization_mode='absolute', mu=s['mu'], alpha_smooth=s['alpha'],
++        smooth_matrix=L, lower_bound=lower, weights_row=W)
++    assert diagnostic['status'] == 'verified', diagnostic

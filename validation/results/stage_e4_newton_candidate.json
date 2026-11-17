@@ -1,0 +1,83 @@
+{
+  "provenance": {
+    "revision": "0d8fb64ecea4ec92286d8d7e3f33c470e0ea7028",
+    "sha256": {
+      "validation/stage_e4_newton_candidate.py": "a601eb70750bb19ad855809fa052d1d0d3e4fd7f14ae513cca565b269ee710bc",
+      "validation/stage_e4_newton_candidate_probe.py": "e0e9cce95f6442c28d569cf4f0e72ba4ab1e3ba51dfd7abdf5855440748b0b7f"
+    },
+    "python": "3.14.10",
+    "numpy": "2.4.2",
+    "scipy": "1.17.1"
+  },
+  "records": [
+    {
+      "case": "unregularized",
+      "before_error": "weighted Newton line search failed",
+      "before_iterations": 23,
+      "before_projected_gradient_absolute": 5.961157456632274e-08,
+      "status": "verified",
+      "info": {
+        "iterations": 18,
+        "rejected_steps": 237,
+        "stop_reason": "kkt"
+      },
+      "kkt": {
+        "status": "verified",
+        "reason": "first-order and feasibility checks passed",
+        "projected_gradient_normalized": 6.125130054936255e-11,
+        "projected_gradient_max": 2.0977300334344782e-19,
+        "gradient_max": 2.5753231752482997e-11,
+        "constraint_violation": 0.0,
+        "constraint_violation_normalized": 0.0,
+        "complementarity_normalized": 1.1441153029517277e-10,
+        "gradient_tolerance": 1e-06,
+        "feasibility_tolerance": 1e-10,
+        "complementarity_tolerance": 1e-06,
+        "condition_number_max": 775212.5838132065
+      },
+      "feasibility_min_slack": 1.6201653352254652e-08,
+      "objective_candidate": 1.2818880614090673e-07,
+      "objective_reference": 1.2818880614048782e-07,
+      "prediction_difference_norm": 7.664116527160865e-15,
+      "decimal_audit": null,
+      "seconds": 0.0027782519900938496
+    },
+    {
+      "case": "historical",
+      "before_error": "weighted Newton did not converge",
+      "before_iterations": 300,
+      "before_projected_gradient_absolute": 3.662994993697925e-07,
+      "status": "failed_explicitly",
+      "info": {
+        "iterations": 38,
+        "rejected_steps": 258,
+        "stop_reason": "experimental Newton line search failed: iteration=38, rejected=258, diagnostics={'status': 'not_converged', 'reason': 'first-order conditions or feasibility not satisfied', 'projected_gradient_normalized': 1.4092841435344689e-06, 'projected_gradient_max': 1.0568767286708207e-13, 'gradient_max': 1.0568767286708207e-13, 'constraint_violation': 0.0, 'constraint_violation_normalized': 0.0, 'complementarity_normalized': 1.88451902147511e-06, 'gradient_tolerance': 1e-06, 'feasibility_tolerance': 1e-10, 'complementarity_tolerance': 1e-06, 'condition_number_max': None}"
+      },
+      "kkt": {
+        "status": "not_converged",
+        "reason": "first-order conditions or feasibility not satisfied",
+        "projected_gradient_normalized": 1.4092841435344689e-06,
+        "projected_gradient_max": 1.0568767286708207e-13,
+        "gradient_max": 1.0568767286708207e-13,
+        "constraint_violation": 0.0,
+        "constraint_violation_normalized": 0.0,
+        "complementarity_normalized": 1.88451902147511e-06,
+        "gradient_tolerance": 1e-06,
+        "feasibility_tolerance": 1e-10,
+        "complementarity_tolerance": 1e-06,
+        "condition_number_max": null
+      },
+      "feasibility_min_slack": 5.768957852265453,
+      "objective_candidate": 12.38484398255224,
+      "objective_reference": 12.384843982552242,
+      "prediction_difference_norm": 4.696729344405709e-12,
+      "decimal_audit": {
+        "precision_digits": 60,
+        "max_normalized_gradient": 1.4092841435303667e-06,
+        "existing_gradient_max_abs_error": 3.6379788024789644e-14,
+        "difference_squared_gradient_max_abs_error": 3.1292341684469e-18
+      },
+      "seconds": 0.012059924003551714
+    }
+  ]
+}
