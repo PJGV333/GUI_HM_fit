@@ -1,0 +1,87 @@
+{
+  "provenance": {
+    "revision": "ac3fcf3a49b88abea560a3cd141d59de46e40805",
+    "script_sha256": "02bcc81e5848211217866f6acf768aff389d6470653bd3d360f8f1ae4046aa4e",
+    "python": "3.14.10",
+    "numpy": "2.4.2",
+    "scipy": "1.17.1"
+  },
+  "records": [
+    {
+      "method": "unregularized",
+      "mu": 0.0,
+      "alpha": 0.0,
+      "error": "weighted Newton line search failed",
+      "design_singular_values": [
+        0.004584679547746795,
+        0.0013558186055612326,
+        9.588227534652632e-07,
+        5.914093299666443e-09
+      ],
+      "weighted_columns": 1,
+      "max_iters": 300,
+      "weighted_is_unit": true,
+      "reference_kkt_max": 1.7896217988707264e-19,
+      "reference_objective": 1.2818880614048782e-07,
+      "reference_min_slack": 0.0,
+      "gradient_direction_analytic": 1.2118433331056574e-06,
+      "gradient_checks": [
+        {
+          "step": 0.01,
+          "finite_difference": 1.211843333106178e-06,
+          "absolute_difference": 5.207135043245811e-19
+        },
+        {
+          "step": 0.001,
+          "finite_difference": 1.2118433330986554e-06,
+          "absolute_difference": 7.001997858477674e-18
+        },
+        {
+          "step": 0.0001,
+          "finite_difference": 1.2118433332277485e-06,
+          "absolute_difference": 1.2209111725899804e-16
+        }
+      ],
+      "fit_exception": "weighted Newton line search failed",
+      "seconds": 0.03819108099560253
+    },
+    {
+      "method": "historical_penalties",
+      "mu": 0.01,
+      "alpha": 0.02,
+      "error": "weighted Newton did not converge",
+      "design_singular_values": [
+        0.004703297916154006,
+        0.0013528028458881253,
+        7.053463455194931e-07,
+        3.9819912984364087e-10
+      ],
+      "weighted_columns": 31,
+      "max_iters": 300,
+      "weighted_is_unit": true,
+      "reference_kkt_max": 1.3144778022877875e-12,
+      "reference_objective": 12.384843981933187,
+      "reference_min_slack": 5.7689578522647675,
+      "gradient_direction_analytic": 0.023002324179134795,
+      "gradient_checks": [
+        {
+          "step": 0.01,
+          "finite_difference": 0.023002344338607372,
+          "absolute_difference": 2.0159472577385706e-08
+        },
+        {
+          "step": 0.001,
+          "finite_difference": 0.02300170886204711,
+          "absolute_difference": 6.15317087684919e-07
+        },
+        {
+          "step": 0.0001,
+          "finite_difference": 0.023000249784743687,
+          "absolute_difference": 2.0743943911077922e-06
+        }
+      ],
+      "fit_exception": "weighted Newton did not converge",
+      "seconds": 0.6571876219968544
+    }
+  ]
+}

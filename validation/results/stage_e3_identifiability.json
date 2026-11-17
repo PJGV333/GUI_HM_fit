@@ -1,0 +1,525 @@
+{
+  "provenance": {
+    "revision": "ac3fcf3a49b88abea560a3cd141d59de46e40805",
+    "script_sha256": "4bcd263a974073a5c6a1f51c70d28712eb781742e695169cdfcd89201e84e3b5",
+    "python": "3.14.10",
+    "numpy": "2.4.2",
+    "scipy": "1.17.1"
+  },
+  "profiles": {
+    "truth": [
+      3.0,
+      2.5
+    ],
+    "noise_sd": 0.0002,
+    "seed": 32,
+    "design_singular_values_at_truth": [
+      0.00324168970958833,
+      0.0014136374692589712,
+      0.00014143030734311242,
+      1.31535436144438e-11
+    ],
+    "runs": [
+      {
+        "case": "noiseless",
+        "alpha": 0.0,
+        "mu": 0.0,
+        "profiles": {
+          "0": [
+            {
+              "fixed": 0.0,
+              "nuisance": 0.0,
+              "objective": 0.0013907135844305185,
+              "kkt_abs": 5.561841681130916e-12,
+              "outer_success": true
+            },
+            {
+              "fixed": 1.0,
+              "nuisance": 0.0,
+              "objective": 0.001258837750096054,
+              "kkt_abs": 1.3917150811231134e-11,
+              "outer_success": true
+            },
+            {
+              "fixed": 2.0,
+              "nuisance": 2.5871025727631465,
+              "objective": 0.0005028314133976529,
+              "kkt_abs": 2.6073182308386296e-15,
+              "outer_success": true
+            },
+            {
+              "fixed": 2.5,
+              "nuisance": 2.730676410041219,
+              "objective": 7.947689689858461e-05,
+              "kkt_abs": 1.5263835465009951e-15,
+              "outer_success": true
+            },
+            {
+              "fixed": 3.0,
+              "nuisance": 2.5002644736286546,
+              "objective": 4.108333602189791e-18,
+              "kkt_abs": 1.5466189495451003e-17,
+              "outer_success": true
+            },
+            {
+              "fixed": 4.0,
+              "nuisance": 6.0,
+              "objective": 0.0011512409588094411,
+              "kkt_abs": 5.2518901465963604e-17,
+              "outer_success": true
+            },
+            {
+              "fixed": 6.0,
+              "nuisance": 6.0,
+              "objective": 0.00871487278139806,
+              "kkt_abs": 8.269772196971464e-16,
+              "outer_success": true
+            }
+          ],
+          "1": [
+            {
+              "fixed": 0.0,
+              "nuisance": 2.9998695083970164,
+              "objective": 3.4946869711312955e-12,
+              "kkt_abs": 7.129422262375756e-13,
+              "outer_success": true
+            },
+            {
+              "fixed": 1.0,
+              "nuisance": 2.9998237760306807,
+              "objective": 1.3647765815526807e-12,
+              "kkt_abs": 1.0908567565351255e-14,
+              "outer_success": true
+            },
+            {
+              "fixed": 2.0,
+              "nuisance": 3.0,
+              "objective": 5.89745291529416e-12,
+              "kkt_abs": 5.114385106127467e-16,
+              "outer_success": true
+            },
+            {
+              "fixed": 2.5,
+              "nuisance": 3.0,
+              "objective": 7.563013417474567e-28,
+              "kkt_abs": 3.070892757646506e-17,
+              "outer_success": true
+            },
+            {
+              "fixed": 3.0,
+              "nuisance": 3.000726778101998,
+              "objective": 2.779899211498111e-12,
+              "kkt_abs": 1.2767623860945637e-17,
+              "outer_success": true
+            },
+            {
+              "fixed": 4.0,
+              "nuisance": 3.008178160015619,
+              "objective": 3.637089391357773e-13,
+              "kkt_abs": 1.3317383339488485e-17,
+              "outer_success": true
+            },
+            {
+              "fixed": 6.0,
+              "nuisance": 3.3324113770709882,
+              "objective": 6.343382894931498e-08,
+              "kkt_abs": 3.610588859360424e-17,
+              "outer_success": true
+            }
+          ]
+        },
+        "errors": [],
+        "objective_at_truth": 7.563013417474567e-28,
+        "kkt_at_truth": 3.070892757646506e-17,
+        "sensitivity": {
+          "singular_values": [
+            0.01234911328241388,
+            6.679199093601201e-07
+          ],
+          "column_norms": [
+            0.012349110866449011,
+            7.75346108061906e-06
+          ],
+          "column_correlation": -0.996282630788989
+        },
+        "sensitivity_step_relative_difference": 0.0014820715168581385,
+        "seconds": 1.8281042949965922
+      },
+      {
+        "case": "noiseless",
+        "alpha": 7.541875008433269e-09,
+        "mu": 0.0,
+        "profiles": {
+          "0": [
+            {
+              "fixed": 0.0,
+              "nuisance": 0.0,
+              "objective": 0.11149120412562571,
+              "kkt_abs": 2.4113689753183295e-12,
+              "outer_success": true
+            },
+            {
+              "fixed": 1.0,
+              "nuisance": 2.0212203063186482,
+              "objective": 0.11115886496953407,
+              "kkt_abs": 6.175558373283714e-15,
+              "outer_success": true
+            },
+            {
+              "fixed": 2.0,
+              "nuisance": 2.238440460079074,
+              "objective": 0.05698480867277258,
+              "kkt_abs": 3.139854175014649e-15,
+              "outer_success": true
+            },
+            {
+              "fixed": 2.5,
+              "nuisance": 2.3073241675763403,
+              "objective": 0.016341528340363946,
+              "kkt_abs": 2.229371364248912e-15,
+              "outer_success": true
+            },
+            {
+              "fixed": 3.0,
+              "nuisance": 1.6107029542986853,
+              "objective": 0.0038712894194911987,
+              "kkt_abs": 2.829667002306619e-16,
+              "outer_success": true
+            },
+            {
+              "fixed": 4.0,
+              "nuisance": 3.7629636068775363,
+              "objective": 0.003796517708161706,
+              "kkt_abs": 4.661766746204015e-16,
+              "outer_success": true
+            },
+            {
+              "fixed": 6.0,
+              "nuisance": 4.241377449669836,
+              "objective": 0.011233719560407404,
+              "kkt_abs": 2.275084705003722e-11,
+              "outer_success": true
+            }
+          ],
+          "1": [
+            {
+              "fixed": 0.0,
+              "nuisance": 3.456176368128854,
+              "objective": 0.0028388158744286963,
+              "kkt_abs": 3.8413992943903934e-13,
+              "outer_success": true
+            },
+            {
+              "fixed": 1.0,
+              "nuisance": 3.4565125928444846,
+              "objective": 0.002838821326291807,
+              "kkt_abs": 5.832651072439561e-12,
+              "outer_success": true
+            },
+            {
+              "fixed": 2.0,
+              "nuisance": 3.4565406640933034,
+              "objective": 0.0028388790482707068,
+              "kkt_abs": 2.3536652213522846e-12,
+              "outer_success": true
+            },
+            {
+              "fixed": 2.5,
+              "nuisance": 3.456608076236658,
+              "objective": 0.002839017707220119,
+              "kkt_abs": 7.431645567548606e-12,
+              "outer_success": true
+            },
+            {
+              "fixed": 3.0,
+              "nuisance": 3.4568209743414298,
+              "objective": 0.0028394560005530487,
+              "kkt_abs": 4.2629509382467214e-12,
+              "outer_success": true
+            },
+            {
+              "fixed": 4.0,
+              "nuisance": 3.459812899406316,
+              "objective": 0.0028451973804188707,
+              "kkt_abs": 9.890976004330443e-18,
+              "outer_success": true
+            },
+            {
+              "fixed": 6.0,
+              "nuisance": 3.6427712520771602,
+              "objective": 0.0034562308983424597,
+              "kkt_abs": 8.3735559583192e-18,
+              "outer_success": true
+            }
+          ]
+        },
+        "errors": [],
+        "objective_at_truth": 0.0038717849899448696,
+        "kkt_at_truth": 5.1523575817791436e-17,
+        "sensitivity": {
+          "singular_values": [
+            0.12064178369637406,
+            5.6182494472574985e-05
+          ],
+          "column_norms": [
+            0.12064178365708382,
+            5.6266799806976283e-05
+          ],
+          "column_correlation": -0.05472095050384492
+        },
+        "sensitivity_step_relative_difference": 0.4656170778778881,
+        "seconds": 19.356373803995666
+      },
+      {
+        "case": "seed32_noise_2e-4",
+        "alpha": 0.0,
+        "mu": 0.0,
+        "profiles": {
+          "0": [
+            {
+              "fixed": 0.0,
+              "nuisance": 0.0,
+              "objective": 0.0014144468446927844,
+              "kkt_abs": 2.479953335866134e-12,
+              "outer_success": true
+            },
+            {
+              "fixed": 1.0,
+              "nuisance": 0.5232754868598913,
+              "objective": 0.0012820158909989982,
+              "kkt_abs": 6.913903749400163e-12,
+              "outer_success": true
+            },
+            {
+              "fixed": 2.0,
+              "nuisance": 2.592592749967794,
+              "objective": 0.0005195552013774319,
+              "kkt_abs": 1.925073855021036e-15,
+              "outer_success": true
+            },
+            {
+              "fixed": 2.5,
+              "nuisance": 2.7515759723864774,
+              "objective": 9.011484879555812e-05,
+              "kkt_abs": 2.5474948934267366e-14,
+              "outer_success": true
+            },
+            {
+              "fixed": 3.0,
+              "nuisance": 4.632732782971244,
+              "objective": 7.94015796351171e-06,
+              "kkt_abs": 1.9432563701459154e-17,
+              "outer_success": true
+            },
+            {
+              "fixed": 4.0,
+              "nuisance": 6.0,
+              "objective": 0.001179512927959072,
+              "kkt_abs": 3.272120038978884e-17,
+              "outer_success": true
+            },
+            {
+              "fixed": 6.0,
+              "nuisance": 6.0,
+              "objective": 0.008777178026458643,
+              "kkt_abs": 4.137099454451488e-14,
+              "outer_success": true
+            }
+          ],
+          "1": [
+            {
+              "fixed": 0.0,
+              "nuisance": 3.0,
+              "objective": 8.387518028617731e-06,
+              "kkt_abs": 3.1574150548009436e-10,
+              "outer_success": true
+            },
+            {
+              "fixed": 1.0,
+              "nuisance": 2.993208746722579,
+              "objective": 8.377330437952142e-06,
+              "kkt_abs": 1.0462685872415244e-12,
+              "outer_success": true
+            },
+            {
+              "fixed": 2.0,
+              "nuisance": 2.991712922493407,
+              "objective": 8.322023482678439e-06,
+              "kkt_abs": 1.318923932080692e-14,
+              "outer_success": true
+            },
+            {
+              "fixed": 2.5,
+              "nuisance": 2.990646246546398,
+              "objective": 8.299838757248355e-06,
+              "kkt_abs": 9.708199621165554e-15,
+              "outer_success": true
+            },
+            {
+              "fixed": 3.0,
+              "nuisance": 2.9896828633318564,
+              "objective": 8.25678266076022e-06,
+              "kkt_abs": 1.524721416395576e-15,
+              "outer_success": true
+            },
+            {
+              "fixed": 4.0,
+              "nuisance": 2.995002728836219,
+              "objective": 8.13783597560895e-06,
+              "kkt_abs": 3.189794226770054e-17,
+              "outer_success": true
+            },
+            {
+              "fixed": 6.0,
+              "nuisance": 3.326541416114254,
+              "objective": 7.629105600386257e-06,
+              "kkt_abs": 2.896025498997154e-17,
+              "outer_success": true
+            }
+          ]
+        },
+        "errors": [],
+        "objective_at_truth": 8.315439885641487e-06,
+        "kkt_at_truth": 1.7101112766861303e-14,
+        "sensitivity": {
+          "singular_values": [
+            0.01289908135475505,
+            0.0001770004244365835
+          ],
+          "column_norms": [
+            0.012899052291167473,
+            0.0001791059367163121
+          ],
+          "column_correlation": 0.15286845724540613
+        },
+        "sensitivity_step_relative_difference": 0.003759881064986773,
+        "seconds": 2.3793185829999857
+      },
+      {
+        "case": "seed32_noise_2e-4",
+        "alpha": 7.541875008433269e-09,
+        "mu": 0.0,
+        "profiles": {
+          "0": [
+            {
+              "fixed": 0.0,
+              "nuisance": 0.0,
+              "objective": 0.11174027935341248,
+              "kkt_abs": 1.3984851039106232e-12,
+              "outer_success": true
+            },
+            {
+              "fixed": 1.0,
+              "nuisance": 2.0262922854563366,
+              "objective": 0.11140363579000731,
+              "kkt_abs": 4.125148364843189e-15,
+              "outer_success": true
+            },
+            {
+              "fixed": 2.0,
+              "nuisance": 2.2461179749810727,
+              "objective": 0.057119163158073166,
+              "kkt_abs": 8.178869157705555e-16,
+              "outer_success": true
+            },
+            {
+              "fixed": 2.5,
+              "nuisance": 2.327424162538906,
+              "objective": 0.016393460883319746,
+              "kkt_abs": 1.82309280539857e-15,
+              "outer_success": true
+            },
+            {
+              "fixed": 3.0,
+              "nuisance": 1.309668721731878,
+              "objective": 0.003888966240009454,
+              "kkt_abs": 1.2844487701280043e-13,
+              "outer_success": true
+            },
+            {
+              "fixed": 4.0,
+              "nuisance": 3.7768639764143668,
+              "objective": 0.0038275544748697446,
+              "kkt_abs": 4.3193930969764283e-16,
+              "outer_success": true
+            },
+            {
+              "fixed": 6.0,
+              "nuisance": 4.248549577879699,
+              "objective": 0.011297508141442574,
+              "kkt_abs": 2.337273692196299e-11,
+              "outer_success": true
+            }
+          ],
+          "1": [
+            {
+              "fixed": 0.0,
+              "nuisance": 3.4544150158690115,
+              "objective": 0.00285614769532381,
+              "kkt_abs": 3.876222260993287e-12,
+              "outer_success": true
+            },
+            {
+              "fixed": 1.0,
+              "nuisance": 3.4542091198303915,
+              "objective": 0.0028561533201865155,
+              "kkt_abs": 8.305142164949839e-12,
+              "outer_success": true
+            },
+            {
+              "fixed": 2.0,
+              "nuisance": 3.454237062029199,
+              "objective": 0.0028562111809824274,
+              "kkt_abs": 1.4625820622270999e-12,
+              "outer_success": true
+            },
+            {
+              "fixed": 2.5,
+              "nuisance": 3.4543041655442197,
+              "objective": 0.002856350175576193,
+              "kkt_abs": 4.533137655793182e-12,
+              "outer_success": true
+            },
+            {
+              "fixed": 3.0,
+              "nuisance": 3.4545161015581343,
+              "objective": 0.0028567895501426925,
+              "kkt_abs": 8.496628153629074e-12,
+              "outer_success": true
+            },
+            {
+              "fixed": 4.0,
+              "nuisance": 3.457329580297188,
+              "objective": 0.0028625296107065218,
+              "kkt_abs": 6.483622038895457e-13,
+              "outer_success": true
+            },
+            {
+              "fixed": 6.0,
+              "nuisance": 3.639371230811697,
+              "objective": 0.003479216618577897,
+              "kkt_abs": 2.139246062942392e-17,
+              "outer_success": true
+            }
+          ]
+        },
+        "errors": [],
+        "objective_at_truth": 0.003889497263879259,
+        "kkt_at_truth": 8.536132087318291e-16,
+        "sensitivity": {
+          "singular_values": [
+            0.09316620703751437,
+            5.996918326999427e-05
+          ],
+          "column_norms": [
+            0.09316620699130705,
+            6.004092654619812e-05
+          ],
+          "column_correlation": -0.04887109203704463
+        },
+        "sensitivity_step_relative_difference": 1.2069315959561276e-06,
+        "seconds": 20.110733096997137
+      }
+    ]
+  }
+}
